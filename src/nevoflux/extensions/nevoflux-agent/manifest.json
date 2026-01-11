@@ -1,0 +1,72 @@
+{
+  "manifest_version": 3,
+  "name": "NevoFlux Agent",
+  "version": "0.2.0",
+  "description": "AI-powered browser agent with sidebar chat interface",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "agent@nevoflux.com",
+      "strict_min_version": "109.0"
+    }
+  },
+  "permissions": [
+    "nativeMessaging",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "optional_permissions": [
+    "tabs",
+    "webNavigation"
+  ],
+  "background": {
+    "page": "background/background.html",
+    "type": "module"
+  },
+  "sidebar_action": {
+    "default_title": "NevoFlux Agent",
+    "default_panel": "sidebar/sidebar-safe.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "commands": {
+    "_execute_sidebar_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+A",
+        "mac": "Command+Shift+A"
+      },
+      "description": "Toggle NevoFlux Agent sidebar"
+    }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "sidebar/components/*.js",
+        "sidebar/styles/*.css",
+        "utils/*.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
