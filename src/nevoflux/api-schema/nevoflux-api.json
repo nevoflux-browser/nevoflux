@@ -1,0 +1,423 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NevoFlux Browser API",
+  "version": "1.0.0",
+
+  "namespaces": {
+    "extraction": {
+      "description": "Data extraction (chat mode)",
+      "mode": "chat",
+      "methods": {
+        "getText": {
+          "description": "Get element text content",
+          "params": {
+            "selector": { "type": "string", "optional": true }
+          },
+          "returns": { "type": "string" }
+        },
+        "getHtml": {
+          "description": "Get element innerHTML",
+          "params": {
+            "selector": { "type": "string", "optional": true }
+          },
+          "returns": { "type": "string" }
+        },
+        "getValue": {
+          "description": "Get form element value",
+          "params": {
+            "selector": { "type": "string" }
+          },
+          "returns": { "type": "string" }
+        },
+        "getAttribute": {
+          "description": "Get element attribute",
+          "params": {
+            "selector": { "type": "string" },
+            "attribute": { "type": "string" }
+          },
+          "returns": { "type": "string" }
+        },
+        "getUrl": {
+          "description": "Get current page URL",
+          "params": {},
+          "returns": { "type": "string" }
+        },
+        "getTitle": {
+          "description": "Get page title",
+          "params": {},
+          "returns": { "type": "string" }
+        },
+        "snapshot": {
+          "description": "Get accessibility tree snapshot",
+          "params": {
+            "options": { "$ref": "#/definitions/SnapshotOptions", "optional": true }
+          },
+          "returns": { "$ref": "#/definitions/SnapshotResult" }
+        },
+        "screenshot": {
+          "description": "Take page screenshot",
+          "params": {
+            "options": { "$ref": "#/definitions/ScreenshotOptions", "optional": true }
+          },
+          "returns": { "$ref": "#/definitions/ScreenshotResult" }
+        }
+      }
+    },
+
+    "state": {
+      "description": "State checking (chat mode)",
+      "mode": "chat",
+      "methods": {
+        "isVisible": {
+          "description": "Check if element is visible",
+          "params": { "selector": { "type": "string" } },
+          "returns": { "type": "boolean" }
+        },
+        "isEnabled": {
+          "description": "Check if element is enabled",
+          "params": { "selector": { "type": "string" } },
+          "returns": { "type": "boolean" }
+        },
+        "isChecked": {
+          "description": "Check if checkbox is checked",
+          "params": { "selector": { "type": "string" } },
+          "returns": { "type": "boolean" }
+        },
+        "exists": {
+          "description": "Check if element exists",
+          "params": { "selector": { "type": "string" } },
+          "returns": { "type": "boolean" }
+        }
+      }
+    },
+
+    "navigation": {
+      "description": "Navigation control (browser_use mode)",
+      "mode": "browser_use",
+      "methods": {
+        "open": {
+          "description": "Navigate to URL",
+          "params": {
+            "url": { "type": "string" },
+            "options": { "$ref": "#/definitions/NavigationOptions", "optional": true }
+          },
+          "returns": { "$ref": "#/definitions/NavigationResult" }
+        },
+        "reload": {
+          "description": "Reload current page",
+          "params": {
+            "options": { "$ref": "#/definitions/NavigationOptions", "optional": true }
+          },
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        },
+        "back": {
+          "description": "Go back in history",
+          "params": {},
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        },
+        "forward": {
+          "description": "Go forward in history",
+          "params": {},
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        },
+        "close": {
+          "description": "Close current tab",
+          "params": {},
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        }
+      }
+    },
+
+    "interaction": {
+      "description": "Element interaction (browser_use mode)",
+      "mode": "browser_use",
+      "methods": {
+        "click": {
+          "description": "Click element",
+          "params": {
+            "selector": { "type": "string" },
+            "options": { "$ref": "#/definitions/ClickOptions", "optional": true }
+          },
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        },
+        "type": {
+          "description": "Type text with keyboard simulation",
+          "params": {
+            "selector": { "type": "string" },
+            "text": { "type": "string" },
+            "options": { "$ref": "#/definitions/TypeOptions", "optional": true }
+          },
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        },
+        "fill": {
+          "description": "Fill form field directly",
+          "params": {
+            "selector": { "type": "string" },
+            "text": { "type": "string" }
+          },
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        },
+        "select": {
+          "description": "Select dropdown option",
+          "params": {
+            "selector": { "type": "string" },
+            "value": { "type": "string" }
+          },
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        },
+        "check": {
+          "description": "Check checkbox",
+          "params": { "selector": { "type": "string" } },
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        },
+        "uncheck": {
+          "description": "Uncheck checkbox",
+          "params": { "selector": { "type": "string" } },
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        },
+        "hover": {
+          "description": "Hover over element",
+          "params": { "selector": { "type": "string" } },
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        },
+        "scroll": {
+          "description": "Scroll page",
+          "params": {
+            "direction": { "type": "string", "enum": ["up", "down", "left", "right"] },
+            "amount": { "type": "number", "optional": true }
+          },
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        },
+        "scrollIntoView": {
+          "description": "Scroll element into view",
+          "params": { "selector": { "type": "string" } },
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        }
+      }
+    },
+
+    "wait": {
+      "description": "Wait mechanisms (browser_use mode)",
+      "mode": "browser_use",
+      "methods": {
+        "forSelector": {
+          "description": "Wait for element",
+          "params": {
+            "selector": { "type": "string" },
+            "options": { "$ref": "#/definitions/WaitOptions", "optional": true }
+          },
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        },
+        "forText": {
+          "description": "Wait for text to appear",
+          "params": {
+            "text": { "type": "string" },
+            "options": { "$ref": "#/definitions/WaitOptions", "optional": true }
+          },
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        },
+        "forUrl": {
+          "description": "Wait for URL to match",
+          "params": {
+            "pattern": { "type": "string" },
+            "options": { "$ref": "#/definitions/WaitOptions", "optional": true }
+          },
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        },
+        "forTimeout": {
+          "description": "Wait for specified time",
+          "params": {
+            "ms": { "type": "number" }
+          },
+          "returns": { "$ref": "#/definitions/ApiResult" }
+        }
+      }
+    },
+
+    "privacy": {
+      "description": "Privacy filtering",
+      "mode": "chat",
+      "methods": {
+        "getConfig": {
+          "description": "Get privacy configuration",
+          "params": {},
+          "returns": { "$ref": "#/definitions/PrivacyConfig" }
+        },
+        "setConfig": {
+          "description": "Update privacy configuration",
+          "params": {
+            "config": { "$ref": "#/definitions/PrivacyConfig" }
+          },
+          "returns": { "$ref": "#/definitions/PrivacyConfig" }
+        },
+        "filter": {
+          "description": "Filter sensitive information from text",
+          "params": {
+            "text": { "type": "string" },
+            "options": { "$ref": "#/definitions/FilterOptions", "optional": true }
+          },
+          "returns": { "$ref": "#/definitions/FilterResult" }
+        }
+      }
+    }
+  },
+
+  "definitions": {
+    "ApiResult": {
+      "type": "object",
+      "properties": {
+        "success": { "type": "boolean" },
+        "error": { "$ref": "#/definitions/ApiError" }
+      },
+      "required": ["success"]
+    },
+    "ApiError": {
+      "type": "object",
+      "properties": {
+        "code": { "type": "number" },
+        "message": { "type": "string" },
+        "recoverable": { "type": "boolean" },
+        "suggestion": { "type": "string" }
+      },
+      "required": ["code", "message", "recoverable"]
+    },
+    "NavigationOptions": {
+      "type": "object",
+      "properties": {
+        "timeout": { "type": "number", "default": 30000 },
+        "waitUntil": { "type": "string", "enum": ["load", "domcontentloaded", "networkidle"], "default": "load" }
+      }
+    },
+    "NavigationResult": {
+      "type": "object",
+      "properties": {
+        "success": { "type": "boolean" },
+        "url": { "type": "string" }
+      },
+      "required": ["success", "url"]
+    },
+    "ClickOptions": {
+      "type": "object",
+      "properties": {
+        "button": { "type": "string", "enum": ["left", "right", "middle"], "default": "left" },
+        "clickCount": { "type": "number", "default": 1 },
+        "delay": { "type": "number" },
+        "position": { "$ref": "#/definitions/Position" },
+        "force": { "type": "boolean", "default": false }
+      }
+    },
+    "TypeOptions": {
+      "type": "object",
+      "properties": {
+        "delay": { "type": "number", "default": 50 }
+      }
+    },
+    "Position": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      },
+      "required": ["x", "y"]
+    },
+    "SnapshotOptions": {
+      "type": "object",
+      "properties": {
+        "interactive": { "type": "boolean", "default": false },
+        "compact": { "type": "boolean", "default": false },
+        "depth": { "type": "number" },
+        "root": { "type": "string", "default": "body" }
+      }
+    },
+    "SnapshotResult": {
+      "type": "object",
+      "properties": {
+        "tree": { "type": "string" },
+        "refs": { "type": "object", "additionalProperties": { "$ref": "#/definitions/ElementRef" } }
+      },
+      "required": ["tree", "refs"]
+    },
+    "ElementRef": {
+      "type": "object",
+      "properties": {
+        "role": { "type": "string" },
+        "name": { "type": "string" },
+        "selector": { "type": "string" },
+        "tagName": { "type": "string" }
+      },
+      "required": ["role", "selector"]
+    },
+    "ScreenshotOptions": {
+      "type": "object",
+      "properties": {
+        "fullPage": { "type": "boolean", "default": false },
+        "type": { "type": "string", "enum": ["png", "jpeg"], "default": "png" },
+        "quality": { "type": "number", "default": 80 }
+      }
+    },
+    "ScreenshotResult": {
+      "type": "object",
+      "properties": {
+        "image": { "type": "string" },
+        "mimeType": { "type": "string" },
+        "width": { "type": "number" },
+        "height": { "type": "number" }
+      },
+      "required": ["image", "mimeType", "width", "height"]
+    },
+    "WaitOptions": {
+      "type": "object",
+      "properties": {
+        "timeout": { "type": "number", "default": 30000 },
+        "state": { "type": "string", "enum": ["visible", "hidden", "attached", "detached"], "default": "visible" }
+      }
+    },
+    "PrivacyConfig": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "filters": { "$ref": "#/definitions/FilterConfig" },
+        "mode": { "type": "string", "enum": ["redact", "partial", "remove"], "default": "redact" },
+        "scope": { "type": "string", "enum": ["all", "external_only"], "default": "external_only" }
+      },
+      "required": ["enabled"]
+    },
+    "FilterConfig": {
+      "type": "object",
+      "properties": {
+        "phone": { "type": "boolean", "default": true },
+        "idCard": { "type": "boolean", "default": true },
+        "email": { "type": "boolean", "default": true },
+        "bankCard": { "type": "boolean", "default": true },
+        "address": { "type": "boolean", "default": false },
+        "name": { "type": "boolean", "default": false }
+      }
+    },
+    "FilterOptions": {
+      "type": "object",
+      "properties": {
+        "phone": { "type": "boolean" },
+        "idCard": { "type": "boolean" },
+        "email": { "type": "boolean" },
+        "bankCard": { "type": "boolean" }
+      }
+    },
+    "FilterResult": {
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "filteredCount": { "type": "number" },
+        "filteredItems": { "type": "array", "items": { "$ref": "#/definitions/FilteredItem" } }
+      },
+      "required": ["text", "filteredCount"]
+    },
+    "FilteredItem": {
+      "type": "object",
+      "properties": {
+        "type": { "type": "string" },
+        "position": { "type": "number" }
+      },
+      "required": ["type", "position"]
+    }
+  }
+}
