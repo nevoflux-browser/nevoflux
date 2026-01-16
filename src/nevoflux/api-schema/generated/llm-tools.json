@@ -1,0 +1,617 @@
+{
+  "version": "1.0.0",
+  "tools": [
+    {
+      "name": "browser_use.extraction.getText",
+      "description": "Get element text content",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string",
+            "optional": true
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "browser_use.extraction.getHtml",
+      "description": "Get element innerHTML",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string",
+            "optional": true
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "browser_use.extraction.getValue",
+      "description": "Get form element value",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.extraction.getAttribute",
+      "description": "Get element attribute",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          },
+          "attribute": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector",
+          "attribute"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.extraction.getUrl",
+      "description": "Get current page URL",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "browser_use.extraction.getTitle",
+      "description": "Get page title",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "browser_use.extraction.snapshot",
+      "description": "Get accessibility tree snapshot",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "options": {
+            "$ref": "#/definitions/SnapshotOptions",
+            "optional": true
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "browser_use.extraction.screenshot",
+      "description": "Take page screenshot",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "options": {
+            "$ref": "#/definitions/ScreenshotOptions",
+            "optional": true
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "browser_use.state.isVisible",
+      "description": "Check if element is visible",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.state.isEnabled",
+      "description": "Check if element is enabled",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.state.isChecked",
+      "description": "Check if checkbox is checked",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.state.exists",
+      "description": "Check if element exists",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.navigation.open",
+      "description": "Navigate to URL",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/definitions/NavigationOptions",
+            "optional": true
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.navigation.reload",
+      "description": "Reload current page",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "options": {
+            "$ref": "#/definitions/NavigationOptions",
+            "optional": true
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "browser_use.navigation.back",
+      "description": "Go back in history",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "browser_use.navigation.forward",
+      "description": "Go forward in history",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "browser_use.navigation.close",
+      "description": "Close current tab",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "browser_use.interaction.click",
+      "description": "Click element",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/definitions/ClickOptions",
+            "optional": true
+          }
+        },
+        "required": [
+          "selector"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.interaction.type",
+      "description": "Type text with keyboard simulation",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/definitions/TypeOptions",
+            "optional": true
+          }
+        },
+        "required": [
+          "selector",
+          "text"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.interaction.fill",
+      "description": "Fill form field directly",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector",
+          "text"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.interaction.select",
+      "description": "Select dropdown option",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector",
+          "value"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.interaction.check",
+      "description": "Check checkbox",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.interaction.uncheck",
+      "description": "Uncheck checkbox",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.interaction.hover",
+      "description": "Hover over element",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.interaction.scroll",
+      "description": "Scroll page",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": [
+              "up",
+              "down",
+              "left",
+              "right"
+            ]
+          },
+          "amount": {
+            "type": "number",
+            "optional": true
+          }
+        },
+        "required": [
+          "direction"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.interaction.scrollIntoView",
+      "description": "Scroll element into view",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "selector"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.wait.forSelector",
+      "description": "Wait for element",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/definitions/WaitOptions",
+            "optional": true
+          }
+        },
+        "required": [
+          "selector"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.wait.forText",
+      "description": "Wait for text to appear",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/definitions/WaitOptions",
+            "optional": true
+          }
+        },
+        "required": [
+          "text"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.wait.forUrl",
+      "description": "Wait for URL to match",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/definitions/WaitOptions",
+            "optional": true
+          }
+        },
+        "required": [
+          "pattern"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.wait.forTimeout",
+      "description": "Wait for specified time",
+      "mode": "browser_use",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "ms": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "ms"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.privacy.getConfig",
+      "description": "Get privacy configuration",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "browser_use.privacy.setConfig",
+      "description": "Update privacy configuration",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/definitions/PrivacyConfig"
+          }
+        },
+        "required": [
+          "config"
+        ]
+      }
+    },
+    {
+      "name": "browser_use.privacy.filter",
+      "description": "Filter sensitive information from text",
+      "mode": "chat",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/definitions/FilterOptions",
+            "optional": true
+          }
+        },
+        "required": [
+          "text"
+        ]
+      }
+    }
+  ],
+  "toolsByMode": {
+    "chat": [
+      "browser_use.extraction.getText",
+      "browser_use.extraction.getHtml",
+      "browser_use.extraction.getValue",
+      "browser_use.extraction.getAttribute",
+      "browser_use.extraction.getUrl",
+      "browser_use.extraction.getTitle",
+      "browser_use.extraction.snapshot",
+      "browser_use.extraction.screenshot",
+      "browser_use.state.isVisible",
+      "browser_use.state.isEnabled",
+      "browser_use.state.isChecked",
+      "browser_use.state.exists",
+      "browser_use.privacy.getConfig",
+      "browser_use.privacy.setConfig",
+      "browser_use.privacy.filter"
+    ],
+    "agent": [
+      "browser_use.extraction.getText",
+      "browser_use.extraction.getHtml",
+      "browser_use.extraction.getValue",
+      "browser_use.extraction.getAttribute",
+      "browser_use.extraction.getUrl",
+      "browser_use.extraction.getTitle",
+      "browser_use.extraction.snapshot",
+      "browser_use.extraction.screenshot",
+      "browser_use.state.isVisible",
+      "browser_use.state.isEnabled",
+      "browser_use.state.isChecked",
+      "browser_use.state.exists",
+      "browser_use.privacy.getConfig",
+      "browser_use.privacy.setConfig",
+      "browser_use.privacy.filter"
+    ],
+    "browser_use": [
+      "browser_use.extraction.getText",
+      "browser_use.extraction.getHtml",
+      "browser_use.extraction.getValue",
+      "browser_use.extraction.getAttribute",
+      "browser_use.extraction.getUrl",
+      "browser_use.extraction.getTitle",
+      "browser_use.extraction.snapshot",
+      "browser_use.extraction.screenshot",
+      "browser_use.state.isVisible",
+      "browser_use.state.isEnabled",
+      "browser_use.state.isChecked",
+      "browser_use.state.exists",
+      "browser_use.navigation.open",
+      "browser_use.navigation.reload",
+      "browser_use.navigation.back",
+      "browser_use.navigation.forward",
+      "browser_use.navigation.close",
+      "browser_use.interaction.click",
+      "browser_use.interaction.type",
+      "browser_use.interaction.fill",
+      "browser_use.interaction.select",
+      "browser_use.interaction.check",
+      "browser_use.interaction.uncheck",
+      "browser_use.interaction.hover",
+      "browser_use.interaction.scroll",
+      "browser_use.interaction.scrollIntoView",
+      "browser_use.wait.forSelector",
+      "browser_use.wait.forText",
+      "browser_use.wait.forUrl",
+      "browser_use.wait.forTimeout",
+      "browser_use.privacy.getConfig",
+      "browser_use.privacy.setConfig",
+      "browser_use.privacy.filter"
+    ]
+  }
+}
