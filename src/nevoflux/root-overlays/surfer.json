@@ -1,0 +1,56 @@
+{
+    "name": "NevoFlux",
+    "vendor": "NevoFlux Team",
+    "appId": "nevoflux",
+    "binaryName": "nevoflux",
+    "version": {
+        "product": "firefox",
+        "version": "146.0.1",
+        "candidate": "146.0.1"
+    },
+    "buildOptions": {
+        "generateBranding": true
+    },
+    "addons": {},
+    "brands": {
+        "release": {
+            "backgroundColor": "#282A33",
+            "brandShorterName": "NevoFlux",
+            "brandShortName": "NevoFlux",
+            "brandFullName": "NevoFlux Browser",
+            "release": {
+                "displayVersion": "0.0.1",
+                "github": {
+                    "repo": "user/nevoflux"
+                },
+                "archives": {
+                    "windows": "windows.mar",
+                    "macos-aarch64": "macos-aarch64.mar",
+                    "linux": "linux.mar",
+                    "macos-x64": "macos-x64.mar",
+                    "windows-arm64": "windows-arm64.mar",
+                    "linux-aarch64": "linux-aarch64.mar"
+                }
+            }
+        },
+        "twilight": {
+            "backgroundColor": "#282A33",
+            "brandShorterName": "NevoFlux",
+            "brandShortName": "NevoFlux Dev",
+            "brandFullName": "NevoFlux Twilight",
+            "release": {
+                "displayVersion": "0.0.1-dev",
+                "github": {
+                    "repo": "user/nevoflux"
+                }
+            }
+        }
+    },
+    "license": {
+        "ignoredFiles": [
+            ".*\\.json"
+        ],
+        "licenseType": "MPL-2.0"
+    },
+    "updateHostname": "updates.nevoflux.com"
+}
