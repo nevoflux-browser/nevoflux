@@ -1,0 +1,19 @@
+[package]
+name = "nevoflux-common"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Workspace dependencies
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Additional dependencies
+toml = "0.8"
+dirs = "5.0"
+uuid = { version = "1.6", features = ["v4", "serde"] }

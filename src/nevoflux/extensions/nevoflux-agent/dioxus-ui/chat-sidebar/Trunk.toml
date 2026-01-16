@@ -1,0 +1,29 @@
+# Trunk build configuration for Chat Sidebar
+# https://trunkrs.dev/configuration/
+
+[build]
+# Output directory for built assets
+dist = "../dist/chat-sidebar"
+# Target index.html
+target = "index.html"
+# Build in release mode by default
+release = true
+# Enable minification
+minify = "on_release"
+
+[watch]
+# Watch these paths for changes
+watch = ["src", "assets", "index.html"]
+# Ignore these patterns
+ignore = ["target"]
+
+[serve]
+# Development server port (for testing)
+port = 8080
+# Open browser on serve
+open = false
+
+[[hooks]]
+stage = "post_build"
+command = "sh"
+command_arguments = ["-c", "echo 'Chat Sidebar Trunk build complete'"]

@@ -1,0 +1,61 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+[workspace]
+members = [
+    "chat-sidebar",
+    "content-sidebar",
+    "shared-protocol",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["NevoFlux Contributors"]
+license = "MPL-2.0"
+repository = "https://github.com/nevoflux/nevoflux"
+
+[workspace.dependencies]
+# Dioxus framework for WASM UI
+dioxus = { version = "0.7", features = ["web"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Logging for WASM
+tracing = "0.1"
+tracing-wasm = "0.2"
+
+# Web bindings
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "ShadowRoot",
+    "ShadowRootInit",
+    "ShadowRootMode",
+    "Node",
+    "Event",
+    "CustomEvent",
+    "CustomEventInit",
+    "MessageEvent",
+    "Location",
+    "console",
+] }
+
+# WASM utilities
+gloo = { version = "0.11", features = ["futures", "timers", "events"] }
+gloo-utils = "0.2"
+
+# Async runtime for WASM
+futures = "0.3"
+
+# UUID for message IDs
+uuid = { version = "1.0", features = ["v4", "js"] }

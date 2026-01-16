@@ -1,0 +1,483 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* NevoFlux Content Sidebar Styles */
+/* These styles are injected into Shadow DOM for isolation */
+
+/* CSS Variables - Zen Theme */
+:host {
+  --zen-primary: #6366f1;
+  --zen-primary-hover: #5558e3;
+  --zen-primary-light: rgba(99, 102, 241, 0.1);
+  --zen-background: #1a1a2e;
+  --zen-surface: rgba(255, 255, 255, 0.05);
+  --zen-surface-hover: rgba(255, 255, 255, 0.08);
+  --zen-text: #eaeaea;
+  --zen-text-secondary: #888888;
+  --zen-text-muted: #666666;
+  --zen-success: #22c55e;
+  --zen-warning: #f59e0b;
+  --zen-error: #ef4444;
+  --zen-border: rgba(255, 255, 255, 0.1);
+  --zen-radius-sm: 4px;
+  --zen-radius-md: 8px;
+  --zen-radius-lg: 12px;
+  --zen-space-xs: 4px;
+  --zen-space-sm: 8px;
+  --zen-space-md: 12px;
+  --zen-space-lg: 16px;
+  --zen-space-xl: 24px;
+  --zen-font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --zen-font-size-sm: 12px;
+  --zen-font-size-base: 14px;
+  --zen-font-size-lg: 16px;
+  --zen-transition-fast: 0.15s ease;
+  --zen-transition-normal: 0.2s ease;
+}
+
+/* Reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Root container */
+.dioxus-root {
+  width: 100%;
+  height: 100%;
+  font-family: var(--zen-font-family);
+  font-size: var(--zen-font-size-base);
+  color: var(--zen-text);
+  line-height: 1.5;
+}
+
+/* Content Sidebar container */
+.content-sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--zen-background);
+  border-left: 1px solid var(--zen-border);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.3);
+}
+
+.content-sidebar.minimized {
+  width: 48px;
+}
+
+/* Minimize button */
+.minimize-btn {
+  position: absolute;
+  top: var(--zen-space-sm);
+  left: var(--zen-space-sm);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--zen-surface);
+  border: 1px solid var(--zen-border);
+  border-radius: var(--zen-radius-sm);
+  color: var(--zen-text-secondary);
+  cursor: pointer;
+  transition: all var(--zen-transition-fast);
+  z-index: 10;
+}
+
+.minimize-btn:hover {
+  background: var(--zen-surface-hover);
+  color: var(--zen-text);
+}
+
+/* Content area */
+.content-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--zen-space-lg);
+  padding-top: 48px; /* Space for minimize button */
+}
+
+/* Branding */
+.branding {
+  padding: var(--zen-space-sm) var(--zen-space-md);
+  text-align: center;
+  font-size: var(--zen-font-size-sm);
+  color: var(--zen-text-muted);
+  border-top: 1px solid var(--zen-border);
+}
+
+/* Default View */
+.default-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--zen-space-md);
+}
+
+.url-display {
+  display: flex;
+  align-items: center;
+  gap: var(--zen-space-xs);
+  padding: var(--zen-space-md);
+  background: var(--zen-surface);
+  border-radius: var(--zen-radius-md);
+  overflow: hidden;
+}
+
+.protocol-badge {
+  font-size: var(--zen-font-size-sm);
+  color: var(--zen-text-muted);
+}
+
+.protocol-badge.secure {
+  color: var(--zen-success);
+}
+
+.domain {
+  font-weight: 500;
+  color: var(--zen-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-title {
+  font-size: var(--zen-font-size-sm);
+  color: var(--zen-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-section {
+  display: flex;
+  align-items: center;
+  gap: var(--zen-space-sm);
+  padding: var(--zen-space-sm);
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--zen-text-muted);
+}
+
+.status-indicator.active {
+  background: var(--zen-success);
+  animation: pulse 2s infinite;
+}
+
+.status-text {
+  font-size: var(--zen-font-size-sm);
+  color: var(--zen-text-secondary);
+}
+
+/* Quick actions */
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--zen-space-sm);
+  margin-top: var(--zen-space-md);
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--zen-space-sm);
+  padding: var(--zen-space-sm) var(--zen-space-md);
+  background: var(--zen-surface);
+  border: 1px solid var(--zen-border);
+  border-radius: var(--zen-radius-md);
+  color: var(--zen-text-secondary);
+  cursor: pointer;
+  transition: all var(--zen-transition-fast);
+}
+
+.action-btn:hover {
+  background: var(--zen-surface-hover);
+  color: var(--zen-text);
+  border-color: var(--zen-primary);
+}
+
+/* Content View */
+.content-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.content-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--zen-space-md);
+  border-bottom: 1px solid var(--zen-border);
+}
+
+.content-title {
+  font-size: var(--zen-font-size-lg);
+  font-weight: 500;
+  color: var(--zen-text);
+  margin: 0;
+}
+
+.close-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--zen-radius-sm);
+  color: var(--zen-text-secondary);
+  cursor: pointer;
+  transition: all var(--zen-transition-fast);
+}
+
+.close-btn:hover {
+  background: var(--zen-surface);
+  color: var(--zen-error);
+}
+
+.content-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--zen-space-md);
+}
+
+/* Markdown content */
+.markdown-content {
+  color: var(--zen-text);
+  line-height: 1.6;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+  margin-top: var(--zen-space-lg);
+  margin-bottom: var(--zen-space-sm);
+  color: var(--zen-text);
+}
+
+.markdown-content h1 { font-size: 1.5em; }
+.markdown-content h2 { font-size: 1.3em; }
+.markdown-content h3 { font-size: 1.1em; }
+
+.markdown-content pre {
+  background: var(--zen-surface);
+  padding: var(--zen-space-md);
+  border-radius: var(--zen-radius-md);
+  overflow-x: auto;
+}
+
+.markdown-content code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: 0.9em;
+}
+
+/* Text content */
+.text-content {
+  white-space: pre-wrap;
+  font-family: inherit;
+  color: var(--zen-text);
+}
+
+/* JSON content */
+.json-content {
+  background: var(--zen-surface);
+  padding: var(--zen-space-md);
+  border-radius: var(--zen-radius-md);
+  overflow-x: auto;
+}
+
+.json-content code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: var(--zen-font-size-sm);
+  color: var(--zen-primary);
+}
+
+/* Code content */
+.code-content {
+  background: var(--zen-surface);
+  border-radius: var(--zen-radius-md);
+  overflow: hidden;
+}
+
+.code-header {
+  padding: var(--zen-space-sm) var(--zen-space-md);
+  border-bottom: 1px solid var(--zen-border);
+}
+
+.language-badge {
+  font-size: var(--zen-font-size-sm);
+  color: var(--zen-primary);
+  text-transform: uppercase;
+}
+
+.code-content pre {
+  margin: 0;
+  padding: var(--zen-space-md);
+  overflow-x: auto;
+}
+
+.code-content code {
+  font-family: 'Monaco', 'Menlo', monospace;
+  font-size: var(--zen-font-size-sm);
+}
+
+/* HTML content */
+.html-content {
+  color: var(--zen-text);
+}
+
+/* iFrame content */
+.iframe-content {
+  width: 100%;
+  height: 400px;
+  border: 1px solid var(--zen-border);
+  border-radius: var(--zen-radius-md);
+  background: white;
+}
+
+/* Content footer */
+.content-footer {
+  display: flex;
+  gap: var(--zen-space-sm);
+  padding: var(--zen-space-sm) var(--zen-space-md);
+  border-top: 1px solid var(--zen-border);
+}
+
+.footer-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--zen-space-xs);
+  padding: var(--zen-space-xs) var(--zen-space-sm);
+  background: transparent;
+  border: 1px solid var(--zen-border);
+  border-radius: var(--zen-radius-sm);
+  color: var(--zen-text-secondary);
+  font-size: var(--zen-font-size-sm);
+  cursor: pointer;
+  transition: all var(--zen-transition-fast);
+}
+
+.footer-btn:hover {
+  background: var(--zen-surface);
+  color: var(--zen-text);
+}
+
+/* Loading View */
+.loading-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  gap: var(--zen-space-md);
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--zen-border);
+  border-top-color: var(--zen-primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loading-text {
+  color: var(--zen-text-secondary);
+  font-size: var(--zen-font-size-sm);
+}
+
+/* Error View */
+.error-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  gap: var(--zen-space-md);
+  text-align: center;
+}
+
+.error-icon {
+  color: var(--zen-error);
+}
+
+.error-title {
+  color: var(--zen-text);
+  font-weight: 500;
+}
+
+.error-message {
+  color: var(--zen-text-secondary);
+  font-size: var(--zen-font-size-sm);
+  max-width: 250px;
+}
+
+.dismiss-btn {
+  padding: var(--zen-space-sm) var(--zen-space-lg);
+  background: var(--zen-surface);
+  border: 1px solid var(--zen-border);
+  border-radius: var(--zen-radius-md);
+  color: var(--zen-text);
+  cursor: pointer;
+  transition: all var(--zen-transition-fast);
+}
+
+.dismiss-btn:hover {
+  background: var(--zen-surface-hover);
+  border-color: var(--zen-primary);
+}
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Highlight animation for page elements */
+@keyframes nevoflux-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(99, 102, 241, 0);
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--zen-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--zen-text-muted);
+}

@@ -1,24 +1,27 @@
 {
   "manifest_version": 3,
   "name": "NevoFlux Agent",
-  "version": "0.2.0",
-  "description": "AI-powered browser agent with sidebar chat interface",
+  "version": "0.3.0",
+  "description": "AI-powered browser agent with Dioxus WASM sidebar chat interface",
   "browser_specific_settings": {
     "gecko": {
       "id": "agent@nevoflux.com",
       "strict_min_version": "109.0"
     }
   },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
   "permissions": [
     "nativeMessaging",
     "storage",
-    "scripting"
+    "scripting",
+    "tabs"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
   "optional_permissions": [
-    "tabs",
     "webNavigation"
   ],
   "background": {
@@ -27,7 +30,7 @@
   },
   "sidebar_action": {
     "default_title": "NevoFlux Agent",
-    "default_panel": "sidebar/sidebar-safe.html",
+    "default_panel": "wasm/chat-sidebar/index.html",
     "default_icon": {
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png",
@@ -35,6 +38,15 @@
     }
   },
   "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content/content-bootstrap.js"
+      ],
+      "run_at": "document_start"
+    },
     {
       "matches": [
         "<all_urls>"
@@ -57,13 +69,28 @@
         "mac": "Command+Shift+A"
       },
       "description": "Toggle NevoFlux Agent sidebar"
+    },
+    "inject_content_sidebar": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Inject Content Sidebar into current page"
     }
   },
   "web_accessible_resources": [
     {
       "resources": [
-        "sidebar/components/*.js",
-        "sidebar/styles/*.css",
+        "wasm/chat-sidebar/*.wasm",
+        "wasm/chat-sidebar/*.js",
+        "wasm/chat-sidebar/*.css",
+        "wasm/chat-sidebar/index.html",
+        "wasm/chat-sidebar/snippets/**/*.js",
+        "wasm/content-sidebar/*.wasm",
+        "wasm/content-sidebar/*.js",
+        "wasm/content-sidebar/*.css",
+        "wasm/content-sidebar/snippets/**/*.js",
+        "content/content-sidebar-loader.js",
         "utils/*.js"
       ],
       "matches": ["<all_urls>"]

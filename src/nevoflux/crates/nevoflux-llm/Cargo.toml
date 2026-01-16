@@ -1,0 +1,23 @@
+[package]
+name = "nevoflux-llm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+reqwest = { workspace = true }
+
+# Internal dependencies
+nevoflux-common = { path = "../nevoflux-common" }
+
+# Additional dependencies
+futures = "0.3"

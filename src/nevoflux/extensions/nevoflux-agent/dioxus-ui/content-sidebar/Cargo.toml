@@ -1,0 +1,61 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+[package]
+name = "content-sidebar"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "NevoFlux Content Sidebar - Dioxus WASM UI injected into page Shadow DOM"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+shared-protocol = { path = "../shared-protocol" }
+dioxus.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+js-sys.workspace = true
+web-sys = { workspace = true, features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "HtmlCollection",
+    "HtmlInputElement",
+    "HtmlTextAreaElement",
+    "HtmlSelectElement",
+    "HtmlButtonElement",
+    "HtmlAnchorElement",
+    "ShadowRoot",
+    "ShadowRootInit",
+    "ShadowRootMode",
+    "Node",
+    "NodeList",
+    "Event",
+    "CustomEvent",
+    "CustomEventInit",
+    "MessageEvent",
+    "Location",
+    "console",
+    "CssStyleDeclaration",
+    "DomRect",
+    "Navigator",
+    "Clipboard",
+    "ScrollBehavior",
+    "ScrollToOptions",
+] }
+gloo.workspace = true
+gloo-utils.workspace = true
+futures.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+tracing-wasm.workspace = true
+
+[features]
+default = []
