@@ -6,6 +6,7 @@ set -e
 NEVOFLUX_DIR="$(cd "$(dirname "$0")" && pwd)"
 ZEN_DIR="${NEVOFLUX_DIR}/../zen"
 ROOT_DIR="${NEVOFLUX_DIR}/../.."
+ENGINE_DIR="${ROOT_DIR}/engine"
 
 echo "Applying nevoflux patches to src/zen..."
 
@@ -35,7 +36,13 @@ if [ -d "${NEVOFLUX_DIR}/root-overlays" ]; then
   cp -r "${NEVOFLUX_DIR}/root-overlays/"* "${ROOT_DIR}/"
 fi
 
-# 4. Package nevoflux-agent extension as XPI
+# 4. Copy engine-overlays to engine/ directory
+if [ -d "${NEVOFLUX_DIR}/engine-overlays" ]; then
+  echo "Copying engine-overlays to engine/..."
+  cp -r "${NEVOFLUX_DIR}/engine-overlays/"* "${ENGINE_DIR}/" 2>/dev/null || true
+fi
+
+# 5. Package nevoflux-agent extension as XPI
 if [ -f "${ROOT_DIR}/scripts/package-extension.sh" ]; then
   echo "Packaging nevoflux-agent extension..."
   bash "${ROOT_DIR}/scripts/package-extension.sh"
