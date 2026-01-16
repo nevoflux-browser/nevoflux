@@ -35,7 +35,11 @@
     "lc": "surfer license-check",
     "lc:fix": "surfer license-check --fix",
     "use-moz-src": "cd engine && ./mach use-moz-src",
-    "ci": "surfer ci --brand release --display-version"
+    "ci": "surfer ci --brand release --display-version",
+    "generate:api-schema": "cd src/nevoflux/api-schema && node generate.js",
+    "build:kernel": "cd src/nevoflux/crates/nevoflux-kernel && cargo build --release",
+    "test:kernel": "cd src/nevoflux/crates/nevoflux-kernel && cargo test",
+    "nevoflux:setup": "npm run generate:api-schema && npm run build:kernel"
   },
   "repository": {
     "type": "git",
@@ -70,6 +74,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^15.3.0",
     "prettier": "^3.4.2",
-    "prettier-plugin-sh": "^0.14.0"
+    "prettier-plugin-sh": "^0.14.0",
+    "typescript": "^5.9.3"
   }
 }
