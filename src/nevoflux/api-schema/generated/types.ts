@@ -1,7 +1,7 @@
 /**
  * NevoFlux Browser API Types
  * Version: 1.0.0
- * Generated: 2026-01-16T14:28:03.052Z
+ * Generated: 2026-01-16T14:30:55.421Z
  *
  * DO NOT EDIT - This file is auto-generated from nevoflux-api.json
  */
@@ -56,7 +56,7 @@ export interface SnapshotOptions {
 
 export interface SnapshotResult {
   tree: string;
-  refs: Record&lt;string, any&gt;;
+  refs: Record<string, any>;
 }
 
 export interface ElementRef {
@@ -123,49 +123,49 @@ export interface FilteredItem {
 
 export interface NevofluxAPI {
   extraction: {
-    getText(selector?: string): Promise<string>;
-    getHtml(selector?: string): Promise<string>;
-    getValue(selector: string): Promise<string>;
-    getAttribute(selector: string, attribute: string): Promise<string>;
-    getUrl(): Promise<string>;
-    getTitle(): Promise<string>;
-    snapshot(options?: SnapshotOptions): Promise<SnapshotResult>;
-    screenshot(options?: ScreenshotOptions): Promise<ScreenshotResult>;
+    getText(selector?: string): Promise<string>
+    getHtml(selector?: string): Promise<string>
+    getValue(selector: string): Promise<string>
+    getAttribute(selector: string, attribute: string): Promise<string>
+    getUrl(): Promise<string>
+    getTitle(): Promise<string>
+    snapshot(options?: SnapshotOptions): Promise<SnapshotResult>
+    screenshot(options?: ScreenshotOptions): Promise<ScreenshotResult>
   };
   state: {
-    isVisible(selector: string): Promise<boolean>;
-    isEnabled(selector: string): Promise<boolean>;
-    isChecked(selector: string): Promise<boolean>;
-    exists(selector: string): Promise<boolean>;
+    isVisible(selector: string): Promise<boolean>
+    isEnabled(selector: string): Promise<boolean>
+    isChecked(selector: string): Promise<boolean>
+    exists(selector: string): Promise<boolean>
   };
   navigation: {
-    open(url: string, options?: NavigationOptions): Promise<NavigationResult>;
-    reload(options?: NavigationOptions): Promise<ApiResult>;
-    back(): Promise<ApiResult>;
-    forward(): Promise<ApiResult>;
-    close(): Promise<ApiResult>;
+    open(url: string, options?: NavigationOptions): Promise<NavigationResult>
+    reload(options?: NavigationOptions): Promise<ApiResult>
+    back(): Promise<ApiResult>
+    forward(): Promise<ApiResult>
+    close(): Promise<ApiResult>
   };
   interaction: {
-    click(selector: string, options?: ClickOptions): Promise<ApiResult>;
-    type(selector: string, text: string, options?: TypeOptions): Promise<ApiResult>;
-    fill(selector: string, text: string): Promise<ApiResult>;
-    select(selector: string, value: string): Promise<ApiResult>;
-    check(selector: string): Promise<ApiResult>;
-    uncheck(selector: string): Promise<ApiResult>;
-    hover(selector: string): Promise<ApiResult>;
-    scroll(direction: string, amount?: number): Promise<ApiResult>;
-    scrollIntoView(selector: string): Promise<ApiResult>;
+    click(selector: string, options?: ClickOptions): Promise<ApiResult>
+    type(selector: string, text: string, options?: TypeOptions): Promise<ApiResult>
+    fill(selector: string, text: string): Promise<ApiResult>
+    select(selector: string, value: string): Promise<ApiResult>
+    check(selector: string): Promise<ApiResult>
+    uncheck(selector: string): Promise<ApiResult>
+    hover(selector: string): Promise<ApiResult>
+    scroll(direction: string, amount?: number): Promise<ApiResult>
+    scrollIntoView(selector: string): Promise<ApiResult>
   };
   wait: {
-    forSelector(selector: string, options?: WaitOptions): Promise<ApiResult>;
-    forText(text: string, options?: WaitOptions): Promise<ApiResult>;
-    forUrl(pattern: string, options?: WaitOptions): Promise<ApiResult>;
-    forTimeout(ms: number): Promise<ApiResult>;
+    forSelector(selector: string, options?: WaitOptions): Promise<ApiResult>
+    forText(text: string, options?: WaitOptions): Promise<ApiResult>
+    forUrl(pattern: string, options?: WaitOptions): Promise<ApiResult>
+    forTimeout(ms: number): Promise<ApiResult>
   };
   privacy: {
-    getConfig(): Promise<PrivacyConfig>;
-    setConfig(config: PrivacyConfig): Promise<PrivacyConfig>;
-    filter(text: string, options?: FilterOptions): Promise<FilterResult>;
+    getConfig(): Promise<PrivacyConfig>
+    setConfig(config: PrivacyConfig): Promise<PrivacyConfig>
+    filter(text: string, options?: FilterOptions): Promise<FilterResult>
   };
 }
 
@@ -174,10 +174,7 @@ export interface NevofluxAPI {
 export type SessionMode = "chat" | "agent" | "browser_use";
 
 export const API_BY_MODE: Record<SessionMode, string[]> = {
-  chat: [...(API_BY_MODE.chat || []), "extraction"],
-  chat: [...(API_BY_MODE.chat || []), "state"],
-  browser_use: [...(API_BY_MODE.browser_use || []), "navigation"],
-  browser_use: [...(API_BY_MODE.browser_use || []), "interaction"],
-  browser_use: [...(API_BY_MODE.browser_use || []), "wait"],
-  chat: [...(API_BY_MODE.chat || []), "privacy"],
+  chat: ["extraction", "state", "privacy"],
+  agent: ["extraction", "state", "privacy"],
+  browser_use: ["extraction", "state", "navigation", "interaction", "wait", "privacy"],
 };

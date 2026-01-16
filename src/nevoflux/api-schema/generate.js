@@ -99,12 +99,28 @@ function generateTypeScript(schema) {
     return;
   }
 
+  // Compute API_BY_MODE: group namespaces by mode
+  const apiByMode = { chat: [], agent: [], browser_use: [] };
+  for (const [nsName, ns] of Object.entries(schema.namespaces)) {
+    if (ns.mode === "chat") {
+      apiByMode.chat.push(nsName);
+      apiByMode.agent.push(nsName);
+      apiByMode.browser_use.push(nsName);
+    } else if (ns.mode === "agent") {
+      apiByMode.agent.push(nsName);
+      apiByMode.browser_use.push(nsName);
+    } else if (ns.mode === "browser_use") {
+      apiByMode.browser_use.push(nsName);
+    }
+  }
+
   const template = Handlebars.compile(fs.readFileSync(templatePath, "utf-8"));
   const output = template({
     version: schema.version,
     generatedAt: new Date().toISOString(),
     namespaces: schema.namespaces,
     definitions: schema.definitions,
+    apiByMode,
   });
 
   fs.writeFileSync(path.join(OUTPUT_DIR, "types.ts"), output);

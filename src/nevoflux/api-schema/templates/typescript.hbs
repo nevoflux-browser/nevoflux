@@ -11,7 +11,7 @@
 {{#each definitions}}
 export interface {{@key}} {
 {{#each properties}}
-  {{@key}}{{#unless (isRequired @key ../required)}}?{{/unless}}: {{mapType this}};
+  {{@key}}{{#unless (isRequired @key ../required)}}?{{/unless}}: {{{mapType this}}};
 {{/each}}
 }
 
@@ -23,7 +23,7 @@ export interface NevofluxAPI {
 {{#each namespaces}}
   {{@key}}: {
 {{#each methods}}
-    {{@key}}({{#each params}}{{@key}}{{#if optional}}?{{/if}}: {{mapType this}}{{#unless @last}}, {{/unless}}{{/each}}): Promise<{{mapType returns}}>;
+    {{@key}}({{#each params}}{{@key}}{{#if optional}}?{{/if}}: {{{mapType this}}}{{#unless @last}}, {{/unless}}{{/each}}): Promise<{{{mapType returns}}}>
 {{/each}}
   };
 {{/each}}
@@ -34,7 +34,7 @@ export interface NevofluxAPI {
 export type SessionMode = "chat" | "agent" | "browser_use";
 
 export const API_BY_MODE: Record<SessionMode, string[]> = {
-{{#each namespaces}}
-  {{mode}}: [...(API_BY_MODE.{{mode}} || []), "{{@key}}"],
+{{#each apiByMode}}
+  {{@key}}: [{{#each this}}"{{this}}"{{#unless @last}}, {{/unless}}{{/each}}],
 {{/each}}
 };
