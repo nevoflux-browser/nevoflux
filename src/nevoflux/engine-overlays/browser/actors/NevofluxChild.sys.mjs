@@ -34,6 +34,17 @@ export class NevofluxChild extends JSWindowActorChild {
       type: () => this.type(safeParams),
       fill: () => this.fill(safeParams),
       waitForSelector: () => this.waitForSelector(safeParams),
+      keyPress: () => this.keyPress(safeParams),
+      keyDown: () => this.keyDown(safeParams),
+      keyUp: () => this.keyUp(safeParams),
+      mouseMove: () => this.mouseMove(safeParams),
+      mouseDown: () => this.mouseDown(safeParams),
+      mouseUp: () => this.mouseUp(safeParams),
+      wheel: () => this.wheel(safeParams),
+      dblclick: () => this.dblclick(safeParams),
+      drag: () => this.drag(safeParams),
+      focus: () => this.focus(safeParams),
+      clear: () => this.clear(safeParams),
     };
 
     const handler = handlers[action];
@@ -360,6 +371,279 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     return { success: false, error: { code: 4001, message: `Timeout waiting for ${selector}`, recoverable: true } };
+  }
+
+  // ========== Keyboard Control ==========
+
+  keyPress({ key, modifiers = [], delay = 0 }) {
+    const win = this.document?.defaultView || this.contentWindow;
+    if (!win) {
+      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+    }
+
+    try {
+      const domUtils = win.windowUtils;
+      if (!domUtils || typeof domUtils.sendKeyEvent !== "function") {
+        return { success: false, error: { code: 5001, message: "windowUtils not available", recoverable: false } };
+      }
+
+      let modifierFlags = 0;
+      if (modifiers.includes("ctrl")) modifierFlags |= 0x02;
+      if (modifiers.includes("alt")) modifierFlags |= 0x01;
+      if (modifiers.includes("shift")) modifierFlags |= 0x04;
+      if (modifiers.includes("meta")) modifierFlags |= 0x08;
+
+      const keyCode = this._getKeyCode(key);
+      const charCode = key.length === 1 ? key.charCodeAt(0) : 0;
+
+      domUtils.sendKeyEvent("keydown", keyCode, charCode, modifierFlags);
+      domUtils.sendKeyEvent("keypress", keyCode, charCode, modifierFlags);
+      domUtils.sendKeyEvent("keyup", keyCode, charCode, modifierFlags);
+
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+    }
+  }
+
+  keyDown({ key, modifiers = [] }) {
+    const win = this.document?.defaultView || this.contentWindow;
+    if (!win) {
+      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+    }
+
+    try {
+      const domUtils = win.windowUtils;
+      if (!domUtils) {
+        return { success: false, error: { code: 5001, message: "windowUtils not available", recoverable: false } };
+      }
+
+      let modifierFlags = 0;
+      if (modifiers.includes("ctrl")) modifierFlags |= 0x02;
+      if (modifiers.includes("alt")) modifierFlags |= 0x01;
+      if (modifiers.includes("shift")) modifierFlags |= 0x04;
+      if (modifiers.includes("meta")) modifierFlags |= 0x08;
+
+      const keyCode = this._getKeyCode(key);
+      const charCode = key.length === 1 ? key.charCodeAt(0) : 0;
+
+      domUtils.sendKeyEvent("keydown", keyCode, charCode, modifierFlags);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+    }
+  }
+
+  keyUp({ key }) {
+    const win = this.document?.defaultView || this.contentWindow;
+    if (!win) {
+      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+    }
+
+    try {
+      const domUtils = win.windowUtils;
+      if (!domUtils) {
+        return { success: false, error: { code: 5001, message: "windowUtils not available", recoverable: false } };
+      }
+
+      const keyCode = this._getKeyCode(key);
+      const charCode = key.length === 1 ? key.charCodeAt(0) : 0;
+
+      domUtils.sendKeyEvent("keyup", keyCode, charCode, 0);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+    }
+  }
+
+  _getKeyCode(key) {
+    const keyCodeMap = {
+      "Enter": 13, "Tab": 9, "Escape": 27, "Backspace": 8, "Delete": 46,
+      "ArrowUp": 38, "ArrowDown": 40, "ArrowLeft": 37, "ArrowRight": 39,
+      "Home": 36, "End": 35, "PageUp": 33, "PageDown": 34,
+      "F1": 112, "F2": 113, "F3": 114, "F4": 115, "F5": 116, "F6": 117,
+      "F7": 118, "F8": 119, "F9": 120, "F10": 121, "F11": 122, "F12": 123,
+      "Space": 32, " ": 32,
+    };
+    return keyCodeMap[key] || (key.length === 1 ? key.toUpperCase().charCodeAt(0) : 0);
+  }
+
+  // ========== Mouse Control ==========
+
+  mouseMove({ x, y, steps = 1 }) {
+    const win = this.document?.defaultView || this.contentWindow;
+    if (!win) {
+      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+    }
+
+    try {
+      const domUtils = win.windowUtils;
+      if (domUtils && typeof domUtils.sendMouseEvent === "function") {
+        domUtils.sendMouseEvent("mousemove", x, y, 0, 0, 0);
+      }
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+    }
+  }
+
+  mouseDown({ button = "left" }) {
+    const win = this.document?.defaultView || this.contentWindow;
+    if (!win) {
+      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+    }
+
+    try {
+      const buttonCode = { left: 0, middle: 1, right: 2 }[button] || 0;
+      const domUtils = win.windowUtils;
+      if (domUtils && typeof domUtils.sendMouseEvent === "function") {
+        const x = win.innerWidth / 2;
+        const y = win.innerHeight / 2;
+        domUtils.sendMouseEvent("mousedown", x, y, buttonCode, 1, 0);
+      }
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+    }
+  }
+
+  mouseUp({ button = "left" }) {
+    const win = this.document?.defaultView || this.contentWindow;
+    if (!win) {
+      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+    }
+
+    try {
+      const buttonCode = { left: 0, middle: 1, right: 2 }[button] || 0;
+      const domUtils = win.windowUtils;
+      if (domUtils && typeof domUtils.sendMouseEvent === "function") {
+        const x = win.innerWidth / 2;
+        const y = win.innerHeight / 2;
+        domUtils.sendMouseEvent("mouseup", x, y, buttonCode, 1, 0);
+      }
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+    }
+  }
+
+  wheel({ deltaX = 0, deltaY = 0 }) {
+    const win = this.document?.defaultView || this.contentWindow;
+    if (!win) {
+      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+    }
+
+    try {
+      const domUtils = win.windowUtils;
+      if (domUtils && typeof domUtils.sendWheelEvent === "function") {
+        const x = win.innerWidth / 2;
+        const y = win.innerHeight / 2;
+        domUtils.sendWheelEvent(x, y, deltaX, deltaY, 0, 0, 0, 0, 0);
+      }
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+    }
+  }
+
+  async dblclick({ selector, button = "left", delay = 0 }) {
+    return this.click({ selector, button, clickCount: 2, delay });
+  }
+
+  async drag({ fromSelector, toSelector, steps = 10 }) {
+    const doc = this.doc;
+    const win = this.document?.defaultView || this.contentWindow;
+    if (!doc || !win) {
+      return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
+    }
+
+    const fromEl = doc.querySelector(fromSelector);
+    const toEl = doc.querySelector(toSelector);
+
+    if (!fromEl) {
+      return { success: false, error: { code: 1001, message: "Source element not found", recoverable: true } };
+    }
+    if (!toEl) {
+      return { success: false, error: { code: 1001, message: "Target element not found", recoverable: true } };
+    }
+
+    try {
+      const fromRect = fromEl.getBoundingClientRect();
+      const toRect = toEl.getBoundingClientRect();
+
+      const fromX = fromRect.left + fromRect.width / 2;
+      const fromY = fromRect.top + fromRect.height / 2;
+      const toX = toRect.left + toRect.width / 2;
+      const toY = toRect.top + toRect.height / 2;
+
+      fromEl.dispatchEvent(new MouseEvent("mousedown", {
+        bubbles: true, cancelable: true, view: win,
+        clientX: fromX, clientY: fromY, button: 0
+      }));
+
+      for (let i = 1; i <= steps; i++) {
+        const progress = i / steps;
+        const x = fromX + (toX - fromX) * progress;
+        const y = fromY + (toY - fromY) * progress;
+
+        fromEl.dispatchEvent(new MouseEvent("mousemove", {
+          bubbles: true, cancelable: true, view: win,
+          clientX: x, clientY: y, button: 0
+        }));
+
+        await this.sleep(10);
+      }
+
+      toEl.dispatchEvent(new MouseEvent("mouseup", {
+        bubbles: true, cancelable: true, view: win,
+        clientX: toX, clientY: toY, button: 0
+      }));
+
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+    }
+  }
+
+  focus({ selector }) {
+    const doc = this.doc;
+    if (!doc) {
+      return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
+    }
+
+    const el = doc.querySelector(selector);
+    if (!el) {
+      return { success: false, error: { code: 1001, message: "Element not found", recoverable: true } };
+    }
+
+    try {
+      el.focus();
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+    }
+  }
+
+  clear({ selector }) {
+    const doc = this.doc;
+    if (!doc) {
+      return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
+    }
+
+    const el = doc.querySelector(selector);
+    if (!el) {
+      return { success: false, error: { code: 1001, message: "Element not found", recoverable: true } };
+    }
+
+    try {
+      el.focus();
+      el.value = "";
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+    }
   }
 
   // ========== Helpers ==========

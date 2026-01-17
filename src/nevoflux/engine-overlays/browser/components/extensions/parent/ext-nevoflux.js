@@ -443,6 +443,63 @@ this.nevoflux = class extends ExtensionAPI {
           return { success: true };
         },
 
+        // ========== Keyboard/Mouse Control ==========
+
+        async keyPress(tabId, key, options = {}) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTab(resolvedTabId, extension, "keyPress", { key, ...options });
+        },
+
+        async keyDown(tabId, key, options = {}) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTab(resolvedTabId, extension, "keyDown", { key, ...options });
+        },
+
+        async keyUp(tabId, key) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTab(resolvedTabId, extension, "keyUp", { key });
+        },
+
+        async mouseMove(tabId, x, y, options = {}) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTab(resolvedTabId, extension, "mouseMove", { x, y, ...options });
+        },
+
+        async mouseDown(tabId, options = {}) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTab(resolvedTabId, extension, "mouseDown", options);
+        },
+
+        async mouseUp(tabId, options = {}) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTab(resolvedTabId, extension, "mouseUp", options);
+        },
+
+        async wheel(tabId, options = {}) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTab(resolvedTabId, extension, "wheel", options);
+        },
+
+        async dblclick(tabId, selector, options = {}) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTab(resolvedTabId, extension, "dblclick", { selector, ...options });
+        },
+
+        async drag(tabId, fromSelector, toSelector, options = {}) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTab(resolvedTabId, extension, "drag", { fromSelector, toSelector, ...options });
+        },
+
+        async focus(tabId, selector) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTab(resolvedTabId, extension, "focus", { selector });
+        },
+
+        async clear(tabId, selector) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTab(resolvedTabId, extension, "clear", { selector });
+        },
+
         // ========== Privacy (all modes) ==========
 
         async filterSensitive(text, options = {}) {
