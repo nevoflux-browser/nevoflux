@@ -375,7 +375,7 @@ export class NevofluxChild extends JSWindowActorChild {
 
   // ========== Keyboard Control ==========
 
-  keyPress({ key, modifiers = [], delay = 0 }) {
+  async keyPress({ key, modifiers = [], delay = 0 }) {
     const win = this.document?.defaultView || this.contentWindow;
     if (!win) {
       return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
@@ -397,7 +397,13 @@ export class NevofluxChild extends JSWindowActorChild {
       const charCode = key.length === 1 ? key.charCodeAt(0) : 0;
 
       domUtils.sendKeyEvent("keydown", keyCode, charCode, modifierFlags);
+      if (delay > 0) {
+        await this.sleep(delay);
+      }
       domUtils.sendKeyEvent("keypress", keyCode, charCode, modifierFlags);
+      if (delay > 0) {
+        await this.sleep(delay);
+      }
       domUtils.sendKeyEvent("keyup", keyCode, charCode, modifierFlags);
 
       return { success: true };
@@ -414,7 +420,7 @@ export class NevofluxChild extends JSWindowActorChild {
 
     try {
       const domUtils = win.windowUtils;
-      if (!domUtils) {
+      if (!domUtils || typeof domUtils.sendKeyEvent !== "function") {
         return { success: false, error: { code: 5001, message: "windowUtils not available", recoverable: false } };
       }
 
@@ -434,7 +440,7 @@ export class NevofluxChild extends JSWindowActorChild {
     }
   }
 
-  keyUp({ key }) {
+  keyUp({ key, modifiers = [] }) {
     const win = this.document?.defaultView || this.contentWindow;
     if (!win) {
       return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
@@ -442,14 +448,20 @@ export class NevofluxChild extends JSWindowActorChild {
 
     try {
       const domUtils = win.windowUtils;
-      if (!domUtils) {
+      if (!domUtils || typeof domUtils.sendKeyEvent !== "function") {
         return { success: false, error: { code: 5001, message: "windowUtils not available", recoverable: false } };
       }
+
+      let modifierFlags = 0;
+      if (modifiers.includes("ctrl")) modifierFlags |= 0x02;
+      if (modifiers.includes("alt")) modifierFlags |= 0x01;
+      if (modifiers.includes("shift")) modifierFlags |= 0x04;
+      if (modifiers.includes("meta")) modifierFlags |= 0x08;
 
       const keyCode = this._getKeyCode(key);
       const charCode = key.length === 1 ? key.charCodeAt(0) : 0;
 
-      domUtils.sendKeyEvent("keyup", keyCode, charCode, 0);
+      domUtils.sendKeyEvent("keyup", keyCode, charCode, modifierFlags);
       return { success: true };
     } catch (e) {
       return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
@@ -487,7 +499,7 @@ export class NevofluxChild extends JSWindowActorChild {
     }
   }
 
-  mouseDown({ button = "left" }) {
+  mouseDown({ button = "left", x, y }) {
     const win = this.document?.defaultView || this.contentWindow;
     if (!win) {
       return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
@@ -497,9 +509,9 @@ export class NevofluxChild extends JSWindowActorChild {
       const buttonCode = { left: 0, middle: 1, right: 2 }[button] || 0;
       const domUtils = win.windowUtils;
       if (domUtils && typeof domUtils.sendMouseEvent === "function") {
-        const x = win.innerWidth / 2;
-        const y = win.innerHeight / 2;
-        domUtils.sendMouseEvent("mousedown", x, y, buttonCode, 1, 0);
+        const posX = x !== undefined ? x : win.innerWidth / 2;
+        const posY = y !== undefined ? y : win.innerHeight / 2;
+        domUtils.sendMouseEvent("mousedown", posX, posY, buttonCode, 1, 0);
       }
       return { success: true };
     } catch (e) {
@@ -507,7 +519,7 @@ export class NevofluxChild extends JSWindowActorChild {
     }
   }
 
-  mouseUp({ button = "left" }) {
+  mouseUp({ button = "left", x, y }) {
     const win = this.document?.defaultView || this.contentWindow;
     if (!win) {
       return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
@@ -517,9 +529,9 @@ export class NevofluxChild extends JSWindowActorChild {
       const buttonCode = { left: 0, middle: 1, right: 2 }[button] || 0;
       const domUtils = win.windowUtils;
       if (domUtils && typeof domUtils.sendMouseEvent === "function") {
-        const x = win.innerWidth / 2;
-        const y = win.innerHeight / 2;
-        domUtils.sendMouseEvent("mouseup", x, y, buttonCode, 1, 0);
+        const posX = x !== undefined ? x : win.innerWidth / 2;
+        const posY = y !== undefined ? y : win.innerHeight / 2;
+        domUtils.sendMouseEvent("mouseup", posX, posY, buttonCode, 1, 0);
       }
       return { success: true };
     } catch (e) {
