@@ -786,11 +786,13 @@ export class NevofluxChild extends JSWindowActorChild {
     try {
       if (key) {
         const value = win.localStorage.getItem(key);
+        let parsedValue;
         try {
-          return JSON.parse(value);
+          parsedValue = JSON.parse(value);
         } catch {
-          return value;
+          parsedValue = value;
         }
+        return { success: true, data: parsedValue };
       } else {
         const result = {};
         for (let i = 0; i < win.localStorage.length; i++) {
@@ -802,7 +804,7 @@ export class NevofluxChild extends JSWindowActorChild {
             result[k] = v;
           }
         }
-        return result;
+        return { success: true, data: result };
       }
     } catch (e) {
       return { success: false, error: { code: 7004, message: String(e), recoverable: false } };
@@ -828,6 +830,10 @@ export class NevofluxChild extends JSWindowActorChild {
     const win = this.contentWindow;
     if (!win) {
       return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+    }
+
+    if (!key) {
+      return { success: false, error: { code: 7002, message: "Missing required parameter: key", recoverable: false } };
     }
 
     try {
@@ -861,11 +867,13 @@ export class NevofluxChild extends JSWindowActorChild {
     try {
       if (key) {
         const value = win.sessionStorage.getItem(key);
+        let parsedValue;
         try {
-          return JSON.parse(value);
+          parsedValue = JSON.parse(value);
         } catch {
-          return value;
+          parsedValue = value;
         }
+        return { success: true, data: parsedValue };
       } else {
         const result = {};
         for (let i = 0; i < win.sessionStorage.length; i++) {
@@ -877,7 +885,7 @@ export class NevofluxChild extends JSWindowActorChild {
             result[k] = v;
           }
         }
-        return result;
+        return { success: true, data: result };
       }
     } catch (e) {
       return { success: false, error: { code: 7004, message: String(e), recoverable: false } };
@@ -903,6 +911,10 @@ export class NevofluxChild extends JSWindowActorChild {
     const win = this.contentWindow;
     if (!win) {
       return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+    }
+
+    if (!key) {
+      return { success: false, error: { code: 7002, message: "Missing required parameter: key", recoverable: false } };
     }
 
     try {

@@ -527,13 +527,21 @@ this.nevoflux = class extends ExtensionAPI {
             const cookieManager = Services.cookies;
             const cookies = [];
 
+            // Validate filter.url if provided
+            let filterHostname = null;
+            if (filter.url) {
+              try {
+                const parsedUrl = new URL(filter.url);
+                filterHostname = parsedUrl.hostname;
+              } catch (urlError) {
+                return { success: false, error: { code: 7002, message: `Invalid URL in filter: ${filter.url}`, recoverable: false } };
+              }
+            }
+
             for (const cookie of cookieManager.cookies) {
               if (filter.name && cookie.name !== filter.name) continue;
               if (filter.domain && !cookie.host.endsWith(filter.domain)) continue;
-              if (filter.url) {
-                const url = new URL(filter.url);
-                if (!cookie.host.endsWith(url.hostname)) continue;
-              }
+              if (filterHostname && !cookie.host.endsWith(filterHostname)) continue;
 
               cookies.push({
                 name: cookie.name,
@@ -550,7 +558,7 @@ this.nevoflux = class extends ExtensionAPI {
 
             return cookies;
           } catch (e) {
-            return [];
+            return { success: false, error: { code: 7001, message: String(e), recoverable: false } };
           }
         },
 
@@ -558,7 +566,24 @@ this.nevoflux = class extends ExtensionAPI {
           try {
             const { url, name, value, domain, path = "/", secure = false, httpOnly = false, sameSite = "lax", expirationDate } = cookie;
 
-            const parsedUrl = new URL(url);
+            // Validate required parameters
+            if (!url) {
+              return { success: false, error: { code: 7002, message: "Missing required parameter: url", recoverable: false } };
+            }
+            if (!name) {
+              return { success: false, error: { code: 7002, message: "Missing required parameter: name", recoverable: false } };
+            }
+            if (value === undefined || value === null) {
+              return { success: false, error: { code: 7002, message: "Missing required parameter: value", recoverable: false } };
+            }
+
+            let parsedUrl;
+            try {
+              parsedUrl = new URL(url);
+            } catch (urlError) {
+              return { success: false, error: { code: 7002, message: `Invalid URL: ${url}`, recoverable: false } };
+            }
+
             const cookieDomain = domain || parsedUrl.hostname;
             const sameSiteMap = { "none": 0, "lax": 1, "strict": 2 };
 
