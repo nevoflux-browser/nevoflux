@@ -187,6 +187,200 @@ this.nevoflux = class extends ExtensionAPI {
           return { success: false, error: { code: 2002, message: "Cannot go forward", recoverable: false } };
         },
 
+        // ========== Tab Management (browser_use mode) ==========
+
+        async createTab(options = {}) {
+          try {
+            const { url, active = true, windowId, index } = options;
+            const win = extension.windowManager.getWrapper(extension.windowManager.topWindow);
+
+            const tab = win.window.gBrowser.addTab(url || "about:newtab", {
+              triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+            });
+
+            if (active) {
+              win.window.gBrowser.selectedTab = tab;
+            }
+
+            const tabId = tabTracker.getId(tab);
+            return {
+              id: tabId,
+              url: url || "about:newtab",
+              title: "",
+              active,
+              index: tab._tPos,
+              windowId: win.id,
+              status: "loading",
+            };
+          } catch (e) {
+            return { success: false, error: { code: 6001, message: String(e), recoverable: false } };
+          }
+        },
+
+        async closeTab(tabId) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          const tab = extension.tabManager.get(resolvedTabId);
+
+          if (!tab) {
+            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+          }
+
+          try {
+            const nativeTab = tab.nativeTab;
+            const win = nativeTab.ownerGlobal;
+            win.gBrowser.removeTab(nativeTab);
+            return { success: true };
+          } catch (e) {
+            return { success: false, error: { code: 6002, message: String(e), recoverable: false } };
+          }
+        },
+
+        _getTabInfo(tab, tabId) {
+          const nativeTab = tab.nativeTab;
+          const browser = tab.browser;
+          return {
+            id: tabId,
+            url: browser?.currentURI?.spec || "",
+            title: browser?.contentTitle || "",
+            active: nativeTab === nativeTab.ownerGlobal.gBrowser.selectedTab,
+            index: nativeTab._tPos,
+            windowId: extension.windowManager.getWrapper(nativeTab.ownerGlobal)?.id || 0,
+            status: nativeTab.linkedBrowser?.webProgress?.isLoadingDocument ? "loading" : "complete",
+          };
+        },
+
+        async getTab(tabId) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          const tab = extension.tabManager.get(resolvedTabId);
+
+          if (!tab) {
+            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+          }
+
+          return this._getTabInfo(tab, resolvedTabId);
+        },
+
+        async listTabs() {
+          const win = extension.windowManager.getWrapper(extension.windowManager.topWindow);
+          if (!win) {
+            return [];
+          }
+
+          const tabs = [];
+          for (const nativeTab of win.window.gBrowser.tabs) {
+            const tabId = tabTracker.getId(nativeTab);
+            const tab = extension.tabManager.get(tabId);
+            if (tab) {
+              tabs.push(this._getTabInfo(tab, tabId));
+            }
+          }
+          return tabs;
+        },
+
+        async queryTabs(filter = {}) {
+          const allTabs = await this.listTabs();
+
+          return allTabs.filter(tab => {
+            if (filter.active !== undefined && tab.active !== filter.active) return false;
+            if (filter.windowId !== undefined && tab.windowId !== filter.windowId) return false;
+            if (filter.url) {
+              const pattern = filter.url.replace(/\*/g, ".*");
+              const regex = new RegExp(`^${pattern}$`);
+              if (!regex.test(tab.url)) return false;
+            }
+            if (filter.title) {
+              const pattern = filter.title.replace(/\*/g, ".*");
+              const regex = new RegExp(`^${pattern}$`, "i");
+              if (!regex.test(tab.title)) return false;
+            }
+            return true;
+          });
+        },
+
+        async activateTab(tabId) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          const tab = extension.tabManager.get(resolvedTabId);
+
+          if (!tab) {
+            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+          }
+
+          try {
+            const nativeTab = tab.nativeTab;
+            const win = nativeTab.ownerGlobal;
+            win.gBrowser.selectedTab = nativeTab;
+            win.focus();
+            return { success: true };
+          } catch (e) {
+            return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+          }
+        },
+
+        async createWindow(options = {}) {
+          try {
+            const { url, incognito = false, width, height } = options;
+
+            const features = [];
+            if (width) features.push(`width=${width}`);
+            if (height) features.push(`height=${height}`);
+
+            let newWindow;
+            if (incognito) {
+              newWindow = Services.ww.openWindow(
+                null,
+                "chrome://browser/content/browser.xhtml",
+                "_blank",
+                `chrome,dialog=no,all,private${features.length ? "," + features.join(",") : ""}`,
+                null
+              );
+            } else {
+              newWindow = Services.ww.openWindow(
+                null,
+                "chrome://browser/content/browser.xhtml",
+                "_blank",
+                `chrome,dialog=no,all${features.length ? "," + features.join(",") : ""}`,
+                null
+              );
+            }
+
+            await new Promise(resolve => {
+              newWindow.addEventListener("load", resolve, { once: true });
+            });
+
+            if (url) {
+              newWindow.gBrowser.loadURI(Services.io.newURI(url), {
+                triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+              });
+            }
+
+            const windowId = extension.windowManager.getWrapper(newWindow)?.id || 0;
+            return { success: true, windowId };
+          } catch (e) {
+            return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+          }
+        },
+
+        async closeWindow(windowId) {
+          try {
+            let targetWindow;
+            if (windowId !== undefined) {
+              const wrapper = extension.windowManager.get(windowId, extension.context);
+              targetWindow = wrapper?.window;
+            } else {
+              targetWindow = extension.windowManager.topWindow;
+            }
+
+            if (!targetWindow) {
+              return { success: false, error: { code: 5001, message: "Window not found", recoverable: false } };
+            }
+
+            targetWindow.close();
+            return { success: true };
+          } catch (e) {
+            return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+          }
+        },
+
         // ========== Wait (browser_use mode) ==========
 
         async waitForSelector(tabId, selector, options = {}) {
