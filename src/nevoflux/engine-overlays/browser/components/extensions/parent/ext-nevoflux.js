@@ -192,11 +192,27 @@ this.nevoflux = class extends ExtensionAPI {
         async createTab(options = {}) {
           try {
             const { url, active = true, windowId, index } = options;
-            const win = extension.windowManager.getWrapper(extension.windowManager.topWindow);
+
+            // Get target window - use specified windowId or fall back to top window
+            let win;
+            if (windowId !== undefined) {
+              const wrapper = extension.windowManager.get(windowId, extension.context);
+              if (!wrapper) {
+                return { success: false, error: { code: 5001, message: "Window not found", recoverable: false } };
+              }
+              win = wrapper;
+            } else {
+              win = extension.windowManager.getWrapper(extension.windowManager.topWindow);
+            }
 
             const tab = win.window.gBrowser.addTab(url || "about:newtab", {
               triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
             });
+
+            // Move tab to specified index if provided
+            if (index !== undefined) {
+              win.window.gBrowser.moveTabTo(tab, index);
+            }
 
             if (active) {
               win.window.gBrowser.selectedTab = tab;
@@ -260,8 +276,19 @@ this.nevoflux = class extends ExtensionAPI {
           return this._getTabInfo(tab, resolvedTabId);
         },
 
-        async listTabs() {
-          const win = extension.windowManager.getWrapper(extension.windowManager.topWindow);
+        async listTabs(windowId) {
+          // Get target window - use specified windowId or fall back to current/top window
+          let win;
+          if (windowId !== undefined) {
+            const wrapper = extension.windowManager.get(windowId, extension.context);
+            if (!wrapper) {
+              return [];
+            }
+            win = wrapper;
+          } else {
+            win = extension.windowManager.getWrapper(extension.windowManager.topWindow);
+          }
+
           if (!win) {
             return [];
           }
@@ -318,11 +345,13 @@ this.nevoflux = class extends ExtensionAPI {
 
         async createWindow(options = {}) {
           try {
-            const { url, incognito = false, width, height } = options;
+            const { url, incognito = false, width, height, left, top } = options;
 
             const features = [];
             if (width) features.push(`width=${width}`);
             if (height) features.push(`height=${height}`);
+            if (left !== undefined) features.push(`left=${left}`);
+            if (top !== undefined) features.push(`top=${top}`);
 
             let newWindow;
             if (incognito) {
