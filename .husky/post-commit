@@ -1,0 +1,39 @@
+#!/bin/sh
+
+# Post-commit hook: Re-apply patches and overlays to src/zen/
+# This allows developers to continue working seamlessly after committing
+
+# Check if src/zen/ needs restoration (overlay files missing)
+OVERLAYS_DIR="src/nevoflux/overlays"
+NEED_IMPORT=false
+
+if [ -d "$OVERLAYS_DIR" ]; then
+    # Check if any overlay target file is missing in src/zen/
+    for file in $(find "$OVERLAYS_DIR" -type f 2>/dev/null); do
+        relative_path="${file#$OVERLAYS_DIR/}"
+        target_file="src/zen/$relative_path"
+        if [ ! -f "$target_file" ]; then
+            NEED_IMPORT=true
+            break
+        fi
+    done
+fi
+
+if [ "$NEED_IMPORT" = true ]; then
+    echo ""
+    echo "============================================================"
+    echo "  Restoring src/zen/ for continued development..."
+    echo "============================================================"
+    echo ""
+
+    # Run apply-patches.sh directly (faster than full npm run import)
+    if [ -f "src/nevoflux/apply-patches.sh" ]; then
+        bash src/nevoflux/apply-patches.sh
+        echo ""
+        echo "============================================================"
+        echo "  src/zen/ restored. Ready for continued development."
+        echo "============================================================"
+    else
+        echo "NOTE: Run 'npm run import' to restore src/zen/ for development."
+    fi
+fi
