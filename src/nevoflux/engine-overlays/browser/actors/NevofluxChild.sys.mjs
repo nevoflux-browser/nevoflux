@@ -3,6 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 export class NevofluxChild extends JSWindowActorChild {
+  // Frame context: null = main document, string = iframe selector
+  _currentFrameSelector = null;
+
   // Consistent document access - fallback chain for different Firefox contexts
   get doc() {
     return this.document || this.contentWindow?.document;
@@ -10,6 +13,23 @@ export class NevofluxChild extends JSWindowActorChild {
 
   get win() {
     return this.contentWindow || globalThis;
+  }
+
+  // Get current document context (respects frame switching)
+  get currentDoc() {
+    if (!this._currentFrameSelector) {
+      return this.doc;
+    }
+    const iframe = this.doc?.querySelector(this._currentFrameSelector);
+    return iframe?.contentDocument || this.doc;
+  }
+
+  get currentWin() {
+    if (!this._currentFrameSelector) {
+      return this.win;
+    }
+    const iframe = this.doc?.querySelector(this._currentFrameSelector);
+    return iframe?.contentWindow || this.win;
   }
 
   receiveMessage({ name, data }) {
@@ -56,6 +76,9 @@ export class NevofluxChild extends JSWindowActorChild {
       eval: () => this.evalScript(safeParams),
       addScript: () => this.addScript(safeParams),
       removeScript: () => this.removeScript(safeParams),
+      listFrames: () => this.listFrames(safeParams),
+      switchFrame: () => this.switchFrame(safeParams),
+      frameMain: () => this.frameMain(safeParams),
     };
 
     const handler = handlers[action];
@@ -73,29 +96,30 @@ export class NevofluxChild extends JSWindowActorChild {
   // ========== Data Extraction ==========
 
   getText({ selector }) {
-    const el = this.document.querySelector(selector);
+    const el = this.currentDoc?.querySelector(selector);
     return el?.textContent || "";
   }
 
   getHtml({ selector }) {
-    const el = this.document.querySelector(selector);
+    const el = this.currentDoc?.querySelector(selector);
     return el?.innerHTML || "";
   }
 
   getValue({ selector }) {
-    const el = this.document.querySelector(selector);
+    const el = this.currentDoc?.querySelector(selector);
     return el?.value || "";
   }
 
   snapshot({ interactive = false, compact = false, depth, root }) {
     // Ensure root has a valid default
     const rootSelector = root || "body";
+    const doc = this.currentDoc;
 
-    if (!this.doc) {
+    if (!doc) {
       return { tree: "", refs: {}, error: "No document available" };
     }
 
-    const rootEl = this.doc.querySelector(rootSelector);
+    const rootEl = doc.querySelector(rootSelector);
     if (!rootEl) {
       return { tree: "", refs: {}, error: `Root element '${rootSelector}' not found` };
     }
@@ -209,8 +233,8 @@ export class NevofluxChild extends JSWindowActorChild {
   // ========== State Checking ==========
 
   isVisible({ selector }) {
-    const doc = this.doc;
-    const win = this.document?.defaultView || this.contentWindow;
+    const doc = this.currentDoc;
+    const win = this.currentWin;
     if (!doc || !win) return false;
 
     const el = doc.querySelector(selector);
@@ -229,14 +253,14 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   exists({ selector }) {
-    return this.doc?.querySelector(selector) !== null;
+    return this.currentDoc?.querySelector(selector) !== null;
   }
 
   // ========== Interaction ==========
 
   async click({ selector, button = "left", clickCount = 1, delay = 0, force = false }) {
-    const doc = this.doc;
-    const win = this.document?.defaultView || this.contentWindow;
+    const doc = this.currentDoc;
+    const win = this.currentWin;
     if (!doc) {
       return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
     }
@@ -290,8 +314,8 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   type({ selector, text }) {
-    const doc = this.doc;
-    const win = this.document?.defaultView || this.contentWindow;
+    const doc = this.currentDoc;
+    const win = this.currentWin;
     if (!doc || !win) {
       return { success: false, error: { code: 5001, message: "No document/window available", recoverable: false } };
     }
@@ -332,7 +356,7 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   fill({ selector, text }) {
-    const doc = this.doc;
+    const doc = this.currentDoc;
     if (!doc) {
       return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
     }
@@ -358,14 +382,14 @@ export class NevofluxChild extends JSWindowActorChild {
   // ========== Wait ==========
 
   async waitForSelector({ selector, timeout = 30000, state = "visible" }) {
-    if (!this.doc) {
+    if (!this.currentDoc) {
       return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
     }
 
     const startTime = Date.now();
 
     while (Date.now() - startTime < timeout) {
-      const el = this.doc.querySelector(selector);
+      const el = this.currentDoc.querySelector(selector);
 
       const stateChecks = {
         attached: () => el !== null,
@@ -766,7 +790,7 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   focus({ selector }) {
-    const doc = this.doc;
+    const doc = this.currentDoc;
     if (!doc) {
       return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
     }
@@ -785,7 +809,7 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   clear({ selector }) {
-    const doc = this.doc;
+    const doc = this.currentDoc;
     if (!doc) {
       return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
     }
@@ -1077,6 +1101,77 @@ export class NevofluxChild extends JSWindowActorChild {
     } catch (e) {
       return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
     }
+  }
+
+  // ========== Frame Management ==========
+
+  listFrames() {
+    const doc = this.currentDoc;
+    if (!doc) {
+      return [];
+    }
+
+    const iframes = doc.querySelectorAll("iframe");
+    const frames = [];
+
+    for (const iframe of iframes) {
+      const rect = iframe.getBoundingClientRect();
+      const style = doc.defaultView?.getComputedStyle(iframe);
+      const visible = rect.width > 0 && rect.height > 0 &&
+                      style?.visibility !== "hidden" &&
+                      style?.display !== "none";
+
+      frames.push({
+        selector: this.generateSelector(iframe),
+        url: iframe.src || "",
+        name: iframe.name || "",
+        visible
+      });
+    }
+
+    return frames;
+  }
+
+  switchFrame({ selector }) {
+    const doc = this.doc; // Always search from main document
+    if (!doc) {
+      return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
+    }
+
+    // If already in a frame, search within that frame
+    const searchDoc = this._currentFrameSelector
+      ? doc.querySelector(this._currentFrameSelector)?.contentDocument || doc
+      : doc;
+
+    const iframe = searchDoc.querySelector(selector);
+    if (!iframe || iframe.tagName !== "IFRAME") {
+      return { success: false, error: { code: 10001, message: `Frame not found: ${selector}`, recoverable: true } };
+    }
+
+    try {
+      // Test if we can access the frame's content
+      const frameDoc = iframe.contentDocument;
+      if (!frameDoc) {
+        return { success: false, error: { code: 10002, message: "Frame access denied (cross-origin)", recoverable: false } };
+      }
+
+      // Store the absolute selector path for nested frames
+      if (this._currentFrameSelector) {
+        // Build compound selector for nested frame
+        this._currentFrameSelector = `${this._currentFrameSelector} ${selector}`;
+      } else {
+        this._currentFrameSelector = selector;
+      }
+
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: { code: 10002, message: `Frame access denied: ${e.message}`, recoverable: false } };
+    }
+  }
+
+  frameMain() {
+    this._currentFrameSelector = null;
+    return { success: true };
   }
 
   // ========== JavaScript Execution ==========
