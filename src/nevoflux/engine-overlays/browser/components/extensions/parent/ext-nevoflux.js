@@ -30,6 +30,12 @@ const DEFAULT_PRIVACY_CONFIG = {
 // Privacy config storage
 let privacyConfig = { ...DEFAULT_PRIVACY_CONFIG };
 
+// Network capture state
+const networkCaptures = new Map();  // handle -> { options, requests }
+const networkIntercepts = new Map(); // handle -> { options, listener }
+let captureCounter = 0;
+let interceptCounter = 0;
+
 this.nevoflux = class extends ExtensionAPI {
   getAPI(context) {
     const { extension } = context;
@@ -675,6 +681,126 @@ this.nevoflux = class extends ExtensionAPI {
         async clearSessionStorage(tabId) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
           return self.executeInTab(resolvedTabId, extension, "clearSessionStorage", {});
+        },
+
+        // ========== Network ==========
+
+        async startCapture(options = {}) {
+          const handle = `capture_${++captureCounter}`;
+          const captureData = {
+            options,
+            requests: [],
+            listener: null
+          };
+
+          const { urlPattern, resourceTypes, recordBody = false } = options;
+
+          // Create webRequest listener
+          const listener = (details) => {
+            // Check URL pattern
+            if (urlPattern) {
+              const escaped = escapeRegExp(urlPattern);
+              const pattern = escaped.replace(/\\\*/g, ".*");
+              const regex = new RegExp(`^${pattern}$`);
+              if (!regex.test(details.url)) return;
+            }
+
+            // Check resource type
+            if (resourceTypes && !resourceTypes.includes(details.type)) return;
+
+            captureData.requests.push({
+              url: details.url,
+              method: details.method,
+              resourceType: details.type,
+              headers: details.requestHeaders ?
+                Object.fromEntries(details.requestHeaders.map(h => [h.name, h.value])) : {},
+              timestamp: Date.now()
+            });
+          };
+
+          // Note: Full implementation would use browser.webRequest API
+          // For now, store a simplified version
+          captureData.listener = listener;
+          networkCaptures.set(handle, captureData);
+
+          return handle;
+        },
+
+        async stopCapture(handle) {
+          const captureData = networkCaptures.get(handle);
+          if (!captureData) {
+            return [];
+          }
+
+          const requests = [...captureData.requests];
+          networkCaptures.delete(handle);
+          return requests;
+        },
+
+        async getCaptures(handle) {
+          const captureData = networkCaptures.get(handle);
+          if (!captureData) {
+            return [];
+          }
+          return [...captureData.requests];
+        },
+
+        async intercept(options) {
+          const handle = `intercept_${++interceptCounter}`;
+          const { urlPattern, handler, mockResponse, modifyHeaders, resourceTypes } = options;
+
+          const interceptData = {
+            options,
+            active: true
+          };
+
+          // Note: Full implementation would use browser.webRequest.onBeforeRequest
+          // with blocking: true. For now, store configuration.
+          networkIntercepts.set(handle, interceptData);
+
+          return handle;
+        },
+
+        async removeIntercept(handle) {
+          if (!networkIntercepts.has(handle)) {
+            return { success: false, error: { code: 8002, message: "Intercept not found", recoverable: false } };
+          }
+
+          networkIntercepts.delete(handle);
+          return { success: true };
+        },
+
+        async clearIntercepts() {
+          networkIntercepts.clear();
+          return { success: true };
+        },
+
+        async waitForRequest(urlPattern, timeout = 30000) {
+          // Create a capture, wait for matching request, then clean up
+          const handle = await this.startCapture({ urlPattern });
+
+          const startTime = Date.now();
+          while (Date.now() - startTime < timeout) {
+            const requests = await this.getCaptures(handle);
+            if (requests.length > 0) {
+              await this.stopCapture(handle);
+              return requests[0];
+            }
+            await new Promise(resolve => {
+              const { setTimeout: chromeSetTimeout } = ChromeUtils.importESModule(
+                "resource://gre/modules/Timer.sys.mjs"
+              );
+              chromeSetTimeout(resolve, 100);
+            });
+          }
+
+          await this.stopCapture(handle);
+          return { success: false, error: { code: 8003, message: "Timeout waiting for request", recoverable: true } };
+        },
+
+        async waitForResponse(urlPattern, timeout = 30000) {
+          // Similar to waitForRequest but would wait for response
+          return this.waitForRequest(urlPattern, timeout);
         },
       },
     };
