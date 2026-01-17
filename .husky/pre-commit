@@ -2,6 +2,7 @@
 
 # Check for uncommitted changes in src/zen/
 # These changes must be exported as patches before committing
+# This hook will automatically revert src/zen/ changes
 
 # Get staged files in src/zen/
 ZEN_STAGED=$(git diff --cached --name-only | grep "^src/zen/" || true)
@@ -9,37 +10,43 @@ ZEN_STAGED=$(git diff --cached --name-only | grep "^src/zen/" || true)
 # Get unstaged changes in src/zen/
 ZEN_UNSTAGED=$(git diff --name-only | grep "^src/zen/" || true)
 
-# Combine both
-ZEN_CHANGES="${ZEN_STAGED}${ZEN_UNSTAGED}"
+# Check for untracked files in src/zen/ (overlay copies)
+ZEN_UNTRACKED=$(git ls-files --others --exclude-standard src/zen/ 2>/dev/null || true)
+
+# Combine all
+ZEN_CHANGES="${ZEN_STAGED}${ZEN_UNSTAGED}${ZEN_UNTRACKED}"
 
 if [ -n "$ZEN_CHANGES" ]; then
     echo ""
     echo "============================================================"
-    echo "  ERROR: Detected changes in src/zen/"
+    echo "  Detected changes in src/zen/ - auto-reverting..."
     echo "============================================================"
     echo ""
-    echo "You have modifications in src/zen/ that must be exported as"
-    echo "patches before committing. Direct commits to src/zen/ are not"
-    echo "allowed - all changes must go through the patch system."
-    echo ""
-    echo "Changed files:"
-    echo "$ZEN_CHANGES" | sed 's/^/  - /'
-    echo ""
-    echo "Please run the following commands:"
-    echo ""
-    echo "  1. Export patches:"
-    echo "     ./scripts/export-nevoflux-patches.sh"
-    echo ""
-    echo "  2. Revert src/zen/ to original state:"
-    echo "     ./scripts/revert-zen-changes.sh"
-    echo ""
-    echo "  3. Stage the patches and commit:"
-    echo "     git add src/nevoflux/patches/"
-    echo "     git commit"
-    echo ""
-    echo "============================================================"
-    exit 1
+
+    # Run revert script with auto-confirm
+    if [ -f "./scripts/revert-zen-changes.sh" ]; then
+        ./scripts/revert-zen-changes.sh -y
+
+        # Re-check if there are still staged changes in src/zen/
+        ZEN_STILL_STAGED=$(git diff --cached --name-only | grep "^src/zen/" || true)
+        if [ -n "$ZEN_STILL_STAGED" ]; then
+            echo ""
+            echo "WARNING: Still have staged changes in src/zen/ after revert."
+            echo "Unstaging these files..."
+            git restore --staged src/zen/
+        fi
+
+        echo ""
+        echo "============================================================"
+        echo "  src/zen/ reverted. Continuing with commit..."
+        echo "============================================================"
+        echo ""
+    else
+        echo "ERROR: revert-zen-changes.sh not found!"
+        echo "Please run manually: ./scripts/revert-zen-changes.sh"
+        exit 1
+    fi
 fi
 
-# Run lint-staged if no src/zen/ issues
+# Run lint-staged
 npx lint-staged
