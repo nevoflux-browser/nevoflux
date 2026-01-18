@@ -10,6 +10,9 @@
 //!
 //! All messages are serialized to JSON for cross-context transmission.
 
+pub mod common;
+pub mod channel1;
+
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "wasm")]
