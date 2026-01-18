@@ -220,6 +220,7 @@ impl OutputMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::{RequesterType, AgentState, ToolStatus, ContentType};
 
     #[test]
     fn test_stream_chunk_serialization() {
@@ -250,5 +251,226 @@ mod tests {
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("error"));
         assert!(json.contains("LLM_TIMEOUT"));
+    }
+
+    #[test]
+    fn test_stream_end_serialization() {
+        let msg = OutputMessage::StreamEnd(StreamEndPayload {
+            session_id: "s1".to_string(),
+            stream_id: "st1".to_string(),
+            metadata: Some(StreamMetadata {
+                total_tokens: Some(100),
+                duration_ms: Some(500),
+                model: Some("claude-3".to_string()),
+            }),
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("stream_end"));
+    }
+
+    #[test]
+    fn test_content_block_serialization() {
+        let msg = OutputMessage::ContentBlock(ContentBlockPayload {
+            session_id: "s1".to_string(),
+            block_id: "b1".to_string(),
+            content_type: ContentType::Markdown,
+            content: serde_json::json!({"text": "Hello"}),
+            metadata: None,
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("content_block"));
+    }
+
+    #[test]
+    fn test_permission_request_serialization() {
+        let msg = OutputMessage::PermissionRequest(PermissionRequestPayload {
+            request_id: "req-1".to_string(),
+            session_id: "s1".to_string(),
+            resource_type: ResourceType::File,
+            action: ResourceAction::Read,
+            resource: "/path/to/file".to_string(),
+            requester: Requester {
+                requester_type: RequesterType::Agent,
+                id: "agent-1".to_string(),
+                name: "Test Agent".to_string(),
+            },
+            reason: "Need to read config".to_string(),
+            scope: PermissionScope::Once,
+            timeout_ms: 30000,
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("permission_request"));
+    }
+
+    #[test]
+    fn test_agent_state_serialization() {
+        let msg = OutputMessage::AgentState(AgentStatePayload {
+            session_id: "s1".to_string(),
+            state: AgentState::Executing,
+            step: Some(StepInfo {
+                current: 1,
+                total: 5,
+                description: Some("Processing".to_string()),
+            }),
+            tool: Some(ToolInfo {
+                name: "file_read".to_string(),
+                status: ToolStatus::Running,
+                target: Some("/etc/config".to_string()),
+            }),
+            progress: Some(0.5),
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("agent_state"));
+    }
+
+    #[test]
+    fn test_account_status_serialization() {
+        let msg = OutputMessage::AccountStatus(AccountStatusPayload {
+            logged_in: true,
+            account: Some(AccountInfo {
+                id: "user-1".to_string(),
+                email: "test@example.com".to_string(),
+                name: Some("Test User".to_string()),
+            }),
+            plan: Some(PlanInfo {
+                plan_type: PlanType::Pro,
+                name: "Pro Plan".to_string(),
+                expires_at: Some("2025-01-01".to_string()),
+            }),
+            quota: Some(QuotaInfo {
+                llm_calls: Some(UsageQuota {
+                    used: 100,
+                    limit: 1000,
+                    resets_at: Some("2024-02-01".to_string()),
+                }),
+            }),
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("account_status"));
+    }
+
+    #[test]
+    fn test_system_response_serialization() {
+        let msg = OutputMessage::SystemResponse(SystemResponsePayload {
+            request_id: "req-1".to_string(),
+            command: "skills.list".to_string(),
+            success: true,
+            data: Some(serde_json::json!(["skill1", "skill2"])),
+            error: None,
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("system_response"));
+    }
+
+    #[test]
+    fn test_session_id_stream_chunk() {
+        let msg = OutputMessage::StreamChunk(StreamChunkPayload {
+            session_id: "test-session".to_string(),
+            stream_id: "st1".to_string(),
+            delta: "Hello".to_string(),
+            format: StreamFormat::default(),
+        });
+        assert_eq!(msg.session_id(), Some("test-session"));
+    }
+
+    #[test]
+    fn test_session_id_stream_end() {
+        let msg = OutputMessage::StreamEnd(StreamEndPayload {
+            session_id: "test-session".to_string(),
+            stream_id: "st1".to_string(),
+            metadata: None,
+        });
+        assert_eq!(msg.session_id(), Some("test-session"));
+    }
+
+    #[test]
+    fn test_session_id_content_block() {
+        let msg = OutputMessage::ContentBlock(ContentBlockPayload {
+            session_id: "test-session".to_string(),
+            block_id: "b1".to_string(),
+            content_type: ContentType::Text,
+            content: serde_json::json!("text"),
+            metadata: None,
+        });
+        assert_eq!(msg.session_id(), Some("test-session"));
+    }
+
+    #[test]
+    fn test_session_id_permission_request() {
+        let msg = OutputMessage::PermissionRequest(PermissionRequestPayload {
+            request_id: "req-1".to_string(),
+            session_id: "test-session".to_string(),
+            resource_type: ResourceType::Network,
+            action: ResourceAction::Connect,
+            resource: "https://example.com".to_string(),
+            requester: Requester {
+                requester_type: RequesterType::Skill,
+                id: "skill-1".to_string(),
+                name: "Web Skill".to_string(),
+            },
+            reason: "API call".to_string(),
+            scope: PermissionScope::Always,
+            timeout_ms: default_timeout(),
+        });
+        assert_eq!(msg.session_id(), Some("test-session"));
+    }
+
+    #[test]
+    fn test_session_id_agent_state() {
+        let msg = OutputMessage::AgentState(AgentStatePayload {
+            session_id: "test-session".to_string(),
+            state: AgentState::Thinking,
+            step: None,
+            tool: None,
+            progress: None,
+        });
+        assert_eq!(msg.session_id(), Some("test-session"));
+    }
+
+    #[test]
+    fn test_session_id_error() {
+        let msg = OutputMessage::Error(ErrorPayload {
+            session_id: "test-session".to_string(),
+            error_id: "err-1".to_string(),
+            level: ErrorLevel::Warning,
+            code: "WARN_001".to_string(),
+            message: "Warning".to_string(),
+            details: None,
+            recoverable: false,
+            retry_action: None,
+            related_request_id: None,
+        });
+        assert_eq!(msg.session_id(), Some("test-session"));
+    }
+
+    #[test]
+    fn test_session_id_account_status() {
+        let msg = OutputMessage::AccountStatus(AccountStatusPayload {
+            logged_in: false,
+            account: None,
+            plan: None,
+            quota: None,
+        });
+        assert_eq!(msg.session_id(), None);
+    }
+
+    #[test]
+    fn test_session_id_system_response() {
+        let msg = OutputMessage::SystemResponse(SystemResponsePayload {
+            request_id: "req-1".to_string(),
+            command: "test".to_string(),
+            success: false,
+            data: None,
+            error: Some(SystemError {
+                code: "ERR_001".to_string(),
+                message: "Failed".to_string(),
+            }),
+        });
+        assert_eq!(msg.session_id(), None);
+    }
+
+    #[test]
+    fn test_default_timeout() {
+        assert_eq!(default_timeout(), 60000);
     }
 }

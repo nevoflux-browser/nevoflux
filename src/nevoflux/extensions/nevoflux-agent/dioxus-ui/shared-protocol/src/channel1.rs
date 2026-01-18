@@ -88,6 +88,7 @@ impl InputMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::PluginAction;
 
     #[test]
     fn test_chat_message_serialization() {
@@ -112,5 +113,126 @@ mod tests {
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("system_command"));
         assert!(json.contains("skills.list"));
+    }
+
+    #[test]
+    fn test_skill_command_serialization() {
+        let msg = InputMessage::SkillCommand(SkillCommandPayload {
+            session_id: "session-1".to_string(),
+            skill_name: "test_skill".to_string(),
+            args: Some(serde_json::json!({"key": "value"})),
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("skill_command"));
+        assert!(json.contains("test_skill"));
+    }
+
+    #[test]
+    fn test_stop_generation_serialization() {
+        let msg = InputMessage::StopGeneration(StopGenerationPayload {
+            session_id: "session-1".to_string(),
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("stop_generation"));
+    }
+
+    #[test]
+    fn test_permission_response_serialization() {
+        let msg = InputMessage::PermissionResponse(PermissionResponsePayload {
+            request_id: "req-1".to_string(),
+            granted: true,
+            scope: Some(PermissionScope::Session),
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("permission_response"));
+        assert!(json.contains("granted"));
+    }
+
+    #[test]
+    fn test_plugin_command_serialization() {
+        let msg = InputMessage::PluginCommand(PluginCommandPayload {
+            plugin_id: "plugin-1".to_string(),
+            action: PluginAction::Start,
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("plugin_command"));
+        assert!(json.contains("plugin-1"));
+    }
+
+    #[test]
+    fn test_session_id_chat_message() {
+        let msg = InputMessage::ChatMessage(ChatMessagePayload {
+            session_id: "test-session".to_string(),
+            message_id: "msg-1".to_string(),
+            text: "Hello".to_string(),
+            attachments: vec![],
+        });
+        assert_eq!(msg.session_id(), Some("test-session"));
+    }
+
+    #[test]
+    fn test_session_id_skill_command() {
+        let msg = InputMessage::SkillCommand(SkillCommandPayload {
+            session_id: "test-session".to_string(),
+            skill_name: "test".to_string(),
+            args: None,
+        });
+        assert_eq!(msg.session_id(), Some("test-session"));
+    }
+
+    #[test]
+    fn test_session_id_stop_generation() {
+        let msg = InputMessage::StopGeneration(StopGenerationPayload {
+            session_id: "test-session".to_string(),
+        });
+        assert_eq!(msg.session_id(), Some("test-session"));
+    }
+
+    #[test]
+    fn test_session_id_permission_response() {
+        let msg = InputMessage::PermissionResponse(PermissionResponsePayload {
+            request_id: "req-1".to_string(),
+            granted: true,
+            scope: None,
+        });
+        assert_eq!(msg.session_id(), None);
+    }
+
+    #[test]
+    fn test_session_id_plugin_command() {
+        let msg = InputMessage::PluginCommand(PluginCommandPayload {
+            plugin_id: "plugin-1".to_string(),
+            action: PluginAction::Stop,
+        });
+        assert_eq!(msg.session_id(), None);
+    }
+
+    #[test]
+    fn test_session_id_system_command() {
+        let msg = InputMessage::SystemCommand(SystemCommandPayload {
+            request_id: "req-1".to_string(),
+            command: "test".to_string(),
+            params: None,
+        });
+        assert_eq!(msg.session_id(), None);
+    }
+
+    #[test]
+    fn test_chat_message_roundtrip() {
+        let original = InputMessage::ChatMessage(ChatMessagePayload {
+            session_id: "s1".to_string(),
+            message_id: "m1".to_string(),
+            text: "Hello".to_string(),
+            attachments: vec![],
+        });
+        let json = serde_json::to_string(&original).unwrap();
+        let parsed: InputMessage = serde_json::from_str(&json).unwrap();
+        match parsed {
+            InputMessage::ChatMessage(p) => {
+                assert_eq!(p.session_id, "s1");
+                assert_eq!(p.text, "Hello");
+            }
+            _ => panic!("Wrong variant"),
+        }
     }
 }

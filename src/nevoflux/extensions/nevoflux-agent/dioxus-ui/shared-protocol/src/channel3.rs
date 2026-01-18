@@ -118,4 +118,76 @@ mod tests {
         assert!(json.contains("mcp_response"));
         assert!(json.contains("success"));
     }
+
+    #[test]
+    fn test_request_id_mcp_request() {
+        let msg = McpMessage::McpRequest(McpRequestPayload {
+            request_id: "test-request-id".to_string(),
+            source: McpSource {
+                agent: "test-agent".to_string(),
+                session_id: Some("session-1".to_string()),
+            },
+            payload: JsonRpcRequest {
+                jsonrpc: "2.0".to_string(),
+                id: serde_json::json!(1),
+                method: "test/method".to_string(),
+                params: None,
+            },
+        });
+        assert_eq!(msg.request_id(), "test-request-id");
+    }
+
+    #[test]
+    fn test_request_id_mcp_response() {
+        let msg = McpMessage::McpResponse(McpResponsePayload {
+            request_id: "test-response-id".to_string(),
+            payload: JsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                id: serde_json::json!(1),
+                result: Some(serde_json::json!({"data": "test"})),
+                error: None,
+            },
+        });
+        assert_eq!(msg.request_id(), "test-response-id");
+    }
+
+    #[test]
+    fn test_mcp_response_with_error() {
+        let msg = McpMessage::McpResponse(McpResponsePayload {
+            request_id: "req-err".to_string(),
+            payload: JsonRpcResponse {
+                jsonrpc: "2.0".to_string(),
+                id: serde_json::json!(2),
+                result: None,
+                error: Some(JsonRpcError {
+                    code: -32600,
+                    message: "Invalid Request".to_string(),
+                    data: Some(serde_json::json!({"detail": "missing method"})),
+                }),
+            },
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("Invalid Request"));
+        assert!(json.contains("-32600"));
+    }
+
+    #[test]
+    fn test_mcp_request_roundtrip() {
+        let original = McpMessage::McpRequest(McpRequestPayload {
+            request_id: "roundtrip-req".to_string(),
+            source: McpSource {
+                agent: "claude".to_string(),
+                session_id: None,
+            },
+            payload: JsonRpcRequest {
+                jsonrpc: "2.0".to_string(),
+                id: serde_json::json!("abc-123"),
+                method: "browser_use/navigate".to_string(),
+                params: Some(serde_json::json!({"url": "https://example.com"})),
+            },
+        });
+        let json = serde_json::to_string(&original).unwrap();
+        let parsed: McpMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.request_id(), "roundtrip-req");
+    }
 }

@@ -164,4 +164,139 @@ mod tests {
         assert!(json.contains("page_llm_chunk"));
         assert!(json.contains("Hello"));
     }
+
+    #[test]
+    fn test_page_llm_done_serialization() {
+        let msg = PageLlmMessage::PageLlmDone(PageLlmDonePayload {
+            request_id: "req-done".to_string(),
+            payload: OpenAiCompletion {
+                choices: vec![OpenAiCompletionChoice {
+                    message: OpenAiMessage {
+                        role: "assistant".to_string(),
+                        content: "Hello, how can I help?".to_string(),
+                    },
+                    finish_reason: Some("stop".to_string()),
+                }],
+                usage: Some(OpenAiUsage {
+                    prompt_tokens: 10,
+                    completion_tokens: 20,
+                }),
+            },
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("page_llm_done"));
+        assert!(json.contains("stop"));
+    }
+
+    #[test]
+    fn test_page_llm_error_serialization() {
+        let msg = PageLlmMessage::PageLlmError(PageLlmErrorPayload {
+            request_id: "req-err".to_string(),
+            error: PageLlmError {
+                code: "RATE_LIMIT".to_string(),
+                message: "Too many requests".to_string(),
+            },
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("page_llm_error"));
+        assert!(json.contains("RATE_LIMIT"));
+    }
+
+    #[test]
+    fn test_request_id_page_llm_request() {
+        let msg = PageLlmMessage::PageLlmRequest(PageLlmRequestPayload {
+            request_id: "test-request-id".to_string(),
+            provider: LlmProvider::Claude,
+            payload: OpenAiRequest {
+                model: "test-model".to_string(),
+                messages: vec![],
+                stream: false,
+            },
+        });
+        assert_eq!(msg.request_id(), "test-request-id");
+    }
+
+    #[test]
+    fn test_request_id_page_llm_chunk() {
+        let msg = PageLlmMessage::PageLlmChunk(PageLlmChunkPayload {
+            request_id: "chunk-request-id".to_string(),
+            payload: OpenAiChunk {
+                choices: vec![],
+            },
+        });
+        assert_eq!(msg.request_id(), "chunk-request-id");
+    }
+
+    #[test]
+    fn test_request_id_page_llm_done() {
+        let msg = PageLlmMessage::PageLlmDone(PageLlmDonePayload {
+            request_id: "done-request-id".to_string(),
+            payload: OpenAiCompletion {
+                choices: vec![],
+                usage: None,
+            },
+        });
+        assert_eq!(msg.request_id(), "done-request-id");
+    }
+
+    #[test]
+    fn test_request_id_page_llm_error() {
+        let msg = PageLlmMessage::PageLlmError(PageLlmErrorPayload {
+            request_id: "error-request-id".to_string(),
+            error: PageLlmError {
+                code: "ERR".to_string(),
+                message: "Error".to_string(),
+            },
+        });
+        assert_eq!(msg.request_id(), "error-request-id");
+    }
+
+    #[test]
+    fn test_page_llm_request_roundtrip() {
+        let original = PageLlmMessage::PageLlmRequest(PageLlmRequestPayload {
+            request_id: "roundtrip-req".to_string(),
+            provider: LlmProvider::Chatgpt,
+            payload: OpenAiRequest {
+                model: "gpt-4".to_string(),
+                messages: vec![
+                    OpenAiMessage {
+                        role: "system".to_string(),
+                        content: "You are helpful.".to_string(),
+                    },
+                    OpenAiMessage {
+                        role: "user".to_string(),
+                        content: "Hi".to_string(),
+                    },
+                ],
+                stream: true,
+            },
+        });
+        let json = serde_json::to_string(&original).unwrap();
+        let parsed: PageLlmMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.request_id(), "roundtrip-req");
+    }
+
+    #[test]
+    fn test_openai_delta_empty_content() {
+        let delta = OpenAiDelta { content: None };
+        let json = serde_json::to_string(&delta).unwrap();
+        assert!(!json.contains("content"));
+    }
+
+    #[test]
+    fn test_openai_completion_without_usage() {
+        let completion = OpenAiCompletion {
+            choices: vec![OpenAiCompletionChoice {
+                message: OpenAiMessage {
+                    role: "assistant".to_string(),
+                    content: "Response".to_string(),
+                },
+                finish_reason: None,
+            }],
+            usage: None,
+        };
+        let json = serde_json::to_string(&completion).unwrap();
+        assert!(!json.contains("usage"));
+        assert!(!json.contains("finish_reason"));
+    }
 }
