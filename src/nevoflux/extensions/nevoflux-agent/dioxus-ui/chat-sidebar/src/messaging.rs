@@ -10,7 +10,7 @@
 use crate::components::AgentStatus;
 use crate::state::{AppState, ChatMessage, ConnectionStatus, MessageStatus, StreamingMessage, TabContext};
 use dioxus::prelude::*;
-use shared_protocol::{AgentState, ChatMessagePayload, DisplayContentPayload, ExtensionMessage};
+use shared_protocol::{AgentState, ChatMessagePayload, ExtensionMessage};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -261,21 +261,5 @@ pub async fn request_tab_context() {
     let msg = ExtensionMessage::RequestTabContext;
     if let Err(e) = send_to_background(&msg).await {
         tracing::error!("Failed to request tab context: {:?}", e);
-    }
-}
-
-/// Send content to Content Sidebar
-pub async fn send_to_content_sidebar(content: DisplayContentPayload) {
-    let msg = ExtensionMessage::DisplayContent(content);
-    if let Err(e) = send_to_background(&msg).await {
-        tracing::error!("Failed to send to content sidebar: {:?}", e);
-    }
-}
-
-/// Request Content Sidebar injection
-pub async fn inject_content_sidebar(tab_id: u32) {
-    let msg = ExtensionMessage::InjectContentSidebar { tab_id };
-    if let Err(e) = send_to_background(&msg).await {
-        tracing::error!("Failed to inject content sidebar: {:?}", e);
     }
 }
