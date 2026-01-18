@@ -37,7 +37,11 @@ impl AgentStatus {
     pub fn is_active(&self) -> bool {
         matches!(
             self.state,
-            AgentState::Thinking | AgentState::ExecutingTool | AgentState::WaitingResult
+            AgentState::Thinking
+                | AgentState::Executing
+                | AgentState::ExecutingTool
+                | AgentState::Waiting
+                | AgentState::WaitingResult
         )
     }
 
@@ -45,8 +49,8 @@ impl AgentStatus {
     pub fn state_label(&self) -> &'static str {
         match self.state {
             AgentState::Thinking => "Thinking...",
-            AgentState::ExecutingTool => "Executing",
-            AgentState::WaitingResult => "Waiting",
+            AgentState::Executing | AgentState::ExecutingTool => "Executing",
+            AgentState::Waiting | AgentState::WaitingResult => "Waiting",
             AgentState::Complete => "Complete",
             AgentState::Error => "Error",
             AgentState::WaitingConfirmation => "Needs Confirmation",
@@ -75,8 +79,8 @@ pub fn AgentStatusDisplay(status: Signal<AgentStatus>) -> Element {
 
     let state_class = match status_val.state {
         AgentState::Thinking => "thinking",
-        AgentState::ExecutingTool => "executing",
-        AgentState::WaitingResult => "waiting",
+        AgentState::Executing | AgentState::ExecutingTool => "executing",
+        AgentState::Waiting | AgentState::WaitingResult => "waiting",
         AgentState::Complete => "complete",
         AgentState::Error => "error",
         AgentState::WaitingConfirmation => "confirmation",
@@ -102,26 +106,29 @@ pub fn AgentStatusDisplay(status: Signal<AgentStatus>) -> Element {
                         AgentState::Thinking => rsx! {
                             // Thinking dots animation
                             span { class: "thinking-dots",
-                                span { class: "dot", "•" }
-                                span { class: "dot", "•" }
-                                span { class: "dot", "•" }
+                                span { class: "dot", "." }
+                                span { class: "dot", "." }
+                                span { class: "dot", "." }
                             }
                         },
-                        AgentState::ExecutingTool | AgentState::WaitingResult => rsx! {
+                        AgentState::Executing
+                        | AgentState::ExecutingTool
+                        | AgentState::Waiting
+                        | AgentState::WaitingResult => rsx! {
                             // Spinner
                             span { class: "spinner" }
                         },
                         AgentState::Complete => rsx! {
                             // Checkmark
-                            span { class: "checkmark", "✓" }
+                            span { class: "checkmark", "OK" }
                         },
                         AgentState::Error => rsx! {
                             // Error icon
-                            span { class: "error-icon", "✕" }
+                            span { class: "error-icon", "X" }
                         },
                         AgentState::WaitingConfirmation => rsx! {
                             // Warning icon
-                            span { class: "warning-icon", "⚠" }
+                            span { class: "warning-icon", "!" }
                         },
                     }
                 }

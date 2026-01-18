@@ -93,8 +93,16 @@ pub enum ContentType {
 pub enum AgentState {
     #[default]
     Thinking,
+    /// Executing a tool (alias for computer use compatibility)
     Executing,
+    /// Executing a specific tool
+    ExecutingTool,
+    /// Waiting for result
     Waiting,
+    /// Waiting for tool result
+    WaitingResult,
+    /// Waiting for user confirmation (human-in-the-loop)
+    WaitingConfirmation,
     Complete,
     Error,
 }

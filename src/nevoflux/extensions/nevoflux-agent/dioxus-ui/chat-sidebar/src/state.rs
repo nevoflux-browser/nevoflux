@@ -5,8 +5,6 @@
 //! Application state types for the Chat Sidebar
 
 use serde::{Deserialize, Serialize};
-use shared_protocol::TabContext as ProtocolTabContext;
-use shared_protocol::TabStatus as ProtocolTabStatus;
 
 /// Global application state
 #[derive(Debug, Clone, Default)]
@@ -74,18 +72,6 @@ pub struct TabContext {
     pub title: String,
     pub favicon_url: Option<String>,
     pub is_loading: bool,
-}
-
-impl From<ProtocolTabContext> for TabContext {
-    fn from(ctx: ProtocolTabContext) -> Self {
-        Self {
-            tab_id: ctx.tab_id,
-            url: ctx.url,
-            title: ctx.title,
-            favicon_url: ctx.favicon_url,
-            is_loading: matches!(ctx.status, ProtocolTabStatus::Loading),
-        }
-    }
 }
 
 /// Connection status with native agent
