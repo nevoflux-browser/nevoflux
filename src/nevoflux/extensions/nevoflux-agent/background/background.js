@@ -111,6 +111,8 @@ const RECONNECT_CONFIG = {
   multiplier: 2,
 };
 
+const MAX_RECONNECT_ATTEMPTS = 20;
+
 // =============================================================================
 // Channel Manager Class
 // =============================================================================
@@ -129,17 +131,24 @@ class NativeChannel {
     this.reconnectAttempts = 0;
     this.reconnectTimer = null;
     this.isIntentionalDisconnect = false;
+    this.connectionInProgress = false;
   }
 
   /**
    * Connect to the native messaging host
    */
   connect() {
+    if (this.connectionInProgress) {
+      console.log(`[NevoFlux] ${this.displayName} channel connection already in progress`);
+      return false;
+    }
+
     if (this.port) {
       console.log(`[NevoFlux] ${this.displayName} channel already connected`);
       return true;
     }
 
+    this.connectionInProgress = true;
     console.log(`[NevoFlux] Connecting ${this.displayName} channel (${this.name})...`);
 
     try {
@@ -174,6 +183,7 @@ class NativeChannel {
       // Reset reconnect state on successful connection
       this.reconnectAttempts = 0;
       this.isIntentionalDisconnect = false;
+      this.connectionInProgress = false;
 
       console.log(`[NevoFlux] ${this.displayName} channel connected`);
 
@@ -184,6 +194,7 @@ class NativeChannel {
       return true;
     } catch (error) {
       console.error(`[NevoFlux] Failed to connect ${this.displayName} channel:`, error);
+      this.connectionInProgress = false;
       this.cleanup();
 
       if (this.onStatusChange) {
@@ -208,7 +219,13 @@ class NativeChannel {
    * Cleanup port and listeners
    */
   cleanup() {
-    if (this.port) {
+    if (this.port && this.listeners) {
+      try {
+        this.port.onMessage.removeListener(this.listeners.onMessage);
+        this.port.onDisconnect.removeListener(this.listeners.onDisconnect);
+      } catch (e) {
+        // Ignore errors during listener removal
+      }
       try {
         this.port.disconnect();
       } catch (e) {
@@ -223,6 +240,12 @@ class NativeChannel {
    * Schedule a reconnection attempt with exponential backoff
    */
   scheduleReconnect() {
+    if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.error(`[NevoFlux] Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached for ${this.displayName}`);
+      this.onStatusChange?.(false);
+      return;
+    }
+
     this.cancelReconnect();
 
     const delay = Math.min(
