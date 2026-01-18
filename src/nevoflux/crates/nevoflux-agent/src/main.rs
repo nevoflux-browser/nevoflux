@@ -9,6 +9,7 @@
 
 mod action_router;
 mod agent;
+mod channels;
 mod llm_integration;
 mod native_messaging;
 mod session;
