@@ -28,6 +28,7 @@ futures.workspace = true
 uuid.workspace = true
 tracing.workspace = true
 tracing-wasm.workspace = true
+console_error_panic_hook = "0.1"
 
 [features]
 default = []
