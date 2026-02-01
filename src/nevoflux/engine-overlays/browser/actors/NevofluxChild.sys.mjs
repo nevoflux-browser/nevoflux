@@ -249,6 +249,15 @@ export class NevofluxChild extends JSWindowActorChild {
     if (name === "execute") {
       return this.execute(data.action, data.params);
     }
+    if (name === "startPicker") {
+      return this.startPicker(data);
+    }
+    if (name === "stopPicker") {
+      return this.stopPicker();
+    }
+    if (name === "getSelection") {
+      return this.getCurrentSelection();
+    }
     return null;
   }
 
@@ -2803,5 +2812,274 @@ export class NevofluxChild extends JSWindowActorChild {
       .replace(/[ \t]+$/gm, "")
       // Trim
       .trim();
+  }
+
+  // ========== Element Picker ==========
+
+  startPicker({ filter = "any", highlightColor = "#6366f1" }) {
+    if (this._pickerActive) {
+      return { success: false, error: "Picker already active" };
+    }
+
+    this._pickerActive = true;
+    this._pickerFilter = filter;
+    this._highlightColor = highlightColor;
+    this._pickerResolve = null;
+    this._pickerReject = null;
+
+    this._createPickerHighlight();
+
+    this.doc.addEventListener("mousemove", this._onPickerMove, true);
+    this.doc.addEventListener("click", this._onPickerClick, true);
+    this.doc.addEventListener("keydown", this._onPickerKey, true);
+
+    this._originalCursor = this.doc.body.style.cursor;
+    this.doc.body.style.cursor = "crosshair";
+
+    return new Promise((resolve, reject) => {
+      this._pickerResolve = resolve;
+      this._pickerReject = reject;
+    });
+  }
+
+  stopPicker() {
+    if (!this._pickerActive) return { success: true };
+
+    this._pickerActive = false;
+
+    this.doc.removeEventListener("mousemove", this._onPickerMove, true);
+    this.doc.removeEventListener("click", this._onPickerClick, true);
+    this.doc.removeEventListener("keydown", this._onPickerKey, true);
+
+    this.doc.body.style.cursor = this._originalCursor || "";
+    this._removePickerHighlight();
+
+    if (this._pickerReject) {
+      this._pickerReject({ success: false, error: "cancelled" });
+    }
+
+    return { success: true };
+  }
+
+  _createPickerHighlight() {
+    if (this._highlightEl) return;
+
+    this._highlightEl = this.doc.createElement("div");
+    this._highlightEl.id = "nevoflux-picker-highlight";
+    this._highlightEl.style.cssText = `
+      position: fixed;
+      pointer-events: none;
+      z-index: 2147483647;
+      border: 2px solid ${this._highlightColor};
+      background: ${this._highlightColor}20;
+      border-radius: 3px;
+      transition: all 0.1s ease-out;
+      display: none;
+    `;
+
+    this._labelEl = this.doc.createElement("div");
+    this._labelEl.style.cssText = `
+      position: absolute;
+      bottom: 100%;
+      left: 0;
+      background: ${this._highlightColor};
+      color: white;
+      font-size: 11px;
+      font-family: system-ui, sans-serif;
+      padding: 2px 6px;
+      border-radius: 3px 3px 0 0;
+      white-space: nowrap;
+    `;
+    this._highlightEl.appendChild(this._labelEl);
+
+    this.doc.body.appendChild(this._highlightEl);
+  }
+
+  _removePickerHighlight() {
+    this._highlightEl?.remove();
+    this._highlightEl = null;
+    this._labelEl = null;
+    this._hoveredEl = null;
+  }
+
+  _onPickerMove = (event) => {
+    event.stopPropagation();
+
+    let target = event.target;
+    if (target === this._highlightEl || this._highlightEl?.contains(target)) {
+      return;
+    }
+
+    this._hoveredEl = target;
+    this._updatePickerHighlight(target);
+  };
+
+  _onPickerClick = (event) => {
+    event.stopPropagation();
+    event.preventDefault();
+
+    const target = this._hoveredEl;
+    if (!target) return;
+
+    const result = {
+      selector: this._generateStableSelector(target),
+      xpath: this._generateXPath(target),
+      tagName: target.tagName.toLowerCase(),
+      id: target.id || null,
+      className: typeof target.className === "string" ? target.className : null,
+      text: target.textContent?.slice(0, 200)?.trim() || null,
+      attributes: this._getPickerElementAttributes(target),
+      rect: target.getBoundingClientRect().toJSON(),
+    };
+
+    this.stopPicker();
+
+    if (this._pickerResolve) {
+      this._pickerResolve({ success: true, data: result });
+    }
+  };
+
+  _onPickerKey = (event) => {
+    event.stopPropagation();
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      this.stopPicker();
+    }
+  };
+
+  _updatePickerHighlight(element) {
+    if (!this._highlightEl || !element) return;
+
+    const rect = element.getBoundingClientRect();
+
+    this._highlightEl.style.display = "block";
+    this._highlightEl.style.top = `${rect.top}px`;
+    this._highlightEl.style.left = `${rect.left}px`;
+    this._highlightEl.style.width = `${rect.width}px`;
+    this._highlightEl.style.height = `${rect.height}px`;
+
+    const tag = element.tagName.toLowerCase();
+    const id = element.id ? `#${element.id}` : "";
+    const cls = element.className && typeof element.className === "string"
+      ? `.${element.className.split(" ")[0]}`
+      : "";
+    this._labelEl.textContent = `${tag}${id}${cls}`;
+  }
+
+  _generateStableSelector(element) {
+    if (!element || element === this.doc.body) return "body";
+
+    // Priority 1: Unique ID
+    if (element.id) {
+      const selector = `#${CSS.escape(element.id)}`;
+      if (this.doc.querySelectorAll(selector).length === 1) {
+        return selector;
+      }
+    }
+
+    // Priority 2: data-testid or data-* attributes
+    for (const attr of element.attributes) {
+      if (attr.name === "data-testid" || attr.name.startsWith("data-")) {
+        const selector = `[${attr.name}="${CSS.escape(attr.value)}"]`;
+        if (this.doc.querySelectorAll(selector).length === 1) {
+          return selector;
+        }
+      }
+    }
+
+    // Priority 3: Build path
+    const path = [];
+    let current = element;
+
+    while (current && current !== this.doc.body) {
+      let selector = current.tagName.toLowerCase();
+
+      if (current.id) {
+        path.unshift(`#${CSS.escape(current.id)}`);
+        break;
+      }
+
+      const parent = current.parentElement;
+      if (parent) {
+        const siblings = Array.from(parent.children).filter(
+          el => el.tagName === current.tagName
+        );
+        if (siblings.length > 1) {
+          const index = siblings.indexOf(current) + 1;
+          selector += `:nth-of-type(${index})`;
+        }
+      }
+
+      path.unshift(selector);
+      current = current.parentElement;
+    }
+
+    return path.join(" > ");
+  }
+
+  _generateXPath(element) {
+    if (!element) return "";
+
+    const parts = [];
+    let current = element;
+
+    while (current && current.nodeType === Node.ELEMENT_NODE) {
+      let index = 1;
+      let sibling = current.previousElementSibling;
+
+      while (sibling) {
+        if (sibling.tagName === current.tagName) index++;
+        sibling = sibling.previousElementSibling;
+      }
+
+      const tagName = current.tagName.toLowerCase();
+      parts.unshift(`${tagName}[${index}]`);
+      current = current.parentElement;
+    }
+
+    return "/" + parts.join("/");
+  }
+
+  _getPickerElementAttributes(element) {
+    const attrs = {};
+    for (const attr of element.attributes) {
+      if (attr.value.length < 200 && !attr.name.startsWith("on")) {
+        attrs[attr.name] = attr.value;
+      }
+    }
+    return attrs;
+  }
+
+  // ========== Selection ==========
+
+  getCurrentSelection() {
+    const selection = this.win.getSelection();
+
+    if (!selection || selection.isCollapsed) {
+      return { success: true, data: null };
+    }
+
+    const text = selection.toString().trim();
+    if (!text) {
+      return { success: true, data: null };
+    }
+
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    const container = this.doc.createElement("div");
+    container.appendChild(range.cloneContents());
+
+    return {
+      success: true,
+      data: {
+        text,
+        html: container.innerHTML,
+        rect: rect.toJSON(),
+        anchorNode: this._generateStableSelector(selection.anchorNode.parentElement),
+        url: this.win.location.href,
+        title: this.doc.title,
+      },
+    };
   }
 }
