@@ -306,7 +306,49 @@ export class nevoflux extends ExtensionAPI {
          * @returns {Promise<object>} PickerResult object
          */
         async pickElement(tabId, options = {}) {
-          throw new Error("pickElement: not yet implemented");
+          const {
+            hint = "",
+            filter = "any",
+            timeout = 60000,
+            highlightColor = "#6366f1",
+          } = options;
+
+          const nativeTab = getNativeTab(tabId, extension);
+          if (!nativeTab) {
+            throw new Error(`Tab not found: ${tabId}`);
+          }
+
+          // Restore tab if needed
+          await restoreTabIfNeeded(nativeTab, 30000);
+
+          const actor = getActor(nativeTab);
+          if (!actor) {
+            throw new Error("Cannot get actor - tab may not be fully loaded");
+          }
+
+          // Start picker with timeout
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error("Picker timeout")), timeout);
+          });
+
+          const pickerPromise = actor.sendQuery("startPicker", {
+            filter,
+            highlightColor,
+          });
+
+          try {
+            const result = await Promise.race([pickerPromise, timeoutPromise]);
+            if (!result.success) {
+              throw new Error(result.error || "Picker failed");
+            }
+            return result.data;
+          } catch (e) {
+            // Ensure picker is stopped on error
+            try {
+              await actor.sendQuery("stopPicker", {});
+            } catch {}
+            throw e;
+          }
         },
 
         /**
@@ -315,7 +357,17 @@ export class nevoflux extends ExtensionAPI {
          * @returns {Promise<void>}
          */
         async cancelPicker(tabId) {
-          throw new Error("cancelPicker: not yet implemented");
+          const nativeTab = getNativeTab(tabId, extension);
+          if (!nativeTab) {
+            throw new Error(`Tab not found: ${tabId}`);
+          }
+
+          const actor = getActor(nativeTab);
+          if (!actor) {
+            throw new Error("Cannot get actor - tab may not be fully loaded");
+          }
+
+          await actor.sendQuery("stopPicker", {});
         },
 
         /**
@@ -324,7 +376,23 @@ export class nevoflux extends ExtensionAPI {
          * @returns {Promise<object|null>} SelectionData or null if no selection
          */
         async getSelection(tabId) {
-          throw new Error("getSelection: not yet implemented");
+          const nativeTab = getNativeTab(tabId, extension);
+          if (!nativeTab) {
+            throw new Error(`Tab not found: ${tabId}`);
+          }
+
+          if (isTabDiscarded(nativeTab)) {
+            return null;
+          }
+
+          const actor = getActor(nativeTab);
+          if (!actor) {
+            return null;
+          }
+
+          const result = await actor.sendQuery("getSelection", {});
+
+          return result.success ? result.data : null;
         },
 
         /**
