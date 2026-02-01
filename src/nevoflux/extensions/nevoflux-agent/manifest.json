@@ -74,15 +74,5 @@
       ],
       "matches": ["<all_urls>"]
     }
-  ],
-  "experiment_apis": {
-    "nevoflux": {
-      "schema": "experiment-apis/nevoflux/schema.json",
-      "parent": {
-        "scopes": ["addon_parent"],
-        "paths": [["nevoflux"]],
-        "script": "experiment-apis/nevoflux/api.sys.mjs"
-      }
-    }
-  }
+  ]
 }

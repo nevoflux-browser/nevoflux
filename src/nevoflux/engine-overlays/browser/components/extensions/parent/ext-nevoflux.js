@@ -7,6 +7,14 @@
 // API version for compatibility checking
 const API_VERSION = "1.0.0";
 
+// Lazy import for SessionStore (used for restoring discarded tabs)
+ChromeUtils.defineESModuleGetters(this, {
+  SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
+});
+
+// Default timeout for tab restoration (ms)
+const DEFAULT_RESTORE_TIMEOUT = 10000;
+
 // Helper to escape regex special characters for safe pattern construction
 function escapeRegExp(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1132,6 +1140,263 @@ this.nevoflux = class extends ExtensionAPI {
             }
           });
         },
+
+        // ========== Tab Content & State (Sidebar Bridge) ==========
+
+        async getTabContent(tabId, options = {}) {
+          const {
+            format = "markdown",
+            selector = null,
+            autoRestore = true,
+            timeout = DEFAULT_RESTORE_TIMEOUT,
+          } = options;
+
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          const tab = extension.tabManager.get(resolvedTabId);
+
+          if (!tab) {
+            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+          }
+
+          const nativeTab = tab.nativeTab;
+          const wasDiscarded = self.isTabDiscarded(nativeTab);
+
+          // Auto-restore discarded tabs if needed
+          if (wasDiscarded && autoRestore) {
+            const restored = await self.restoreTabIfNeeded(nativeTab, timeout);
+            if (!restored) {
+              return { success: false, error: { code: 5005, message: "Failed to restore discarded tab", recoverable: true } };
+            }
+
+            // Wait for browsingContext to be ready
+            const browser = tab.browser || nativeTab.linkedBrowser;
+            const bc = await self.waitForBrowsingContext(browser, 2000);
+            if (!bc?.currentWindowGlobal) {
+              return { success: false, error: { code: 5006, message: "Tab restored but browsingContext not ready", recoverable: true } };
+            }
+          }
+
+          // Get content based on format
+          let content = "";
+          let title = "";
+          let url = "";
+
+          if (format === "markdown") {
+            const result = await self.executeInTab(resolvedTabId, extension, "getMarkdown", { selector });
+            if (result.success === false) {
+              return result;
+            }
+            content = result.markdown || "";
+            title = result.title || "";
+            url = result.url || "";
+          } else if (format === "html") {
+            const result = await self.executeInTab(resolvedTabId, extension, "getHtml", { selector: selector || "body" });
+            content = typeof result === "string" ? result : (result || "");
+            const browser = tab.browser || nativeTab.linkedBrowser;
+            title = browser?.contentTitle || "";
+            url = browser?.currentURI?.spec || "";
+          } else if (format === "text") {
+            const result = await self.executeInTab(resolvedTabId, extension, "getText", { selector: selector || "body" });
+            content = typeof result === "string" ? result : (result || "");
+            const browser = tab.browser || nativeTab.linkedBrowser;
+            title = browser?.contentTitle || "";
+            url = browser?.currentURI?.spec || "";
+          } else {
+            return { success: false, error: { code: 4001, message: `Unsupported format: ${format}`, recoverable: false } };
+          }
+
+          return {
+            tabId: resolvedTabId,
+            url,
+            title,
+            content,
+            format,
+            extractedAt: Date.now(),
+            wasDiscarded,
+          };
+        },
+
+        async getTabState(tabId) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          const tab = extension.tabManager.get(resolvedTabId);
+
+          if (!tab) {
+            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+          }
+
+          const nativeTab = tab.nativeTab;
+          const browser = tab.browser || nativeTab.linkedBrowser;
+          const discarded = self.isTabDiscarded(nativeTab);
+
+          // Determine loading status
+          let status = "unloaded";
+          if (!discarded && browser) {
+            const webProgress = browser.webProgress;
+            if (webProgress?.isLoadingDocument) {
+              status = "loading";
+            } else if (browser.browsingContext?.currentWindowGlobal) {
+              status = "complete";
+            }
+          }
+
+          return {
+            discarded,
+            status,
+            url: browser?.currentURI?.spec || "",
+            title: browser?.contentTitle || nativeTab.label || "",
+          };
+        },
+
+        async pickElement(tabId, options = {}) {
+          const {
+            filter = "any",
+            timeout = 60000,
+            highlightColor = "#6366f1",
+          } = options;
+
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          const tab = extension.tabManager.get(resolvedTabId);
+
+          if (!tab) {
+            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+          }
+
+          const nativeTab = tab.nativeTab;
+
+          // Restore tab if needed
+          await self.restoreTabIfNeeded(nativeTab, 30000);
+
+          const browser = tab.browser || nativeTab.linkedBrowser;
+          if (!browser?.browsingContext?.currentWindowGlobal) {
+            return { success: false, error: { code: 5002, message: "Tab not fully loaded", recoverable: true } };
+          }
+
+          try {
+            const actor = browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
+
+            // Start picker with timeout
+            const { setTimeout: chromeSetTimeout } = ChromeUtils.importESModule(
+              "resource://gre/modules/Timer.sys.mjs"
+            );
+
+            const timeoutPromise = new Promise((_, reject) => {
+              chromeSetTimeout(() => reject(new Error("Picker timeout")), timeout);
+            });
+
+            const pickerPromise = actor.sendQuery("startPicker", {
+              filter,
+              highlightColor,
+            });
+
+            const result = await Promise.race([pickerPromise, timeoutPromise]);
+            if (!result.success) {
+              return { success: false, error: { code: 10001, message: result.error || "Picker failed", recoverable: true } };
+            }
+            return result.data;
+          } catch (e) {
+            // Ensure picker is stopped on error
+            try {
+              const actor = browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
+              await actor.sendQuery("stopPicker", {});
+            } catch {}
+            return { success: false, error: { code: 10001, message: e.message, recoverable: true } };
+          }
+        },
+
+        async cancelPicker(tabId) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          const tab = extension.tabManager.get(resolvedTabId);
+
+          if (!tab) {
+            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+          }
+
+          const browser = tab.browser || tab.nativeTab.linkedBrowser;
+          if (!browser?.browsingContext?.currentWindowGlobal) {
+            return { success: true }; // No picker to cancel
+          }
+
+          try {
+            const actor = browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
+            await actor.sendQuery("stopPicker", {});
+            return { success: true };
+          } catch (e) {
+            return { success: true }; // Picker already stopped
+          }
+        },
+
+        async getSelection(tabId) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          const tab = extension.tabManager.get(resolvedTabId);
+
+          if (!tab) {
+            return null;
+          }
+
+          const nativeTab = tab.nativeTab;
+          if (self.isTabDiscarded(nativeTab)) {
+            return null;
+          }
+
+          const browser = tab.browser || nativeTab.linkedBrowser;
+          if (!browser?.browsingContext?.currentWindowGlobal) {
+            return null;
+          }
+
+          try {
+            const actor = browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
+            const result = await actor.sendQuery("getSelection", {});
+            return result.success ? result.data : null;
+          } catch (e) {
+            return null;
+          }
+        },
+
+        async lockPage(tabId, options = {}) {
+          const { showOverlay = true, message = "" } = options;
+
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          const tab = extension.tabManager.get(resolvedTabId);
+
+          if (!tab) {
+            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+          }
+
+          const browser = tab.browser || tab.nativeTab.linkedBrowser;
+          if (!browser?.browsingContext?.currentWindowGlobal) {
+            return { success: false, error: { code: 5002, message: "Tab not fully loaded", recoverable: true } };
+          }
+
+          try {
+            const actor = browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
+            await actor.sendQuery("lockPage", { showOverlay, message });
+            return { success: true };
+          } catch (e) {
+            return { success: false, error: { code: 11001, message: e.message, recoverable: false } };
+          }
+        },
+
+        async unlockPage(tabId) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          const tab = extension.tabManager.get(resolvedTabId);
+
+          if (!tab) {
+            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+          }
+
+          const browser = tab.browser || tab.nativeTab.linkedBrowser;
+          if (!browser?.browsingContext?.currentWindowGlobal) {
+            return { success: true }; // Nothing to unlock
+          }
+
+          try {
+            const actor = browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
+            await actor.sendQuery("unlockPage", {});
+            return { success: true };
+          } catch (e) {
+            return { success: true }; // Already unlocked
+          }
+        },
       },
     };
   }
@@ -1145,6 +1410,72 @@ this.nevoflux = class extends ExtensionAPI {
       return null;
     }
     return tabTracker.getId(activeTab);
+  }
+
+  /**
+   * Check if a tab is discarded (has "pending" attribute)
+   * @param {object} nativeTab - The native tab element
+   * @returns {boolean} True if tab is discarded
+   */
+  isTabDiscarded(nativeTab) {
+    if (!nativeTab) {
+      return false;
+    }
+    return nativeTab.hasAttribute("pending");
+  }
+
+  /**
+   * Restore a discarded tab using SessionStore.restoreTabContent
+   * This does NOT switch the visible tab - it restores the tab in the background.
+   * @param {object} nativeTab - The native tab element
+   * @param {number} timeout - Maximum time to wait for restoration (ms)
+   * @returns {Promise<boolean>} True if restoration successful
+   */
+  async restoreTabIfNeeded(nativeTab, timeout = DEFAULT_RESTORE_TIMEOUT) {
+    if (!nativeTab) {
+      return false;
+    }
+
+    // Check if tab is actually discarded
+    if (!this.isTabDiscarded(nativeTab)) {
+      return true; // Already restored
+    }
+
+    const { setTimeout: chromeSetTimeout, clearTimeout: chromeClearTimeout } = ChromeUtils.importESModule(
+      "resource://gre/modules/Timer.sys.mjs"
+    );
+
+    return new Promise((resolve) => {
+      let timeoutId;
+
+      const onRestored = () => {
+        if (timeoutId) {
+          chromeClearTimeout(timeoutId);
+        }
+        nativeTab.removeEventListener("SSTabRestored", onRestored);
+        resolve(true);
+      };
+
+      // Set up timeout
+      timeoutId = chromeSetTimeout(() => {
+        nativeTab.removeEventListener("SSTabRestored", onRestored);
+        resolve(false);
+      }, timeout);
+
+      // Listen for restoration complete
+      nativeTab.addEventListener("SSTabRestored", onRestored);
+
+      // Trigger restoration (does NOT switch tabs)
+      try {
+        SessionStore.restoreTabContent(nativeTab);
+      } catch (e) {
+        nativeTab.removeEventListener("SSTabRestored", onRestored);
+        if (timeoutId) {
+          chromeClearTimeout(timeoutId);
+        }
+        resolve(false);
+      }
+    });
   }
 
   async executeInTab(tabId, extension, action, params) {
