@@ -402,7 +402,19 @@ export class nevoflux extends ExtensionAPI {
          * @returns {Promise<void>}
          */
         async lockPage(tabId, options = {}) {
-          throw new Error("lockPage: not yet implemented");
+          const { showOverlay = true, message = "" } = options;
+
+          const nativeTab = getNativeTab(tabId, extension);
+          if (!nativeTab) {
+            throw new Error(`Tab not found: ${tabId}`);
+          }
+
+          const actor = getActor(nativeTab);
+          if (!actor) {
+            throw new Error("Actor not available for this tab");
+          }
+
+          await actor.sendQuery("lockPage", { showOverlay, message });
         },
 
         /**
@@ -411,7 +423,17 @@ export class nevoflux extends ExtensionAPI {
          * @returns {Promise<void>}
          */
         async unlockPage(tabId) {
-          throw new Error("unlockPage: not yet implemented");
+          const nativeTab = getNativeTab(tabId, extension);
+          if (!nativeTab) {
+            throw new Error(`Tab not found: ${tabId}`);
+          }
+
+          const actor = getActor(nativeTab);
+          if (!actor) {
+            throw new Error("Actor not available for this tab");
+          }
+
+          await actor.sendQuery("unlockPage", {});
         },
 
         /**
