@@ -2,10 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-//! Rust bindings for browser.nevoflux Experiment API via NevofluxBridge
+//! Rust bindings for browser.nevoflux API via direct js_sys calls
+//!
+//! Uses the same dynamic JavaScript call approach as browser_tools.rs,
+//! eliminating the need for bridge.js.
 
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::JsFuture;
 
 // ==================== Type Definitions ====================
 
@@ -52,15 +56,21 @@ pub struct PickerResult {
     #[serde(rename = "className")]
     pub class_name: Option<String>,
     pub text: Option<String>,
+    #[serde(default)]
     pub attributes: std::collections::HashMap<String, String>,
+    #[serde(default)]
     pub rect: ElementRect,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ElementRect {
+    #[serde(default)]
     pub top: f64,
+    #[serde(default)]
     pub left: f64,
+    #[serde(default)]
     pub width: f64,
+    #[serde(default)]
     pub height: f64,
 }
 
@@ -68,6 +78,7 @@ pub struct ElementRect {
 pub struct SelectionData {
     pub text: String,
     pub html: String,
+    #[serde(default)]
     pub rect: ElementRect,
     #[serde(rename = "anchorNode")]
     pub anchor_node: String,
@@ -91,166 +102,295 @@ pub struct GetContentOptions {
     pub timeout: Option<u32>,
 }
 
-// ==================== JS Bridge Bindings ====================
+// ==================== Helper Functions ====================
 
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = NevofluxBridge, js_name = isAvailable)]
-    fn js_is_available() -> bool;
+/// Get the browser.nevoflux object
+fn get_nevoflux_api() -> Option<js_sys::Object> {
+    let global = js_sys::global();
 
-    #[wasm_bindgen(js_namespace = NevofluxBridge, js_name = getTabContent, catch)]
-    async fn js_get_tab_content(tab_id: u32, options_json: &str) -> Result<JsValue, JsValue>;
-
-    #[wasm_bindgen(js_namespace = NevofluxBridge, js_name = getTabState, catch)]
-    async fn js_get_tab_state(tab_id: u32) -> Result<JsValue, JsValue>;
-
-    #[wasm_bindgen(js_namespace = NevofluxBridge, js_name = getAllTabs, catch)]
-    async fn js_get_all_tabs() -> Result<JsValue, JsValue>;
-
-    #[wasm_bindgen(js_namespace = NevofluxBridge, js_name = getActiveTab, catch)]
-    async fn js_get_active_tab() -> Result<JsValue, JsValue>;
-
-    #[wasm_bindgen(js_namespace = NevofluxBridge, js_name = pickElement, catch)]
-    async fn js_pick_element(tab_id: u32, options_json: &str) -> Result<JsValue, JsValue>;
-
-    #[wasm_bindgen(js_namespace = NevofluxBridge, js_name = cancelPicker, catch)]
-    async fn js_cancel_picker(tab_id: u32) -> Result<JsValue, JsValue>;
-
-    #[wasm_bindgen(js_namespace = NevofluxBridge, js_name = getSelection, catch)]
-    async fn js_get_selection(tab_id: u32) -> Result<JsValue, JsValue>;
-
-    #[wasm_bindgen(js_namespace = NevofluxBridge, js_name = lockPage, catch)]
-    async fn js_lock_page(tab_id: u32, options_json: &str) -> Result<JsValue, JsValue>;
-
-    #[wasm_bindgen(js_namespace = NevofluxBridge, js_name = unlockPage, catch)]
-    async fn js_unlock_page(tab_id: u32) -> Result<JsValue, JsValue>;
-}
-
-// ==================== API Result Handling ====================
-
-#[derive(Debug, Deserialize)]
-struct ApiResult<T> {
-    success: bool,
-    data: Option<T>,
-    error: Option<String>,
-}
-
-fn parse_result<T: for<'de> Deserialize<'de>>(js_value: JsValue) -> Result<T, String> {
-    let json_str = js_value
-        .as_string()
-        .ok_or_else(|| "Response is not a string".to_string())?;
-
-    let result: ApiResult<T> = serde_json::from_str(&json_str)
-        .map_err(|e| format!("JSON parse error: {}", e))?;
-
-    if result.success {
-        result.data.ok_or_else(|| "No data in response".to_string())
-    } else {
-        Err(result.error.unwrap_or_else(|| "Unknown error".to_string()))
+    let browser = js_sys::Reflect::get(&global, &JsValue::from_str("browser")).ok()?;
+    if browser.is_undefined() || browser.is_null() {
+        return None;
     }
+
+    let nevoflux = js_sys::Reflect::get(&browser, &JsValue::from_str("nevoflux")).ok()?;
+    if nevoflux.is_undefined() || nevoflux.is_null() {
+        return None;
+    }
+
+    nevoflux.dyn_into::<js_sys::Object>().ok()
+}
+
+/// Get the browser.tabs object
+fn get_tabs_api() -> Option<js_sys::Object> {
+    let global = js_sys::global();
+
+    let browser = js_sys::Reflect::get(&global, &JsValue::from_str("browser")).ok()?;
+    if browser.is_undefined() || browser.is_null() {
+        return None;
+    }
+
+    let tabs = js_sys::Reflect::get(&browser, &JsValue::from_str("tabs")).ok()?;
+    if tabs.is_undefined() || tabs.is_null() {
+        return None;
+    }
+
+    tabs.dyn_into::<js_sys::Object>().ok()
+}
+
+/// Call a method on browser.nevoflux dynamically
+async fn call_nevoflux_method(method: &str, args: &[JsValue]) -> Result<JsValue, String> {
+    let nevoflux = get_nevoflux_api()
+        .ok_or_else(|| "browser.nevoflux API not available".to_string())?;
+
+    let func = js_sys::Reflect::get(&nevoflux, &JsValue::from_str(method))
+        .map_err(|_| format!("Method {} not found", method))?;
+
+    if func.is_undefined() || func.is_null() {
+        return Err(format!("Method {} not found on browser.nevoflux", method));
+    }
+
+    let func: js_sys::Function = func.dyn_into()
+        .map_err(|_| format!("{} is not a function", method))?;
+
+    let args_array = js_sys::Array::new();
+    for arg in args {
+        args_array.push(arg);
+    }
+
+    let promise = func.apply(&nevoflux, &args_array)
+        .map_err(|e| format!("Failed to call {}: {:?}", method, e))?;
+
+    if !promise.is_instance_of::<js_sys::Promise>() {
+        return Ok(promise);
+    }
+
+    let promise: js_sys::Promise = promise.dyn_into()
+        .map_err(|_| "Result is not a Promise".to_string())?;
+
+    JsFuture::from(promise)
+        .await
+        .map_err(|e| format!("Promise rejected: {:?}", e))
+}
+
+/// Call a method on browser.tabs dynamically
+async fn call_tabs_method(method: &str, args: &[JsValue]) -> Result<JsValue, String> {
+    let tabs = get_tabs_api()
+        .ok_or_else(|| "browser.tabs API not available".to_string())?;
+
+    let func = js_sys::Reflect::get(&tabs, &JsValue::from_str(method))
+        .map_err(|_| format!("Method {} not found", method))?;
+
+    if func.is_undefined() || func.is_null() {
+        return Err(format!("Method {} not found on browser.tabs", method));
+    }
+
+    let func: js_sys::Function = func.dyn_into()
+        .map_err(|_| format!("{} is not a function", method))?;
+
+    let args_array = js_sys::Array::new();
+    for arg in args {
+        args_array.push(arg);
+    }
+
+    let promise = func.apply(&tabs, &args_array)
+        .map_err(|e| format!("Failed to call {}: {:?}", method, e))?;
+
+    if !promise.is_instance_of::<js_sys::Promise>() {
+        return Ok(promise);
+    }
+
+    let promise: js_sys::Promise = promise.dyn_into()
+        .map_err(|_| "Result is not a Promise".to_string())?;
+
+    JsFuture::from(promise)
+        .await
+        .map_err(|e| format!("Promise rejected: {:?}", e))
+}
+
+/// Convert JsValue to JSON and parse
+fn parse_js_value<T: for<'de> Deserialize<'de>>(value: JsValue) -> Result<T, String> {
+    let json_str = js_sys::JSON::stringify(&value)
+        .map_err(|_| "Failed to stringify result".to_string())?
+        .as_string()
+        .ok_or_else(|| "Stringify returned non-string".to_string())?;
+
+    serde_json::from_str(&json_str)
+        .map_err(|e| format!("JSON parse error: {}", e))
+}
+
+/// Convert Rust value to JsValue
+fn to_js_value<T: Serialize>(value: &T) -> Result<JsValue, String> {
+    let json_str = serde_json::to_string(value)
+        .map_err(|e| format!("Serialize error: {}", e))?;
+
+    js_sys::JSON::parse(&json_str)
+        .map_err(|_| "Failed to parse JSON to JsValue".to_string())
 }
 
 // ==================== Public API ====================
 
-/// Check if NevofluxBridge is available
+/// Check if browser.nevoflux API is available
 pub fn is_available() -> bool {
-    js_is_available()
+    get_nevoflux_api().is_some()
 }
 
 /// Get tab content as markdown/html/text (auto-restores discarded tabs)
 pub async fn get_tab_content(tab_id: u32, options: Option<GetContentOptions>) -> Result<TabContent, String> {
-    let options_json = match options {
-        Some(opts) => serde_json::to_string(&opts).unwrap_or_else(|_| "{}".to_string()),
-        None => "{}".to_string(),
+    let tab_id_js = JsValue::from_f64(tab_id as f64);
+    let options_js = match options {
+        Some(opts) => to_js_value(&opts)?,
+        None => JsValue::UNDEFINED,
     };
 
-    let result = js_get_tab_content(tab_id, &options_json)
-        .await
-        .map_err(|e| format!("JS error: {:?}", e))?;
+    let result = call_nevoflux_method("getTabContent", &[tab_id_js, options_js]).await?;
 
-    parse_result(result)
+    // Check for error response
+    if let Ok(obj) = result.clone().dyn_into::<js_sys::Object>() {
+        if let Ok(success) = js_sys::Reflect::get(&obj, &JsValue::from_str("success")) {
+            if success == JsValue::FALSE {
+                if let Ok(error) = js_sys::Reflect::get(&obj, &JsValue::from_str("error")) {
+                    if let Ok(error_obj) = error.dyn_into::<js_sys::Object>() {
+                        if let Ok(msg) = js_sys::Reflect::get(&error_obj, &JsValue::from_str("message")) {
+                            return Err(msg.as_string().unwrap_or_else(|| "Unknown error".to_string()));
+                        }
+                    }
+                }
+                return Err("API returned failure".to_string());
+            }
+        }
+    }
+
+    parse_js_value(result)
 }
 
 /// Get tab state (discarded, loading, complete)
 pub async fn get_tab_state(tab_id: u32) -> Result<TabState, String> {
-    let result = js_get_tab_state(tab_id)
-        .await
-        .map_err(|e| format!("JS error: {:?}", e))?;
-
-    parse_result(result)
+    let tab_id_js = JsValue::from_f64(tab_id as f64);
+    let result = call_nevoflux_method("getTabState", &[tab_id_js]).await?;
+    parse_js_value(result)
 }
 
 /// Get all tabs in the current window
 pub async fn get_all_tabs() -> Result<Vec<TabInfo>, String> {
-    let result = js_get_all_tabs()
-        .await
-        .map_err(|e| format!("JS error: {:?}", e))?;
+    let query = js_sys::Object::new();
+    let result = call_tabs_method("query", &[query.into()]).await?;
 
-    parse_result(result)
+    let tabs: Vec<serde_json::Value> = parse_js_value(result)?;
+
+    let tab_infos: Vec<TabInfo> = tabs.into_iter().filter_map(|tab| {
+        Some(TabInfo {
+            id: tab.get("id")?.as_u64()? as u32,
+            url: tab.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            title: tab.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            active: tab.get("active").and_then(|v| v.as_bool()).unwrap_or(false),
+            discarded: tab.get("discarded").and_then(|v| v.as_bool()).unwrap_or(false),
+            fav_icon_url: tab.get("favIconUrl").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        })
+    }).collect();
+
+    Ok(tab_infos)
 }
 
 /// Get current active tab
 pub async fn get_active_tab() -> Result<TabInfo, String> {
-    let result = js_get_active_tab()
-        .await
-        .map_err(|e| format!("JS error: {:?}", e))?;
+    let query = js_sys::Object::new();
+    js_sys::Reflect::set(&query, &JsValue::from_str("active"), &JsValue::TRUE)
+        .map_err(|_| "Failed to set active property")?;
+    js_sys::Reflect::set(&query, &JsValue::from_str("currentWindow"), &JsValue::TRUE)
+        .map_err(|_| "Failed to set currentWindow property")?;
 
-    parse_result(result)
+    let result = call_tabs_method("query", &[query.into()]).await?;
+
+    let tabs: Vec<serde_json::Value> = parse_js_value(result)?;
+
+    let tab = tabs.first().ok_or_else(|| "No active tab found".to_string())?;
+
+    Ok(TabInfo {
+        id: tab.get("id").and_then(|v| v.as_u64()).ok_or("No tab id")? as u32,
+        url: tab.get("url").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        title: tab.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        active: true,
+        discarded: tab.get("discarded").and_then(|v| v.as_bool()).unwrap_or(false),
+        fav_icon_url: tab.get("favIconUrl").and_then(|v| v.as_str()).map(|s| s.to_string()),
+    })
 }
 
 /// Start element picker and wait for user selection
 pub async fn pick_element(tab_id: u32, hint: Option<&str>) -> Result<PickerResult, String> {
-    let options = if let Some(h) = hint {
-        format!(r#"{{"hint":"{}"}}"#, h)
-    } else {
-        "{}".to_string()
-    };
+    let tab_id_js = JsValue::from_f64(tab_id as f64);
 
-    let result = js_pick_element(tab_id, &options)
-        .await
-        .map_err(|e| format!("JS error: {:?}", e))?;
+    let options = js_sys::Object::new();
+    if let Some(h) = hint {
+        js_sys::Reflect::set(&options, &JsValue::from_str("hint"), &JsValue::from_str(h))
+            .map_err(|_| "Failed to set hint")?;
+    }
 
-    parse_result(result)
+    let result = call_nevoflux_method("pickElement", &[tab_id_js, options.into()]).await?;
+
+    // pickElement returns the data directly or wrapped in success/data
+    if let Ok(obj) = result.clone().dyn_into::<js_sys::Object>() {
+        // Check if it's a wrapper with data field
+        if let Ok(data) = js_sys::Reflect::get(&obj, &JsValue::from_str("data")) {
+            if !data.is_undefined() {
+                return parse_js_value(data);
+            }
+        }
+    }
+
+    parse_js_value(result)
 }
 
 /// Cancel active element picker
 pub async fn cancel_picker(tab_id: u32) -> Result<(), String> {
-    js_cancel_picker(tab_id)
-        .await
-        .map_err(|e| format!("JS error: {:?}", e))?;
-
+    let tab_id_js = JsValue::from_f64(tab_id as f64);
+    call_nevoflux_method("cancelPicker", &[tab_id_js]).await?;
     Ok(())
 }
 
 /// Get current text selection from a tab
 pub async fn get_selection(tab_id: u32) -> Result<Option<SelectionData>, String> {
-    let result = js_get_selection(tab_id)
-        .await
-        .map_err(|e| format!("JS error: {:?}", e))?;
+    let tab_id_js = JsValue::from_f64(tab_id as f64);
+    let result = call_nevoflux_method("getSelection", &[tab_id_js]).await?;
 
-    parse_result(result)
+    if result.is_null() || result.is_undefined() {
+        return Ok(None);
+    }
+
+    // Check for success wrapper
+    if let Ok(obj) = result.clone().dyn_into::<js_sys::Object>() {
+        if let Ok(data) = js_sys::Reflect::get(&obj, &JsValue::from_str("data")) {
+            if data.is_null() || data.is_undefined() {
+                return Ok(None);
+            }
+            if !data.is_undefined() {
+                return Ok(Some(parse_js_value(data)?));
+            }
+        }
+    }
+
+    Ok(Some(parse_js_value(result)?))
 }
 
 /// Lock page to prevent user interaction
 pub async fn lock_page(tab_id: u32, message: Option<&str>) -> Result<(), String> {
-    let options = if let Some(m) = message {
-        format!(r#"{{"showOverlay":true,"message":"{}"}}"#, m)
-    } else {
-        r#"{"showOverlay":true}"#.to_string()
-    };
+    let tab_id_js = JsValue::from_f64(tab_id as f64);
 
-    js_lock_page(tab_id, &options)
-        .await
-        .map_err(|e| format!("JS error: {:?}", e))?;
+    let options = js_sys::Object::new();
+    js_sys::Reflect::set(&options, &JsValue::from_str("showOverlay"), &JsValue::TRUE)
+        .map_err(|_| "Failed to set showOverlay")?;
+    if let Some(m) = message {
+        js_sys::Reflect::set(&options, &JsValue::from_str("message"), &JsValue::from_str(m))
+            .map_err(|_| "Failed to set message")?;
+    }
 
+    call_nevoflux_method("lockPage", &[tab_id_js, options.into()]).await?;
     Ok(())
 }
 
 /// Unlock page after agent operations
 pub async fn unlock_page(tab_id: u32) -> Result<(), String> {
-    js_unlock_page(tab_id)
-        .await
-        .map_err(|e| format!("JS error: {:?}", e))?;
-
+    let tab_id_js = JsValue::from_f64(tab_id as f64);
+    call_nevoflux_method("unlockPage", &[tab_id_js]).await?;
     Ok(())
 }
