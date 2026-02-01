@@ -17,6 +17,7 @@
 //! - `mock/` - Mock mode for development/testing
 //! - `utils/` - Utility functions
 
+pub mod bindings;
 mod components;
 mod context;
 mod messaging;
