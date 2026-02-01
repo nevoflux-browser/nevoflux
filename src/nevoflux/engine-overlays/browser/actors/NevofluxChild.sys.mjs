@@ -3144,36 +3144,9 @@ export class NevofluxChild extends JSWindowActorChild {
   _createLockOverlay(message) {
     if (this._lockOverlay) return;
 
+    // Create overlay container
     this._lockOverlay = this.doc.createElement("div");
     this._lockOverlay.id = "nevoflux-lock-overlay";
-    this._lockOverlay.innerHTML = `
-      <div style="
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 16px;
-      ">
-        <div style="
-          width: 48px;
-          height: 48px;
-          border: 3px solid rgba(255,255,255,0.3);
-          border-top-color: white;
-          border-radius: 50%;
-          animation: nevoflux-spin 1s linear infinite;
-        "></div>
-        <div style="
-          color: white;
-          font-size: 14px;
-          font-family: system-ui, sans-serif;
-        ">${message || "Agent working..."}</div>
-      </div>
-      <style>
-        @keyframes nevoflux-spin {
-          to { transform: rotate(360deg); }
-        }
-      </style>
-    `;
     this._lockOverlay.style.cssText = `
       position: fixed;
       inset: 0;
@@ -3183,6 +3156,50 @@ export class NevofluxChild extends JSWindowActorChild {
       align-items: center;
       justify-content: center;
     `;
+
+    // Create inner container
+    const container = this.doc.createElement("div");
+    container.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+    `;
+
+    // Create spinner
+    const spinner = this.doc.createElement("div");
+    spinner.style.cssText = `
+      width: 48px;
+      height: 48px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: nevoflux-spin 1s linear infinite;
+    `;
+
+    // Create message (using textContent to prevent XSS)
+    const messageEl = this.doc.createElement("div");
+    messageEl.style.cssText = `
+      color: white;
+      font-size: 14px;
+      font-family: system-ui, sans-serif;
+    `;
+    messageEl.textContent = message || "Agent working...";
+
+    // Create style for animation
+    const style = this.doc.createElement("style");
+    style.textContent = `
+      @keyframes nevoflux-spin {
+        to { transform: rotate(360deg); }
+      }
+    `;
+
+    // Assemble
+    container.appendChild(spinner);
+    container.appendChild(messageEl);
+    this._lockOverlay.appendChild(container);
+    this._lockOverlay.appendChild(style);
 
     this.doc.body.appendChild(this._lockOverlay);
   }

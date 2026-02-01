@@ -109,6 +109,7 @@ fn handle_chat_message(ctx: AppContext, message: ChatMessage) {
         ChatMessage::ChatMessage(_) |
         ChatMessage::SkillCommand(_) |
         ChatMessage::StopGeneration(_) |
+        ChatMessage::Cancel(_) |
         ChatMessage::PermissionResponse(_) |
         ChatMessage::PluginCommand(_) |
         ChatMessage::SystemCommand(_) |

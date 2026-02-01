@@ -78,6 +78,12 @@ pub struct StopGenerationPayload {
     pub session_id: String,
 }
 
+/// Cancel request (user interruption)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CancelPayload {
+    pub session_id: String,
+}
+
 /// Permission response from user
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PermissionResponsePayload {
@@ -408,6 +414,8 @@ pub enum ChatMessage {
     SkillCommand(SkillCommandPayload),
     /// Stop generation
     StopGeneration(StopGenerationPayload),
+    /// Cancel request (user interruption)
+    Cancel(CancelPayload),
     /// Permission response
     PermissionResponse(PermissionResponsePayload),
     /// Plugin command
@@ -450,6 +458,7 @@ impl ChatMessage {
             Self::ChatMessage(_) |
             Self::SkillCommand(_) |
             Self::StopGeneration(_) |
+            Self::Cancel(_) |
             Self::PermissionResponse(_) |
             Self::PluginCommand(_) |
             Self::SystemCommand(_) |
@@ -476,6 +485,7 @@ impl ChatMessage {
             Self::ChatMessage(p) => Some(&p.session_id),
             Self::SkillCommand(p) => Some(&p.session_id),
             Self::StopGeneration(p) => Some(&p.session_id),
+            Self::Cancel(p) => Some(&p.session_id),
             Self::PermissionResponse(_) => None,
             Self::PluginCommand(_) => None,
             Self::SystemCommand(_) => None,
@@ -541,6 +551,14 @@ mod tests {
     #[test]
     fn test_stop_generation_direction_to_agent() {
         let msg = ChatMessage::StopGeneration(StopGenerationPayload {
+            session_id: "s1".to_string(),
+        });
+        assert_eq!(msg.direction(), MessageDirection::ToAgent);
+    }
+
+    #[test]
+    fn test_cancel_direction_to_agent() {
+        let msg = ChatMessage::Cancel(CancelPayload {
             session_id: "s1".to_string(),
         });
         assert_eq!(msg.direction(), MessageDirection::ToAgent);
@@ -732,6 +750,14 @@ mod tests {
     #[test]
     fn test_session_id_stop_generation() {
         let msg = ChatMessage::StopGeneration(StopGenerationPayload {
+            session_id: "test-session".to_string(),
+        });
+        assert_eq!(msg.session_id(), Some("test-session"));
+    }
+
+    #[test]
+    fn test_session_id_cancel() {
+        let msg = ChatMessage::Cancel(CancelPayload {
             session_id: "test-session".to_string(),
         });
         assert_eq!(msg.session_id(), Some("test-session"));
@@ -935,6 +961,16 @@ mod tests {
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("stop_generation"));
+    }
+
+    #[test]
+    fn test_cancel_serialization() {
+        let msg = ChatMessage::Cancel(CancelPayload {
+            session_id: "session-1".to_string(),
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"cancel\""));
+        assert!(json.contains("session-1"));
     }
 
     #[test]

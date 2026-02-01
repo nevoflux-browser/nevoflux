@@ -9,6 +9,13 @@
  * JSWindowActors for page interaction capabilities.
  */
 
+const { ExtensionCommon } = ChromeUtils.importESModule(
+  "resource://gre/modules/ExtensionCommon.sys.mjs"
+);
+const { ExtensionAPI } = ChromeUtils.importESModule(
+  "resource://gre/modules/ExtensionCommon.sys.mjs"
+);
+
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {

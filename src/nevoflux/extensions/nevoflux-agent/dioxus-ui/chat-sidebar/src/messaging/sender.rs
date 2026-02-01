@@ -56,6 +56,7 @@ pub async fn send_to_agent(message: ChatMessage) -> Result<(), String> {
     let message_type = match &message {
         ChatMessage::ChatMessage(_) => "chat_message",
         ChatMessage::StopGeneration(_) => "stop_generation",
+        ChatMessage::Cancel(_) => "cancel",
         ChatMessage::PermissionResponse(_) => "permission_response",
         ChatMessage::SkillCommand(_) => "skill_command",
         ChatMessage::PluginCommand(_) => "plugin_command",
@@ -110,6 +111,15 @@ pub async fn send_chat_message(
 /// Send stop generation command
 pub async fn send_stop_generation(session_id: &str) -> Result<(), String> {
     let message = ChatMessage::StopGeneration(StopGenerationPayload {
+        session_id: session_id.to_string(),
+    });
+
+    send_to_agent(message).await
+}
+
+/// Send cancel command (user interruption)
+pub async fn send_cancel(session_id: &str) -> Result<(), String> {
+    let message = ChatMessage::Cancel(CancelPayload {
         session_id: session_id.to_string(),
     });
 

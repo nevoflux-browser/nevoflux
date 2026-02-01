@@ -1150,20 +1150,95 @@ this.nevoflux = class extends ExtensionAPI {
   async executeInTab(tabId, extension, action, params) {
     console.log(`[ext-nevoflux] executeInTab: action=${action}, tabId=${tabId}, params=`, JSON.stringify(params));
     const tab = extension.tabManager.get(tabId);
-    if (!tab?.browser) {
+    if (!tab) {
       console.log("[ext-nevoflux] executeInTab: Tab not found");
       return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
     }
 
     try {
-      const bc = tab.browser.browsingContext;
-      const cwg = bc?.currentWindowGlobal;
-      console.log(`[ext-nevoflux] executeInTab: bc=${!!bc}, cwg=${!!cwg}`);
-      if (!cwg) {
-        console.log("[ext-nevoflux] executeInTab: No currentWindowGlobal");
-        return { success: false, error: { code: 5002, message: "No currentWindowGlobal available", recoverable: true } };
+      // Get the browser - try multiple approaches
+      let browser = tab.browser || tab.linkedBrowser;
+      const nativeTab = tab.nativeTab;
+
+      console.log(`[ext-nevoflux] executeInTab: browser=${!!browser}, nativeTab=${!!nativeTab}`);
+
+      // If no browser directly, try to get it from the native tab
+      if (!browser && nativeTab) {
+        browser = nativeTab.linkedBrowser;
+        console.log(`[ext-nevoflux] executeInTab: got browser from nativeTab.linkedBrowser=${!!browser}`);
       }
-      const actor = cwg.getActor("Nevoflux");
+
+      if (!browser) {
+        console.log("[ext-nevoflux] executeInTab: No browser element found");
+        return { success: false, error: { code: 3002, message: "No browser element found", recoverable: false } };
+      }
+
+      let bc = browser.browsingContext;
+      console.log(`[ext-nevoflux] executeInTab: initial bc=${!!bc}`);
+
+      // If no browsingContext, the tab needs to be activated first
+      if (!bc) {
+        const isPending = nativeTab?.hasAttribute("pending");
+        const isDiscarded = nativeTab?.hasAttribute("discarded");
+        console.log(`[ext-nevoflux] executeInTab: No browsingContext, isPending=${isPending}, isDiscarded=${isDiscarded}`);
+
+        return {
+          success: false,
+          error: {
+            code: 5004,
+            message: "Tab not loaded",
+            recoverable: true,
+            reason: isPending ? "pending" : (isDiscarded ? "discarded" : "unknown"),
+            suggestion: "Use activate_tab to load the tab first"
+          }
+        };
+      }
+
+      // Check if browsing context is discarded
+      if (bc.isDiscarded) {
+        console.log("[ext-nevoflux] executeInTab: BrowsingContext is discarded");
+        return { success: false, error: { code: 5003, message: "BrowsingContext is discarded", recoverable: false } };
+      }
+
+      // Strategy 1: Try currentWindowGlobal first (fast path for active tabs)
+      let windowGlobal = bc.currentWindowGlobal;
+      console.log(`[ext-nevoflux] executeInTab: bc=${!!bc}, cwg=${!!windowGlobal}`);
+
+      // Strategy 2: If null, try getWindowGlobals() to find any valid WindowGlobal
+      if (!windowGlobal) {
+        console.log("[ext-nevoflux] executeInTab: currentWindowGlobal is null, trying getWindowGlobals()");
+        const windowGlobals = bc.getWindowGlobals();
+        console.log(`[ext-nevoflux] executeInTab: found ${windowGlobals.length} windowGlobals`);
+
+        // Find a valid (non-closed, non-BFCache) window global
+        windowGlobal = windowGlobals.find(wg => !wg.isClosed && !wg.isInBFCache);
+
+        if (windowGlobal) {
+          console.log(`[ext-nevoflux] executeInTab: using windowGlobal from getWindowGlobals()`);
+        }
+      }
+
+      // Strategy 3: If still null, wait briefly for tab transition
+      if (!windowGlobal) {
+        console.log("[ext-nevoflux] executeInTab: waiting for windowGlobal...");
+        windowGlobal = await this.waitForWindowGlobal(bc, 500);
+      }
+
+      // Final check
+      if (!windowGlobal) {
+        console.log("[ext-nevoflux] executeInTab: No windowGlobal available after all strategies");
+        return {
+          success: false,
+          error: {
+            code: 5002,
+            message: "No windowGlobal available (tab may be unloaded)",
+            recoverable: true,
+            suggestion: "Try activating the tab first"
+          }
+        };
+      }
+
+      const actor = windowGlobal.getActor("Nevoflux");
       console.log(`[ext-nevoflux] executeInTab: actor=${!!actor}, sending query...`);
       const result = await actor.sendQuery("execute", { action, params });
       console.log(`[ext-nevoflux] executeInTab: result=`, result);
@@ -1172,6 +1247,56 @@ this.nevoflux = class extends ExtensionAPI {
       console.error(`[ext-nevoflux] executeInTab: Error - ${e.message}`, e.stack);
       return { success: false, error: { code: 5001, message: e.message, recoverable: false } };
     }
+  }
+
+  async waitForWindowGlobal(bc, maxWaitMs = 500) {
+    const { setTimeout: chromeSetTimeout } = ChromeUtils.importESModule(
+      "resource://gre/modules/Timer.sys.mjs"
+    );
+
+    const waitInterval = 50;
+    let waited = 0;
+
+    while (waited < maxWaitMs) {
+      await new Promise(resolve => chromeSetTimeout(resolve, waitInterval));
+      waited += waitInterval;
+
+      // Check currentWindowGlobal first
+      if (bc.currentWindowGlobal) {
+        return bc.currentWindowGlobal;
+      }
+
+      // Also check getWindowGlobals()
+      const windowGlobals = bc.getWindowGlobals();
+      const validWg = windowGlobals.find(wg => !wg.isClosed && !wg.isInBFCache);
+      if (validWg) {
+        return validWg;
+      }
+    }
+
+    return null;
+  }
+
+  async waitForBrowsingContext(browser, maxWaitMs = 2000) {
+    const { setTimeout: chromeSetTimeout } = ChromeUtils.importESModule(
+      "resource://gre/modules/Timer.sys.mjs"
+    );
+
+    const waitInterval = 100;
+    let waited = 0;
+
+    while (waited < maxWaitMs) {
+      if (browser.browsingContext) {
+        console.log(`[ext-nevoflux] waitForBrowsingContext: got browsingContext after ${waited}ms`);
+        return browser.browsingContext;
+      }
+
+      await new Promise(resolve => chromeSetTimeout(resolve, waitInterval));
+      waited += waitInterval;
+    }
+
+    console.log(`[ext-nevoflux] waitForBrowsingContext: timeout after ${maxWaitMs}ms`);
+    return null;
   }
 
   waitForLoad(browser, waitUntil, timeout) {
