@@ -1,5 +1,8 @@
-import init, * as bindings from './chat-sidebar-cb59ac12d5236340.js';
-const wasm = await init({ module_or_path: './chat-sidebar-cb59ac12d5236340_bg.wasm' });
+// Load NevofluxBridge before WASM
+await import('./bridge.js');
+
+import init, * as bindings from './chat-sidebar-cc625d972dc9a3bf.js';
+const wasm = await init({ module_or_path: './chat-sidebar-cc625d972dc9a3bf_bg.wasm' });
 
 
 window.wasmBindings = bindings;
