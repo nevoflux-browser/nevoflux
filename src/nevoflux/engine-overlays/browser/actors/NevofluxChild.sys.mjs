@@ -293,6 +293,7 @@ export class NevofluxChild extends JSWindowActorChild {
       mouseDown: () => this.mouseDown(safeParams),
       mouseUp: () => this.mouseUp(safeParams),
       wheel: () => this.wheel(safeParams),
+      scroll: () => this.scroll(safeParams),
       dblclick: () => this.dblclick(safeParams),
       drag: () => this.drag(safeParams),
       focus: () => this.focus(safeParams),
@@ -1712,6 +1713,39 @@ export class NevofluxChild extends JSWindowActorChild {
         domUtils.sendWheelEvent(x, y, deltaX, deltaY, 0, 0, 0, 0, 0, 0);
       }
       return { success: true };
+    } catch (e) {
+      return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+    }
+  }
+
+  scroll({ direction = "down", amount = "page" }) {
+    const win = this.currentWin;
+    if (!win) {
+      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+    }
+
+    try {
+      let scrollPx;
+      if (amount === "page") {
+        scrollPx = win.innerHeight * 0.85; // 85% of viewport to keep some context
+      } else if (amount === "half") {
+        scrollPx = win.innerHeight * 0.5;
+      } else {
+        const parsed = parseInt(amount, 10);
+        scrollPx = isNaN(parsed) ? win.innerHeight : parsed;
+      }
+
+      if (direction === "up") scrollPx = -scrollPx;
+
+      win.scrollBy({ top: scrollPx, behavior: "instant" });
+
+      const doc = this.currentDoc;
+      return {
+        success: true,
+        scrollTop: Math.round(win.scrollY || 0),
+        scrollHeight: Math.round(doc?.documentElement?.scrollHeight || 0),
+        viewportHeight: win.innerHeight,
+      };
     } catch (e) {
       return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
     }

@@ -416,6 +416,14 @@
           "showOverlay": { "type": "boolean", "optional": true },
           "message": { "type": "string", "optional": true }
         }
+      },
+      {
+        "id": "ScrollOptions",
+        "type": "object",
+        "properties": {
+          "direction": { "type": "string", "enum": ["up", "down"], "optional": true },
+          "amount": { "type": "string", "optional": true, "description": "page, half, or pixel amount" }
+        }
       }
     ],
     "functions": [
@@ -1241,6 +1249,17 @@
         "description": "Unlock page after agent operations",
         "parameters": [
           { "name": "tabId", "type": "integer", "optional": true }
+        ],
+        "returns": { "$ref": "ApiResult" }
+      },
+      {
+        "name": "scroll",
+        "type": "function",
+        "async": "promise",
+        "description": "Scroll page up or down",
+        "parameters": [
+          { "name": "tabId", "type": "integer", "optional": true },
+          { "name": "options", "$ref": "ScrollOptions", "optional": true }
         ],
         "returns": { "$ref": "ApiResult" }
       }
