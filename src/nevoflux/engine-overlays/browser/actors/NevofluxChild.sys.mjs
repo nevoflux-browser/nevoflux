@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+// Import Turndown for HTML to Markdown conversion (with GFM tables support)
+import { TurndownService, gfm } from "resource:///actors/Turndown.sys.mjs";
+
 // Lazy getter for accessibility service
 const lazy = {};
 ChromeUtils.defineLazyGetter(lazy, "a11yService", () => {
@@ -418,15 +421,7 @@ export class NevofluxChild extends JSWindowActorChild {
               return childContent;
             }
 
-            // Mark DOM node as seen
-            if (domNode && domNode.nodeType === 1) {
-              seenElements.add(domNode);
-            }
-
-            const refId = `e${refCounter++}`;
-            a11yCount++;
-
-            // Get bounding box
+            // Get bounding box early for zero-area filtering
             let rect = null;
             try {
               if (domNode && domNode.getBoundingClientRect) {
@@ -439,6 +434,33 @@ export class NevofluxChild extends JSWindowActorChild {
                 };
               }
             } catch (e) { /* ignore */ }
+
+            // Skip zero-area elements in interactive mode (not visible, can't be clicked)
+            if (interactive && rect && rect.width === 0 && rect.height === 0) {
+              // Still traverse children - they might be visible
+              let childContent = "";
+              const childCount = accessible.childCount || 0;
+              for (let i = 0; i < childCount; i++) {
+                try {
+                  const child = accessible.getChildAt(i);
+                  childContent += traverseA11y(child, currentDepth);
+                } catch (e) { /* ignore */ }
+              }
+              return childContent;
+            }
+
+            // Skip elements outside viewport in interactive mode
+            if (interactive && rect && !self._isInViewport(rect, win)) {
+              return "";  // Don't traverse children either - they're off-screen too
+            }
+
+            // Mark DOM node as seen
+            if (domNode && domNode.nodeType === 1) {
+              seenElements.add(domNode);
+            }
+
+            const refId = `e${refCounter++}`;
+            a11yCount++;
 
             // Get states
             let states = {};
@@ -461,6 +483,7 @@ export class NevofluxChild extends JSWindowActorChild {
               selector,
               role: roleName,
               name: (name || "").slice(0, 50),
+              ...(rect && { rect }),  // Include bounding box if available
             };
 
             const indent = "  ".repeat(currentDepth);
@@ -549,6 +572,30 @@ export class NevofluxChild extends JSWindowActorChild {
 
       const domElements = scanDomFallback();
       for (const { el, text, source } of domElements) {
+        // Get bounding box for DOM fallback elements
+        let rect = null;
+        try {
+          if (el.getBoundingClientRect) {
+            const r = el.getBoundingClientRect();
+            rect = {
+              x: Math.round(r.x),
+              y: Math.round(r.y),
+              width: Math.round(r.width),
+              height: Math.round(r.height),
+            };
+          }
+        } catch (e) { /* ignore */ }
+
+        // Skip zero-area elements in interactive mode
+        if (interactive && rect && rect.width === 0 && rect.height === 0) {
+          continue;
+        }
+
+        // Skip elements outside viewport in interactive mode
+        if (interactive && rect && !self._isInViewport(rect, win)) {
+          continue;
+        }
+
         seenElements.add(el);
 
         const refId = `e${refCounter++}`;
@@ -561,6 +608,7 @@ export class NevofluxChild extends JSWindowActorChild {
           selector: self.generateSelector(el),
           role,
           name: (text || "").slice(0, 50),
+          ...(rect && { rect }),  // Include bounding box if available
         };
 
         // Append to tree output
@@ -593,12 +641,41 @@ export class NevofluxChild extends JSWindowActorChild {
             .join("");
         }
 
+        // Get bounding box for legacy DOM fallback
+        let rect = null;
+        try {
+          if (el.getBoundingClientRect) {
+            const r = el.getBoundingClientRect();
+            rect = {
+              x: Math.round(r.x),
+              y: Math.round(r.y),
+              width: Math.round(r.width),
+              height: Math.round(r.height),
+            };
+          }
+        } catch (e) { /* ignore */ }
+
+        // Skip zero-area elements in interactive mode - still traverse children
+        if (interactive && rect && rect.width === 0 && rect.height === 0) {
+          return Array.from(el.children || [])
+            .map(c => buildTree(c, currentDepth))
+            .filter(Boolean)
+            .join("");
+        }
+
+        // Skip elements outside viewport in interactive mode
+        if (interactive && rect && !self._isInViewport(rect, win)) {
+          return "";  // Off-screen, skip entirely
+        }
+
         const refId = `e${refCounter++}`;
+
         // Simplified refs structure: only essential fields for agent interaction
         refs[refId] = {
           selector: self.generateSelector(el),
           role,
           name: (name || "").slice(0, 50),
+          ...(rect && { rect }),  // Include bounding box if available
         };
 
         const indent = "  ".repeat(currentDepth);
@@ -638,62 +715,133 @@ export class NevofluxChild extends JSWindowActorChild {
     }
   }
 
-  // Helper to check if element is explicitly hidden (blacklist approach)
-  // Only filter elements that are definitively hidden, preserve uncertain cases
+  // Helper to check if element is hidden
   _isHiddenElement(el, win) {
     try {
       const style = win.getComputedStyle(el);
-      // Only filter explicitly hidden elements
       if (style.display === "none") return true;
       if (style.visibility === "hidden") return true;
-      // Everything else is considered visible (including opacity:0, zero-size, out of viewport)
+      if (style.opacity === "0") return true;
+      if (el.getAttribute("aria-hidden") === "true") return true;
       return false;
     } catch (e) {
       return false; // On error, assume visible
     }
   }
 
-  async screenshot({ fullPage = false, type = "png", quality = 80 }) {
+  /**
+   * Check if element is visible in the current viewport.
+   * Three checks: geometric (in viewport + has area), style (not hidden), obstruction (center point hit test).
+   * @param {Element} el - DOM element
+   * @param {Window} win - Window object
+   * @returns {boolean} true if element is visible in viewport
+   */
+  _isViewportVisible(el, win) {
+    try {
+      // 1. Geometric: element must be in viewport with non-zero dimensions
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return false;
+      const vw = win.innerWidth;
+      const vh = win.innerHeight;
+      // Element must overlap with viewport
+      if (rect.bottom <= 0 || rect.top >= vh || rect.right <= 0 || rect.left >= vw) return false;
+
+      // 2. Style: not explicitly hidden
+      const style = win.getComputedStyle(el);
+      if (style.display === "none") return false;
+      if (style.visibility === "hidden") return false;
+      if (parseFloat(style.opacity) === 0) return false;
+
+      // 3. Obstruction: center point hit test
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      // Clamp to viewport bounds
+      const testX = Math.max(0, Math.min(centerX, vw - 1));
+      const testY = Math.max(0, Math.min(centerY, vh - 1));
+      const topEl = this.currentDoc.elementFromPoint(testX, testY);
+      if (!topEl) return false;
+      // Element is visible if hit test returns itself or a descendant
+      if (topEl !== el && !el.contains(topEl)) return false;
+
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Check if a bounding rect overlaps with the viewport
+  _isInViewport(rect, win) {
+    if (!rect || !win) return true; // If no rect, assume visible
+    const vw = win.innerWidth;
+    const vh = win.innerHeight;
+    // Element is outside viewport if entirely above, below, left, or right
+    if (rect.x + rect.width <= 0) return false;  // entirely left of viewport
+    if (rect.y + rect.height <= 0) return false;  // entirely above viewport
+    if (rect.x >= vw) return false;                // entirely right of viewport
+    if (rect.y >= vh) return false;                // entirely below viewport
+    return true;
+  }
+
+  async screenshot({ fullPage = false, type = "jpeg", quality = 60, maxWidth = 1280 }) {
     const win = this.contentWindow;
     const doc = this.document;
 
     try {
-      // Calculate dimensions
-      const width = fullPage ? doc.documentElement.scrollWidth : win.innerWidth;
-      const height = fullPage ? doc.documentElement.scrollHeight : win.innerHeight;
+      // Calculate source dimensions
+      const srcWidth = fullPage ? doc.documentElement.scrollWidth : win.innerWidth;
+      const srcHeight = fullPage ? doc.documentElement.scrollHeight : win.innerHeight;
 
-      // Create canvas
-      const canvas = doc.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
+      // First capture at full resolution
+      const srcCanvas = doc.createElement("canvas");
+      srcCanvas.width = srcWidth;
+      srcCanvas.height = srcHeight;
+      const srcCtx = srcCanvas.getContext("2d");
 
       // Use drawWindow (privileged Firefox API available in JSWindowActors)
-      // This captures the actual rendered content
       if (fullPage) {
-        // For full page, capture entire document
-        ctx.drawWindow(win, 0, 0, width, height, "rgb(255,255,255)");
+        srcCtx.drawWindow(win, 0, 0, srcWidth, srcHeight, "rgb(255,255,255)");
       } else {
-        // For viewport only
         const scrollX = win.scrollX;
         const scrollY = win.scrollY;
-        ctx.drawWindow(win, scrollX, scrollY, width, height, "rgb(255,255,255)");
+        srcCtx.drawWindow(win, scrollX, scrollY, srcWidth, srcHeight, "rgb(255,255,255)");
       }
 
-      // Convert to data URL
-      const mimeType = type === "jpeg" ? "image/jpeg" : "image/png";
-      const qualityArg = type === "jpeg" ? quality / 100 : undefined;
-      const dataUrl = canvas.toDataURL(mimeType, qualityArg);
+      // Downscale if needed to reduce size for LLM token efficiency
+      let outputCanvas = srcCanvas;
+      let outputWidth = srcWidth;
+      let outputHeight = srcHeight;
 
-      // Extract base64 data (remove "data:image/png;base64," prefix)
+      if (maxWidth > 0 && srcWidth > maxWidth) {
+        const scale = maxWidth / srcWidth;
+        outputWidth = Math.round(srcWidth * scale);
+        outputHeight = Math.round(srcHeight * scale);
+
+        outputCanvas = doc.createElement("canvas");
+        outputCanvas.width = outputWidth;
+        outputCanvas.height = outputHeight;
+        const outCtx = outputCanvas.getContext("2d");
+        // Use smooth scaling for better quality at smaller size
+        outCtx.imageSmoothingEnabled = true;
+        outCtx.imageSmoothingQuality = "high";
+        outCtx.drawImage(srcCanvas, 0, 0, outputWidth, outputHeight);
+      }
+
+      // Convert to data URL - default JPEG for much smaller size
+      const mimeType = type === "png" ? "image/png" : "image/jpeg";
+      const qualityArg = type !== "png" ? quality / 100 : undefined;
+      const dataUrl = outputCanvas.toDataURL(mimeType, qualityArg);
+
+      // Extract base64 data (remove "data:image/...;base64," prefix)
       const base64Data = dataUrl.split(",")[1] || "";
 
       return {
         success: true,
         data: base64Data,
         mimeType,
-        width,
-        height,
+        width: outputWidth,
+        height: outputHeight,
+        originalWidth: srcWidth,
+        originalHeight: srcHeight,
       };
     } catch (e) {
       return {
@@ -2323,73 +2471,143 @@ export class NevofluxChild extends JSWindowActorChild {
 
   // ========== Markdown Extraction ==========
 
+  /**
+   * Get markdown content from the page using Turndown directly.
+   * Uses GFM tables plugin for proper table rendering.
+   * Simple and predictable - no content filtering by Readability.
+   *
+   * @param {Object} options
+   * @param {string} options.selector - Optional CSS selector to extract from (default: body)
+   * @param {boolean} options.includeImages - Whether to include images (default: false)
+   * @param {boolean} options.includeLinks - Whether to preserve links (default: true)
+   * @param {boolean} options.removeNavigation - Whether to remove nav/header/footer (default: true)
+   */
   getMarkdown({
     selector = null,
-    includeImages = true,
+    includeImages = false,
     includeLinks = true,
-    includeTables = true,
-    filterNonContent = true,
-  }) {
+    removeNavigation = true,
+  } = {}) {
     const doc = this.currentDoc;
     if (!doc) {
       return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
     }
 
     try {
-      const rootEl = selector ? doc.querySelector(selector) : this._findMainContent(doc);
-      if (!rootEl) {
-        return { success: false, error: { code: 1001, message: "Content not found", recoverable: true } };
+      // Clone the document to avoid modifying the original
+      const docClone = doc.cloneNode(true);
+
+      // Remove script/style/meta tags
+      const junkTags = ['script', 'noscript', 'style', 'link', 'meta', 'template', 'svg'];
+      for (const tagName of junkTags) {
+        const elements = docClone.querySelectorAll(tagName);
+        for (const el of elements) {
+          el.remove();
+        }
       }
 
-      const markdown = this._convertToMarkdown(rootEl, {
-        includeImages,
-        includeLinks,
-        includeTables,
-        filterNonContent,
+      // Optionally remove navigation elements
+      if (removeNavigation) {
+        const navSelectors = [
+          'nav', 'header', 'footer',
+          '[role="navigation"]', '[role="banner"]', '[role="contentinfo"]',
+          '[aria-hidden="true"]', '[hidden]',
+        ];
+        for (const sel of navSelectors) {
+          try {
+            const elements = docClone.querySelectorAll(sel);
+            for (const el of elements) {
+              el.remove();
+            }
+          } catch (e) {
+            // Invalid selector
+          }
+        }
+      }
+
+      // Handle lazy-loaded images
+      const lazyImages = docClone.querySelectorAll('img[data-src], img[data-original], img[data-lazy-src], img[data-actualsrc]');
+      for (const img of lazyImages) {
+        const lazySrc = img.getAttribute('data-src') ||
+                        img.getAttribute('data-original') ||
+                        img.getAttribute('data-lazy-src') ||
+                        img.getAttribute('data-actualsrc');
+        if (lazySrc && !img.getAttribute('src')) {
+          img.setAttribute('src', lazySrc);
+        }
+      }
+
+      // Find content element - use selector if provided, otherwise use body
+      let contentEl;
+      if (selector) {
+        contentEl = docClone.querySelector(selector);
+        if (!contentEl) {
+          return { success: false, error: { code: 1001, message: `Selector "${selector}" not found`, recoverable: true } };
+        }
+      } else {
+        // Use body directly for complete page content
+        contentEl = docClone.body;
+      }
+
+      // Create Turndown service with GFM support
+      const turndownService = new TurndownService({
+        headingStyle: 'atx',
+        hr: '---',
+        bulletListMarker: '-',
+        codeBlockStyle: 'fenced',
+        fence: '```',
+        emDelimiter: '*',
+        strongDelimiter: '**',
+        linkStyle: 'inlined',
       });
+
+      // Set document context
+      turndownService.setDocument(doc);
+
+      // Enable GFM tables
+      turndownService.use(gfm);
+
+      // Handle images
+      if (!includeImages) {
+        turndownService.addRule('removeImages', {
+          filter: 'img',
+          replacement: function() {
+            return '';
+          }
+        });
+      }
+
+      // Handle links
+      if (!includeLinks) {
+        turndownService.addRule('plainLinks', {
+          filter: 'a',
+          replacement: function(content) {
+            return content;
+          }
+        });
+      }
+
+      // Convert to markdown
+      const markdown = turndownService.turndown(contentEl);
+
+      // Clean up excessive whitespace
+      const cleanedMarkdown = markdown
+        .replace(/\n{3,}/g, '\n\n')  // Max 2 consecutive newlines
+        .replace(/[ \t]+$/gm, '')    // Trim trailing whitespace per line
+        .trim();
 
       return {
         success: true,
-        markdown,
+        markdown: cleanedMarkdown,
         title: doc.title || "",
         url: doc.location?.href || "",
       };
     } catch (e) {
+      console.error("[NevofluxChild.getMarkdown] Error:", e);
       return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
     }
   }
 
-  /**
-   * Find the main content area of the document
-   */
-  _findMainContent(doc) {
-    // Priority order for main content detection
-    const selectors = [
-      "article",
-      "main",
-      "[role='main']",
-      "#content",
-      ".content",
-      "#main",
-      ".main",
-      "#article",
-      ".article",
-      ".post",
-      ".entry-content",
-      ".post-content",
-      ".article-content",
-    ];
-
-    for (const selector of selectors) {
-      const el = doc.querySelector(selector);
-      if (el && el.textContent?.trim().length > 100) {
-        return el;
-      }
-    }
-
-    // Fallback to body
-    return doc.body;
-  }
 
   /**
    * Check if an element should be skipped during conversion
@@ -2511,9 +2729,13 @@ export class NevofluxChild extends JSWindowActorChild {
 
       case "IMG": {
         if (options.includeImages) {
-          const alt = el.alt || el.title || "image";
           const src = el.src; // DOM automatically provides absolute URL
           if (src) {
+            // Skip base64 images unless explicitly included
+            if (src.startsWith("data:") && !options.includeBase64Images) {
+              return;
+            }
+            const alt = el.alt || el.title || "image";
             lines.push(`![${alt}](${src})`);
           }
         }
@@ -2686,8 +2908,8 @@ export class NevofluxChild extends JSWindowActorChild {
         // Element node
         const tag = node.tagName.toUpperCase();
 
-        // Skip nested block elements
-        if (["UL", "OL", "DIV", "P", "TABLE", "BLOCKQUOTE", "PRE"].includes(tag)) {
+        // Skip nested block elements and non-content elements
+        if (["UL", "OL", "DIV", "P", "TABLE", "BLOCKQUOTE", "PRE", "SCRIPT", "STYLE", "NOSCRIPT", "SVG", "IFRAME", "TEMPLATE", "NAV", "HEADER", "FOOTER", "ASIDE"].includes(tag)) {
           continue;
         }
 
@@ -2719,6 +2941,10 @@ export class NevofluxChild extends JSWindowActorChild {
 
           case "IMG":
             if (options.includeImages && node.src) {
+              // Skip base64 images unless explicitly included
+              if (node.src.startsWith("data:") && !options.includeBase64Images) {
+                break;
+              }
               const alt = node.alt || node.title || "image";
               parts.push(`![${alt}](${node.src})`);
             }
@@ -2812,6 +3038,16 @@ export class NevofluxChild extends JSWindowActorChild {
    */
   _cleanMarkdown(markdown) {
     return markdown
+      // Remove any remaining <style>...</style> blocks (including content)
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      // Remove any remaining <script>...</script> blocks (including content)
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      // Remove any remaining <noscript>...</noscript> blocks
+      .replace(/<noscript[^>]*>[\s\S]*?<\/noscript>/gi, "")
+      // Remove inline style attributes from any remaining HTML tags
+      .replace(/\s+style\s*=\s*["'][^"']*["']/gi, "")
+      // Remove any remaining HTML tags (but keep content)
+      .replace(/<[^>]+>/g, "")
       // Remove excessive blank lines (more than 2)
       .replace(/\n{3,}/g, "\n\n")
       // Clean up whitespace
