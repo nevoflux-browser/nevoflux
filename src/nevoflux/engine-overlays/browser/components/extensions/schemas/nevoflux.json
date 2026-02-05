@@ -28,7 +28,11 @@
           "interactive": { "type": "boolean", "optional": true },
           "compact": { "type": "boolean", "optional": true },
           "depth": { "type": "integer", "optional": true },
-          "root": { "type": "string", "optional": true }
+          "root": { "type": "string", "optional": true },
+          "useA11y": { "type": "boolean", "optional": true },
+          "domFallback": { "type": "boolean", "optional": true },
+          "include_hidden": { "type": "boolean", "optional": true },
+          "viewport_only": { "type": "boolean", "optional": true }
         }
       },
       {
@@ -36,7 +40,11 @@
         "type": "object",
         "properties": {
           "tree": { "type": "string" },
-          "refs": { "type": "object" }
+          "refs": { "type": "object" },
+          "viewportInfo": { "type": "object", "optional": true },
+          "stats": { "type": "object", "optional": true },
+          "url": { "type": "string", "optional": true },
+          "title": { "type": "string", "optional": true }
         }
       },
       {
@@ -372,7 +380,21 @@
           "format": { "type": "string", "enum": ["markdown", "html", "text"], "optional": true },
           "selector": { "type": "string", "optional": true },
           "autoRestore": { "type": "boolean", "optional": true },
-          "timeout": { "type": "integer", "optional": true }
+          "timeout": { "type": "integer", "optional": true },
+          "includeImages": { "type": "boolean", "optional": true, "description": "Include images in markdown output (default: false)" },
+          "includeLinks": { "type": "boolean", "optional": true, "description": "Preserve links in markdown output (default: true)" },
+          "removeNavigation": { "type": "boolean", "optional": true, "description": "Remove nav/header/footer elements (default: true)" }
+        }
+      },
+      {
+        "id": "MarkdownOptions",
+        "type": "object",
+        "description": "Options for getMarkdown",
+        "properties": {
+          "selector": { "type": "string", "optional": true, "description": "CSS selector to extract from" },
+          "includeImages": { "type": "boolean", "optional": true, "description": "Include images in output (default: false)" },
+          "includeLinks": { "type": "boolean", "optional": true, "description": "Preserve links in output (default: true)" },
+          "removeNavigation": { "type": "boolean", "optional": true, "description": "Remove nav/header/footer elements (default: true)" }
         }
       },
       {
@@ -484,10 +506,10 @@
         "name": "getMarkdown",
         "type": "function",
         "async": "promise",
-        "description": "Get page content as Markdown",
+        "description": "Get page content as Markdown using Turndown with GFM tables",
         "parameters": [
           { "name": "tabId", "type": "integer", "optional": true },
-          { "name": "options", "type": "object", "optional": true }
+          { "name": "options", "$ref": "MarkdownOptions", "optional": true }
         ],
         "returns": { "type": "object" }
       },

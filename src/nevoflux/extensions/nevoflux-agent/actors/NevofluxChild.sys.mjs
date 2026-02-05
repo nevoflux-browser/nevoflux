@@ -343,360 +343,225 @@ export class NevofluxChild extends JSWindowActorChild {
     return el?.value || "";
   }
 
-  snapshot({ interactive = true, compact = false, depth, root, useA11y = true, domFallback = true, include_hidden = false }) {
-    // Ensure root has a valid default
-    const rootSelector = root || "body";
+  snapshot({ interactive = true, compact = false, depth, root, useA11y = true, domFallback = true, include_hidden = false, viewport_only = true }) {
     const doc = this.currentDoc;
     const win = this.currentWin;
-
-    console.log("[NevofluxChild.snapshot] Starting snapshot, params:", { interactive, compact, depth, root, rootSelector, useA11y, domFallback, include_hidden });
-
-    if (!doc) {
+    if (!doc || !win) {
       return { tree: "", refs: {}, error: "No document available" };
     }
 
-    const rootEl = doc.querySelector(rootSelector);
+    const rootEl = root ? doc.querySelector(root) : doc.body || doc.documentElement;
     if (!rootEl) {
-      return { tree: "", refs: {}, error: `Root element '${rootSelector}' not found` };
+      return { tree: "", refs: {}, error: "Root element not found" };
     }
 
-    const refs = {};
-    let refCounter = 1;
-    const seenElements = new WeakSet();
-    const self = this;
+    const elements = [];
+    const seenNodes = new Set();
+    let refCounter = 0;
 
-    // ========== A11y Tree Traversal ==========
-    let a11yCount = 0;
+    // === Layer 1: AXTree traversal ===
     if (useA11y && lazy.a11yService) {
       try {
-        const docAccessible = lazy.a11yService.getAccessibleFor(doc);
-        if (docAccessible) {
-          const traverseA11y = (accessible, currentDepth = 0) => {
-            if (!accessible) return "";
-            if (depth != null && currentDepth > depth) return "";
-
-            const role = self._getA11yRole(accessible);
-            const roleName = ROLE_MAP[role] || `unknown(${role})`;
-            const name = accessible.name || "";
-            const domNode = accessible.DOMNode;
-
-            // Filter interactive elements
-            const isInteractiveRole = INTERACTIVE_ROLES.has(roleName) ||
-              roleName.includes("button") ||
-              roleName.includes("link") ||
-              roleName.includes("text") ||
-              roleName.includes("entry") ||
-              roleName.includes("checkbox") ||
-              roleName.includes("radio") ||
-              roleName.includes("combo") ||
-              roleName.includes("list") ||
-              roleName.includes("menu") ||
-              roleName.includes("tab") ||
-              roleName.includes("switch") ||
-              roleName.includes("slider");
-
-            if (interactive && !isInteractiveRole) {
-              // Still traverse children
-              let childContent = "";
-              const childCount = accessible.childCount || 0;
-              for (let i = 0; i < childCount; i++) {
-                try {
-                  const child = accessible.getChildAt(i);
-                  childContent += traverseA11y(child, currentDepth);
-                } catch (e) { /* ignore */ }
-              }
-              return childContent;
-            }
-
-            // Skip if no name and compact mode
-            if (compact && !name && !isInteractiveRole) {
-              let childContent = "";
-              const childCount = accessible.childCount || 0;
-              for (let i = 0; i < childCount; i++) {
-                try {
-                  const child = accessible.getChildAt(i);
-                  childContent += traverseA11y(child, currentDepth);
-                } catch (e) { /* ignore */ }
-              }
-              return childContent;
-            }
-
-            // Get bounding box early for zero-area filtering
-            let rect = null;
-            try {
-              if (domNode && domNode.getBoundingClientRect) {
-                const r = domNode.getBoundingClientRect();
-                rect = {
-                  x: Math.round(r.x),
-                  y: Math.round(r.y),
-                  width: Math.round(r.width),
-                  height: Math.round(r.height),
-                };
-              }
-            } catch (e) { /* ignore */ }
-
-            // Skip zero-area elements in interactive mode (not visible, can't be clicked)
-            if (interactive && rect && rect.width === 0 && rect.height === 0) {
-              // Still traverse children - they might be visible
-              let childContent = "";
-              const childCount = accessible.childCount || 0;
-              for (let i = 0; i < childCount; i++) {
-                try {
-                  const child = accessible.getChildAt(i);
-                  childContent += traverseA11y(child, currentDepth);
-                } catch (e) { /* ignore */ }
-              }
-              return childContent;
-            }
-
-            // Mark DOM node as seen
-            if (domNode && domNode.nodeType === 1) {
-              seenElements.add(domNode);
-            }
-
-            const refId = `e${refCounter++}`;
-            a11yCount++;
-
-            // Get states
-            let states = {};
-            try {
-              const stateObj = {};
-              const state = accessible.state;
-              // Check common states (using bitmasks)
-              stateObj.disabled = !!(state & 0x80); // STATE_UNAVAILABLE
-              stateObj.focused = !!(state & 0x4);   // STATE_FOCUSED
-              stateObj.checked = !!(state & 0x10);  // STATE_CHECKED
-              stateObj.selected = !!(state & 0x2);  // STATE_SELECTED
-              stateObj.expanded = !!(state & 0x200); // STATE_EXPANDED
-              states = stateObj;
-            } catch (e) { /* ignore */ }
-
-            const selector = domNode ? self.generateSelector(domNode) : null;
-
-            // Simplified refs structure: only essential fields for agent interaction
-            refs[refId] = {
-              selector,
-              role: roleName,
-              name: (name || "").slice(0, 50),
-              ...(rect && { rect }),  // Include bounding box if available
-            };
-
-            const indent = "  ".repeat(currentDepth);
-            const nameStr = name ? ` "${name}"` : "";
-            let output = `${indent}- ${roleName}${nameStr} [ref=${refId}]\n`;
-
-            // Traverse children
-            const childCount = accessible.childCount || 0;
-            for (let i = 0; i < childCount; i++) {
-              try {
-                const child = accessible.getChildAt(i);
-                output += traverseA11y(child, currentDepth + 1);
-              } catch (e) { /* ignore */ }
-            }
-
-            return output;
-          };
-
-          // Start from document accessible or root element accessible
-          const rootAccessible = lazy.a11yService.getAccessibleFor(rootEl) || docAccessible;
-          var tree = traverseA11y(rootAccessible);
+        const accDoc = lazy.a11yService.getAccessibleFor(doc);
+        if (accDoc) {
+          this._collectFromA11y(accDoc, elements, seenNodes, win, interactive, viewport_only, include_hidden, depth, 0);
         }
       } catch (e) {
-        console.warn("[NevofluxChild.snapshot] A11y tree traversal failed:", e.message);
+        console.warn("[NevofluxChild.snapshot] A11y traversal failed:", e.message);
       }
     }
 
-    // ========== DOM Fallback Traversal ==========
-    let domCount = 0;
+    // === Layer 2: DOM heuristic fallback ===
     if (domFallback) {
-      // Find cursor:pointer elements not in A11y tree
-      const scanDomFallback = () => {
-        const pointerElements = [];
-
-        // Scan for cursor:pointer elements
-        const textTags = ["span", "div", "li", "p", "label", "td", "a", "button"];
-        for (const tag of textTags) {
-          try {
-            const els = doc.querySelectorAll(tag);
-            for (const el of els) {
-              if (seenElements.has(el)) continue;
-              // Skip hidden elements unless include_hidden is true
-              if (!include_hidden && self._isHiddenElement(el, win)) continue;
-
-              try {
-                const style = win.getComputedStyle(el);
-                const hasPointer = style.cursor === "pointer";
-                const hasOnclick = el.hasAttribute("onclick");
-                const hasRole = el.getAttribute("role");
-
-                if ((hasPointer || hasOnclick) && !hasRole) {
-                  const text = self.getAccessibleName(el);
-                  if (text) {
-                    pointerElements.push({ el, text, source: hasOnclick ? "dom-onclick" : "dom-pointer" });
-                  }
-                }
-              } catch (e) { /* ignore */ }
-            }
-          } catch (e) { /* ignore */ }
-        }
-
-        // Also scan for interactive elements not in A11y tree
-        const interactiveSelectors = [
-          "button", "a[href]", "input:not([type='hidden'])", "textarea", "select",
-          "[role='button']", "[role='link']", "[role='textbox']",
-          "[tabindex]:not([tabindex='-1'])",
-          "[title]"  // Elements with title attribute are often interactive
-        ];
-
-        for (const selector of interactiveSelectors) {
-          try {
-            const els = doc.querySelectorAll(selector);
-            for (const el of els) {
-              if (seenElements.has(el)) continue;
-              // Skip hidden elements unless include_hidden is true
-              if (!include_hidden && self._isHiddenElement(el, win)) continue;
-
-              const text = self.getAccessibleName(el);
-              pointerElements.push({ el, text: text || "", source: "dom-interactive" });
-            }
-          } catch (e) { /* ignore */ }
-        }
-
-        return pointerElements;
-      };
-
-      const domElements = scanDomFallback();
-      for (const { el, text, source } of domElements) {
-        // Get bounding box for DOM fallback elements
-        let rect = null;
-        try {
-          if (el.getBoundingClientRect) {
-            const r = el.getBoundingClientRect();
-            rect = {
-              x: Math.round(r.x),
-              y: Math.round(r.y),
-              width: Math.round(r.width),
-              height: Math.round(r.height),
-            };
-          }
-        } catch (e) { /* ignore */ }
-
-        // Skip zero-area elements in interactive mode
-        if (interactive && rect && rect.width === 0 && rect.height === 0) {
-          continue;
-        }
-
-        seenElements.add(el);
-
-        const refId = `e${refCounter++}`;
-        domCount++;
-
-        const role = self.inferRole(el);
-
-        // Simplified refs structure: only essential fields for agent interaction
-        refs[refId] = {
-          selector: self.generateSelector(el),
-          role,
-          name: (text || "").slice(0, 50),
-          ...(rect && { rect }),  // Include bounding box if available
-        };
-
-        // Append to tree output
-        if (typeof tree === "string") {
-          tree += `- ${role} "${text}" [ref=${refId}] (${source})\n`;
-        }
-      }
+      this._collectFromDomFallback(rootEl, elements, seenNodes, win, viewport_only, include_hidden);
     }
 
-    // ========== Legacy DOM-only fallback (if A11y failed) ==========
-    if (!tree && !useA11y) {
-      const buildTree = (el, currentDepth = 0) => {
-        if (!el || el.nodeType !== 1) return "";
-        if (depth != null && currentDepth > depth) return "";
+    // === Build refs and tree output ===
+    const refs = {};
+    const lines = [];
 
-        const role = self.inferRole(el);
-        const name = self.getAccessibleName(el);
+    for (const elem of elements) {
+      refCounter++;
+      const refId = `e${refCounter}`;
+      const selector = this.generateSelector(elem.node);
+      const name = (elem.name || "").trim();
+      const truncatedName = name.length > 80 ? name.substring(0, 77) + "..." : name;
 
-        if (interactive && !self.isInteractive(el)) {
-          return Array.from(el.children || [])
-            .map(c => buildTree(c, currentDepth))
-            .filter(Boolean)
-            .join("");
-        }
-
-        if (compact && !self.hasContent(el) && !self.isInteractive(el)) {
-          return Array.from(el.children || [])
-            .map(c => buildTree(c, currentDepth))
-            .filter(Boolean)
-            .join("");
-        }
-
-        // Get bounding box for legacy DOM fallback
-        let rect = null;
-        try {
-          if (el.getBoundingClientRect) {
-            const r = el.getBoundingClientRect();
-            rect = {
-              x: Math.round(r.x),
-              y: Math.round(r.y),
-              width: Math.round(r.width),
-              height: Math.round(r.height),
-            };
-          }
-        } catch (e) { /* ignore */ }
-
-        // Skip zero-area elements in interactive mode - still traverse children
-        if (interactive && rect && rect.width === 0 && rect.height === 0) {
-          return Array.from(el.children || [])
-            .map(c => buildTree(c, currentDepth))
-            .filter(Boolean)
-            .join("");
-        }
-
-        const refId = `e${refCounter++}`;
-
-        // Simplified refs structure: only essential fields for agent interaction
-        refs[refId] = {
-          selector: self.generateSelector(el),
-          role,
-          name: (name || "").slice(0, 50),
-          ...(rect && { rect }),  // Include bounding box if available
-        };
-
-        const indent = "  ".repeat(currentDepth);
-        const children = Array.from(el.children || [])
-          .map(c => buildTree(c, currentDepth + 1))
-          .filter(Boolean)
-          .join("");
-        const nameStr = name ? ` "${name}"` : "";
-        return `${indent}- ${role}${nameStr} [ref=${refId}]\n${children}`;
+      refs[refId] = {
+        selector,
+        role: elem.role,
+        name: truncatedName,
+        tagName: elem.node.tagName?.toLowerCase() || "",
+        rect: elem.rect ? {
+          x: Math.round(elem.rect.x),
+          y: Math.round(elem.rect.y),
+          width: Math.round(elem.rect.width),
+          height: Math.round(elem.rect.height),
+        } : null,
       };
 
-      tree = buildTree(rootEl);
+      const rolePart = elem.role || elem.node.tagName?.toLowerCase() || "element";
+      const namePart = truncatedName ? ` "${truncatedName}"` : "";
+      const states = [];
+      if (elem.node === doc.activeElement) states.push("focused");
+      if (elem.node.disabled) states.push("disabled");
+      if (elem.node.checked) states.push("checked");
+      if (elem.node.readOnly) states.push("readonly");
+      const statePart = states.length > 0 ? ` (${states.join(", ")})` : "";
+
+      lines.push(`[${refId}] ${rolePart}${namePart}${statePart}`);
     }
 
-    const totalCount = Object.keys(refs).length;
-    console.log("[NevofluxChild.snapshot] Done. a11yCount:", a11yCount, "domCount:", domCount, "total refs:", totalCount);
+    // === Build viewportInfo ===
+    const scrollTop = win.scrollY || 0;
+    const scrollHeight = doc.documentElement.scrollHeight || 0;
+    const viewportHeight = win.innerHeight || 0;
+    const viewportWidth = win.innerWidth || 0;
+
+    const viewportInfo = {
+      scrollTop: Math.round(scrollTop),
+      scrollHeight: Math.round(scrollHeight),
+      viewportHeight,
+      viewportWidth,
+      canScrollUp: scrollTop > 0,
+      canScrollDown: scrollTop + viewportHeight < scrollHeight - 1,
+      pageTitle: doc.title || "",
+      url: win.location?.href || "",
+    };
+
+    const scrollPercent = scrollHeight > viewportHeight
+      ? Math.round((scrollTop / (scrollHeight - viewportHeight)) * 100)
+      : 0;
+    const scrollPos = scrollTop === 0 ? "top"
+      : scrollTop + viewportHeight >= scrollHeight - 1 ? "bottom"
+      : `${scrollPercent}%`;
+    const header = `Page: "${viewportInfo.pageTitle}" | URL: ${viewportInfo.url}\nViewport: ${viewportWidth}x${viewportHeight} | Scroll: ${Math.round(scrollTop)}/${scrollHeight} (${scrollPos})`;
+
+    const tree = header + "\n\n" + lines.join("\n");
 
     return {
-      tree: tree || "",
+      tree,
       refs,
-      stats: {
-        total: totalCount,
-        fromA11y: a11yCount,
-        fromDom: domCount,
-      },
-      url: doc.location?.href || "",
-      title: doc.title || "",
+      viewportInfo,
+      stats: { total: elements.length },
+      url: viewportInfo.url,
+      title: viewportInfo.pageTitle,
     };
   }
 
-  // Helper to get A11y role number
-  _getA11yRole(accessible) {
+  _collectFromA11y(accNode, elements, seenNodes, win, interactive, viewport_only, include_hidden, maxDepth, currentDepth) {
+    if (maxDepth !== undefined && currentDepth > maxDepth) return;
+
     try {
-      return accessible.role;
+      const roleNum = accNode.role;
+      const roleName = ROLE_MAP[roleNum] || "";
+
+      let domNode = null;
+      try { domNode = accNode.DOMNode; } catch (e) { /* skip */ }
+
+      if (domNode && domNode.nodeType === 1) {
+        const isInteractive = !interactive || INTERACTIVE_ROLES.has(roleName);
+
+        if (isInteractive && !seenNodes.has(domNode)) {
+          if (viewport_only && !this._isViewportVisible(domNode, win)) {
+            // Skip - not in viewport
+          } else if (!include_hidden && this._isStyleHidden(domNode, win)) {
+            // Skip - hidden by style
+          } else {
+            const rect = domNode.getBoundingClientRect();
+            const name = this._getAccessibleName(accNode);
+
+            seenNodes.add(domNode);
+            elements.push({
+              node: domNode,
+              role: roleName,
+              name,
+              rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+            });
+          }
+        }
+      }
+
+      const childCount = accNode.childCount || 0;
+      for (let i = 0; i < childCount; i++) {
+        try {
+          const child = accNode.getChildAt(i);
+          if (child) {
+            this._collectFromA11y(child, elements, seenNodes, win, interactive, viewport_only, include_hidden, maxDepth, currentDepth + 1);
+          }
+        } catch (e) { /* skip */ }
+      }
+    } catch (e) { /* skip */ }
+  }
+
+  _getAccessibleName(accNode) {
+    try {
+      return accNode.name || "";
     } catch (e) {
-      return 0;
+      return "";
+    }
+  }
+
+  _isStyleHidden(el, win) {
+    try {
+      const style = win.getComputedStyle(el);
+      return style.display === "none" || style.visibility === "hidden";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  _collectFromDomFallback(rootEl, elements, seenNodes, win, viewport_only, include_hidden) {
+    const doc = this.currentDoc;
+    if (!doc) return;
+
+    const allElements = rootEl.querySelectorAll("*");
+    for (const el of allElements) {
+      if (seenNodes.has(el)) continue;
+
+      let isInteractive = false;
+
+      try {
+        const style = win.getComputedStyle(el);
+        if (style.cursor === "pointer") isInteractive = true;
+      } catch (e) { /* skip */ }
+
+      if (!isInteractive && el.hasAttribute("tabindex")) {
+        const ti = parseInt(el.getAttribute("tabindex"), 10);
+        if (ti >= 0) isInteractive = true;
+      }
+
+      if (!isInteractive && typeof InspectorUtils !== "undefined") {
+        try {
+          const listeners = InspectorUtils.getEventListenerInfo(el);
+          const hasClickListener = listeners.some(l =>
+            l.type === "click" || l.type === "mousedown" || l.type === "pointerdown"
+          );
+          if (hasClickListener) isInteractive = true;
+        } catch (e) { /* skip */ }
+      }
+
+      if (!isInteractive) continue;
+
+      if (viewport_only && !this._isViewportVisible(el, win)) continue;
+      if (!include_hidden && this._isStyleHidden(el, win)) continue;
+
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+
+      let name = "";
+      try {
+        name = el.textContent?.trim()?.substring(0, 80) || "";
+        name = el.getAttribute("aria-label") || el.getAttribute("title") || el.getAttribute("placeholder") || name;
+      } catch (e) { /* skip */ }
+
+      seenNodes.add(el);
+      elements.push({
+        node: el,
+        role: el.tagName?.toLowerCase() || "element",
+        name,
+        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      });
     }
   }
 
