@@ -96,7 +96,7 @@ const MessageTypes = {
   ASK_USER_REQUEST: "ask_user_request",
   ASK_USER_RESPONSE: "ask_user_response",
 
-  // Artifact streaming (Agent -> Background -> ContentStore)
+  // Artifact streaming (Agent -> Background -> ContentStore -> Sidebar)
   ARTIFACT_START: "artifact_start",
   ARTIFACT_DELTA: "artifact_delta",
   ARTIFACT_COMPLETE: "artifact_complete",
@@ -125,6 +125,13 @@ const MAX_RECONNECT_ATTEMPTS = 20;
 const CONTENT_STORE_DEBOUNCE_MS = 1000; // 1 second per-key debounce
 const CONTENT_STORE_MAX_VALUE_SIZE = 500_000; // 500KB max value size
 const contentStoreDebounceTimers = new Map(); // key -> timeoutId
+
+// Canvas tab tracking: reuse the same tab for artifacts within a conversation
+let _canvasTabId = null;
+
+// Artifact delta buffers: accumulate deltas synchronously to avoid read-modify-write races.
+// Each key is an artifact ID, value is the accumulated content string.
+const _artifactDeltaBuffers = new Map();
 
 // =============================================================================
 // Chunking Configuration
@@ -275,6 +282,10 @@ class ChunkReassembler {
 
 // Global chunk reassembler instance
 const chunkReassembler = new ChunkReassembler();
+
+// Canvas agent:chat session tracking
+// Maps sessionId → { active: true, messageId: string }
+const canvasSessions = new Map();
 
 // =============================================================================
 // Native Channel Class
@@ -625,14 +636,29 @@ class ChannelManager {
   handleChatMessage(message) {
     console.log("[NevoFlux] Chat channel received:", message.type);
 
-    // Intercept artifact streaming messages
     const msgType = message.type;
+
+    // Intercept artifact streaming messages (start/delta/complete protocol)
     if (msgType === MessageTypes.ARTIFACT_START ||
         msgType === MessageTypes.ARTIFACT_DELTA ||
         msgType === MessageTypes.ARTIFACT_COMPLETE) {
       handleArtifactMessage(message).catch((err) => {
         console.error("[NevoFlux] Artifact handling failed:", err);
       });
+    }
+
+    // Intercept create_artifact tool calls inside stream_chunk messages
+    if (msgType === MessageTypes.STREAM_CHUNK) {
+      const toolCalls = message.payload?.tool_calls;
+      if (Array.isArray(toolCalls)) {
+        for (const tc of toolCalls) {
+          if (tc.name === "create_artifact") {
+            handleCreateArtifactToolCall(tc).catch((err) => {
+              console.error("[NevoFlux] create_artifact tool call failed:", err);
+            });
+          }
+        }
+      }
     }
 
     // Intercept content_store responses
@@ -649,6 +675,28 @@ class ChannelManager {
         }
       } else if ((cmd === "content_store.set" || cmd === "content_store.delete") && !payload?.success) {
         console.warn(`[NevoFlux] Content store persist failed: ${cmd}`, payload?.error);
+      }
+    }
+
+    // Forward to canvas sessions if message has a matching session_id
+    const sessionId = message.payload?.session_id;
+    if (sessionId && canvasSessions.has(sessionId)) {
+      // Push to canvas via bridgePush
+      browser.nevoflux.bridgePush(sessionId, message).catch((err) => {
+        console.error(`[NevoFlux] bridgePush failed for session ${sessionId}:`, err);
+      });
+
+      // Detect session end: agent finished streaming
+      if (msgType === "agent_state") {
+        const status = message.payload?.state || message.payload?.status;
+        if (status === "idle" || status === "error") {
+          // Push session:end event
+          browser.nevoflux.bridgePush(sessionId, {
+            type: "session:end",
+            payload: { session_id: sessionId, status },
+          }).catch(() => {});
+          canvasSessions.delete(sessionId);
+        }
       }
     }
 
@@ -808,6 +856,164 @@ browser.nevoflux.onContentStoreChanged.addListener((operation, key, value) => {
 });
 
 // =============================================================================
+// Bridge Request Handler (nevoflux:// pages → background)
+// =============================================================================
+
+browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
+  console.log(`[NevoFlux] Bridge request: ${type} (${id})`);
+  let result;
+  try {
+    switch (type) {
+      case "exec_tool":
+        result = await executeBrowserTool(payload, "bridge");
+        break;
+
+      case "send_to_agent": {
+        const sent = channelManager.sendToAgent(payload);
+        result = { success: sent };
+        break;
+      }
+
+      case "sidebar_send":
+        broadcastToSidebar(payload);
+        result = { success: true };
+        break;
+
+      case "sidebar:open":
+        try {
+          await browser.sidebarAction.open();
+          result = { success: true };
+        } catch (err) {
+          result = { success: false, error: { code: -1, message: err.message } };
+        }
+        break;
+
+      case "sidebar:sendMessage": {
+        try {
+          const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          const injectMsg = {
+            type: "canvas_chat_inject",
+            payload: {
+              session_id: "",
+              message_id: messageId,
+              content: payload.message,
+            },
+          };
+
+          // Broadcast to sidebar — sidebar adds user message + sends to agent
+          try {
+            await browser.runtime.sendMessage(injectMsg);
+            console.log("[NevoFlux] canvas_chat_inject sent to sidebar");
+          } catch (e) {
+            // Sidebar not open — send directly to agent as fallback
+            console.warn("[NevoFlux] Sidebar not available, sending directly to agent:", e.message);
+            channelManager.sendToAgent({
+              type: "chat_message",
+              payload: {
+                session_id: `canvas_${Date.now()}`,
+                message_id: messageId,
+                content: payload.message,
+                mode: "chat",
+                attachments: [],
+                local_files: [],
+                tab_id: null,
+                tab_ids: [],
+              },
+            });
+          }
+
+          result = { success: true };
+        } catch (err) {
+          result = { success: false, error: { code: -1, message: err.message } };
+        }
+        break;
+      }
+
+      case "agent:chat": {
+        try {
+          const sessionId = payload.sessionId || `cs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+          // Track this canvas session
+          canvasSessions.set(sessionId, { active: true, messageId });
+
+          // Inject into sidebar (same as sidebar:sendMessage)
+          const injectMsg = {
+            type: "canvas_chat_inject",
+            payload: {
+              session_id: sessionId,
+              message_id: messageId,
+              content: payload.message,
+              source: "canvas",
+            },
+          };
+
+          try {
+            await browser.runtime.sendMessage(injectMsg);
+          } catch (e) {
+            // Sidebar not open — send directly to agent
+            console.warn("[NevoFlux] Sidebar not available for agent:chat, sending directly to agent:", e.message);
+            channelManager.sendToAgent({
+              type: "chat_message",
+              payload: {
+                session_id: sessionId,
+                message_id: messageId,
+                content: payload.message,
+                mode: "chat",
+                attachments: [],
+                local_files: [],
+                tab_id: null,
+                tab_ids: [],
+              },
+            });
+          }
+
+          result = { success: true, sessionId };
+        } catch (err) {
+          result = { success: false, error: { code: -1, message: err.message } };
+        }
+        break;
+      }
+
+      case "agent:cancel": {
+        const sessionId = payload.sessionId;
+        canvasSessions.delete(sessionId);
+        result = { success: true };
+        break;
+      }
+
+      case "sidebar:restoreSession": {
+        try {
+          // Store pending session restore for the sidebar to pick up on init
+          await browser.storage.local.set({
+            "pending:restoreSession": {
+              sessionId: payload.sessionId,
+              timestamp: Date.now(),
+            },
+          });
+          // Open sidebar (triggers init which reads pending actions)
+          await browser.sidebarAction.open();
+          result = { success: true };
+        } catch (err) {
+          result = { success: false, error: { code: -1, message: err.message } };
+        }
+        break;
+      }
+
+      default:
+        result = { success: false, error: { code: -1, message: `Unknown bridge type: ${type}` } };
+    }
+  } catch (err) {
+    console.error(`[NevoFlux] Bridge request error (${type}):`, err);
+    result = { success: false, error: { code: -1, message: err.message } };
+  }
+
+  browser.nevoflux.bridgeRespond(id, result).catch((err) => {
+    console.error(`[NevoFlux] bridgeRespond failed for ${id}:`, err);
+  });
+});
+
+// =============================================================================
 // MCP Request Handler
 // =============================================================================
 
@@ -867,8 +1073,47 @@ async function handleMcpRequest(payload) {
 }
 
 // =============================================================================
+// Single-Shot Artifact Handler
+// =============================================================================
+
+/**
+ * Handle single-shot artifact message from native agent (type: "artifact").
+ *
+ * The native agent sends the full artifact content in one message:
+ *   { type: "artifact", payload: { id, content, content_type, title, ... } }
+ *
+ * We convert this into:
+ *   1. createArtifact() call (store in ContentStore)
+ *   2. Open/reuse canvas tab in foreground
+ *   3. Broadcast artifact_start to sidebar (for ArtifactCard)
+ *   4. Broadcast artifact_complete to sidebar (update card state)
+ */
+// =============================================================================
 // Artifact Streaming Handler
 // =============================================================================
+
+/**
+ * Normalize MIME type or short type to canvas renderer type.
+ * Daemon sends "text/html", canvas.js expects "html".
+ */
+function normalizeArtifactType(rawType) {
+  if (!rawType) return "html";
+  const MIME_MAP = {
+    "text/html": "html",
+    "text/markdown": "markdown",
+    "text/svg+xml": "svg",
+    "image/svg+xml": "svg",
+    "application/javascript": "react",
+    "text/jsx": "react",
+  };
+  if (MIME_MAP[rawType]) return MIME_MAP[rawType];
+  // Already a short type
+  if (["html", "react", "markdown", "svg", "mermaid"].includes(rawType)) return rawType;
+  // Fallback: try to extract subtype from MIME
+  const parts = rawType.split("/");
+  if (parts.length === 2) return parts[1];
+  return rawType;
+}
 
 /**
  * Handle artifact streaming messages from the native agent.
@@ -883,36 +1128,69 @@ async function handleArtifactMessage(message) {
 
   switch (type) {
     case MessageTypes.ARTIFACT_START: {
-      const { id, artifact_type, title, source, permissions } = payload;
-      console.log(`[NevoFlux] Artifact start: ${id} (${artifact_type})`);
+      const { id, content_type, title, source, permissions } = payload;
+      console.log(`[NevoFlux] Artifact start: ${id} (${content_type})`);
+
+      // Initialize delta buffer for this artifact
+      _artifactDeltaBuffers.set(id, "");
+
+      // Normalize MIME type to short canvas type
+      // Daemon sends "text/html", canvas.js expects "html"
+      const normalizedType = normalizeArtifactType(content_type);
+
+      // Store artifact in ContentStore first, then open tab for streaming display
       await browser.nevoflux.createArtifact({
         id,
-        type: artifact_type || "html",
+        type: normalizedType,
         title: title || "Untitled",
         code: "",
         state: "streaming",
         source: source || "agent",
         permissions: permissions || [],
       });
+
+      // Open canvas tab immediately — page subscribes to ContentStore updates
+      // and will render content as artifact_delta messages arrive
+      try {
+        if (_canvasTabId != null) {
+          try {
+            await browser.tabs.remove(_canvasTabId);
+          } catch {
+            // Tab already closed — ignore
+          }
+          _canvasTabId = null;
+        }
+        const result = await browser.nevoflux.openCanvasTab(id);
+        if (result?.success) {
+          if (result.tabId) _canvasTabId = result.tabId;
+        } else {
+          console.error("[NevoFlux] openCanvasTab failed:", result?.error);
+        }
+      } catch (e) {
+        console.error("[NevoFlux] Failed to open canvas tab:", e);
+      }
       break;
     }
 
     case MessageTypes.ARTIFACT_DELTA: {
       const { id, delta } = payload;
-      // Fetch current content, append delta
-      const current = await browser.nevoflux.getArtifact(id);
-      if (current?.success) {
-        const newCode = (current.data.content || "") + (delta || "");
-        await browser.nevoflux.updateArtifact(id, { code: newCode });
-      } else {
-        console.warn(`[NevoFlux] Artifact delta for unknown id: ${id}`);
+      // Accumulate deltas synchronously in a local buffer to avoid
+      // read-modify-write race conditions when multiple deltas arrive rapidly.
+      if (!_artifactDeltaBuffers.has(id)) {
+        _artifactDeltaBuffers.set(id, "");
       }
+      _artifactDeltaBuffers.set(id, _artifactDeltaBuffers.get(id) + (delta || ""));
+      // Write the full accumulated content to ContentStore
+      await browser.nevoflux.updateArtifact(id, { code: _artifactDeltaBuffers.get(id) });
       break;
     }
 
     case MessageTypes.ARTIFACT_COMPLETE: {
       const { id, final_code, title } = payload;
-      console.log(`[NevoFlux] Artifact complete: ${id}`);
+      const bufferedLen = _artifactDeltaBuffers.get(id)?.length || 0;
+      console.log(`[NevoFlux] Artifact complete: ${id}, bufferedContentLen=${bufferedLen}`);
+      // Clean up delta buffer
+      _artifactDeltaBuffers.delete(id);
       const updates = { state: "complete" };
       if (final_code !== undefined) updates.code = final_code;
       if (title !== undefined) updates.title = title;
@@ -920,6 +1198,140 @@ async function handleArtifactMessage(message) {
       break;
     }
   }
+}
+
+/**
+ * Handle a create_artifact tool call from a stream_chunk message.
+ *
+ * The daemon may send BOTH the streaming protocol (artifact_start/delta/complete)
+ * AND a create_artifact tool call for the same artifact. If the streaming protocol
+ * already handled it, skip to avoid duplicate ArtifactCards and tab opens.
+ */
+async function handleCreateArtifactToolCall(toolCall) {
+  let args = toolCall.arguments;
+  const argsType = typeof args;
+  const rawArgsLen = typeof args === "string" ? args.length : JSON.stringify(args).length;
+  console.log(`[NevoFlux] create_artifact: argsType=${argsType}, rawArgsLen=${rawArgsLen}`);
+
+  if (typeof args === "string") {
+    try { args = JSON.parse(args); } catch (e) {
+      // Arguments may be truncated by the model - try to salvage partial data
+      console.warn("[NevoFlux] create_artifact arguments truncated, attempting partial parse:", e.message);
+      console.warn("[NevoFlux] create_artifact raw args (first 500):", args.substring(0, 500));
+      args = extractPartialArtifactArgs(args);
+      if (!args) {
+        console.error("[NevoFlux] Failed to extract any data from truncated create_artifact arguments");
+        return;
+      }
+      console.log("[NevoFlux] create_artifact partial parse result: contentLen=" + (args.content?.length || 0));
+    }
+  }
+
+  const id = args.id || `art-${toolCall.id || Date.now()}`;
+  const content = args.content || "";
+  const title = args.title || "Untitled";
+  const rawType = args.type || args.content_type || "html";
+  const normalizedType = normalizeArtifactType(rawType);
+
+  console.log(`[NevoFlux] create_artifact tool call: id=${id}, type=${normalizedType}, contentLen=${content.length}, titleLen=${title.length}`);
+
+  // The daemon sends BOTH the streaming protocol (artifact_start/delta/complete)
+  // AND the create_artifact tool call. The tool call has the FULL content, while
+  // the streaming deltas may have race conditions causing content loss.
+  // Always prefer the tool call's full content.
+  const existing = await browser.nevoflux.getArtifact(id).catch(() => null);
+  if (existing?.success) {
+    // Artifact exists from streaming protocol — update with full content from tool call
+    // which is more reliable than accumulated deltas.
+    const existingLen = existing.data?.content?.length || 0;
+    console.log(`[NevoFlux] create_artifact: artifact ${id} exists (streamedLen=${existingLen}), updating with tool call content (${content.length} bytes)`);
+    if (content.length > 0) {
+      await browser.nevoflux.updateArtifact(id, { code: content, state: "complete" });
+    }
+    return;
+  }
+
+  // Create artifact with full content and mark as complete
+  await browser.nevoflux.createArtifact({
+    id,
+    type: normalizedType,
+    title,
+    code: content,
+    state: "complete",
+    source: "agent",
+    permissions: [],
+  });
+
+  // Open canvas tab
+  try {
+    if (_canvasTabId != null) {
+      try { await browser.tabs.remove(_canvasTabId); } catch {}
+      _canvasTabId = null;
+    }
+    const result = await browser.nevoflux.openCanvasTab(id);
+    if (result?.success) {
+      if (result.tabId) _canvasTabId = result.tabId;
+    } else {
+      console.error("[NevoFlux] openCanvasTab failed:", result?.error);
+    }
+  } catch (e) {
+    console.error("[NevoFlux] Failed to open canvas tab:", e);
+  }
+
+  // Broadcast artifact_start + artifact_complete to sidebar for ArtifactCard
+  broadcastToSidebar({
+    type: MessageTypes.ARTIFACT_START,
+    payload: { id, content_type: normalizedType, title },
+  });
+  broadcastToSidebar({
+    type: MessageTypes.ARTIFACT_COMPLETE,
+    payload: { id, title },
+  });
+}
+
+/**
+ * Extract partial artifact arguments from truncated JSON string.
+ * When the model runs out of tokens, the JSON arguments are cut off.
+ * This tries to extract whatever fields are available.
+ */
+function extractPartialArtifactArgs(truncatedJson) {
+  const result = {};
+
+  // Try to extract "title" field
+  const titleMatch = truncatedJson.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (titleMatch) result.title = titleMatch[1];
+
+  // Try to extract "type" or "content_type" field
+  const typeMatch = truncatedJson.match(/"(?:type|content_type)"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (typeMatch) result.type = typeMatch[1];
+
+  // Try to extract "id" field
+  const idMatch = truncatedJson.match(/"id"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (idMatch) result.id = idMatch[1];
+
+  // Try to extract "content" field - take everything after "content":" up to the end
+  const contentMatch = truncatedJson.match(/"content"\s*:\s*"([\s\S]*)$/);
+  if (contentMatch) {
+    let content = contentMatch[1];
+    // Remove trailing incomplete escape/quote if present
+    if (content.endsWith("\\")) content = content.slice(0, -1);
+    if (content.endsWith('"')) content = content.slice(0, -1);
+    // Unescape JSON string escapes
+    try {
+      content = JSON.parse('"' + content + '"');
+    } catch {
+      // If unescape fails, use raw content with basic unescaping
+      content = content.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+    }
+    result.content = content;
+  }
+
+  // Must have at least some content to be useful
+  if (result.content || result.title) {
+    console.log(`[NevoFlux] Extracted partial artifact: title=${result.title}, type=${result.type}, contentLen=${result.content?.length || 0}`);
+    return result;
+  }
+  return null;
 }
 
 // =============================================================================
@@ -931,7 +1343,38 @@ async function handleArtifactMessage(message) {
  */
 async function getActiveTabId() {
   const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-  return tabs[0]?.id || null;
+  const tab = tabs[0];
+  if (!tab) return null;
+
+  // If the active tab is an internal page, find the best web tab instead
+  const url = tab.url || "";
+  if (url.startsWith("nevoflux://") || url.startsWith("chrome://nevoflux/") ||
+      url.startsWith("about:") || url.startsWith("chrome://")) {
+    // Find the most recently accessed non-internal tab in the current window
+    const allTabs = await browser.tabs.query({ currentWindow: true });
+    const webTabs = allTabs.filter(t => {
+      const u = t.url || "";
+      return (u.startsWith("http://") || u.startsWith("https://")) && !t.discarded;
+    });
+    if (webTabs.length > 0) {
+      // Sort by lastAccessed descending, pick most recent
+      webTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+      return webTabs[0].id;
+    }
+    // Fallback: try discarded web tabs (will trigger auto-restore)
+    const discardedWebTabs = allTabs.filter(t => {
+      const u = t.url || "";
+      return (u.startsWith("http://") || u.startsWith("https://")) && t.discarded;
+    });
+    if (discardedWebTabs.length > 0) {
+      discardedWebTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+      return discardedWebTabs[0].id;
+    }
+    // No web tab found — return null
+    return null;
+  }
+
+  return tab.id;
 }
 
 /**
@@ -1005,12 +1448,22 @@ async function getActiveTabContext() {
 async function executeBrowserTool(request, caller = "unknown") {
   const { action, params, tab_id, timeout_ms = 30000 } = request;
 
-  // Get target tab
+  // Actions that don't require an active tab
+  const TAB_INDEPENDENT_ACTIONS = new Set([
+    "ask_user", "list_tabs", "query_tabs", "web_fetch", "web_search", "cache_file",
+  ]);
+
+  // Get target tab (skip for tab-independent actions)
   let targetTabId = tab_id;
-  if (!targetTabId) {
+  if (!targetTabId && !TAB_INDEPENDENT_ACTIONS.has(action)) {
     targetTabId = await getActiveTabId();
     if (!targetTabId) {
-      return { success: false, error: { code: -1, message: "No active tab", recoverable: true } };
+      // For navigate, create a new tab if no web tab exists
+      if (action === "navigate" && params?.url) {
+        const newTab = await browser.tabs.create({ url: params.url });
+        return { success: true, result: { url: params.url, tab_id: newTab.id } };
+      }
+      return { success: false, error: { code: -1, message: "No active web tab found. Open a web page first.", recoverable: true } };
     }
   }
 
@@ -1110,6 +1563,17 @@ async function executeBrowserTool(request, caller = "unknown") {
       // Cache uploaded file (save to disk, return absolute path)
       case "cache_file":
         return await executeCacheFile(params);
+
+      // Tab management
+      case "list_tabs":
+        return await executeListTabs();
+
+      case "query_tabs":
+        return await executeQueryTabs(params);
+
+      // Alias: get_elements → snapshot
+      case "get_elements":
+        return await executeSnapshotViaApi(targetTabId, params);
 
       default:
         return { success: false, error: { code: -1, message: `Unknown action: ${action}`, recoverable: false } };
@@ -2036,6 +2500,73 @@ async function executeCacheFile(params) {
       _is_base64: !mime_type || !mime_type.startsWith("text/"),
     },
   };
+}
+
+// =============================================================================
+// Tab Management Implementation
+// =============================================================================
+
+/**
+ * List all open tabs via browser.nevoflux.listTabs()
+ */
+async function executeListTabs() {
+  try {
+    // Try privileged API first
+    if (isNevofluxApiAvailable()) {
+      const tabs = await browser.nevoflux.listTabs();
+      if (tabs && tabs.length > 0) {
+        return { success: true, result: { tabs } };
+      }
+    }
+    // Fallback to standard WebExtension tabs API
+    const allTabs = await browser.tabs.query({});
+    const tabs = allTabs.map(t => ({
+      id: t.id,
+      url: t.url || "",
+      title: t.title || "",
+      active: t.active,
+      index: t.index,
+      windowId: t.windowId,
+      status: t.status || "complete",
+    }));
+    return { success: true, result: { tabs } };
+  } catch (error) {
+    return { success: false, error: { code: -1, message: error.message || String(error), recoverable: true } };
+  }
+}
+
+/**
+ * Query tabs with optional filters (url, title, active) via browser.nevoflux.queryTabs()
+ */
+async function executeQueryTabs(params) {
+  try {
+    // Try privileged API first
+    if (isNevofluxApiAvailable()) {
+      const tabs = await browser.nevoflux.queryTabs(params || {});
+      if (tabs && tabs.length > 0) {
+        return { success: true, result: { tabs } };
+      }
+    }
+    // Fallback to standard WebExtension tabs API
+    const query = {};
+    if (params?.active !== undefined) query.active = params.active;
+    if (params?.windowId !== undefined) query.windowId = params.windowId;
+    if (params?.url) query.url = params.url;
+    if (params?.title) query.title = params.title;
+    const allTabs = await browser.tabs.query(query);
+    const tabs = allTabs.map(t => ({
+      id: t.id,
+      url: t.url || "",
+      title: t.title || "",
+      active: t.active,
+      index: t.index,
+      windowId: t.windowId,
+      status: t.status || "complete",
+    }));
+    return { success: true, result: { tabs } };
+  } catch (error) {
+    return { success: false, error: { code: -1, message: error.message || String(error), recoverable: true } };
+  }
 }
 
 // =============================================================================
@@ -3096,6 +3627,19 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
       return true;
     }
 
+    case "bg:open_artifact": {
+      const artifactId = message.id;
+      if (!artifactId) {
+        sendResponse({ success: false, error: "id required" });
+        return true;
+      }
+      // Always open new tab via privileged API (user clicked an old ArtifactCard)
+      browser.nevoflux.openCanvasTab(artifactId)
+        .then(result => sendResponse(result))
+        .catch(e => sendResponse({ success: false, error: e.message }));
+      return true;
+    }
+
     default:
       console.warn("[NevoFlux] Unknown Background API:", apiType);
       sendResponse({ success: false, error: "Unknown API" });
@@ -3137,6 +3681,13 @@ tabEventListeners.onUpdated = async (tabId, changeInfo, tab) => {
 };
 browser.tabs.onUpdated.addListener(tabEventListeners.onUpdated);
 
+// Clear canvas tab tracking when the canvas tab is closed
+browser.tabs.onRemoved.addListener((tabId) => {
+  if (tabId === _canvasTabId) {
+    _canvasTabId = null;
+  }
+});
+
 // Cleanup function to remove event listeners (call on extension unload if needed)
 function cleanupTabEventListeners() {
   if (tabEventListeners.onActivated) {
@@ -3149,6 +3700,19 @@ function cleanupTabEventListeners() {
   }
   console.log("[NevoFlux] Tab event listeners cleaned up");
 }
+
+// =============================================================================
+// New Tab Override — redirect about:newtab to nevoflux://home
+// =============================================================================
+
+browser.tabs.onCreated.addListener((tab) => {
+  // New tabs start as about:newtab or about:blank before loading
+  if (!tab.url || tab.url === "about:newtab" || tab.url === "about:home") {
+    browser.tabs.update(tab.id, { url: "nevoflux://home" }).catch((err) => {
+      console.debug("[NevoFlux] Failed to redirect new tab:", err.message);
+    });
+  }
+});
 
 // =============================================================================
 // Initialization

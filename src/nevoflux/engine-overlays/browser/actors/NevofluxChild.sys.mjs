@@ -284,6 +284,17 @@ export class NevofluxChild extends JSWindowActorChild {
     return iframe?.contentWindow || this.win;
   }
 
+  // ========== NevoFlux Page Detection ==========
+
+  /**
+   * Returns true when the current document is a nevoflux:// privileged page
+   * (served via chrome://nevoflux/ protocol).
+   */
+  _isNevofluxPage() {
+    const url = this.document?.URL;
+    return !!url && (url.startsWith("chrome://nevoflux/") || url.startsWith("nevoflux://"));
+  }
+
   receiveMessage({ name, data }) {
     if (name === "execute") {
       return this.execute(data.action, data.params);
@@ -303,6 +314,31 @@ export class NevofluxChild extends JSWindowActorChild {
     if (name === "unlockPage") {
       return this.unlockPage();
     }
+
+    // ---------- ContentStore messages (nevoflux:// pages only) ----------
+    if (name === "contentStore:update" && this._isNevofluxPage()) {
+      const content = this.contentWindow;
+      if (content) {
+        const evt = new content.CustomEvent("NevofluxMessage", {
+          detail: Cu.cloneInto(data, content),
+        });
+        content.dispatchEvent(evt);
+      }
+      return undefined;
+    }
+
+    // ---------- Agent push messages (canvas agent:chat sessions) ----------
+    if (name === "agent:push" && this._isNevofluxPage()) {
+      const content = this.contentWindow;
+      if (content) {
+        const evt = new content.CustomEvent("NevofluxMessage", {
+          detail: Cu.cloneInto(data, content),
+        });
+        content.dispatchEvent(evt);
+      }
+      return undefined;
+    }
+
     return null;
   }
 
@@ -446,7 +482,7 @@ export class NevofluxChild extends JSWindowActorChild {
     let uid = 0;
     for (const el of elements) {
       el.id = `e${uid++}`;
-      try { el.node.setAttribute("data-ai-id", el.id); } catch {}
+      try { el.node.setAttribute("data-ai-id", el.id); } catch { }
     }
 
     // === Phase 4: Selector generation ===
@@ -466,7 +502,31 @@ export class NevofluxChild extends JSWindowActorChild {
       }
     }
 
-    const compact = this._serializeCompact(elements, doc, win, truncatedCount);
+    // Detect modal scroll state for viewportInfo and compact output
+    let modalScrollInfo = null;
+    try {
+      const modalNodes = doc.querySelectorAll(
+        '[role="dialog"], [role="alertdialog"], [aria-modal="true"]'
+      );
+      for (const modal of modalNodes) {
+        const rect = modal.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          const scrollable = this._findScrollableChild(modal, win);
+          if (scrollable && scrollable.scrollHeight > scrollable.clientHeight) {
+            modalScrollInfo = {
+              scrollTop: Math.round(scrollable.scrollTop),
+              scrollHeight: Math.round(scrollable.scrollHeight),
+              clientHeight: Math.round(scrollable.clientHeight),
+              canScrollUp: scrollable.scrollTop > 0,
+              canScrollDown: scrollable.scrollTop + scrollable.clientHeight < scrollable.scrollHeight - 1,
+            };
+            break;
+          }
+        }
+      }
+    } catch { }
+
+    const compact = this._serializeCompact(elements, doc, win, truncatedCount, modalScrollInfo);
     const refs = this._buildRefs(elements);
 
     // Build viewportInfo
@@ -484,6 +544,7 @@ export class NevofluxChild extends JSWindowActorChild {
       canScrollDown: scrollTop + viewportHeight < scrollHeight - 1,
       pageTitle: doc.title || "",
       url: win.location?.href || "",
+      modalScroll: modalScrollInfo,
     };
 
     return {
@@ -516,7 +577,7 @@ export class NevofluxChild extends JSWindowActorChild {
       height: bh.value,
     };
     if (vr.y + vr.height < 0 || vr.y > win.innerHeight ||
-        vr.x + vr.width < 0 || vr.x > win.innerWidth) {
+      vr.x + vr.width < 0 || vr.x > win.innerWidth) {
       return; // Subtree must also be outside viewport
     }
 
@@ -527,21 +588,21 @@ export class NevofluxChild extends JSWindowActorChild {
 
     if (LANDMARK_ROLES.has(roleName)) {
       let accName = "";
-      try { accName = acc.name || ""; } catch {}
+      try { accName = acc.name || ""; } catch { }
       currentLandmark = accName ? `${roleName} "${accName}"` : roleName;
       landmarkStack.push(currentLandmark);
     }
 
     // Step 3: Collect DOMNode (ALL nodes, not just interactive)
     let domNode = null;
-    try { domNode = acc.DOMNode; } catch {}
+    try { domNode = acc.DOMNode; } catch { }
     if (domNode?.nodeType === 1) {
       seenNodes.add(domNode); // Mark as A11y-traversed
 
       // Step 4: Interactive role filter (no subtree pruning)
       if (INTERACTIVE_ROLES.has(roleName)) {
         let accName = "";
-        try { accName = acc.name || ""; } catch {}
+        try { accName = acc.name || ""; } catch { }
 
         results.push({
           node: domNode,
@@ -562,7 +623,7 @@ export class NevofluxChild extends JSWindowActorChild {
       try {
         const child = acc.getChildAt(i);
         if (child) this._walkA11yTree(child, results, seenNodes, win, landmarkStack);
-      } catch {}
+      } catch { }
     }
 
     // Pop landmark scope
@@ -587,7 +648,7 @@ export class NevofluxChild extends JSWindowActorChild {
       if (state & 0x40) states.readonly = true;     // STATE_READONLY
       if (state & 0x200) states.expanded = true;    // STATE_EXPANDED
       if (state & 0x400) states.expanded = false;   // STATE_COLLAPSED (overrides)
-    } catch {}
+    } catch { }
     return states;
   }
 
@@ -607,7 +668,7 @@ export class NevofluxChild extends JSWindowActorChild {
       try { rect = node.getBoundingClientRect(); } catch { return; }
       const M = 50;
       if (rect.bottom < -M || rect.top > win.innerHeight + M ||
-          rect.right < -M || rect.left > win.innerWidth + M) {
+        rect.right < -M || rect.left > win.innerWidth + M) {
         return; // Skip entire subtree
       }
 
@@ -623,7 +684,7 @@ export class NevofluxChild extends JSWindowActorChild {
           if (hasUnknown) {
             for (const child of node.shadowRoot.children) walk(child);
           }
-        } catch {}
+        } catch { }
       }
 
       // Same-origin iframe
@@ -631,7 +692,7 @@ export class NevofluxChild extends JSWindowActorChild {
         try {
           const body = node.contentDocument?.body;
           if (body) walk(body);
-        } catch {} // Cross-origin: silent skip
+        } catch { } // Cross-origin: silent skip
       }
 
       // Gap-fill detection (only for A11y-uncovered nodes)
@@ -653,7 +714,7 @@ export class NevofluxChild extends JSWindowActorChild {
                 promotedAncestors.add(ancestor);
                 captureNode = ancestor;
                 signal = "tag";
-                try { captureRect = ancestor.getBoundingClientRect(); } catch {}
+                try { captureRect = ancestor.getBoundingClientRect(); } catch { }
               }
             }
           }
@@ -693,7 +754,7 @@ export class NevofluxChild extends JSWindowActorChild {
           }
         }
       }
-    } catch {}
+    } catch { }
 
     // Standard: native tag
     const tag = el.tagName;
@@ -726,7 +787,7 @@ export class NevofluxChild extends JSWindowActorChild {
           return "cursor";
         }
       }
-    } catch {}
+    } catch { }
 
     // Heuristic: React/Vue framework handlers
     try {
@@ -737,22 +798,22 @@ export class NevofluxChild extends JSWindowActorChild {
           try {
             const props = unwrapped[key];
             if (props?.onClick || props?.onMouseDown || props?.onPointerDown) return "handler";
-          } catch {}
+          } catch { }
         }
       }
       if (unwrapped._vei) {
         const vei = unwrapped._vei;
         if (vei.onClick || vei.onMousedown || vei.onPointerdown ||
-            vei.onclick || vei.onmousedown || vei.onpointerdown) return "handler";
+          vei.onclick || vei.onmousedown || vei.onpointerdown) return "handler";
       }
-    } catch {}
+    } catch { }
 
     // Heuristic: SPA class/data patterns
     try {
       if (el.dataset?.controlName || el.dataset?.action || el.dataset?.click ||
-          el.dataset?.toggle || el.dataset?.entityUrn) return "control";
+        el.dataset?.toggle || el.dataset?.entityUrn) return "control";
       if (/^(btn|button|clickable|interactive|action)/i.test(el.className)) return "control";
-    } catch {}
+    } catch { }
 
     return null;
   }
@@ -782,7 +843,7 @@ export class NevofluxChild extends JSWindowActorChild {
         // Exclude child interactive elements' text
         const tag = n.tagName;
         if (!["A", "BUTTON", "INPUT", "SELECT", "TEXTAREA"].includes(tag) &&
-            !n.getAttribute("role")) {
+          !n.getAttribute("role")) {
           t += this._getDirectText(n);
         }
       }
@@ -839,11 +900,49 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   _filterOccluded(elements, doc) {
+    // ── Modal-aware occlusion: detect active dialog overlays ──
+    // When a modal dialog is open, its backdrop causes elementFromPoint to
+    // return the overlay for ALL page elements, resulting in 0 hits.
+    // Fix: skip elementFromPoint for modal children; filter out non-modal elements.
+    const activeModals = [];
+    try {
+      const modalNodes = doc.querySelectorAll(
+        '[role="dialog"], [role="alertdialog"], [aria-modal="true"]'
+      );
+      for (const modal of modalNodes) {
+        try {
+          const rect = modal.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            activeModals.push(modal);
+          }
+        } catch { }
+      }
+    } catch { }
+
+    const hasActiveModal = activeModals.length > 0;
+    const vw = doc.defaultView?.innerWidth || 0;
+    const vh = doc.defaultView?.innerHeight || 0;
+
     return elements.filter(el => {
       const rect = el.viewportRect;
-      // 5-point sampling
+
+      // ── Modal shortcut ──
+      if (hasActiveModal) {
+        const isInModal = activeModals.some(m => m.contains(el.node));
+        if (isInModal) {
+          // Modal children: skip elementFromPoint (backdrop interferes),
+          // just verify the element is within the viewport and has size.
+          return rect.width > 0 && rect.height > 0 &&
+            rect.y + rect.height > 0 && rect.y < vh &&
+            rect.x + rect.width > 0 && rect.x < vw;
+        }
+        // Non-modal elements: behind the backdrop, not interactable
+        return false;
+      }
+
+      // ── Standard 5-point occlusion sampling (no modal) ──
       const points = [
-        [rect.x + rect.width * 0.5,  rect.y + rect.height * 0.5],
+        [rect.x + rect.width * 0.5, rect.y + rect.height * 0.5],
         [rect.x + rect.width * 0.25, rect.y + rect.height * 0.25],
         [rect.x + rect.width * 0.75, rect.y + rect.height * 0.75],
         [rect.x + rect.width * 0.75, rect.y + rect.height * 0.25],
@@ -851,8 +950,6 @@ export class NevofluxChild extends JSWindowActorChild {
       ];
 
       let hits = 0;
-      const vw = doc.defaultView?.innerWidth || 0;
-      const vh = doc.defaultView?.innerHeight || 0;
       for (const [x, y] of points) {
         if (x < 0 || y < 0 || x >= vw || y >= vh) continue;
         try {
@@ -860,7 +957,7 @@ export class NevofluxChild extends JSWindowActorChild {
           if (topEl && (el.node === topEl || el.node.contains(topEl) || topEl.contains(el.node))) {
             hits++;
           }
-        } catch {}
+        } catch { }
       }
 
       return hits > 0;
@@ -890,7 +987,7 @@ export class NevofluxChild extends JSWindowActorChild {
         const childName = (el.name || "").trim();
         const parentName = (parentEl.name || "").trim();
         if (childName === parentName || childName.length === 0 ||
-            parentName.includes(childName)) {
+          parentName.includes(childName)) {
           toRemove.add(el.node); // R1
         }
         // R2: keep both (different text = independent functions)
@@ -920,7 +1017,7 @@ export class NevofluxChild extends JSWindowActorChild {
       if (pa !== pb) return pb - pa;
       // Same priority: top-to-bottom, left-to-right
       return (a.viewportRect.y - b.viewportRect.y) ||
-             (a.viewportRect.x - b.viewportRect.x);
+        (a.viewportRect.x - b.viewportRect.x);
     });
   }
 
@@ -934,12 +1031,12 @@ export class NevofluxChild extends JSWindowActorChild {
     if (!el.inferred) {
       const role = el.role;
       if (["entry", "searchbox", "textbox", "password text",
-           "combobox", "spinbutton", "editable text"].includes(role)) p += 15;
+        "combobox", "spinbutton", "editable text"].includes(role)) p += 15;
       if (["pushbutton", "button", "toggle button",
-           "switch"].includes(role)) p += 12;
+        "switch"].includes(role)) p += 12;
       if (role === "link") p += 8;
       if (["checkbox", "radio button", "option",
-           "menuitem", "tab", "pagetab"].includes(role)) p += 6;
+        "menuitem", "tab", "pagetab"].includes(role)) p += 6;
     }
 
     // Functional weight (Inferred: tag + signal based)
@@ -949,7 +1046,7 @@ export class NevofluxChild extends JSWindowActorChild {
       if (el.signal === "editable") p += 14;
       const ariaRole = el.node?.getAttribute?.("role") || "";
       if (["button", "link", "textbox", "searchbox",
-           "combobox", "tab"].includes(ariaRole)) p += 12;
+        "combobox", "tab"].includes(ariaRole)) p += 12;
       if (el.signal === "listener") p += 8;
       if (el.signal === "tabindex") p += 6;
       if (el.signal === "cursor") p += 3;
@@ -1022,7 +1119,7 @@ export class NevofluxChild extends JSWindowActorChild {
             selectors.push({ type: "css", strategy: "label", value: s });
           }
         }
-      } catch {}
+      } catch { }
     }
 
     // Shared: data-testid etc
@@ -1062,7 +1159,7 @@ export class NevofluxChild extends JSWindowActorChild {
       const roleName = ROLE_MAP[acc.role] || "";
       const ariaRole = ROLE_TO_ARIA[roleName] || "";
       let name = "";
-      try { name = acc.name || ""; } catch {}
+      try { name = acc.name || ""; } catch { }
       if (ariaRole === targetRole && name === targetName) {
         count++;
         if (count > 1) return;
@@ -1072,7 +1169,7 @@ export class NevofluxChild extends JSWindowActorChild {
           const child = acc.getChildAt(i);
           if (child) walk(child);
           if (count > 1) return;
-        } catch {}
+        } catch { }
       }
     };
     walk(docAcc);
@@ -1112,7 +1209,7 @@ export class NevofluxChild extends JSWindowActorChild {
     try {
       const old = doc.querySelectorAll("[data-ai-id]");
       for (const el of old) el.removeAttribute("data-ai-id");
-    } catch {}
+    } catch { }
   }
 
   _markDuplicateNames(elements) {
@@ -1142,7 +1239,7 @@ export class NevofluxChild extends JSWindowActorChild {
         }
         const label = p.getAttribute("aria-label");
         if (label) return label.slice(0, 30);
-      } catch {}
+      } catch { }
     }
     // Strategy 2: nearest image alt in card container
     try {
@@ -1151,7 +1248,7 @@ export class NevofluxChild extends JSWindowActorChild {
         const img = container.querySelector("img[alt]");
         if (img?.alt) return img.alt.slice(0, 30);
       }
-    } catch {}
+    } catch { }
     return null;
   }
 
@@ -1185,7 +1282,7 @@ export class NevofluxChild extends JSWindowActorChild {
     return null;
   }
 
-  _serializeCompact(elements, doc, win, truncatedCount) {
+  _serializeCompact(elements, doc, win, truncatedCount, modalScrollInfo = null) {
     const lines = [];
 
     // Page header
@@ -1201,8 +1298,21 @@ export class NevofluxChild extends JSWindowActorChild {
       ? Math.round((scrollTop / (scrollHeight - vh)) * 100) : 0;
     const pos = scrollTop === 0 ? "top"
       : scrollTop + vh >= scrollHeight - 1 ? "bottom"
-      : `${pct}%`;
+        : `${pct}%`;
     lines.push(`viewport: ${vw}x${vh} scroll: ${scrollTop}/${scrollHeight} (${pos})`);
+
+    // Modal scroll state: tells LLM the modal is scrollable
+    if (modalScrollInfo) {
+      const mPct = modalScrollInfo.scrollHeight > modalScrollInfo.clientHeight
+        ? Math.round((modalScrollInfo.scrollTop / (modalScrollInfo.scrollHeight - modalScrollInfo.clientHeight)) * 100) : 0;
+      const mPos = modalScrollInfo.scrollTop === 0 ? "top"
+        : !modalScrollInfo.canScrollDown ? "bottom"
+          : `${mPct}%`;
+      let mLine = `modal-scroll: ${modalScrollInfo.scrollTop}/${modalScrollInfo.scrollHeight} (${mPos})`;
+      if (modalScrollInfo.canScrollDown) mLine += " ▼ has more content below";
+      if (modalScrollInfo.canScrollUp) mLine += " ▲ has content above";
+      lines.push(mLine);
+    }
     lines.push("");
 
     // Group by landmark
@@ -1261,7 +1371,7 @@ export class NevofluxChild extends JSWindowActorChild {
     try {
       const ph = node.getAttribute("placeholder");
       if (ph) line += ` ph="${ph}"`;
-    } catch {}
+    } catch { }
 
     // States (symbols)
     if (el.states?.checked) line += " \u2713";
@@ -1277,7 +1387,7 @@ export class NevofluxChild extends JSWindowActorChild {
         const v = node.value.length > 30 ? node.value.slice(0, 27) + "..." : node.value;
         line += ` val="${v}"`;
       }
-    } catch {}
+    } catch { }
 
     // Link target (shortened for same-origin)
     try {
@@ -1289,7 +1399,7 @@ export class NevofluxChild extends JSWindowActorChild {
           line += ` \u2192 ${url.host}${url.pathname}`;
         }
       }
-    } catch {}
+    } catch { }
 
     return line;
   }
@@ -1345,7 +1455,7 @@ export class NevofluxChild extends JSWindowActorChild {
     const roleName = ROLE_MAP[acc.role] || "";
     const ariaRole = ROLE_TO_ARIA[roleName] || "";
     let name = "";
-    try { name = acc.name || ""; } catch {}
+    try { name = acc.name || ""; } catch { }
 
     if (ariaRole === targetRole && name === targetName) {
       try { return acc.DOMNode; } catch { return null; }
@@ -1357,7 +1467,7 @@ export class NevofluxChild extends JSWindowActorChild {
         if (!child) continue;
         const found = this._findByRoleName(child, targetRole, targetName);
         if (found) return found;
-      } catch {}
+      } catch { }
     }
     return null;
   }
@@ -1484,210 +1594,160 @@ export class NevofluxChild extends JSWindowActorChild {
     console.log("[NevofluxChild.click] selector:", selector);
     console.log("[NevofluxChild.click] element:", el.tagName, el.className);
 
-    // Set up click effect detection (DOM changes + network requests)
+    // 2. Ensure element is visible (scroll into view if needed)
+    if (!force && !this.isVisible({ selector })) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      await this.sleep(300);
+      if (!this.isVisible({ selector })) {
+        return { success: false, error: { code: 1002, message: "Element not visible", recoverable: true, suggestion: "Use force: true to click anyway" } };
+      }
+    }
+
+    // 3. Resolve actual click target (handle pointer-events: none)
+    let targetEl = el;
+    try {
+      const style = win.getComputedStyle(targetEl);
+      if (style.pointerEvents === "none") {
+        const clickableChild = this._findClickableDescendant(targetEl, win);
+        if (clickableChild) {
+          console.log("[NevofluxChild.click] Bypassing pointer-events:none, using child:", clickableChild.tagName);
+          targetEl = clickableChild;
+        }
+      }
+    } catch (e) { /* ignore style access errors */ }
+
+    // 4. Calculate click coordinates
+    const rect = targetEl.getBoundingClientRect();
+    const buttonCode = { left: 0, middle: 1, right: 2 }[button] || 0;
+
+    // 5. Find unobstructed click point (multi-point strategy)
+    let clickPoint = this._findUnobstructedPoint(targetEl, doc);
+    if (!clickPoint) {
+      clickPoint = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      console.log("[NevofluxChild.click] All points obstructed, using center");
+    }
+
+    console.log("[NevofluxChild.click] Target:", targetEl.tagName, "coords:", clickPoint, "rect:", { width: rect.width, height: rect.height });
+
+    // 6. Check what element is at the click point
+    const elementAtPoint = doc.elementFromPoint(clickPoint.x, clickPoint.y);
+    const isTargetAtPoint = elementAtPoint === targetEl || targetEl.contains(elementAtPoint);
+    console.log("[NevofluxChild.click] elementFromPoint:", elementAtPoint?.tagName, "isTargetAtPoint:", isTargetAtPoint);
+
+    // 7. Get windowUtils for trusted events
+    const domUtils = this._getWindowUtils();
+
+    // 8. Tiered click with DOM change detection between tiers
+    //    Each tier fires a click method, then waits up to 500ms for DOM/network effect.
+    //    If effect detected, skip remaining tiers to avoid double/triple firing.
+    let clickMethod = "none";
     let domChanged = false;
     let networkRequestMade = false;
-    let observer = null;
-    let perfObserver = null;
 
     try {
-      // 2. Set up MutationObserver to detect DOM changes
-      observer = new win.MutationObserver((mutations) => {
-        // Filter out trivial changes (e.g., style changes from hover)
-        for (const mutation of mutations) {
-          if (mutation.type === "childList" && (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0)) {
-            domChanged = true;
-            break;
-          }
-          if (mutation.type === "attributes") {
-            // Ignore style-only and class-only changes that might be hover effects
-            const attr = mutation.attributeName;
-            if (attr !== "style" && attr !== "class") {
-              domChanged = true;
-              break;
-            }
-            // For class changes, check if it's significant (not just hover state)
-            if (attr === "class") {
-              const oldVal = mutation.oldValue || "";
-              const newVal = mutation.target.className || "";
-              // Consider significant if more than just adding/removing hover/active/focus classes
-              const hoverClasses = /\b(hover|active|focus|focused|pressed)\b/gi;
-              const oldClean = oldVal.replace(hoverClasses, "").trim();
-              const newClean = newVal.replace(hoverClasses, "").trim();
-              if (oldClean !== newClean) {
-                domChanged = true;
-                break;
-              }
-            }
-          }
-        }
-      });
+      // Set up effect watcher BEFORE any click (captures changes during click)
+      const watcher = this._setupClickEffectWatcher(doc, win);
 
-      observer.observe(doc.body || doc.documentElement, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeOldValue: true,
-        attributeFilter: ["class", "style", "hidden", "disabled", "aria-hidden", "aria-expanded", "data-state"]
-      });
-
-      // 3. Set up PerformanceObserver to detect network requests
-      try {
-        perfObserver = new win.PerformanceObserver((list) => {
-          const entries = list.getEntries();
-          for (const entry of entries) {
-            if (entry.initiatorType === "fetch" || entry.initiatorType === "xmlhttprequest") {
-              networkRequestMade = true;
-              break;
-            }
-          }
-        });
-        perfObserver.observe({ entryTypes: ["resource"] });
-      } catch (e) {
-        // PerformanceObserver might not be available in all contexts
-        console.log("[NevofluxChild.click] PerformanceObserver not available:", e.message);
-      }
-
-      // 4. Ensure element is visible (scroll into view if needed)
-      if (!force && !this.isVisible({ selector })) {
-        el.scrollIntoView({ behavior: "smooth", block: "center" });
-        await this.sleep(300);
-
-        if (!this.isVisible({ selector })) {
-          if (observer) observer.disconnect();
-          if (perfObserver) perfObserver.disconnect();
-          return { success: false, error: { code: 1002, message: "Element not visible", recoverable: true, suggestion: "Use force: true to click anyway" } };
-        }
-      }
-
-      // 5. Click the element directly - background.js already handles child element finding
-      let targetEl = el;
-
-      // 4. Handle pointer-events: none - only case where we need to find alternative
-      try {
-        const style = win.getComputedStyle(targetEl);
-        if (style.pointerEvents === "none") {
-          // Try to find a clickable child that doesn't have pointer-events: none
-          const clickableChild = this._findClickableDescendant(targetEl, win);
-          if (clickableChild) {
-            console.log("[NevofluxChild.click] Bypassing pointer-events:none, using child:", clickableChild.tagName);
-            targetEl = clickableChild;
-          }
-        }
-      } catch (e) { /* ignore style access errors */ }
-
-      // 5. Calculate click coordinates using the actual target element
-      const rect = targetEl.getBoundingClientRect();
-      const buttonCode = { left: 0, middle: 1, right: 2 }[button] || 0;
-
-      // 6. Try to find an unobstructed click point (multi-point strategy)
-      let clickPoint = this._findUnobstructedPoint(targetEl, doc);
-      if (!clickPoint) {
-        // Fall back to center point if all points are obstructed
-        clickPoint = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-        console.log("[NevofluxChild.click] All points obstructed, using center");
-      }
-
-      console.log("[NevofluxChild.click] Target:", targetEl.tagName, "coords:", clickPoint, "rect:", { width: rect.width, height: rect.height });
-
-      // 7. Check what element is actually at the click point
-      const elementAtPoint = doc.elementFromPoint(clickPoint.x, clickPoint.y);
-      const isTargetAtPoint = elementAtPoint === targetEl || targetEl.contains(elementAtPoint);
-      console.log("[NevofluxChild.click] elementFromPoint:", elementAtPoint?.tagName, "isTargetAtPoint:", isTargetAtPoint);
-
-      // 8. Try windowUtils for trusted mouse events (best method)
-      const domUtils = this._getWindowUtils();
-      console.log("[NevofluxChild.click] windowUtils available:", !!domUtils, "sendMouseEvent:", typeof domUtils?.sendMouseEvent);
-
-      let windowUtilsUsed = false;
-
+      // --- Tier 1: windowUtils.sendMouseEvent (trusted events through browser input pipeline) ---
       if (domUtils && typeof domUtils.sendMouseEvent === "function") {
-        console.log("[NevofluxChild.click] Using windowUtils.sendMouseEvent at", clickPoint.x, clickPoint.y);
+        console.log("[NevofluxChild.click] Tier 1: windowUtils.sendMouseEvent at", clickPoint.x, clickPoint.y);
         for (let i = 0; i < clickCount; i++) {
-          // Move mouse to element first
           domUtils.sendMouseEvent("mousemove", clickPoint.x, clickPoint.y, buttonCode, 0, 0);
           await this.sleep(10);
-          // Mouse down + up = click (synthesized by browser)
           domUtils.sendMouseEvent("mousedown", clickPoint.x, clickPoint.y, buttonCode, 1, 0);
           await this.sleep(50);
           domUtils.sendMouseEvent("mouseup", clickPoint.x, clickPoint.y, buttonCode, 1, 0);
+          if (delay > 0 && i < clickCount - 1) await this.sleep(delay);
+        }
 
-          if (delay > 0 && i < clickCount - 1) {
-            await this.sleep(delay);
+        const tier1 = await watcher.waitForEffect(500);
+        if (tier1.changed) {
+          clickMethod = "trusted_event";
+          domChanged = tier1.domChanged;
+          networkRequestMade = tier1.networkRequest;
+          console.log("[NevofluxChild.click] Tier 1 effective - domChanged:", tier1.domChanged, "network:", tier1.networkRequest);
+        }
+      }
+
+      // --- Tier 2: element.click() (only if tier 1 didn't detect effect) ---
+      if (clickMethod === "none") {
+        // Check if tier 1's effect arrived just after timeout (late detection)
+        if (watcher.changed) {
+          clickMethod = "trusted_event_delayed";
+          domChanged = watcher.domChanged;
+          networkRequestMade = watcher.networkRequest;
+          console.log("[NevofluxChild.click] Tier 1 late effect detected, skipping tier 2");
+        } else {
+          console.log("[NevofluxChild.click] Tier 2: targetEl.click()");
+          targetEl.scrollIntoView({ behavior: "instant", block: "center" });
+          await this.sleep(50);
+          if (typeof targetEl.click === "function") {
+            for (let i = 0; i < clickCount; i++) {
+              targetEl.click();
+              if (delay > 0 && i < clickCount - 1) await this.sleep(delay);
+            }
+          }
+
+          const tier2 = await watcher.waitForEffect(500);
+          if (tier2.changed) {
+            clickMethod = "native_click";
+            domChanged = tier2.domChanged;
+            networkRequestMade = tier2.networkRequest;
+            console.log("[NevofluxChild.click] Tier 2 effective - domChanged:", tier2.domChanged, "network:", tier2.networkRequest);
           }
         }
-        windowUtilsUsed = true;
       }
 
-      // 9. Always try direct targetEl.click() as a reliable fallback
-      //    This is the most reliable method for many sites (same as F12 console)
-      console.log("[NevofluxChild.click] Executing targetEl.click()");
-      targetEl.scrollIntoView({ behavior: "instant", block: "center" });
-      await this.sleep(50);
+      // --- Tier 3: synthetic dispatchEvent (last resort) ---
+      if (clickMethod === "none") {
+        // Check for late detection again
+        if (watcher.changed) {
+          clickMethod = "native_click_delayed";
+          domChanged = watcher.domChanged;
+          networkRequestMade = watcher.networkRequest;
+          console.log("[NevofluxChild.click] Tier 2 late effect detected, skipping tier 3");
+        } else {
+          console.log("[NevofluxChild.click] Tier 3: synthetic dispatchEvent");
+          this._dispatchMouseEvents(targetEl, clickPoint.x, clickPoint.y, buttonCode, win);
 
-      if (typeof targetEl.click === "function") {
-        for (let i = 0; i < clickCount; i++) {
-          targetEl.click();
-          if (delay > 0 && i < clickCount - 1) {
-            await this.sleep(delay);
+          // Also try pointer-events:none and element-at-point fallbacks in tier 3
+          if (el !== targetEl) {
+            console.log("[NevofluxChild.click] Also clicking original element (pointer-events workaround)");
+            if (typeof el.click === "function") el.click();
+            const elRect = el.getBoundingClientRect();
+            this._dispatchMouseEvents(el, elRect.left + elRect.width / 2, elRect.top + elRect.height / 2, buttonCode, win);
           }
+          if (!isTargetAtPoint && elementAtPoint && elementAtPoint !== targetEl) {
+            console.log("[NevofluxChild.click] Clicking element at point:", elementAtPoint.tagName);
+            if (typeof elementAtPoint.click === "function") elementAtPoint.click();
+            this._dispatchMouseEvents(elementAtPoint, clickPoint.x, clickPoint.y, buttonCode, win);
+          }
+
+          const tier3 = await watcher.waitForEffect(300);
+          clickMethod = tier3.changed ? "synthetic" : "all_tiers_exhausted";
+          domChanged = tier3.domChanged;
+          networkRequestMade = tier3.networkRequest;
         }
-        console.log("[NevofluxChild.click] targetEl.click() executed");
       }
 
-      // 10. Dispatch synthetic events to the target element
-      await this.sleep(50);
-      this._dispatchMouseEvents(targetEl, clickPoint.x, clickPoint.y, buttonCode, win);
-
-      // 11. If original element differs from target (pointer-events:none case), also click the original
-      if (el !== targetEl) {
-        console.log("[NevofluxChild.click] Also clicking original element (pointer-events workaround)");
-        if (typeof el.click === "function") {
-          el.click();
-        }
-        const elRect = el.getBoundingClientRect();
-        const elX = elRect.left + elRect.width / 2;
-        const elY = elRect.top + elRect.height / 2;
-        this._dispatchMouseEvents(el, elX, elY, buttonCode, win);
-      }
-
-      // 12. If target wasn't at click point, also try clicking what's actually there
-      if (!isTargetAtPoint && elementAtPoint && elementAtPoint !== targetEl) {
-        console.log("[NevofluxChild.click] Clicking element at point:", elementAtPoint.tagName);
-        if (typeof elementAtPoint.click === "function") {
-          elementAtPoint.click();
-        }
-        this._dispatchMouseEvents(elementAtPoint, clickPoint.x, clickPoint.y, buttonCode, win);
-      }
-
-      // 13. Wait for effects to occur (DOM changes or network requests)
-      await this.sleep(150);
-
-      // 14. Check if element was removed from DOM (e.g., close button clicked)
-      const elementStillExists = doc.body?.contains(el) ?? false;
-      const elementRemoved = !elementStillExists;
-
+      watcher.disconnect();
     } catch (e) {
       console.error("[NevofluxChild.click] Error:", e.message, e.stack);
-      if (observer) observer.disconnect();
-      if (perfObserver) perfObserver.disconnect();
       return { success: false, error: { code: 5001, message: e.message, recoverable: false } };
     }
 
-    // Cleanup observers
-    if (observer) observer.disconnect();
-    if (perfObserver) perfObserver.disconnect();
-
-    // Determine success based on detected effects
-    const clickEffective = domChanged || networkRequestMade || !doc.body?.contains(el);
-    console.log("[NevofluxChild.click] Complete - domChanged:", domChanged, "networkRequest:", networkRequestMade, "elementRemoved:", !doc.body?.contains(el), "effective:", clickEffective);
+    // 9. Determine results
+    const elementRemoved = !(doc.body?.contains(el) ?? false);
+    const clickEffective = domChanged || networkRequestMade || elementRemoved;
+    console.log("[NevofluxChild.click] Complete - method:", clickMethod, "domChanged:", domChanged, "network:", networkRequestMade, "removed:", elementRemoved, "effective:", clickEffective);
 
     return {
-      success: true,  // Click action was performed
-      effective: clickEffective,  // Whether click had detectable effect
+      success: true,
+      effective: clickEffective,
+      clickMethod,
       domChanged,
       networkRequestMade,
-      elementRemoved: !doc.body?.contains(el)
+      elementRemoved
     };
   }
 
@@ -1826,6 +1886,134 @@ export class NevofluxChild extends JSWindowActorChild {
     } catch (e) { /* ignore */ }
 
     return null;
+  }
+
+  /**
+   * Set up observers to detect click effects (DOM changes + network requests).
+   * Must be called BEFORE the click action so changes during click are captured.
+   * Returns a watcher with waitForEffect(timeout) and disconnect().
+   */
+  _setupClickEffectWatcher(doc, win) {
+    let domChanged = false;
+    let networkRequest = false;
+    let resolveWait = null;
+
+    const notifyChange = () => {
+      if (resolveWait) {
+        const fn = resolveWait;
+        resolveWait = null;
+        fn();
+      }
+    };
+
+    // MutationObserver with noise filtering
+    const observer = new win.MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === "childList" && (mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0)) {
+          // Filter trivial injections (analytics scripts, tracking pixels)
+          let meaningful = false;
+          for (const node of mutation.addedNodes) {
+            if (node.nodeType === 1) {
+              const tag = node.tagName?.toLowerCase();
+              if (tag === "script" || tag === "link" || tag === "style") continue;
+              if (tag === "img" && node.width <= 1 && node.height <= 1) continue;
+              meaningful = true;
+              break;
+            }
+            if (node.nodeType === 3 && node.textContent?.trim()) {
+              meaningful = true;
+              break;
+            }
+          }
+          if (!meaningful) {
+            for (const node of mutation.removedNodes) {
+              if (node.nodeType === 1) { meaningful = true; break; }
+            }
+          }
+          if (meaningful) {
+            domChanged = true;
+            notifyChange();
+            return;
+          }
+        }
+        if (mutation.type === "attributes") {
+          const attr = mutation.attributeName;
+          if (attr === "style") continue;
+          if (attr === "class") {
+            const oldVal = mutation.oldValue || "";
+            const newVal = mutation.target.className || "";
+            const hoverClasses = /\b(hover|active|focus|focused|pressed|highlighted)\b/gi;
+            const oldClean = oldVal.replace(hoverClasses, "").trim();
+            const newClean = newVal.replace(hoverClasses, "").trim();
+            if (oldClean !== newClean) {
+              domChanged = true;
+              notifyChange();
+              return;
+            }
+          } else {
+            // Meaningful attribute: hidden, disabled, aria-*, data-state
+            domChanged = true;
+            notifyChange();
+            return;
+          }
+        }
+      }
+    });
+
+    observer.observe(doc.body || doc.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeOldValue: true,
+      attributeFilter: ["class", "style", "hidden", "disabled", "aria-hidden", "aria-expanded", "aria-selected", "data-state", "data-active"]
+    });
+
+    // PerformanceObserver for network requests triggered by click
+    let perfObserver = null;
+    try {
+      perfObserver = new win.PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.initiatorType === "fetch" || entry.initiatorType === "xmlhttprequest") {
+            networkRequest = true;
+            notifyChange();
+            return;
+          }
+        }
+      });
+      perfObserver.observe({ entryTypes: ["resource"] });
+    } catch (e) {
+      // PerformanceObserver not available in all contexts
+    }
+
+    return {
+      get changed() { return domChanged || networkRequest; },
+      get domChanged() { return domChanged; },
+      get networkRequest() { return networkRequest; },
+
+      waitForEffect(timeout = 500) {
+        if (domChanged || networkRequest) {
+          return Promise.resolve({ changed: true, domChanged, networkRequest });
+        }
+        return new Promise(resolve => {
+          const done = () => {
+            resolve({ changed: domChanged || networkRequest, domChanged, networkRequest });
+          };
+          resolveWait = done;
+          win.setTimeout(() => {
+            if (resolveWait === done) {
+              resolveWait = null;
+              done();
+            }
+          }, timeout);
+        });
+      },
+
+      disconnect() {
+        observer.disconnect();
+        if (perfObserver) perfObserver.disconnect();
+        resolveWait = null;
+      }
+    };
   }
 
   // Helper to dispatch mouse events with proper bubbling for event delegation
@@ -2463,11 +2651,29 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     try {
+      const doc = this.currentDoc;
+
+      // ── Modal-aware scroll: find the scrollable modal container ──
+      let scrollTarget = null;
+      try {
+        const modalNodes = doc.querySelectorAll(
+          '[role="dialog"], [role="alertdialog"], [aria-modal="true"]'
+        );
+        for (const modal of modalNodes) {
+          const rect = modal.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            // Find the scrollable element within the modal
+            scrollTarget = this._findScrollableChild(modal, win);
+            if (scrollTarget) break;
+          }
+        }
+      } catch { }
+
       let scrollPx;
       if (amount === "page") {
-        scrollPx = win.innerHeight * 0.85; // 85% of viewport to keep some context
+        scrollPx = (scrollTarget ? scrollTarget.clientHeight : win.innerHeight) * 0.85;
       } else if (amount === "half") {
-        scrollPx = win.innerHeight * 0.5;
+        scrollPx = (scrollTarget ? scrollTarget.clientHeight : win.innerHeight) * 0.5;
       } else {
         const parsed = parseInt(amount, 10);
         scrollPx = isNaN(parsed) ? win.innerHeight : parsed;
@@ -2475,9 +2681,19 @@ export class NevofluxChild extends JSWindowActorChild {
 
       if (direction === "up") scrollPx = -scrollPx;
 
+      if (scrollTarget) {
+        scrollTarget.scrollBy({ top: scrollPx, behavior: "instant" });
+        return {
+          success: true,
+          scrollTarget: "modal",
+          scrollTop: Math.round(scrollTarget.scrollTop),
+          scrollHeight: Math.round(scrollTarget.scrollHeight),
+          viewportHeight: scrollTarget.clientHeight,
+        };
+      }
+
       win.scrollBy({ top: scrollPx, behavior: "instant" });
 
-      const doc = this.currentDoc;
       return {
         success: true,
         scrollTop: Math.round(win.scrollY || 0),
@@ -2487,6 +2703,40 @@ export class NevofluxChild extends JSWindowActorChild {
     } catch (e) {
       return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
     }
+  }
+
+  /**
+   * Find the scrollable element within a modal dialog.
+   * Checks the modal itself and its descendants for overflow scroll/auto.
+   */
+  _findScrollableChild(modal, win) {
+    // Check the modal itself first
+    try {
+      const cs = win.getComputedStyle(modal);
+      if ((cs.overflowY === "auto" || cs.overflowY === "scroll") &&
+        modal.scrollHeight > modal.clientHeight) {
+        return modal;
+      }
+    } catch { }
+
+    // BFS through children to find the scrollable container
+    const queue = [...modal.children];
+    while (queue.length > 0) {
+      const node = queue.shift();
+      if (!node || node.nodeType !== 1) continue;
+      try {
+        const cs = win.getComputedStyle(node);
+        if ((cs.overflowY === "auto" || cs.overflowY === "scroll") &&
+          node.scrollHeight > node.clientHeight) {
+          return node;
+        }
+      } catch { }
+      for (const child of node.children) {
+        queue.push(child);
+      }
+    }
+
+    return null;
   }
 
   async waitForStable({ strategy = "interaction", maxWait = 3000 }) {
@@ -3241,9 +3491,9 @@ export class NevofluxChild extends JSWindowActorChild {
       const lazyImages = docClone.querySelectorAll('img[data-src], img[data-original], img[data-lazy-src], img[data-actualsrc]');
       for (const img of lazyImages) {
         const lazySrc = img.getAttribute('data-src') ||
-                        img.getAttribute('data-original') ||
-                        img.getAttribute('data-lazy-src') ||
-                        img.getAttribute('data-actualsrc');
+          img.getAttribute('data-original') ||
+          img.getAttribute('data-lazy-src') ||
+          img.getAttribute('data-actualsrc');
         if (lazySrc && !img.getAttribute('src')) {
           img.setAttribute('src', lazySrc);
         }
@@ -3283,7 +3533,7 @@ export class NevofluxChild extends JSWindowActorChild {
       if (!includeImages) {
         turndownService.addRule('removeImages', {
           filter: 'img',
-          replacement: function() {
+          replacement: function () {
             return '';
           }
         });
@@ -3293,7 +3543,7 @@ export class NevofluxChild extends JSWindowActorChild {
       if (!includeLinks) {
         turndownService.addRule('plainLinks', {
           filter: 'a',
-          replacement: function(content) {
+          replacement: function (content) {
             return content;
           }
         });
@@ -4155,5 +4405,203 @@ export class NevofluxChild extends JSWindowActorChild {
   _removeLockOverlay() {
     this._lockOverlay?.remove();
     this._lockOverlay = null;
+  }
+
+  // ========== NevoFlux Bridge (nevoflux:// pages) ==========
+
+  /**
+   * Called by the actor framework when a registered DOM event fires.
+   * We use DOMDocElementInserted to inject the NevofluxBridge early,
+   * before any page scripts run.
+   */
+  handleEvent(event) {
+    if (event.type === "DOMDocElementInserted" && this._isNevofluxPage()) {
+      this._initBridge();
+    }
+  }
+
+  /**
+   * Inject `window.NevofluxBridge` into the content window of a
+   * nevoflux:// page.  The bridge exposes storage and system helpers
+   * that communicate with the parent actor via sendQuery / sendAsyncMessage.
+   *
+   * Security: Cu.exportFunction wraps each callable so the content
+   * principal cannot reach chrome internals.  Cu.cloneInto is used for
+   * any structured data crossing the boundary.
+   */
+  _initBridge() {
+    const content = this.contentWindow;
+    if (!content) {
+      return;
+    }
+
+    const actor = this; // capture for closures
+
+    // -- storage namespace --------------------------------------------------
+    const storage = Cu.cloneInto({}, content);
+
+    Cu.exportFunction(function get(key) {
+      return actor.sendQuery("contentStore:get", { key });
+    }, storage, { defineAs: "get" });
+
+    Cu.exportFunction(function set(key, value) {
+      return actor.sendQuery("contentStore:set", { key, value });
+    }, storage, { defineAs: "set" });
+
+    Cu.exportFunction(function del(key) {
+      return actor.sendQuery("contentStore:delete", { key });
+    }, storage, { defineAs: "delete" });
+
+    Cu.exportFunction(function query(prefix) {
+      return actor.sendQuery("contentStore:query", { prefix });
+    }, storage, { defineAs: "query" });
+
+    Cu.exportFunction(function subscribe(key, callback) {
+      // Register with parent so it starts pushing updates for this key
+      actor.sendQuery("contentStore:subscribe", { key });
+
+      // Listen for pushed updates and call the content-world callback
+      const handler = (evt) => {
+        const detail = evt.detail;
+        if (detail && detail.key === key) {
+          try {
+            callback(Cu.cloneInto(detail.value, content));
+          } catch (e) {
+            // Content callback error — ignore
+          }
+        }
+      };
+      content.addEventListener("NevofluxMessage", handler);
+
+      // Return an unsubscribe function
+      const unsub = Cu.exportFunction(function unsubscribe() {
+        content.removeEventListener("NevofluxMessage", handler);
+      }, content);
+      return unsub;
+    }, storage, { defineAs: "subscribe" });
+
+    // -- system namespace ---------------------------------------------------
+    const system = Cu.cloneInto({}, content);
+
+    Cu.exportFunction(function getInfo() {
+      const info = {
+        platform: Services.appinfo.OS,
+        version: Services.appinfo.version,
+      };
+      return Cu.cloneInto(info, content);
+    }, system, { defineAs: "getInfo" });
+
+    Cu.exportFunction(function getConfig(key) {
+      return actor.sendQuery("contentStore:get", { key: `config:${key}` })
+        .then(res => Cu.cloneInto(res.value, content));
+    }, system, { defineAs: "getConfig" });
+
+    // -- callTool (unified tool execution) -----------------------------------
+    const callToolFn = Cu.exportFunction(function callTool(action, params) {
+      return actor.sendQuery("bridge:request", {
+        type: "exec_tool",
+        payload: { action, params: params || {} },
+      }).then(res => {
+        const val = res.success ? (res.data || res) : res;
+        return Cu.cloneInto(val, content);
+      });
+    }, content);
+
+    // -- agent namespace ------------------------------------------------------
+    const agentNs = Cu.cloneInto({}, content);
+
+    Cu.exportFunction(function chat(message, options) {
+      return actor.sendQuery("bridge:request", {
+        type: "send_to_agent",
+        payload: {
+          type: "chat_message",
+          payload: { content: message, ...(options || {}) },
+        },
+      }).then(res => {
+        const val = res.success ? (res.data || res) : res;
+        return Cu.cloneInto(val, content);
+      });
+    }, agentNs, { defineAs: "chat" });
+
+    Cu.exportFunction(function sendCommand(command, params) {
+      return actor.sendQuery("bridge:request", {
+        type: "send_to_agent",
+        payload: {
+          type: "system_command",
+          payload: { command, params: params || {} },
+        },
+      }).then(res => {
+        const val = res.success ? (res.data || res) : res;
+        return Cu.cloneInto(val, content);
+      });
+    }, agentNs, { defineAs: "sendCommand" });
+
+    // -- sidebar namespace ----------------------------------------------------
+    const sidebarNs = Cu.cloneInto({}, content);
+
+    Cu.exportFunction(function send(message) {
+      return actor.sendQuery("bridge:request", {
+        type: "sidebar_send",
+        payload: message,
+      }).then(res => {
+        const val = res.success ? (res.data || res) : res;
+        return Cu.cloneInto(val, content);
+      });
+    }, sidebarNs, { defineAs: "send" });
+
+    Cu.exportFunction(function notify(notificationType, data) {
+      return actor.sendQuery("bridge:request", {
+        type: "sidebar_send",
+        payload: { type: notificationType, payload: data },
+      }).then(res => {
+        const val = res.success ? (res.data || res) : res;
+        return Cu.cloneInto(val, content);
+      });
+    }, sidebarNs, { defineAs: "notify" });
+
+    // -- assemble bridge object and expose on window ------------------------
+    const bridge = Cu.cloneInto({}, content);
+    Object.defineProperty(bridge, "callTool", {
+      value: callToolFn,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
+    Object.defineProperty(bridge, "storage", {
+      value: storage,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
+    Object.defineProperty(bridge, "system", {
+      value: system,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
+    Object.defineProperty(bridge, "agent", {
+      value: agentNs,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
+    Object.defineProperty(bridge, "sidebar", {
+      value: sidebarNs,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
+
+    Cu.exportFunction(() => bridge, content, { defineAs: "__getNevofluxBridge" });
+    Object.defineProperty(
+      Cu.waiveXrays(content),
+      "NevofluxBridge",
+      {
+        value: bridge,
+        writable: false,
+        enumerable: true,
+        configurable: false,
+      }
+    );
   }
 }

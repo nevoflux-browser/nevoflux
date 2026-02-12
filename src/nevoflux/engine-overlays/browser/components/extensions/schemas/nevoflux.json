@@ -482,6 +482,16 @@
           "value": { "type": "any" },
           "updated_at": { "type": "integer", "optional": true }
         }
+      },
+      {
+        "id": "BridgeRequest",
+        "type": "object",
+        "description": "A bridge request from a nevoflux:// page",
+        "properties": {
+          "id": { "type": "string" },
+          "type": { "type": "string" },
+          "payload": { "type": "any" }
+        }
       }
     ],
     "functions": [
@@ -1382,6 +1392,19 @@
         "returns": { "type": "object" }
       },
       {
+        "name": "openCanvasTab",
+        "type": "function",
+        "async": "promise",
+        "description": "Open a nevoflux://canvas/ tab using privileged browser API (foreground)",
+        "parameters": [
+          { "name": "id", "type": "string" },
+          { "name": "options", "type": "object", "optional": true, "properties": {
+            "inBackground": { "type": "boolean", "optional": true }
+          }}
+        ],
+        "returns": { "$ref": "ApiResult" }
+      },
+      {
         "name": "getSettings",
         "type": "function",
         "async": "promise",
@@ -1411,6 +1434,28 @@
           { "name": "entries", "type": "array", "items": { "$ref": "ContentStoreEntry" } }
         ],
         "returns": { "$ref": "ApiResult" }
+      },
+      {
+        "name": "bridgeRespond",
+        "type": "function",
+        "async": "promise",
+        "description": "Respond to a bridge request from a nevoflux:// page",
+        "parameters": [
+          { "name": "id", "type": "string" },
+          { "name": "result", "type": "any" }
+        ],
+        "returns": { "$ref": "ApiResult" }
+      },
+      {
+        "name": "bridgePush",
+        "type": "function",
+        "async": "promise",
+        "description": "Push a message to canvas subscribers of an agent session",
+        "parameters": [
+          { "name": "sessionId", "type": "string" },
+          { "name": "message", "type": "any" }
+        ],
+        "returns": { "$ref": "ApiResult" }
       }
     ],
     "events": [
@@ -1422,6 +1467,16 @@
           { "name": "operation", "type": "string" },
           { "name": "key", "type": "string" },
           { "name": "value", "type": "any", "optional": true }
+        ]
+      },
+      {
+        "name": "onBridgeRequest",
+        "type": "function",
+        "description": "Fired when a nevoflux:// page makes a bridge request (callTool, agent, sidebar)",
+        "parameters": [
+          { "name": "id", "type": "string" },
+          { "name": "type", "type": "string" },
+          { "name": "payload", "type": "any", "optional": true }
         ]
       }
     ]

@@ -452,18 +452,35 @@ this.nevoflux = class extends ExtensionAPI {
         },
 
         _getTabInfo(tab, tabId) {
-          const nativeTab = tab.nativeTab;
-          const browser = tab.browser;
-          return {
-            id: tabId,
-            zenSyncId: nativeTab.id || null,  // Zen Browser's persistent tab ID for session association
-            url: browser?.currentURI?.spec || "",
-            title: browser?.contentTitle || "",
-            active: nativeTab === nativeTab.ownerGlobal.gBrowser.selectedTab,
-            index: nativeTab._tPos,
-            windowId: extension.windowManager.getWrapper(nativeTab.ownerGlobal)?.id || 0,
-            status: nativeTab.linkedBrowser?.webProgress?.isLoadingDocument ? "loading" : "complete",
-          };
+          try {
+            const nativeTab = tab.nativeTab;
+            const browser = tab.browser;
+            let windowId = 0;
+            try {
+              windowId = extension.windowManager.getWrapper(nativeTab.ownerGlobal)?.id || 0;
+            } catch (e) {
+              // ownerGlobal may be a dead wrapper
+            }
+            let active = false;
+            try {
+              active = nativeTab === nativeTab.ownerGlobal?.gBrowser?.selectedTab;
+            } catch (e) {
+              // ownerGlobal may be unavailable
+            }
+            return {
+              id: tabId,
+              zenSyncId: nativeTab.id || null,  // Zen Browser's persistent tab ID for session association
+              url: browser?.currentURI?.spec || "",
+              title: browser?.contentTitle || "",
+              active,
+              index: nativeTab._tPos ?? 0,
+              windowId,
+              status: nativeTab.linkedBrowser?.webProgress?.isLoadingDocument ? "loading" : "complete",
+            };
+          } catch (e) {
+            // Return minimal info on failure to avoid crashing the entire listTabs call
+            return { id: tabId, url: "", title: "", active: false, index: 0, windowId: 0, status: "unknown" };
+          }
         },
 
         async getTab(tabId) {
@@ -480,26 +497,38 @@ this.nevoflux = class extends ExtensionAPI {
         async listTabs(windowId) {
           // Get target window - use specified windowId or fall back to current/top window
           let win;
-          if (windowId !== undefined) {
-            const wrapper = extension.windowManager.get(windowId, extension.context);
-            if (!wrapper) {
-              return [];
+          try {
+            if (windowId !== undefined) {
+              const wrapper = extension.windowManager.get(windowId, extension.context);
+              if (!wrapper) {
+                return [];
+              }
+              win = wrapper;
+            } else {
+              const topWin = extension.windowManager.topWindow;
+              if (!topWin) {
+                return [];
+              }
+              win = extension.windowManager.getWrapper(topWin);
             }
-            win = wrapper;
-          } else {
-            win = extension.windowManager.getWrapper(extension.windowManager.topWindow);
+          } catch (e) {
+            return [];
           }
 
-          if (!win) {
+          if (!win?.window?.gBrowser?.tabs) {
             return [];
           }
 
           const tabs = [];
           for (const nativeTab of win.window.gBrowser.tabs) {
-            const tabId = tabTracker.getId(nativeTab);
-            const tab = extension.tabManager.get(tabId);
-            if (tab) {
-              tabs.push(this._getTabInfo(tab, tabId));
+            try {
+              const tabId = tabTracker.getId(nativeTab);
+              const tab = extension.tabManager.get(tabId);
+              if (tab) {
+                tabs.push(this._getTabInfo(tab, tabId));
+              }
+            } catch (e) {
+              // Skip tabs that can't be queried (e.g., closing or dead wrappers)
             }
           }
           return tabs;
@@ -1326,7 +1355,7 @@ this.nevoflux = class extends ExtensionAPI {
             try {
               const actor = browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
               await actor.sendQuery("stopPicker", {});
-            } catch {}
+            } catch { }
             return { success: false, error: { code: 10001, message: e.message, recoverable: true } };
           }
         },
@@ -1445,14 +1474,7 @@ this.nevoflux = class extends ExtensionAPI {
           };
           NevofluxContentStore.set(`canvas:${id}`, entry);
 
-          // Open canvas tab in background
-          const win = Services.wm.getMostRecentBrowserWindow();
-          if (win?.gBrowser) {
-            win.gBrowser.addTab(`nevoflux://canvas/${id}`, {
-              triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
-              inBackground: true,
-            });
-          }
+          // Tab opening is now handled by background.js for foreground + reuse
 
           return { success: true, id };
         },
@@ -1501,6 +1523,30 @@ this.nevoflux = class extends ExtensionAPI {
           return { success: true, data: entries.map(e => ({ id: e.key.replace("canvas:", ""), ...e.value })) };
         },
 
+        async openCanvasTab(id, options) {
+          const opts = options || {};
+          const win = Services.wm.getMostRecentBrowserWindow();
+          if (!win?.gBrowser) {
+            return { success: false, error: { code: 12003, message: "No browser window", recoverable: true } };
+          }
+          const url = `nevoflux://canvas/${id}`;
+          const nativeTab = win.gBrowser.addTab(url, {
+            triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+            inBackground: !!opts.inBackground,
+          });
+          if (!opts.inBackground) {
+            win.gBrowser.selectedTab = nativeTab;
+          }
+          // Return WebExtension tab ID for tracking
+          let extTabId;
+          try {
+            extTabId = tabTracker.getId(nativeTab);
+          } catch (e) {
+            console.warn("[ext-nevoflux] openCanvasTab: could not get tab ID:", e);
+          }
+          return { success: true, id, tabId: extTabId };
+        },
+
         // ========== Settings ==========
 
         async getSettings(key) {
@@ -1536,6 +1582,42 @@ this.nevoflux = class extends ExtensionAPI {
           }
           return { success: true };
         },
+
+        // ========== Bridge (nevoflux:// pages → background) ==========
+
+        async bridgeRespond(id, result) {
+          const { NevofluxBridgeRouter } = ChromeUtils.importESModule(
+            "resource:///modules/NevofluxBridgeRouter.sys.mjs"
+          );
+          NevofluxBridgeRouter.respond(id, result);
+          return { success: true };
+        },
+
+        async bridgePush(sessionId, message) {
+          const { NevofluxBridgeRouter } = ChromeUtils.importESModule(
+            "resource:///modules/NevofluxBridgeRouter.sys.mjs"
+          );
+          const delivered = NevofluxBridgeRouter.push(sessionId, message);
+          return { success: true, delivered };
+        },
+
+        onBridgeRequest: new EventManager({
+          context,
+          module: "nevoflux",
+          event: "onBridgeRequest",
+          register: fire => {
+            const { NevofluxBridgeRouter } = ChromeUtils.importESModule(
+              "resource:///modules/NevofluxBridgeRouter.sys.mjs"
+            );
+            const handler = (id, type, payload) => {
+              fire.async(id, type, payload);
+            };
+            NevofluxBridgeRouter.setHandler(handler);
+            return () => {
+              NevofluxBridgeRouter.removeHandler();
+            };
+          },
+        }).api(),
 
         onContentStoreChanged: new EventManager({
           context,
@@ -1605,33 +1687,59 @@ this.nevoflux = class extends ExtensionAPI {
 
     return new Promise((resolve) => {
       let timeoutId;
+      let pollId;
+      let resolved = false;
+
+      const cleanup = () => {
+        if (resolved) return;
+        resolved = true;
+        if (timeoutId) chromeClearTimeout(timeoutId);
+        if (pollId) nativeTab.ownerGlobal?.clearInterval(pollId);
+        nativeTab.removeEventListener("SSTabRestored", onRestored);
+      };
 
       const onRestored = () => {
-        if (timeoutId) {
-          chromeClearTimeout(timeoutId);
-        }
-        nativeTab.removeEventListener("SSTabRestored", onRestored);
+        cleanup();
         resolve(true);
       };
 
       // Set up timeout
       timeoutId = chromeSetTimeout(() => {
-        nativeTab.removeEventListener("SSTabRestored", onRestored);
+        // Last chance: check if pending attribute was already removed
+        if (!nativeTab.hasAttribute("pending")) {
+          cleanup();
+          resolve(true);
+          return;
+        }
+        cleanup();
         resolve(false);
       }, timeout);
 
       // Listen for restoration complete
       nativeTab.addEventListener("SSTabRestored", onRestored);
 
+      // Also poll for attribute removal as fallback (SSTabRestored may not fire)
+      pollId = nativeTab.ownerGlobal?.setInterval?.(() => {
+        if (!nativeTab.hasAttribute("pending")) {
+          onRestored();
+        }
+      }, 200);
+
       // Trigger restoration (does NOT switch tabs)
       try {
         SessionStore.restoreTabContent(nativeTab);
       } catch (e) {
-        nativeTab.removeEventListener("SSTabRestored", onRestored);
-        if (timeoutId) {
-          chromeClearTimeout(timeoutId);
+        console.warn("[ext-nevoflux] restoreTabContent failed, trying tab activation:", e);
+        // Fallback: activate the tab to force load
+        try {
+          const tabbrowser = nativeTab.ownerGlobal?.gBrowser;
+          if (tabbrowser) {
+            tabbrowser.selectedTab = nativeTab;
+          }
+        } catch (e2) {
+          cleanup();
+          resolve(false);
         }
-        resolve(false);
       }
     });
   }
