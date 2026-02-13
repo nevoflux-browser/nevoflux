@@ -1588,7 +1588,7 @@ async function executeBrowserTool(request, caller = "unknown") {
   // Actions that don't require an active tab
   const TAB_INDEPENDENT_ACTIONS = new Set([
     "ask_user", "list_tabs", "query_tabs", "web_fetch", "web_search", "cache_file",
-    "read_artifact", "edit_artifact",
+    "read_artifact", "edit_artifact", "canvas_render",
   ]);
 
   // Get target tab (skip for tab-independent actions)
@@ -1720,6 +1720,10 @@ async function executeBrowserTool(request, caller = "unknown") {
       // Artifact editing (uses existing getArtifact + updateArtifact APIs)
       case "edit_artifact":
         return await executeEditArtifact(params);
+
+      // Canvas rendering (from Code Mode via canvas_render tool)
+      case "canvas_render":
+        return await executeCanvasRender(params);
 
       default:
         return { success: false, error: { code: -1, message: `Unknown action: ${action}`, recoverable: false } };
@@ -1883,6 +1887,71 @@ async function executeEditArtifact(params) {
   }
 
   return { success: true, result: { lines: newContent.split("\n").length } };
+}
+
+/**
+ * Render a multi-file project in the canvas (from Code Mode via canvas_render tool).
+ *
+ * Creates an artifact with type "project", opens the canvas tab, and broadcasts
+ * artifact events to the sidebar for ArtifactCard display.
+ *
+ * @param {object} params - Tool parameters
+ * @param {object} params.files - Object mapping file paths to content strings
+ * @param {string} [params.entry] - Entry point file path
+ * @param {string} [params.title] - Project title (default: "Generated App")
+ * @param {string} [params.artifact_id] - Artifact ID (auto-generated if omitted)
+ * @returns {Promise<{success: boolean, result?: object, error?: object}>}
+ */
+async function executeCanvasRender(params) {
+  const files = params?.files;
+  if (!files || typeof files !== "object" || Array.isArray(files)) {
+    return { success: false, error: { code: -1, message: "Missing or invalid 'files' parameter: must be an object mapping file paths to content", recoverable: false } };
+  }
+
+  const title = params?.title || "Generated App";
+  const entry = params?.entry || undefined;
+  const id = params?.artifact_id || `code-mode-${Date.now()}`;
+
+  // Create artifact in ContentStore
+  await browser.nevoflux.createArtifact({
+    id,
+    type: "project",
+    title,
+    files,
+    entry,
+    code: "",
+    state: "complete",
+    source: "agent",
+    permissions: [],
+  });
+
+  // Open canvas tab
+  try {
+    if (_canvasTabId != null) {
+      try { await browser.tabs.remove(_canvasTabId); } catch {}
+      _canvasTabId = null;
+    }
+    const result = await browser.nevoflux.openCanvasTab(id);
+    if (result?.success) {
+      if (result.tabId) _canvasTabId = result.tabId;
+    } else {
+      console.error("[NevoFlux] canvas_render: openCanvasTab failed:", result?.error);
+    }
+  } catch (e) {
+    console.error("[NevoFlux] canvas_render: Failed to open canvas tab:", e);
+  }
+
+  // Broadcast to sidebar for ArtifactCard
+  broadcastToSidebar({
+    type: MessageTypes.ARTIFACT_START,
+    payload: { id, content_type: "project", title },
+  });
+  broadcastToSidebar({
+    type: MessageTypes.ARTIFACT_COMPLETE,
+    payload: { id, title },
+  });
+
+  return { success: true, result: { artifact_id: id, url: `nevoflux://canvas/${id}` } };
 }
 
 // =============================================================================
