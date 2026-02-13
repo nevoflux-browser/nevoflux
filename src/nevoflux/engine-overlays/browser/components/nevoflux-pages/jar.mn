@@ -1,0 +1,23 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+nevoflux.jar:
+%  content nevoflux %content/nevoflux/ contentaccessible=yes
+    content/nevoflux/pages/common.css               (content/pages/common.css)
+    content/nevoflux/pages/common.js                 (content/pages/common.js)
+    content/nevoflux/pages/canvas.html               (content/pages/canvas.html)
+    content/nevoflux/pages/canvas.js                 (content/pages/canvas.js)
+    content/nevoflux/pages/home.html                 (content/pages/home.html)
+    content/nevoflux/pages/home.js                   (content/pages/home.js)
+    content/nevoflux/pages/settings.html             (content/pages/settings.html)
+    content/nevoflux/pages/settings.js               (content/pages/settings.js)
+    content/nevoflux/pages/history.html              (content/pages/history.html)
+    content/nevoflux/pages/plan.html                 (content/pages/plan.html)
+    content/nevoflux/vendor/react.production.min.js          (content/vendor/react.production.min.js)
+    content/nevoflux/vendor/react-dom.production.min.js      (content/vendor/react-dom.production.min.js)
+    content/nevoflux/vendor/babel.min.js                     (content/vendor/babel.min.js)
+    content/nevoflux/vendor/markdown-it.min.js               (content/vendor/markdown-it.min.js)
+    content/nevoflux/vendor/mermaid.min.js                   (content/vendor/mermaid.min.js)
+    content/nevoflux/vendor/highlight.min.js                 (content/vendor/highlight.min.js)
+    content/nevoflux/vendor/codemirror.min.js                (content/vendor/codemirror.min.js)

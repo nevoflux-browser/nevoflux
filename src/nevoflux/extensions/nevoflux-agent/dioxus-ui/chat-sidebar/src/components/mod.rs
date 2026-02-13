@@ -12,6 +12,7 @@ mod permission_dialog;
 mod mcp_config;
 mod ask_user_dialog;
 mod plan_card;
+mod artifact_card;
 mod history_panel;
 mod tool_auth_dialog;
 
@@ -23,5 +24,6 @@ pub use permission_dialog::PermissionDialog;
 pub use mcp_config::McpConfigModal;
 pub use ask_user_dialog::AskUserDialog;
 pub use plan_card::PlanCard;
+pub use artifact_card::ArtifactCard;
 pub use history_panel::HistoryPanel;
 pub use tool_auth_dialog::ToolAuthDialog;

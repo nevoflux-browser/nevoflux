@@ -287,6 +287,35 @@ const chunkReassembler = new ChunkReassembler();
 // Maps sessionId → { active: true, messageId: string }
 const canvasSessions = new Map();
 
+// Currently active canvas session.  Set when agent:chat sends a message,
+// cleared when agent_state goes idle/error.  Used as fallback to forward
+// agent messages that don't carry session_id in their payload (e.g.
+// stream_chunk, agent_state).
+let _activeCanvasSessionId = null;
+
+// Debounce timer for canvas session completion.
+// Native agent may not send agent_state for canvas sessions, so we detect
+// completion from stream_chunk done markers instead.
+let _canvasSessionEndTimer = null;
+
+/**
+ * End a canvas session: push session:end to the iframe, clean up tracking.
+ */
+function _endCanvasSession(sessionId, status) {
+  if (_canvasSessionEndTimer) {
+    clearTimeout(_canvasSessionEndTimer);
+    _canvasSessionEndTimer = null;
+  }
+  browser.nevoflux.bridgePush(sessionId, {
+    type: "session:end",
+    payload: { session_id: sessionId, status },
+  }).catch(() => {});
+  canvasSessions.delete(sessionId);
+  if (_activeCanvasSessionId === sessionId) {
+    _activeCanvasSessionId = null;
+  }
+}
+
 // =============================================================================
 // Native Channel Class
 // =============================================================================
@@ -678,25 +707,89 @@ class ChannelManager {
       }
     }
 
-    // Forward to canvas sessions if message has a matching session_id
-    const sessionId = message.payload?.session_id;
-    if (sessionId && canvasSessions.has(sessionId)) {
+    // Forward to canvas sessions.
+    // Try matching by session_id in payload first; fall back to
+    // _activeCanvasSessionId for messages that don't carry session_id
+    // (e.g. stream_chunk, agent_state).
+    let canvasSessionId = message.payload?.session_id;
+    if (!canvasSessionId || !canvasSessions.has(canvasSessionId)) {
+      canvasSessionId = _activeCanvasSessionId;
+    }
+    if (canvasSessionId && canvasSessions.has(canvasSessionId)) {
       // Push to canvas via bridgePush
-      browser.nevoflux.bridgePush(sessionId, message).catch((err) => {
-        console.error(`[NevoFlux] bridgePush failed for session ${sessionId}:`, err);
+      browser.nevoflux.bridgePush(canvasSessionId, message).catch((err) => {
+        console.error(`[NevoFlux] bridgePush failed for session ${canvasSessionId}:`, err);
       });
 
-      // Detect session end: agent finished streaming
+      // --- Detect session completion ---
+      // Primary: explicit agent_state idle/error
       if (msgType === "agent_state") {
         const status = message.payload?.state || message.payload?.status;
         if (status === "idle" || status === "error") {
-          // Push session:end event
-          browser.nevoflux.bridgePush(sessionId, {
-            type: "session:end",
-            payload: { session_id: sessionId, status },
-          }).catch(() => {});
-          canvasSessions.delete(sessionId);
+          _endCanvasSession(canvasSessionId, status);
         }
+      }
+
+      // Fallback: stream_chunk with done:true.  The native agent may not send
+      // agent_state for canvas sessions, so we also detect completion from the
+      // streaming done marker.  Use a short debounce (2 s) so that back-to-back
+      // done:true chunks don't fire prematurely and an arriving agent_state can
+      // still take over.
+      if (msgType === "stream_chunk" && message.payload?.done === true) {
+        const sid = canvasSessionId; // capture for closure
+        if (_canvasSessionEndTimer) clearTimeout(_canvasSessionEndTimer);
+        _canvasSessionEndTimer = setTimeout(() => {
+          _canvasSessionEndTimer = null;
+          if (canvasSessions.has(sid)) {
+            console.log(`[NevoFlux] Canvas session ${sid} ended (stream done fallback)`);
+            _endCanvasSession(sid, "idle");
+          }
+        }, 2000);
+      }
+
+      // If agent starts a new streaming turn (done:false), cancel the debounce
+      // timer — the agent isn't done yet (e.g. it called a tool and continues).
+      if (msgType === "stream_chunk" && message.payload?.done === false) {
+        if (_canvasSessionEndTimer) {
+          clearTimeout(_canvasSessionEndTimer);
+          _canvasSessionEndTimer = null;
+        }
+      }
+    }
+
+    // Intercept browser_tool_request for actions that background.js can handle directly
+    // This bypasses the Sidebar WASM round-trip for better reliability and performance
+    if (msgType === MessageTypes.BROWSER_TOOL_REQUEST) {
+      const payload = message.payload;
+      const action = payload?.action;
+      const DIRECT_ACTIONS = new Set(["read_artifact", "edit_artifact"]);
+      if (DIRECT_ACTIONS.has(action)) {
+        console.log(`[NevoFlux] Handling ${action} directly (bypassing sidebar)`);
+        executeBrowserTool(payload, "direct").then((toolResult) => {
+          channelManager.sendToAgent({
+            type: MessageTypes.BROWSER_TOOL_RESPONSE,
+            payload: {
+              request_id: payload.request_id,
+              session_id: payload.session_id,
+              success: toolResult.success,
+              result: toolResult.success ? toolResult.result : undefined,
+              error: toolResult.error || undefined,
+            },
+          });
+        }).catch((err) => {
+          channelManager.sendToAgent({
+            type: MessageTypes.BROWSER_TOOL_RESPONSE,
+            payload: {
+              request_id: payload.request_id,
+              session_id: payload.session_id,
+              success: false,
+              error: { code: -1, message: err.message || String(err), recoverable: true },
+            },
+          });
+        });
+        // Don't broadcast to sidebar — it would trigger a duplicate bg:exec_tool
+        // round-trip and send a second browser_tool_response to the native agent.
+        return;
       }
     }
 
@@ -907,12 +1000,14 @@ browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
           } catch (e) {
             // Sidebar not open — send directly to agent as fallback
             console.warn("[NevoFlux] Sidebar not available, sending directly to agent:", e.message);
+            const canvasHint = await getActiveCanvasHint();
+            const msgContent = canvasHint ? canvasHint + "\n\n" + payload.message : payload.message;
             channelManager.sendToAgent({
               type: "chat_message",
               payload: {
                 session_id: `canvas_${Date.now()}`,
                 message_id: messageId,
-                content: payload.message,
+                content: msgContent,
                 mode: "chat",
                 attachments: [],
                 local_files: [],
@@ -936,36 +1031,41 @@ browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
 
           // Track this canvas session
           canvasSessions.set(sessionId, { active: true, messageId });
+          _activeCanvasSessionId = sessionId;
 
-          // Inject into sidebar (same as sidebar:sendMessage)
-          const injectMsg = {
-            type: "canvas_chat_inject",
+          // Always send directly to agent with canvas sessionId.
+          // This ensures streaming responses carry the canvas sessionId so
+          // handleChatMessage can route them back via bridgePush.
+          const agentChatHint = await getActiveCanvasHint();
+          const agentChatContent = agentChatHint ? agentChatHint + "\n\n" + payload.message : payload.message;
+          channelManager.sendToAgent({
+            type: "chat_message",
             payload: {
               session_id: sessionId,
               message_id: messageId,
-              content: payload.message,
-              source: "canvas",
+              content: agentChatContent,
+              mode: "agent",
+              attachments: [],
+              local_files: [],
+              tab_id: null,
+              tab_ids: [],
             },
-          };
+          });
 
+          // Notify sidebar for UI display only (fire-and-forget).
+          // Sidebar will show the user message but NOT re-send to agent.
           try {
-            await browser.runtime.sendMessage(injectMsg);
-          } catch (e) {
-            // Sidebar not open — send directly to agent
-            console.warn("[NevoFlux] Sidebar not available for agent:chat, sending directly to agent:", e.message);
-            channelManager.sendToAgent({
-              type: "chat_message",
+            await browser.runtime.sendMessage({
+              type: "canvas_chat_inject",
               payload: {
                 session_id: sessionId,
                 message_id: messageId,
                 content: payload.message,
-                mode: "chat",
-                attachments: [],
-                local_files: [],
-                tab_id: null,
-                tab_ids: [],
+                source: "canvas",
               },
             });
+          } catch (_e) {
+            // Sidebar not open — that's fine, agent message already sent above
           }
 
           result = { success: true, sessionId };
@@ -1433,6 +1533,30 @@ async function getActiveTabContext() {
   return getTabContext(null);
 }
 
+/**
+ * Get context hint for active canvas artifact (if any).
+ * Returns a string hint to prepend to user message, or null if no canvas is active.
+ */
+async function getActiveCanvasHint() {
+  try {
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    const canvasTab = tabs.find(t => t.url?.startsWith("nevoflux://canvas/"));
+    if (!canvasTab) return null;
+
+    const id = canvasTab.url.split("nevoflux://canvas/")[1];
+    if (!id) return null;
+
+    const result = await browser.nevoflux.getArtifact(id);
+    if (!result?.success || result.data?.state === "streaming") return null;
+
+    const lines = result.data.content?.split("\n").length || 0;
+    return `[Active Canvas: id="${id}", title="${result.data.title || "Untitled"}", type="${result.data.type || "html"}", lines=${lines}]\nYou can use browser_read_artifact and browser_edit_artifact to view or modify this artifact.`;
+  } catch (e) {
+    console.warn("[NevoFlux] Failed to get canvas hint:", e);
+    return null;
+  }
+}
+
 // =============================================================================
 // Browser Tool Execution (via browser.nevoflux.* API)
 // =============================================================================
@@ -1451,6 +1575,7 @@ async function executeBrowserTool(request, caller = "unknown") {
   // Actions that don't require an active tab
   const TAB_INDEPENDENT_ACTIONS = new Set([
     "ask_user", "list_tabs", "query_tabs", "web_fetch", "web_search", "cache_file",
+    "read_artifact", "edit_artifact",
   ]);
 
   // Get target tab (skip for tab-independent actions)
@@ -1575,6 +1700,14 @@ async function executeBrowserTool(request, caller = "unknown") {
       case "get_elements":
         return await executeSnapshotViaApi(targetTabId, params);
 
+      // Artifact reading (uses existing getArtifact API)
+      case "read_artifact":
+        return await executeReadArtifact(params);
+
+      // Artifact editing (uses existing getArtifact + updateArtifact APIs)
+      case "edit_artifact":
+        return await executeEditArtifact(params);
+
       default:
         return { success: false, error: { code: -1, message: `Unknown action: ${action}`, recoverable: false } };
     }
@@ -1585,6 +1718,158 @@ async function executeBrowserTool(request, caller = "unknown") {
       error: { code: -1, message: error.message || String(error), recoverable: true },
     };
   }
+}
+
+// =============================================================================
+// Artifact Read/Edit (uses existing getArtifact + updateArtifact APIs)
+// No browser rebuild required — operates on already-available ContentStore APIs
+// =============================================================================
+
+const ARTIFACT_MAX_LINES = 500;
+
+/**
+ * Read artifact source code with optional grep/offset/limit
+ */
+async function executeReadArtifact(params) {
+  const id = params.id;
+  if (!id) {
+    return { success: false, error: { code: -1, message: "Missing artifact id", recoverable: false } };
+  }
+
+  const entry = await browser.nevoflux.getArtifact(id);
+  if (!entry.success) {
+    return entry; // { success: false, error: ... }
+  }
+
+  const content = entry.data?.content || "";
+  const allLines = content.split("\n");
+  const totalLines = allLines.length;
+
+  // grep mode: find matching lines with context
+  if (params.grep) {
+    const ctxLines = params.context || 5;
+    const needle = params.grep.toLowerCase();
+    const matchIndices = [];
+    for (let i = 0; i < allLines.length; i++) {
+      if (allLines[i].toLowerCase().includes(needle)) {
+        matchIndices.push(i);
+      }
+    }
+    if (matchIndices.length === 0) {
+      return { success: true, result: { content: "", totalLines, matches: 0, truncated: false, title: entry.data?.title, type: entry.data?.type } };
+    }
+    const lineSet = new Set();
+    for (const idx of matchIndices) {
+      for (let j = Math.max(0, idx - ctxLines); j <= Math.min(allLines.length - 1, idx + ctxLines); j++) {
+        lineSet.add(j);
+      }
+    }
+    const sortedLines = [...lineSet].sort((a, b) => a - b);
+    const sections = [];
+    let prev = -2;
+    for (const ln of sortedLines) {
+      if (ln !== prev + 1 && sections.length > 0) {
+        sections.push("...");
+      }
+      sections.push(`${ln + 1}\t${allLines[ln]}`);
+      prev = ln;
+    }
+    return {
+      success: true,
+      result: {
+        content: sections.join("\n"),
+        totalLines,
+        matches: matchIndices.length,
+        truncated: false,
+        title: entry.data?.title,
+        type: entry.data?.type,
+      },
+    };
+  }
+
+  // offset/limit mode
+  if (params.offset || params.limit) {
+    const offset = Math.max(0, (params.offset || 1) - 1);
+    const limit = params.limit || ARTIFACT_MAX_LINES;
+    const sliced = allLines.slice(offset, offset + limit);
+    const numbered = sliced.map((line, i) => `${offset + i + 1}\t${line}`);
+    return {
+      success: true,
+      result: {
+        content: numbered.join("\n"),
+        totalLines,
+        truncated: offset + limit < totalLines,
+        title: entry.data?.title,
+        type: entry.data?.type,
+      },
+    };
+  }
+
+  // Full read with auto-truncation
+  if (totalLines > ARTIFACT_MAX_LINES) {
+    const numbered = allLines.slice(0, ARTIFACT_MAX_LINES).map((line, i) => `${i + 1}\t${line}`);
+    return {
+      success: true,
+      result: {
+        content: numbered.join("\n") + `\n\n[Truncated at line ${ARTIFACT_MAX_LINES} of ${totalLines}. Use offset/limit or grep to read more.]`,
+        totalLines,
+        truncated: true,
+        title: entry.data?.title,
+        type: entry.data?.type,
+      },
+    };
+  }
+
+  return {
+    success: true,
+    result: {
+      content,
+      totalLines,
+      truncated: false,
+      title: entry.data?.title,
+      type: entry.data?.type,
+    },
+  };
+}
+
+/**
+ * Edit artifact using search-and-replace pattern
+ */
+async function executeEditArtifact(params) {
+  const { id, old_str, new_str } = params;
+  if (!id) {
+    return { success: false, error: { code: -1, message: "Missing artifact id", recoverable: false } };
+  }
+  if (!old_str) {
+    return { success: false, error: { code: -1, message: "Missing old_str", recoverable: false } };
+  }
+
+  const entry = await browser.nevoflux.getArtifact(id);
+  if (!entry.success) {
+    return entry;
+  }
+
+  if (entry.data?.state === "streaming") {
+    return { success: false, error: { code: 12004, message: "Artifact is still generating. Wait for completion.", recoverable: true } };
+  }
+
+  const content = entry.data?.content || "";
+  const count = content.split(old_str).length - 1;
+
+  if (count === 0) {
+    return { success: false, error: { code: 12005, message: "old_str not found in artifact. Use browser_read_artifact to verify the current content.", recoverable: true } };
+  }
+  if (count > 1) {
+    return { success: false, error: { code: 12006, message: `old_str matches ${count} locations. Provide more surrounding context to make it unique.`, recoverable: true } };
+  }
+
+  const newContent = content.replace(old_str, new_str);
+  const result = await browser.nevoflux.updateArtifact(id, { code: newContent });
+  if (!result.success) {
+    return result;
+  }
+
+  return { success: true, result: { lines: newContent.split("\n").length } };
 }
 
 // =============================================================================
@@ -3541,9 +3826,24 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
       break;
 
     case BackgroundAPI.SEND_TO_AGENT:
-      const sent = channelManager.sendToAgent(message.payload);
-      sendResponse({ success: sent });
-      break;
+      (async () => {
+        try {
+          const payload = message.payload;
+          // Inject canvas context hint for chat messages
+          if (payload?.type === "chat_message" && payload?.payload?.content) {
+            const hint = await getActiveCanvasHint();
+            if (hint) {
+              payload.payload.content = hint + "\n\n" + payload.payload.content;
+            }
+          }
+          const sent = channelManager.sendToAgent(payload);
+          sendResponse({ success: sent });
+        } catch (e) {
+          console.error("[NevoFlux] SEND_TO_AGENT error:", e);
+          sendResponse({ success: false });
+        }
+      })();
+      return true; // Keep sendResponse valid for async
 
     case BackgroundAPI.EXEC_TOOL:
       executeBrowserTool(message.payload, "sidebar")

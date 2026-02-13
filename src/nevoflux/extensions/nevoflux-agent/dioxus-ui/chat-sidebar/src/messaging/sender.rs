@@ -34,6 +34,9 @@ pub enum BackgroundRequest {
     /// Get current tab context
     #[serde(rename = "bg:get_tab_context")]
     GetTabContext,
+    /// Open artifact in canvas tab
+    #[serde(rename = "bg:open_artifact")]
+    OpenArtifact { id: String },
 }
 
 /// Response from bg:exec_tool
@@ -511,6 +514,51 @@ pub enum InternalMessage {
     ConnectionStatus { connected: bool },
     /// AskUser request from agent (via background.js)
     AskUserRequest(AskUserRequestPayload),
+    /// Artifact streaming started
+    ArtifactStart(ArtifactStartPayload),
+    /// Artifact content delta
+    ArtifactDelta(ArtifactDeltaPayload),
+    /// Artifact streaming complete
+    ArtifactComplete(ArtifactCompletePayload),
+    /// Inject a chat message from canvas/external source
+    CanvasChatInject(CanvasChatInjectPayload),
+}
+
+/// Canvas chat inject payload — external source wants to send a chat message
+/// that appears in sidebar as a user message and triggers agent response
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CanvasChatInjectPayload {
+    pub session_id: String,
+    pub message_id: String,
+    pub content: String,
+}
+
+/// Artifact start payload (from background.js broadcast)
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ArtifactStartPayload {
+    pub id: String,
+    #[serde(default)]
+    pub content_type: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
+/// Artifact delta payload
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ArtifactDeltaPayload {
+    pub id: String,
+    #[serde(default)]
+    pub delta: Option<String>,
+}
+
+/// Artifact complete payload
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ArtifactCompletePayload {
+    pub id: String,
+    #[serde(default)]
+    pub final_code: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
 }
 
 /// AskUser request payload from background.js
@@ -612,6 +660,17 @@ pub async fn send_ping() -> Result<(), String> {
         timestamp: js_sys::Date::now() as u64,
     })
     .await
+}
+
+/// Request background.js to open artifact in a new canvas tab
+pub async fn send_open_artifact(id: &str) -> Result<(), String> {
+    let request = BackgroundRequest::OpenArtifact { id: id.to_string() };
+    let js_value = to_js_value(&request)
+        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    JsFuture::from(runtime_send_message(js_value))
+        .await
+        .map_err(|e| format!("Send failed: {:?}", e))?;
+    Ok(())
 }
 
 // ============================================

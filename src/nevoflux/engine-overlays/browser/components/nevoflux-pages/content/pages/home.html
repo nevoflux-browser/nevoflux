@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>NevoFlux</title>
+  <link rel="stylesheet" href="chrome://nevoflux/content/pages/common.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: var(--nevoflux-space-2xl);
+    }
+
+    .home-logo {
+      font-size: 36px;
+      font-weight: 700;
+      margin-bottom: var(--nevoflux-space-2xl);
+      background: linear-gradient(
+        135deg,
+        var(--nevoflux-accent),
+        color-mix(in srgb, var(--nevoflux-accent) 60%, purple)
+      );
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      user-select: none;
+    }
+
+    .home-input-container {
+      width: 100%;
+      max-width: 600px;
+      margin-bottom: var(--nevoflux-space-2xl);
+    }
+
+    .home-input {
+      width: 100%;
+      padding: var(--nevoflux-space-md) var(--nevoflux-space-lg);
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-lg);
+      background: var(--nevoflux-bg-secondary);
+      color: var(--nevoflux-text);
+      font-size: var(--nevoflux-font-size-lg);
+      font-family: var(--nevoflux-font-family);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .home-input::placeholder {
+      color: var(--nevoflux-text-secondary);
+    }
+
+    .home-input:focus {
+      border-color: var(--nevoflux-accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--nevoflux-accent) 15%, transparent);
+    }
+
+    .recent-sessions {
+      width: 100%;
+      max-width: 600px;
+    }
+
+    .recent-sessions h2 {
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: var(--nevoflux-space-sm);
+    }
+
+    .session-list {
+      list-style: none;
+    }
+
+    .session-item {
+      display: flex;
+      align-items: center;
+      gap: var(--nevoflux-space-md);
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-md);
+      border-radius: var(--nevoflux-radius-sm);
+      cursor: pointer;
+      color: var(--nevoflux-text);
+      text-decoration: none;
+      transition: background 0.1s;
+    }
+
+    .session-item:hover {
+      background: var(--nevoflux-bg-secondary);
+    }
+
+    .session-item .icon {
+      font-size: var(--nevoflux-font-size-lg);
+      flex-shrink: 0;
+      width: 24px;
+      text-align: center;
+    }
+
+    .session-item .title {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .session-item .time {
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+      white-space: nowrap;
+    }
+
+    .empty-sessions {
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-sm);
+      padding: var(--nevoflux-space-lg) 0;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="home-logo">NevoFlux</div>
+  <div class="home-input-container">
+    <input
+      type="text"
+      class="home-input"
+      id="home-input"
+      placeholder="What can I help you with?"
+      autofocus
+    >
+  </div>
+  <div class="recent-sessions" id="recent-sessions">
+    <h2>Recent conversations</h2>
+    <ul class="session-list" id="session-list">
+      <!-- Populated by home.js -->
+    </ul>
+  </div>
+  <script src="chrome://nevoflux/content/pages/common.js"></script>
+  <script src="chrome://nevoflux/content/pages/home.js"></script>
+</body>
+</html>

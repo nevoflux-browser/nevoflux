@@ -3006,6 +3006,98 @@ body {
   background: var(--nevo-primary-hover);
 }
 
+/* ========== Artifact Card ========== */
+.artifact-card {
+  background: var(--nevo-surface);
+  border: 1px solid var(--nevo-border);
+  border-radius: var(--nevo-radius-md);
+  padding: var(--nevo-space-md) var(--nevo-space-lg);
+  margin: var(--nevo-space-sm) 0;
+  cursor: pointer;
+  transition: border-color var(--nevo-transition-fast), box-shadow var(--nevo-transition-fast);
+}
+
+.artifact-card:hover {
+  border-color: var(--nevo-accent);
+  box-shadow: 0 0 0 1px var(--nevo-accent);
+}
+
+.artifact-card.streaming {
+  border-color: color-mix(in srgb, var(--nevo-accent) 40%, transparent);
+}
+
+.artifact-header {
+  display: flex;
+  align-items: center;
+  gap: var(--nevo-space-sm);
+}
+
+.artifact-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.artifact-title {
+  font-size: var(--nevo-font-size-base);
+  font-weight: 600;
+  color: var(--nevo-text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-type-badge {
+  font-size: var(--nevo-font-size-xs);
+  color: var(--nevo-text-secondary);
+  background: var(--nevo-surface-secondary);
+  padding: 2px 6px;
+  border-radius: var(--nevo-radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.artifact-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--nevo-space-xs);
+}
+
+.artifact-status {
+  font-size: var(--nevo-font-size-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--nevo-space-xs);
+}
+
+.artifact-status.streaming {
+  color: var(--nevo-accent);
+}
+
+.artifact-status.ready {
+  color: var(--nevo-success, #34c759);
+}
+
+.artifact-spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: artifact-spin 0.8s linear infinite;
+}
+
+@keyframes artifact-spin {
+  to { transform: rotate(360deg); }
+}
+
+.artifact-open-hint {
+  font-size: var(--nevo-font-size-xs);
+  color: var(--nevo-text-tertiary);
+}
+
 /* ============================================
    History Panel (Full Overlay)
    ============================================ */

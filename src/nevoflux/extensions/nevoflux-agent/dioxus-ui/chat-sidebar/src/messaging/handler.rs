@@ -32,12 +32,19 @@ pub fn init_message_listener(ctx: AppContext) {
     let closure = Closure::<dyn Fn(JsValue, JsValue, JsValue) -> JsValue>::new(
         move |msg: JsValue, _sender: JsValue, _send_response: JsValue| {
             // Parse incoming message
-            match from_js_value::<IncomingMessage>(msg) {
+            match from_js_value::<IncomingMessage>(msg.clone()) {
                 Ok(incoming) => {
                     handle_incoming(ctx, incoming);
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to parse message: {}", e);
+                    // Log raw message for debugging
+                    let raw = js_sys::JSON::stringify(&msg)
+                        .map(|s| s.as_string().unwrap_or_default())
+                        .unwrap_or_else(|_| "???".to_string());
+                    let truncated = if raw.len() > 300 { format!("{}...", &raw[..300]) } else { raw };
+                    web_sys::console::warn_1(
+                        &format!("[WASM] Failed to parse message: {} | raw: {}", e, truncated).into()
+                    );
                 }
             }
 
@@ -961,6 +968,18 @@ fn handle_internal_message(mut ctx: AppContext, message: InternalMessage) {
             tracing::info!("Received AskUser request: {}", payload.request_id);
             handle_ask_user_request(ctx, payload);
         }
+        InternalMessage::ArtifactStart(payload) => {
+            handle_artifact_start(ctx, payload);
+        }
+        InternalMessage::ArtifactDelta(payload) => {
+            handle_artifact_delta(ctx, payload);
+        }
+        InternalMessage::ArtifactComplete(payload) => {
+            handle_artifact_complete(ctx, payload);
+        }
+        InternalMessage::CanvasChatInject(payload) => {
+            handle_canvas_chat_inject(ctx, payload);
+        }
         // Outgoing-only messages (shouldn't receive)
         InternalMessage::Ping { .. } => {
             tracing::warn!("Received unexpected outgoing Ping message");
@@ -985,6 +1004,67 @@ fn handle_ask_user_request(mut ctx: AppContext, payload: crate::messaging::sende
     )));
 
     tracing::debug!("AskUser dialog state set, waiting for user response");
+}
+
+// ============================================
+// Artifact Message Handlers
+// ============================================
+
+fn handle_artifact_start(mut ctx: AppContext, payload: crate::messaging::sender::ArtifactStartPayload) {
+    use crate::state::{Message, ArtifactState};
+
+    tracing::info!("Artifact started: {}", payload.id);
+
+    let title = payload.title.unwrap_or_else(|| "Untitled".to_string());
+    let content_type = payload.content_type.unwrap_or_else(|| "text/html".to_string());
+
+    ctx.messages.write().push(Message::artifact(
+        payload.id,
+        title,
+        content_type,
+        ArtifactState::Streaming,
+    ));
+}
+
+fn handle_artifact_delta(_ctx: AppContext, _payload: crate::messaging::sender::ArtifactDeltaPayload) {
+    // Canvas page renders live via ContentStore. No sidebar update needed.
+}
+
+fn handle_artifact_complete(mut ctx: AppContext, payload: crate::messaging::sender::ArtifactCompletePayload) {
+    use crate::state::{MessageContent, ArtifactState};
+
+    tracing::info!("Artifact complete: {}", payload.id);
+
+    ctx.messages.with_mut(|messages| {
+        for msg in messages.iter_mut() {
+            if let MessageContent::Artifact(ref mut data) = msg.content {
+                if data.id == payload.id {
+                    data.state = ArtifactState::Complete;
+                    if let Some(ref title) = payload.title {
+                        data.title = title.clone();
+                    }
+                    break;
+                }
+            }
+        }
+    });
+}
+
+/// Handle canvas chat inject — UI display only.
+///
+/// background.js already sent the chat_message to the native agent with the
+/// canvas sessionId. We only need to show the user message in the sidebar UI.
+/// Sending again here would use the sidebar's own session_id, causing a
+/// session_id mismatch that prevents streaming responses from being routed
+/// back to the canvas iframe.
+fn handle_canvas_chat_inject(mut ctx: AppContext, payload: crate::messaging::sender::CanvasChatInjectPayload) {
+    use crate::state::Message;
+
+    tracing::info!("Canvas chat inject (UI only): {}", payload.content);
+
+    // Add user message to sidebar message list for display
+    ctx.messages.write().push(Message::user(&payload.content));
+    ctx.agent_status.write().set_thinking();
 }
 
 // ============================================

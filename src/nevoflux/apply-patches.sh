@@ -42,7 +42,30 @@ if [ -d "${NEVOFLUX_DIR}/engine-overlays" ]; then
   cp -r "${NEVOFLUX_DIR}/engine-overlays/"* "${ENGINE_DIR}/" 2>/dev/null || true
 fi
 
-# 5. Package nevoflux-agent extension as XPI
+# 5. Inject nevoflux-pages into browser/components/moz.build DIRS list
+COMPONENTS_MOZBUILD="${ENGINE_DIR}/browser/components/moz.build"
+if [ -f "${COMPONENTS_MOZBUILD}" ]; then
+  if ! grep -q '"nevoflux-pages"' "${COMPONENTS_MOZBUILD}"; then
+    echo "Adding nevoflux-pages to browser/components/moz.build DIRS..."
+    sed -i '/"newtab",/a\    "nevoflux-pages",' "${COMPONENTS_MOZBUILD}"
+  fi
+fi
+
+# 6. Inject NevofluxBridgeRouter and NevofluxContentStore into browser/modules/moz.build EXTRA_JS_MODULES
+# NOTE: Must be inserted in alphabetical order (BridgeRouter before ContentStore)
+MODULES_MOZBUILD="${ENGINE_DIR}/browser/modules/moz.build"
+if [ -f "${MODULES_MOZBUILD}" ]; then
+  if ! grep -q '"NevofluxBridgeRouter.sys.mjs"' "${MODULES_MOZBUILD}"; then
+    echo "Adding NevofluxBridgeRouter to browser/modules/moz.build..."
+    sed -i '/"LinksCache.sys.mjs",/a\    "NevofluxBridgeRouter.sys.mjs",' "${MODULES_MOZBUILD}"
+  fi
+  if ! grep -q '"NevofluxContentStore.sys.mjs"' "${MODULES_MOZBUILD}"; then
+    echo "Adding NevofluxContentStore to browser/modules/moz.build..."
+    sed -i '/"NevofluxBridgeRouter.sys.mjs",/a\    "NevofluxContentStore.sys.mjs",' "${MODULES_MOZBUILD}"
+  fi
+fi
+
+# 7. Package nevoflux-agent extension as XPI
 if [ -f "${ROOT_DIR}/scripts/package-extension.sh" ]; then
   echo "Packaging nevoflux-agent extension..."
   bash "${ROOT_DIR}/scripts/package-extension.sh"

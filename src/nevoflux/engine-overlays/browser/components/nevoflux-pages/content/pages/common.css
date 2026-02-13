@@ -1,0 +1,59 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+:root {
+  --nevoflux-font-family: system-ui, -apple-system, sans-serif;
+  --nevoflux-font-size-base: 14px;
+  --nevoflux-font-size-sm: 12px;
+  --nevoflux-font-size-lg: 16px;
+  --nevoflux-font-size-xl: 20px;
+  --nevoflux-font-size-2xl: 28px;
+
+  --nevoflux-space-xs: 4px;
+  --nevoflux-space-sm: 8px;
+  --nevoflux-space-md: 12px;
+  --nevoflux-space-lg: 16px;
+  --nevoflux-space-xl: 24px;
+  --nevoflux-space-2xl: 32px;
+
+  --nevoflux-radius-sm: 6px;
+  --nevoflux-radius-md: 8px;
+  --nevoflux-radius-lg: 12px;
+
+  --nevoflux-bg: light-dark(#ffffff, #1a1a2e);
+  --nevoflux-bg-secondary: light-dark(#f5f5f7, #16213e);
+  --nevoflux-bg-tertiary: light-dark(#ebebef, #0f3460);
+  --nevoflux-text: light-dark(#1d1d1f, #e0e0e0);
+  --nevoflux-text-secondary: light-dark(#6e6e73, #a0a0b0);
+  --nevoflux-border: light-dark(#d2d2d7, #2a2a4a);
+  --nevoflux-accent: light-dark(AccentColor, AccentColor);
+  --nevoflux-accent-hover: light-dark(
+    color-mix(in srgb, AccentColor 80%, black),
+    color-mix(in srgb, AccentColor 80%, white)
+  );
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  font-family: var(--nevoflux-font-family);
+  font-size: var(--nevoflux-font-size-base);
+  color: var(--nevoflux-text);
+  background: var(--nevoflux-bg);
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

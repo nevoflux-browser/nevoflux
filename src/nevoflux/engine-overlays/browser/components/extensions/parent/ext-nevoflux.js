@@ -1507,6 +1507,129 @@ this.nevoflux = class extends ExtensionAPI {
             : { success: false, error: { code: 12001, message: "Artifact not found", recoverable: false } };
         },
 
+        async readArtifact(id, params = {}) {
+          const { NevofluxContentStore } = ChromeUtils.importESModule(
+            "resource:///modules/NevofluxContentStore.sys.mjs"
+          );
+          const entry = NevofluxContentStore.get(`canvas:${id}`);
+          if (!entry) {
+            return { success: false, error: { code: 12001, message: "Artifact not found", recoverable: false } };
+          }
+
+          const content = entry.content || "";
+          const allLines = content.split("\n");
+          const totalLines = allLines.length;
+          const MAX_LINES = 500;
+
+          // grep mode: find matching lines with context
+          if (params.grep) {
+            const ctxLines = params.context || 5;
+            const matchIndices = [];
+            const needle = params.grep.toLowerCase();
+            for (let i = 0; i < allLines.length; i++) {
+              if (allLines[i].toLowerCase().includes(needle)) {
+                matchIndices.push(i);
+              }
+            }
+            if (matchIndices.length === 0) {
+              return { success: true, content: "", totalLines, matches: 0, truncated: false, title: entry.title, type: entry.type };
+            }
+            // Collect unique line ranges around matches
+            const lineSet = new Set();
+            for (const idx of matchIndices) {
+              for (let j = Math.max(0, idx - ctxLines); j <= Math.min(allLines.length - 1, idx + ctxLines); j++) {
+                lineSet.add(j);
+              }
+            }
+            const sortedLines = [...lineSet].sort((a, b) => a - b);
+            const sections = [];
+            let prev = -2;
+            for (const ln of sortedLines) {
+              if (ln !== prev + 1 && sections.length > 0) {
+                sections.push("...");
+              }
+              sections.push(`${ln + 1}\t${allLines[ln]}`);
+              prev = ln;
+            }
+            return {
+              success: true,
+              content: sections.join("\n"),
+              totalLines,
+              matches: matchIndices.length,
+              truncated: false,
+              title: entry.title,
+              type: entry.type,
+            };
+          }
+
+          // offset/limit mode
+          if (params.offset || params.limit) {
+            const offset = Math.max(0, (params.offset || 1) - 1); // 1-based to 0-based
+            const limit = params.limit || MAX_LINES;
+            const sliced = allLines.slice(offset, offset + limit);
+            const numbered = sliced.map((line, i) => `${offset + i + 1}\t${line}`);
+            return {
+              success: true,
+              content: numbered.join("\n"),
+              totalLines,
+              truncated: offset + limit < totalLines,
+              title: entry.title,
+              type: entry.type,
+            };
+          }
+
+          // Full read with auto-truncation
+          if (totalLines > MAX_LINES) {
+            const numbered = allLines.slice(0, MAX_LINES).map((line, i) => `${i + 1}\t${line}`);
+            return {
+              success: true,
+              content: numbered.join("\n") + `\n\n[Truncated at line ${MAX_LINES} of ${totalLines}. Use offset/limit or grep to read more.]`,
+              totalLines,
+              truncated: true,
+              title: entry.title,
+              type: entry.type,
+            };
+          }
+
+          return {
+            success: true,
+            content,
+            totalLines,
+            truncated: false,
+            title: entry.title,
+            type: entry.type,
+          };
+        },
+
+        async editArtifact(id, oldStr, newStr) {
+          const { NevofluxContentStore } = ChromeUtils.importESModule(
+            "resource:///modules/NevofluxContentStore.sys.mjs"
+          );
+          const entry = NevofluxContentStore.get(`canvas:${id}`);
+          if (!entry) {
+            return { success: false, error: { code: 12001, message: "Artifact not found", recoverable: false } };
+          }
+          if (entry.state === "streaming") {
+            return { success: false, error: { code: 12004, message: "Artifact is still generating. Wait for completion.", recoverable: true } };
+          }
+
+          const content = entry.content || "";
+          const count = content.split(oldStr).length - 1;
+
+          if (count === 0) {
+            return { success: false, error: { code: 12005, message: "old_str not found in artifact. Use browser_read_artifact to verify the current content.", recoverable: true } };
+          }
+          if (count > 1) {
+            return { success: false, error: { code: 12006, message: `old_str matches ${count} locations. Provide more surrounding context to make it unique.`, recoverable: true } };
+          }
+
+          entry.content = content.replace(oldStr, newStr);
+          entry.updatedAt = Date.now();
+          NevofluxContentStore.set(`canvas:${id}`, entry);
+
+          return { success: true, lines: entry.content.split("\n").length };
+        },
+
         async deleteArtifact(id) {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
             "resource:///modules/NevofluxContentStore.sys.mjs"

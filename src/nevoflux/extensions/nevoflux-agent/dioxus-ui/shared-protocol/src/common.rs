@@ -198,4 +198,18 @@ pub enum BrowserToolAction {
     AskUser,
     /// Cache uploaded file to disk (returns absolute path)
     CacheFile,
+    /// Wait for page to stabilize after an action
+    WaitForStable,
+    /// Press a keyboard key
+    KeyPress,
+    /// List all open browser tabs
+    ListTabs,
+    /// Query tabs with optional filters
+    QueryTabs,
+    /// Get all interactive elements on the page
+    GetElements,
+    /// Read the source code of a canvas artifact
+    ReadArtifact,
+    /// Edit a canvas artifact using search-and-replace
+    EditArtifact,
 }

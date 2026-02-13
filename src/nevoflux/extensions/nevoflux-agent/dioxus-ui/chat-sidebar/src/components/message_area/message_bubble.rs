@@ -30,6 +30,7 @@ pub fn MessageBubble(
         MessageContent::Code { code, .. } => code.clone(),
         MessageContent::Error { message, .. } => message.clone(),
         MessageContent::Plan(plan) => plan.summary.clone(),
+        MessageContent::Artifact(data) => data.title.clone(),
     };
 
     rsx! {
@@ -173,6 +174,7 @@ pub fn MessageBubble(
                                 }
                             },
                             MessageContent::Plan(_) => rsx! {},
+                            MessageContent::Artifact(_) => rsx! {},
                         }
                     }
 

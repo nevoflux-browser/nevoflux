@@ -190,7 +190,11 @@ let JSWINDOWACTORS = {
     },
     child: {
       esModuleURI: "resource:///actors/NevofluxChild.sys.mjs",
+      events: {
+        DOMDocElementInserted: {},
+      },
     },
+    includeChrome: true,
     allFrames: true,
     messageManagerGroups: ["browsers"],
   },

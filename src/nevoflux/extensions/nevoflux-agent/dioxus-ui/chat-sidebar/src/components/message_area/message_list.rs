@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 use shared_protocol::AgentState;
 use crate::context::use_app_context;
 use crate::state::{MessageContent, StreamingState};
-use crate::components::PlanCard;
+use crate::components::{PlanCard, ArtifactCard};
 use super::MessageBubble;
 
 /// Message list component showing all chat messages
@@ -56,6 +56,11 @@ pub fn MessageList() -> Element {
             for (index, msg) in messages.iter().enumerate() {
                 if matches!(msg.content, MessageContent::Plan(_)) {
                     PlanCard {
+                        key: "{msg.id}",
+                        message: msg.clone(),
+                    }
+                } else if matches!(msg.content, MessageContent::Artifact(_)) {
+                    ArtifactCard {
                         key: "{msg.id}",
                         message: msg.clone(),
                     }

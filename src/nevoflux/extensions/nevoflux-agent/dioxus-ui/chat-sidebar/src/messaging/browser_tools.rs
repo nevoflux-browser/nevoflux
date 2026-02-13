@@ -156,6 +156,19 @@ pub async fn execute_browser_tool(request: &BrowserToolRequestPayload) -> Browse
         BrowserToolAction::CacheFile => {
             make_error_result("CacheFile should be forwarded to background.js")
         }
+        // WaitForStable, KeyPress, ListTabs, QueryTabs, GetElements are handled in background.js
+        BrowserToolAction::WaitForStable |
+        BrowserToolAction::KeyPress |
+        BrowserToolAction::ListTabs |
+        BrowserToolAction::QueryTabs |
+        BrowserToolAction::GetElements => {
+            make_error_result("Action should be forwarded to background.js")
+        }
+        // ReadArtifact/EditArtifact operate on ContentStore via extension API
+        BrowserToolAction::ReadArtifact |
+        BrowserToolAction::EditArtifact => {
+            make_error_result("Artifact actions should be forwarded to background.js")
+        }
     }
 }
 

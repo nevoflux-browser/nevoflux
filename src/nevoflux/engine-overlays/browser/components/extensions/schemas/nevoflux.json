@@ -1364,6 +1364,29 @@
         "returns": { "$ref": "ApiResult" }
       },
       {
+        "name": "readArtifact",
+        "type": "function",
+        "async": "promise",
+        "description": "Read artifact source code with optional line range or grep filtering",
+        "parameters": [
+          { "name": "id", "type": "string" },
+          { "name": "params", "type": "object", "optional": true }
+        ],
+        "returns": { "type": "object" }
+      },
+      {
+        "name": "editArtifact",
+        "type": "function",
+        "async": "promise",
+        "description": "Edit artifact using search-and-replace (old_str must match exactly once)",
+        "parameters": [
+          { "name": "id", "type": "string" },
+          { "name": "oldStr", "type": "string" },
+          { "name": "newStr", "type": "string" }
+        ],
+        "returns": { "$ref": "ApiResult" }
+      },
+      {
         "name": "getArtifact",
         "type": "function",
         "async": "promise",

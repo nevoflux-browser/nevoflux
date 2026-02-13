@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Canvas</title>
+  <link rel="stylesheet" href="chrome://nevoflux/content/pages/common.css">
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .canvas-toolbar {
+      display: flex;
+      align-items: center;
+      gap: var(--nevoflux-space-sm);
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-lg);
+      border-bottom: 1px solid var(--nevoflux-border);
+      background: var(--nevoflux-bg-secondary);
+      min-height: 40px;
+    }
+
+    .canvas-toolbar .title {
+      font-weight: 600;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .canvas-toolbar .status {
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+    }
+
+    .canvas-toolbar .toolbar-actions {
+      display: flex;
+      gap: var(--nevoflux-space-xs);
+    }
+
+    .toolbar-btn {
+      padding: var(--nevoflux-space-xs) var(--nevoflux-space-sm);
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      background: var(--nevoflux-bg);
+      color: var(--nevoflux-text);
+      font-size: var(--nevoflux-font-size-sm);
+      cursor: pointer;
+    }
+
+    .toolbar-btn:hover {
+      background: var(--nevoflux-bg-tertiary);
+    }
+
+    .toolbar-btn.active {
+      background: var(--nevoflux-accent);
+      color: white;
+      border-color: var(--nevoflux-accent);
+    }
+
+    .toolbar-sep {
+      width: 1px;
+      height: 20px;
+      background: var(--nevoflux-border);
+      margin: 0 var(--nevoflux-space-xs);
+    }
+
+    .canvas-viewport {
+      flex: 1;
+      position: relative;
+    }
+
+    .canvas-viewport iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    .canvas-empty {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-lg);
+    }
+
+    /* Edit mode: split view */
+    .canvas-split {
+      display: flex;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    .canvas-split .editor-pane {
+      width: 50%;
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--nevoflux-border);
+    }
+
+    .canvas-split .editor-pane textarea {
+      flex: 1;
+      width: 100%;
+      padding: var(--nevoflux-space-md);
+      border: none;
+      background: var(--nevoflux-bg);
+      color: var(--nevoflux-text);
+      font-family: "Fira Code", "Cascadia Code", monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      resize: none;
+      outline: none;
+      tab-size: 2;
+    }
+
+    /* CodeMirror editor fills the pane */
+    .canvas-split .editor-pane .cm-editor {
+      height: 100%;
+      overflow: auto;
+    }
+
+    .canvas-split .editor-pane .cm-editor .cm-scroller {
+      font-family: "Fira Code", "Cascadia Code", monospace;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .canvas-split .preview-pane {
+      width: 50%;
+      position: relative;
+    }
+
+    .canvas-split .preview-pane iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    /* Fullscreen mode */
+    body.fullscreen .canvas-toolbar {
+      position: absolute;
+      top: -40px;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      transition: top 0.2s ease;
+    }
+
+    body.fullscreen:hover .canvas-toolbar,
+    body.fullscreen .canvas-toolbar:focus-within {
+      top: 0;
+    }
+
+    body.fullscreen .canvas-viewport {
+      position: absolute;
+      inset: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="canvas-toolbar" id="toolbar">
+    <span class="title" id="artifact-title">Loading...</span>
+    <span class="status" id="artifact-status"></span>
+    <div class="toolbar-actions" id="toolbar-actions">
+      <button class="toolbar-btn" id="btn-preview" title="Preview">Preview</button>
+      <button class="toolbar-btn" id="btn-edit" title="Edit">Edit</button>
+      <button class="toolbar-btn" id="btn-fullscreen" title="Fullscreen">Fullscreen</button>
+      <span class="toolbar-sep"></span>
+      <button class="toolbar-btn" id="btn-copy" title="Copy code">Copy</button>
+      <button class="toolbar-btn" id="btn-export-html" title="Export HTML">Export HTML</button>
+      <button class="toolbar-btn" id="btn-export-source" title="Export source">Export Source</button>
+      <button class="toolbar-btn" id="btn-share" title="Copy link">Share</button>
+    </div>
+  </div>
+  <div class="canvas-viewport" id="viewport">
+    <div class="canvas-empty" id="empty-state">No artifact loaded</div>
+  </div>
+  <script src="chrome://nevoflux/content/vendor/codemirror.min.js"></script>
+  <script src="chrome://nevoflux/content/pages/common.js"></script>
+  <script src="chrome://nevoflux/content/pages/canvas.js"></script>
+</body>
+</html>

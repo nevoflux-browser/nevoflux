@@ -158,7 +158,23 @@ pub struct StreamChunkPayload {
 pub struct ToolCallInfo {
     pub id: String,
     pub name: String,
+    /// Tool call arguments — accepts both JSON string and JSON object from the daemon.
+    /// The native agent sends `arguments` as `serde_json::Value` (object), but some
+    /// code paths expect a string. This custom deserializer handles both.
+    #[serde(deserialize_with = "deserialize_string_or_json")]
     pub arguments: String,
+}
+
+/// Deserialize a value that can be either a JSON string or a JSON object into a String.
+fn deserialize_string_or_json<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::String(s) => Ok(s),
+        other => Ok(other.to_string()),
+    }
 }
 
 /// Stream end marker

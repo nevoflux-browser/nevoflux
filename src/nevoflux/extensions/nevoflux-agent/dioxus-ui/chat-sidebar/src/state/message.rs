@@ -89,6 +89,28 @@ pub enum MessageContent {
     },
     /// Plan proposal from agent
     Plan(PlanData),
+    /// Artifact card (canvas preview)
+    Artifact(ArtifactData),
+}
+
+/// Artifact streaming state
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArtifactState {
+    Streaming,
+    Complete,
+}
+
+/// Artifact data for display in ArtifactCard
+#[derive(Debug, Clone, PartialEq)]
+pub struct ArtifactData {
+    /// Artifact ID (used in nevoflux://canvas/{id})
+    pub id: String,
+    /// Display title
+    pub title: String,
+    /// Content type (text/html, text/markdown, image/svg+xml, etc.)
+    pub content_type: String,
+    /// Current state
+    pub state: ArtifactState,
 }
 
 /// Message delivery status
@@ -214,6 +236,24 @@ impl Message {
                 summary: summary.into(),
                 steps,
                 is_active,
+            }),
+            attachments: Vec::new(),
+            tool_calls: Vec::new(),
+            timestamp: js_sys::Date::now() as u64,
+            status: MessageStatus::Sent,
+        }
+    }
+
+    /// Create an artifact message
+    pub fn artifact(id: impl Into<String>, title: impl Into<String>, content_type: impl Into<String>, state: ArtifactState) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            role: MessageRole::Assistant,
+            content: MessageContent::Artifact(ArtifactData {
+                id: id.into(),
+                title: title.into(),
+                content_type: content_type.into(),
+                state,
             }),
             attachments: Vec::new(),
             tool_calls: Vec::new(),

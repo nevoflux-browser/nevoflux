@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Settings</title>
+  <link rel="stylesheet" href="chrome://nevoflux/content/pages/common.css">
+  <style>
+    body {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Left Navigation ──────────────────────────── */
+    .settings-nav {
+      width: 220px;
+      min-width: 220px;
+      border-right: 1px solid var(--nevoflux-border);
+      background: var(--nevoflux-bg-secondary);
+      padding: var(--nevoflux-space-lg) 0;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+
+    .settings-nav h1 {
+      font-size: var(--nevoflux-font-size-xl);
+      padding: 0 var(--nevoflux-space-lg) var(--nevoflux-space-lg);
+      border-bottom: 1px solid var(--nevoflux-border);
+      margin-bottom: var(--nevoflux-space-sm);
+    }
+
+    .settings-nav a {
+      display: block;
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-lg);
+      color: var(--nevoflux-text);
+      text-decoration: none;
+      border-radius: var(--nevoflux-radius-sm);
+      margin: 2px var(--nevoflux-space-sm);
+      font-size: var(--nevoflux-font-size-base);
+    }
+
+    .settings-nav a:hover {
+      background: var(--nevoflux-bg-tertiary);
+    }
+
+    .settings-nav a.active {
+      background: var(--nevoflux-accent);
+      color: white;
+    }
+
+    /* ── Content Area ─────────────────────────────── */
+    .settings-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: var(--nevoflux-space-2xl);
+    }
+
+    .settings-content-inner {
+      max-width: 720px;
+    }
+
+    .settings-section {
+      display: none;
+    }
+
+    .settings-section.active {
+      display: block;
+    }
+
+    /* ── Form Elements ────────────────────────────── */
+    .settings-group {
+      margin-bottom: var(--nevoflux-space-2xl);
+    }
+
+    .settings-group h2 {
+      font-size: var(--nevoflux-font-size-lg);
+      margin-bottom: var(--nevoflux-space-lg);
+      padding-bottom: var(--nevoflux-space-sm);
+      border-bottom: 1px solid var(--nevoflux-border);
+    }
+
+    .settings-group h3 {
+      font-size: var(--nevoflux-font-size-base);
+      font-weight: 600;
+      margin: var(--nevoflux-space-xl) 0 var(--nevoflux-space-sm);
+      color: var(--nevoflux-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      font-size: var(--nevoflux-font-size-sm);
+    }
+
+    .form-row {
+      display: flex;
+      align-items: flex-start;
+      gap: var(--nevoflux-space-md);
+      margin-bottom: var(--nevoflux-space-md);
+    }
+
+    .form-row label {
+      min-width: 140px;
+      padding-top: var(--nevoflux-space-sm);
+      font-weight: 500;
+      font-size: var(--nevoflux-font-size-base);
+    }
+
+    .form-row .field {
+      flex: 1;
+    }
+
+    .form-row input[type="text"],
+    .form-row input[type="password"],
+    .form-row input[type="url"],
+    .form-row select,
+    .form-row textarea {
+      width: 100%;
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-md);
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      background: var(--nevoflux-bg);
+      color: var(--nevoflux-text);
+      font-family: var(--nevoflux-font-family);
+      font-size: var(--nevoflux-font-size-base);
+    }
+
+    .form-row input:focus,
+    .form-row select:focus,
+    .form-row textarea:focus {
+      outline: none;
+      border-color: var(--nevoflux-accent);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--nevoflux-accent) 20%, transparent);
+    }
+
+    .form-row textarea {
+      min-height: 60px;
+      resize: vertical;
+    }
+
+    .form-row .hint {
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+      margin-top: 4px;
+    }
+
+    /* Password field with toggle */
+    .password-wrapper {
+      position: relative;
+    }
+
+    .password-wrapper input {
+      padding-right: 60px;
+    }
+
+    .password-toggle {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      border: none;
+      background: none;
+      color: var(--nevoflux-text-secondary);
+      cursor: pointer;
+      font-size: var(--nevoflux-font-size-sm);
+      padding: 2px 6px;
+    }
+
+    .password-toggle:hover {
+      color: var(--nevoflux-text);
+    }
+
+    /* List editor (for coreTruths, boundaries, env vars) */
+    .list-editor {
+      display: flex;
+      flex-direction: column;
+      gap: var(--nevoflux-space-xs);
+    }
+
+    .list-editor .list-item {
+      display: flex;
+      gap: var(--nevoflux-space-xs);
+    }
+
+    .list-editor .list-item input {
+      flex: 1;
+      padding: var(--nevoflux-space-xs) var(--nevoflux-space-sm);
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      background: var(--nevoflux-bg);
+      color: var(--nevoflux-text);
+      font-family: var(--nevoflux-font-family);
+      font-size: var(--nevoflux-font-size-sm);
+    }
+
+    .list-editor .list-item input:focus {
+      outline: none;
+      border-color: var(--nevoflux-accent);
+    }
+
+    .list-editor .remove-btn {
+      padding: 2px 8px;
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      background: none;
+      color: var(--nevoflux-text-secondary);
+      cursor: pointer;
+      font-size: var(--nevoflux-font-size-sm);
+    }
+
+    .list-editor .remove-btn:hover {
+      background: light-dark(#fee, #4a1a1a);
+      color: light-dark(#c00, #f88);
+      border-color: light-dark(#fcc, #a44);
+    }
+
+    .add-btn {
+      align-self: flex-start;
+      padding: var(--nevoflux-space-xs) var(--nevoflux-space-md);
+      border: 1px dashed var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      background: none;
+      color: var(--nevoflux-text-secondary);
+      cursor: pointer;
+      font-size: var(--nevoflux-font-size-sm);
+      margin-top: var(--nevoflux-space-xs);
+    }
+
+    .add-btn:hover {
+      border-color: var(--nevoflux-accent);
+      color: var(--nevoflux-accent);
+    }
+
+    /* Avatar picker */
+    .avatar-row {
+      display: flex;
+      align-items: center;
+      gap: var(--nevoflux-space-lg);
+      margin-bottom: var(--nevoflux-space-md);
+    }
+
+    .avatar-row label {
+      min-width: 140px;
+      font-weight: 500;
+      font-size: var(--nevoflux-font-size-base);
+    }
+
+    .avatar-preview {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 2px solid var(--nevoflux-border);
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--nevoflux-bg-tertiary);
+      font-size: 28px;
+      color: var(--nevoflux-text-secondary);
+      flex-shrink: 0;
+      user-select: none;
+    }
+
+    .avatar-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .avatar-actions {
+      display: flex;
+      gap: var(--nevoflux-space-xs);
+    }
+
+    .avatar-actions button {
+      padding: var(--nevoflux-space-xs) var(--nevoflux-space-md);
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      background: var(--nevoflux-bg);
+      color: var(--nevoflux-text);
+      cursor: pointer;
+      font-size: var(--nevoflux-font-size-sm);
+    }
+
+    .avatar-actions button:hover {
+      background: var(--nevoflux-bg-tertiary);
+    }
+
+    .avatar-actions .avatar-remove-btn {
+      color: var(--nevoflux-text-secondary);
+    }
+
+    .avatar-actions .avatar-remove-btn:hover {
+      background: light-dark(#fee, #4a1a1a);
+      color: light-dark(#c00, #f88);
+      border-color: light-dark(#fcc, #a44);
+    }
+
+    /* Save indicator */
+    .save-indicator {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-lg);
+      background: var(--nevoflux-accent);
+      color: white;
+      border-radius: var(--nevoflux-radius-md);
+      font-size: var(--nevoflux-font-size-sm);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.2s, transform 0.2s;
+      pointer-events: none;
+    }
+
+    .save-indicator.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* P1/P2 placeholder */
+    .section-placeholder {
+      color: var(--nevoflux-text-secondary);
+      font-style: italic;
+      padding: var(--nevoflux-space-xl) 0;
+    }
+
+    /* ── MCP Server Cards ──────────────────────────── */
+    .mcp-server-list {
+      display: flex;
+      flex-direction: column;
+      gap: var(--nevoflux-space-md);
+    }
+
+    .mcp-server-card {
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-md);
+      background: var(--nevoflux-bg);
+      overflow: hidden;
+    }
+
+    .mcp-server-card.disabled {
+      opacity: 0.55;
+    }
+
+    .mcp-server-header {
+      display: flex;
+      align-items: center;
+      gap: var(--nevoflux-space-sm);
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-md);
+      background: var(--nevoflux-bg-secondary);
+      border-bottom: 1px solid var(--nevoflux-border);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .mcp-server-header:hover {
+      background: var(--nevoflux-bg-tertiary);
+    }
+
+    .mcp-server-expand {
+      font-size: 10px;
+      color: var(--nevoflux-text-secondary);
+      transition: transform 0.15s ease;
+      width: 16px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .mcp-server-card.expanded .mcp-server-expand {
+      transform: rotate(90deg);
+    }
+
+    .mcp-server-name {
+      flex: 1;
+      font-weight: 600;
+      font-size: var(--nevoflux-font-size-base);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .mcp-server-name.unnamed {
+      color: var(--nevoflux-text-secondary);
+      font-style: italic;
+    }
+
+    .mcp-server-summary {
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 200px;
+    }
+
+    .mcp-server-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--nevoflux-space-xs);
+      flex-shrink: 0;
+    }
+
+    .mcp-server-actions button {
+      border: none;
+      background: none;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: var(--nevoflux-radius-sm);
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+    }
+
+    .mcp-server-actions button:hover {
+      background: var(--nevoflux-bg-tertiary);
+      color: var(--nevoflux-text);
+    }
+
+    .mcp-server-actions .mcp-delete-btn:hover {
+      background: light-dark(#fee, #4a1a1a);
+      color: light-dark(#c00, #f88);
+    }
+
+    /* Toggle switch */
+    .mcp-toggle {
+      position: relative;
+      width: 36px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .mcp-toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .mcp-toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: var(--nevoflux-border);
+      border-radius: 10px;
+      transition: background 0.15s ease;
+    }
+
+    .mcp-toggle-slider::before {
+      content: "";
+      position: absolute;
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.15s ease;
+    }
+
+    .mcp-toggle input:checked + .mcp-toggle-slider {
+      background: var(--nevoflux-accent);
+    }
+
+    .mcp-toggle input:checked + .mcp-toggle-slider::before {
+      transform: translateX(16px);
+    }
+
+    .mcp-toggle input:focus-visible + .mcp-toggle-slider {
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--nevoflux-accent) 30%, transparent);
+    }
+
+    /* Server editor body */
+    .mcp-server-body {
+      display: none;
+      padding: var(--nevoflux-space-md);
+    }
+
+    .mcp-server-card.expanded .mcp-server-body {
+      display: block;
+    }
+
+    .mcp-server-body .form-row {
+      margin-bottom: var(--nevoflux-space-sm);
+    }
+
+    .mcp-server-body .form-row label {
+      min-width: 80px;
+      font-size: var(--nevoflux-font-size-sm);
+    }
+
+    /* Key-value editor for env vars */
+    .kv-editor {
+      display: flex;
+      flex-direction: column;
+      gap: var(--nevoflux-space-xs);
+    }
+
+    .kv-editor .kv-row {
+      display: flex;
+      gap: var(--nevoflux-space-xs);
+      align-items: center;
+    }
+
+    .kv-editor .kv-row input {
+      flex: 1;
+      padding: var(--nevoflux-space-xs) var(--nevoflux-space-sm);
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      background: var(--nevoflux-bg);
+      color: var(--nevoflux-text);
+      font-family: var(--nevoflux-font-mono, monospace);
+      font-size: var(--nevoflux-font-size-sm);
+    }
+
+    .kv-editor .kv-row input:focus {
+      outline: none;
+      border-color: var(--nevoflux-accent);
+    }
+
+    .kv-editor .kv-row input.kv-key {
+      max-width: 140px;
+    }
+
+    .kv-editor .kv-sep {
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-sm);
+      flex-shrink: 0;
+    }
+
+    .kv-editor .kv-remove {
+      padding: 2px 8px;
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      background: none;
+      color: var(--nevoflux-text-secondary);
+      cursor: pointer;
+      font-size: var(--nevoflux-font-size-sm);
+      flex-shrink: 0;
+    }
+
+    .kv-editor .kv-remove:hover {
+      background: light-dark(#fee, #4a1a1a);
+      color: light-dark(#c00, #f88);
+      border-color: light-dark(#fcc, #a44);
+    }
+
+    /* MCP add server button */
+    .mcp-add-server-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--nevoflux-space-xs);
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-lg);
+      border: 1px dashed var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      background: none;
+      color: var(--nevoflux-text-secondary);
+      cursor: pointer;
+      font-size: var(--nevoflux-font-size-base);
+      margin-top: var(--nevoflux-space-sm);
+    }
+
+    .mcp-add-server-btn:hover {
+      border-color: var(--nevoflux-accent);
+      color: var(--nevoflux-accent);
+    }
+
+    /* MCP global settings: number input */
+    .form-row input[type="number"] {
+      width: 100%;
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-md);
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      background: var(--nevoflux-bg);
+      color: var(--nevoflux-text);
+      font-family: var(--nevoflux-font-family);
+      font-size: var(--nevoflux-font-size-base);
+    }
+
+    .form-row input[type="number"]:focus {
+      outline: none;
+      border-color: var(--nevoflux-accent);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--nevoflux-accent) 20%, transparent);
+    }
+
+    /* Toggle row for global settings */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: var(--nevoflux-space-md);
+      margin-bottom: var(--nevoflux-space-md);
+    }
+
+    .toggle-row label {
+      min-width: 140px;
+      font-weight: 500;
+      font-size: var(--nevoflux-font-size-base);
+    }
+
+    .mcp-empty-state {
+      text-align: center;
+      padding: var(--nevoflux-space-2xl) var(--nevoflux-space-lg);
+      color: var(--nevoflux-text-secondary);
+    }
+
+    .mcp-empty-state p {
+      margin: var(--nevoflux-space-xs) 0;
+    }
+
+    .mcp-empty-state .mcp-empty-title {
+      font-size: var(--nevoflux-font-size-base);
+      font-weight: 500;
+      color: var(--nevoflux-text);
+    }
+
+    .mcp-empty-state .mcp-empty-hint {
+      font-size: var(--nevoflux-font-size-sm);
+    }
+  </style>
+</head>
+<body>
+  <nav class="settings-nav" id="settings-nav">
+    <h1>Settings</h1>
+    <a href="#" data-section="general">General</a>
+    <a href="#" data-section="llm">AI Models</a>
+    <a href="#" data-section="mcp">MCP Servers</a>
+    <a href="#" data-section="plugins">Plugins</a>
+    <a href="#" data-section="shortcuts">Shortcuts</a>
+  </nav>
+  <main class="settings-content">
+    <div class="settings-content-inner" id="settings-content">
+      <!-- Sections rendered by settings.js -->
+    </div>
+  </main>
+  <div class="save-indicator" id="save-indicator">Saved</div>
+  <script src="chrome://nevoflux/content/pages/common.js"></script>
+  <script src="chrome://nevoflux/content/pages/settings.js"></script>
+</body>
+</html>

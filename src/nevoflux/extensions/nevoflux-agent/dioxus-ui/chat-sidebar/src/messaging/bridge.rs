@@ -63,7 +63,10 @@ pub fn from_js_value<T: serde::de::DeserializeOwned>(value: JsValue) -> Result<T
         }
     };
 
-    serde_json::from_str(&json).map_err(|e| format!("Deserialize error: {} (json: {})", e, &json[..json.len().min(100)]))
+    serde_json::from_str(&json).map_err(|e| {
+        let preview: String = json.chars().take(100).collect();
+        format!("Deserialize error: {} (json: {})", e, preview)
+    })
 }
 
 /// Send message synchronously (fire-and-forget, ignores promise result)
