@@ -1457,7 +1457,7 @@ this.nevoflux = class extends ExtensionAPI {
 
         // ========== Artifact Management ==========
 
-        async createArtifact({ id, type, title, code, state, source, permissions }) {
+        async createArtifact({ id, type, title, code, files, entry: entryPoint, options, state, source, permissions }) {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
             "resource:///modules/NevofluxContentStore.sys.mjs"
           );
@@ -1472,6 +1472,9 @@ this.nevoflux = class extends ExtensionAPI {
             createdAt: now,
             updatedAt: now,
           };
+          if (files) entry.files = files;
+          if (entryPoint) entry.entry = entryPoint;
+          if (options) entry.options = options;
           NevofluxContentStore.set(`canvas:${id}`, entry);
 
           // Tab opening is now handled by background.js for foreground + reuse
@@ -1479,7 +1482,7 @@ this.nevoflux = class extends ExtensionAPI {
           return { success: true, id };
         },
 
-        async updateArtifact(id, { code, state, title }) {
+        async updateArtifact(id, { code, state, title, files, entry: entryPoint }) {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
             "resource:///modules/NevofluxContentStore.sys.mjs"
           );
@@ -1491,6 +1494,8 @@ this.nevoflux = class extends ExtensionAPI {
           if (code !== undefined) existing.content = code;
           if (state !== undefined) existing.state = state;
           if (title !== undefined) existing.title = title;
+          if (files !== undefined) existing.files = files;
+          if (entryPoint !== undefined) existing.entry = entryPoint;
           existing.updatedAt = Date.now();
 
           NevofluxContentStore.set(`canvas:${id}`, existing);
