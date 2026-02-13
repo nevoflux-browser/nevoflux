@@ -27,6 +27,9 @@ const Bundler = {
   /** @type {string[]} CSS chunks collected during a build. */
   _collectedCSS: [],
 
+  /** @type {Map<string, {js: string, css: string, errors: string[]}>} */
+  _bundleCache: new Map(),
+
   /**
    * Framework packages mapped to esm.sh CDN URLs for runtime importmap.
    * @type {Record<string, string>}
@@ -193,10 +196,93 @@ const Bundler = {
     };
   },
 
+  // ── Caching ─────────────────────────────────────────────
+
+  /**
+   * Compute a cache key from VFS file contents and bundle options.
+   *
+   * Uses a djb2-style hash over the entry point, env keys/values, and all
+   * VFS file paths and contents. Samples first and last 256 characters of
+   * each file for a balance between speed and collision resistance.
+   *
+   * @param {string} entry - The entry point path.
+   * @param {Record<string, string>} env - Environment variables.
+   * @returns {string} A hash string for the current file state.
+   * @private
+   */
+  _computeCacheKey(entry, env) {
+    const files = VirtualFS.list(); // Returns sorted array of paths
+    let hash = 5381;
+
+    /**
+     * Feed a string into the running hash.
+     * @param {string} str
+     */
+    const feedString = (str) => {
+      for (let i = 0; i < str.length; i++) {
+        hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+      }
+    };
+
+    // Include entry point
+    feedString("entry:");
+    feedString(entry);
+
+    // Include env variables (sorted for determinism)
+    const envKeys = Object.keys(env).sort();
+    for (const key of envKeys) {
+      feedString("env:");
+      feedString(key);
+      feedString("=");
+      feedString(env[key]);
+    }
+
+    // Include all VFS file paths and content
+    for (const path of files) {
+      feedString("file:");
+      feedString(path);
+
+      const content = VirtualFS.read(path) || "";
+
+      // Hash content length
+      hash = ((hash << 5) + hash + content.length) | 0;
+
+      // Hash first 256 chars
+      const sampleLen = Math.min(256, content.length);
+      for (let i = 0; i < sampleLen; i++) {
+        hash = ((hash << 5) + hash + content.charCodeAt(i)) | 0;
+      }
+
+      // Hash last 256 chars (if file is longer than 256)
+      if (content.length > 256) {
+        for (let i = content.length - 256; i < content.length; i++) {
+          hash = ((hash << 5) + hash + content.charCodeAt(i)) | 0;
+        }
+      }
+    }
+
+    return String(hash);
+  },
+
+  /**
+   * Clear the bundle result cache.
+   *
+   * Call this when VFS is reset or when cached results should be invalidated
+   * (e.g., after switching projects).
+   */
+  clearCache() {
+    this._bundleCache.clear();
+    console.info("[Bundler] Cache cleared.");
+  },
+
   // ── Bundle ──────────────────────────────────────────────
 
   /**
    * Bundle a multi-file project from VirtualFS.
+   *
+   * Results are cached by a hash of VFS contents and bundle options.
+   * If the cache contains a matching entry, the cached result is returned
+   * without invoking esbuild. Only successful builds (no errors) are cached.
    *
    * @param {object} options - Bundle options.
    * @param {string} options.entry - Entry point path in VirtualFS (e.g., "/src/index.tsx").
@@ -208,6 +294,14 @@ const Bundler = {
   async bundle({ entry, env = {} }) {
     // Ensure esbuild is initialized
     await this.init();
+
+    // Check bundle cache
+    const cacheKey = this._computeCacheKey(entry, env);
+    const cached = this._bundleCache.get(cacheKey);
+    if (cached) {
+      console.info("[Bundler] Cache hit, skipping rebuild.");
+      return cached;
+    }
 
     // Reset collected CSS for this build
     this._collectedCSS = [];
@@ -244,7 +338,14 @@ const Bundler = {
 
       const errors = (result.errors || []).map((e) => e.text || String(e));
 
-      return { js, css, errors };
+      const bundleResult = { js, css, errors };
+
+      // Cache successful builds only
+      if (errors.length === 0) {
+        this._bundleCache.set(cacheKey, bundleResult);
+      }
+
+      return bundleResult;
     } catch (e) {
       console.error("[Bundler] Build failed:", e);
 
