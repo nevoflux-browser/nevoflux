@@ -578,8 +578,8 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
     const viewport = document.getElementById("viewport");
     const emptyState = document.getElementById("empty-state");
 
-    if (!artifact.content) {
-      console.error(`[Canvas] _render: content is empty/falsy`);
+    if (!artifact.content && !artifact.files) {
+      console.error(`[Canvas] _render: content and files are both empty/falsy`);
       this._showEmpty("Empty artifact");
       return;
     }
@@ -615,6 +615,9 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
         break;
       case "mermaid":
         this._renderMermaid(viewport, artifact.content);
+        break;
+      case "project":
+        this._renderProject(viewport, artifact);
         break;
       default:
         this._showEmpty(`Unsupported type: ${artifact.type}`);
@@ -747,6 +750,38 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
   },
 
   /**
+   * Render a multi-file project using CanvasRuntime.
+   * @param {HTMLElement} viewport
+   * @param {object} artifact - Must have .files field
+   */
+  async _renderProject(viewport, artifact) {
+    if (!artifact.files || Object.keys(artifact.files).length === 0) {
+      this._showEmpty("No files in project");
+      return;
+    }
+
+    this._updateStatus("Bundling...");
+
+    const result = await CanvasRuntime.render(
+      viewport,
+      {
+        files: artifact.files,
+        entry: artifact.entry,
+        options: artifact.options,
+      },
+      `<script>${this._SDK_SCRIPT}<\/script>`
+    );
+
+    if (result.success) {
+      this._iframe = CanvasRuntime._iframe;
+      this._updateStatus("Ready");
+    } else {
+      this._showEmpty(`Build error: ${result.error}`);
+      this._updateStatus("Error");
+    }
+  },
+
+  /**
    * Fetch a chrome:// vendor file and cache it for srcdoc inlining.
    */
   async _fetchVendor(url) {
@@ -775,6 +810,12 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
   // ── Edit Mode ───────────────────────────────────────────
 
   _enterEditMode() {
+    // Multi-file project: use project-specific edit mode
+    if (this._artifact?.files) {
+      this._enterProjectEditMode();
+      return;
+    }
+
     const viewport = document.getElementById("viewport");
     const emptyState = document.getElementById("empty-state");
     if (emptyState) emptyState.style.display = "none";
@@ -857,7 +898,140 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
     }
   },
 
+  _enterProjectEditMode() {
+    const viewport = document.getElementById("viewport");
+    viewport.innerHTML = "";
+
+    // Create split layout
+    const container = document.createElement("div");
+    container.className = "canvas-split";
+    container.id = "edit-split";
+
+    // File selector bar
+    const selectorBar = document.createElement("div");
+    selectorBar.style.cssText = "padding:8px;border-bottom:1px solid var(--zen-colors-border, #333);display:flex;align-items:center;gap:8px;";
+
+    const label = document.createElement("span");
+    label.textContent = "File:";
+    label.style.cssText = "font-size:12px;color:var(--zen-colors-secondary, #999);";
+    selectorBar.appendChild(label);
+
+    const select = document.createElement("select");
+    select.id = "project-file-select";
+    select.style.cssText = "flex:1;padding:4px 8px;background:var(--zen-colors-input-bg, #1a1a1a);color:inherit;border:1px solid var(--zen-colors-border, #333);border-radius:4px;font-size:12px;font-family:monospace;";
+    const files = Object.keys(this._artifact.files).sort();
+    for (const path of files) {
+      const opt = document.createElement("option");
+      opt.value = path;
+      opt.textContent = path;
+      select.appendChild(opt);
+    }
+    selectorBar.appendChild(select);
+
+    // Editor pane
+    const editorPane = document.createElement("div");
+    editorPane.className = "editor-pane";
+    editorPane.id = "code-editor-pane";
+
+    // Preview pane
+    const previewPane = document.createElement("div");
+    previewPane.className = "preview-pane";
+    previewPane.id = "edit-preview";
+
+    container.appendChild(editorPane);
+    container.appendChild(previewPane);
+    viewport.appendChild(selectorBar);
+    viewport.appendChild(container);
+
+    let currentPath = files[0];
+
+    // Initialize editor
+    const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const initialContent = this._artifact.files[currentPath] || "";
+
+    let debounceTimer = null;
+    const onEdit = (value) => {
+      this._artifact.files[currentPath] = value;
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        await CanvasRuntime.render(
+          previewPane,
+          { files: this._artifact.files, entry: this._artifact.entry },
+          `<script>${this._SDK_SCRIPT}<\/script>`
+        );
+      }, 500);
+    };
+
+    const loadFile = (path) => {
+      // Save current file content first
+      if (this._cmView && window.CodeMirrorFactory) {
+        this._artifact.files[currentPath] = window.CodeMirrorFactory.getValue(this._cmView);
+      }
+      currentPath = path;
+      const content = this._artifact.files[path] || "";
+      if (this._cmView && window.CodeMirrorFactory) {
+        window.CodeMirrorFactory.setValue(this._cmView, content);
+      } else {
+        const ta = document.getElementById("code-editor");
+        if (ta) ta.value = content;
+      }
+    };
+
+    select.addEventListener("change", () => loadFile(select.value));
+
+    if (window.CodeMirrorFactory) {
+      this._cmView = window.CodeMirrorFactory.create(editorPane, {
+        value: initialContent,
+        language: currentPath.split(".").pop() || "html",
+        dark: isDark,
+        onChange: onEdit,
+      });
+    } else {
+      const textarea = document.createElement("textarea");
+      textarea.id = "code-editor";
+      textarea.value = initialContent;
+      textarea.style.cssText = "width:100%;height:100%;resize:none;background:#1a1a1a;color:#d4d4d4;border:none;padding:12px;font-family:monospace;font-size:13px;tab-size:2;";
+      textarea.addEventListener("input", () => onEdit(textarea.value));
+      textarea.addEventListener("keydown", (e) => {
+        if (e.key === "Tab") {
+          e.preventDefault();
+          const start = textarea.selectionStart;
+          textarea.value = textarea.value.substring(0, start) + "  " + textarea.value.substring(textarea.selectionEnd);
+          textarea.selectionStart = textarea.selectionEnd = start + 2;
+          onEdit(textarea.value);
+        }
+      });
+      editorPane.appendChild(textarea);
+    }
+
+    // Initial preview render
+    CanvasRuntime.render(
+      previewPane,
+      { files: this._artifact.files, entry: this._artifact.entry },
+      `<script>${this._SDK_SCRIPT}<\/script>`
+    );
+  },
+
   _exitEditMode() {
+    // Save project files if in project edit mode
+    if (this._artifact?.files) {
+      const select = document.getElementById("project-file-select");
+      if (select) {
+        // Save current file content
+        if (this._cmView && window.CodeMirrorFactory) {
+          this._artifact.files[select.value] = window.CodeMirrorFactory.getValue(this._cmView);
+        } else {
+          const ta = document.getElementById("code-editor");
+          if (ta) this._artifact.files[select.value] = ta.value;
+        }
+        // Persist to ContentStore
+        NevofluxPage.sendMessage("contentStore:set", {
+          key: `canvas:${this._artifactId}`,
+          value: this._artifact,
+        });
+      }
+    }
+
     const split = document.getElementById("edit-split");
     if (split) {
       // Save edits back to ContentStore
