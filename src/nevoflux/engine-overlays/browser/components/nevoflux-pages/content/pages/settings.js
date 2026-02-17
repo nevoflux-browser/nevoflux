@@ -1370,67 +1370,6 @@ const Settings = {
     }
   },
 
-  _createListRow(label, key) {
-    const row = document.createElement("div");
-    row.className = "form-row";
-
-    const lbl = document.createElement("label");
-    lbl.textContent = label;
-    row.appendChild(lbl);
-
-    const field = document.createElement("div");
-    field.className = "field";
-
-    const editor = document.createElement("div");
-    editor.className = "list-editor";
-    editor.dataset.key = key;
-
-    const addBtn = document.createElement("button");
-    addBtn.className = "add-btn";
-    addBtn.textContent = "+ Add";
-    addBtn.type = "button";
-    addBtn.addEventListener("click", () => {
-      this._addListItem(editor, key, "");
-    });
-
-    editor.appendChild(addBtn);
-    field.appendChild(editor);
-    row.appendChild(field);
-    return row;
-  },
-
-  _addListItem(editor, key, value) {
-    const addBtn = editor.querySelector(".add-btn");
-
-    const item = document.createElement("div");
-    item.className = "list-item";
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = value;
-    input.addEventListener("input", () => this._onListChange(editor, key));
-
-    const removeBtn = document.createElement("button");
-    removeBtn.className = "remove-btn";
-    removeBtn.textContent = "x";
-    removeBtn.type = "button";
-    removeBtn.addEventListener("click", () => {
-      item.remove();
-      this._onListChange(editor, key);
-    });
-
-    item.appendChild(input);
-    item.appendChild(removeBtn);
-    editor.insertBefore(item, addBtn);
-    input.focus();
-  },
-
-  _onListChange(editor, key) {
-    const items = editor.querySelectorAll(".list-item input");
-    const values = Array.from(items).map(i => i.value).filter(Boolean);
-    this._onFieldChange(key, values);
-  },
-
   _renderPlaceholderSection(id, title, message) {
     const section = this._createSection(id, title);
     const group = this._createGroup(title);
@@ -1440,33 +1379,6 @@ const Settings = {
     group.appendChild(p);
     section.appendChild(group);
     return section;
-  },
-
-  _el(tag, text) {
-    const el = document.createElement(tag);
-    el.textContent = text;
-    return el;
-  },
-
-  _getTimezones() {
-    // Common timezones
-    return [
-      ["UTC", "UTC"],
-      ["America/New_York", "US Eastern"],
-      ["America/Chicago", "US Central"],
-      ["America/Denver", "US Mountain"],
-      ["America/Los_Angeles", "US Pacific"],
-      ["Europe/London", "London"],
-      ["Europe/Paris", "Paris"],
-      ["Europe/Berlin", "Berlin"],
-      ["Europe/Moscow", "Moscow"],
-      ["Asia/Tokyo", "Tokyo"],
-      ["Asia/Shanghai", "Shanghai"],
-      ["Asia/Kolkata", "India"],
-      ["Asia/Singapore", "Singapore"],
-      ["Australia/Sydney", "Sydney"],
-      ["Pacific/Auckland", "Auckland"],
-    ];
   },
 
   // ── Settings Persistence ────────────────────────────────
@@ -1497,13 +1409,6 @@ const Settings = {
         const preview = input.querySelector(".avatar-preview");
         if (preview && value) {
           this._setAvatarPreview(preview, value);
-        }
-      } else if (input.classList.contains("list-editor")) {
-        // List editor
-        if (Array.isArray(value)) {
-          for (const item of value) {
-            this._addListItem(input, key, item);
-          }
         }
       } else if (input.tagName === "SELECT") {
         input.value = value;
