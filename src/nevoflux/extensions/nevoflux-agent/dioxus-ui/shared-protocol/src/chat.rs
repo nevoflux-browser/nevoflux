@@ -154,7 +154,7 @@ pub struct StreamChunkPayload {
 }
 
 /// Tool call information from agent
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolCallInfo {
     pub id: String,
     pub name: String,

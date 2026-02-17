@@ -9,30 +9,19 @@ use wasm_bindgen_futures::spawn_local;
 use crate::bindings::nevoflux_api;
 use crate::context::{use_app_context, AppContext};
 
-/// Header component with History, Maximize and More buttons
+/// Header component with History and Maximize buttons
 #[component]
 pub fn Header() -> Element {
-    let mut show_menu = use_signal(|| false);
-    let mut ctx = use_app_context();
+    let ctx = use_app_context();
 
     // Read maximize state
     let is_maximized = ctx.maximize.read().is_maximized;
-
-    // User info (Mock data for now, P2: fetch from account status)
-    let username = "User";
-    let user_initial = "U";
-
-    let toggle_menu = move |_| {
-        show_menu.set(!show_menu());
-        ctx.show_history_panel.set(false);
-    };
 
     let toggle_history = {
         let mut ctx = ctx.clone();
         move |_| {
             let current = *ctx.show_history_panel.read();
             ctx.show_history_panel.set(!current);
-            show_menu.set(false);
 
             // Refresh history when opening
             if !current {
@@ -42,10 +31,6 @@ pub fn Header() -> Element {
                 });
             }
         }
-    };
-
-    let close_menu = move |_| {
-        show_menu.set(false);
     };
 
     // Handle maximize: open in new tab, close sidebar
@@ -80,30 +65,11 @@ pub fn Header() -> Element {
         }
     };
 
-    let handle_config_mcp = move |_| {
-        web_sys::console::log_1(&"[DEBUG] Configure MCP clicked".into());
-        tracing::info!("Configure MCP requested");
-        show_menu.set(false);
-        // Open MCP config modal and request server list
-        web_sys::console::log_1(&"[DEBUG] Setting show_mcp_config to true".into());
-        ctx.show_mcp_config.set(true);
-        ctx.mcp_config.write().set_loading();
-        web_sys::console::log_1(&"[DEBUG] Spawning send_mcp_list".into());
-        spawn_local(async move {
-            let _ = crate::messaging::send_mcp_list().await;
-        });
-    };
-
-    let handle_config_skills = move |_| {
-        tracing::info!("Configure Skills requested");
-        show_menu.set(false);
-        // P2: Open Skills settings
-    };
-
     rsx! {
         header { class: "header",
-            // Left side: History button
-            div { class: "header-left",
+            // Right side: Action buttons
+            div { class: "header-right",
+                // History button
                 button {
                     class: "header-btn history-btn",
                     aria_label: "History",
@@ -123,10 +89,7 @@ pub fn Header() -> Element {
                         path { d: "M12 6v6l4 2" }
                     }
                 }
-            }
 
-            // Right side: Action buttons
-            div { class: "header-right",
                 // Maximize/Restore button
                 if is_maximized {
                     // Restore button (in tab mode)
@@ -173,78 +136,6 @@ pub fn Header() -> Element {
                             path { d: "M21 3l-7 7" }
                             path { d: "M3 21l7-7" }
                         }
-                    }
-                }
-
-                // More button
-                button {
-                    class: "header-btn more-btn",
-                    aria_label: "More options",
-                    title: "More options",
-                    onclick: toggle_menu,
-                    // Three dots icon
-                    svg {
-                        width: "16",
-                        height: "16",
-                        view_box: "0 0 24 24",
-                        fill: "none",
-                        stroke: "currentColor",
-                        stroke_width: "2",
-                        stroke_linecap: "round",
-                        stroke_linejoin: "round",
-                        circle { cx: "12", cy: "12", r: "1" }
-                        circle { cx: "19", cy: "12", r: "1" }
-                        circle { cx: "5", cy: "12", r: "1" }
-                    }
-                }
-            }
-
-            // Dropdown Menu Overlay (to close on click outside or Escape)
-            if show_menu() {
-                div {
-                    class: "menu-overlay",
-                    onclick: close_menu,
-                    onkeydown: move |evt: KeyboardEvent| {
-                        if evt.key() == Key::Escape {
-                            show_menu.set(false);
-                        }
-                    },
-                    tabindex: "-1",
-                }
-
-                // Dropdown Menu
-                div {
-                    class: "dropdown-menu",
-                    role: "menu",
-                    aria_label: "Settings menu",
-                    onkeydown: move |evt: KeyboardEvent| {
-                        if evt.key() == Key::Escape {
-                            show_menu.set(false);
-                        }
-                    },
-
-                    // User Info
-                    div { class: "menu-item user-profile",
-                        div { class: "user-avatar", aria_hidden: "true", "{user_initial}" }
-                        span { "{username}" }
-                    }
-
-                    div { class: "menu-separator", role: "separator" }
-
-                    // Configure MCP
-                    button {
-                        class: "menu-item",
-                        role: "menuitem",
-                        onclick: handle_config_mcp,
-                        "Configure MCP"
-                    }
-
-                    // Configure Skills
-                    button {
-                        class: "menu-item",
-                        role: "menuitem",
-                        onclick: handle_config_skills,
-                        "Configure Skills"
                     }
                 }
             }

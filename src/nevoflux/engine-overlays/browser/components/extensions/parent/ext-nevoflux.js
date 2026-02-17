@@ -1461,6 +1461,7 @@ this.nevoflux = class extends ExtensionAPI {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
             "resource:///modules/NevofluxContentStore.sys.mjs"
           );
+          console.log(`[ext-nevoflux] createArtifact: id=${id}, type=${type}, codeLen=${code?.length}, filesCount=${files ? Object.keys(files).length : 0}, entry=${entryPoint}, state=${state}`);
           const now = Date.now();
           const entry = {
             type: type || "html",
@@ -1475,6 +1476,7 @@ this.nevoflux = class extends ExtensionAPI {
           if (files) entry.files = files;
           if (entryPoint) entry.entry = entryPoint;
           if (options) entry.options = options;
+          console.log(`[ext-nevoflux] createArtifact SET: key=canvas:${id}, type=${entry.type}, contentLen=${entry.content?.length}, hasFiles=${!!entry.files}, entry=${entry.entry}`);
           NevofluxContentStore.set(`canvas:${id}`, entry);
 
           // Tab opening is now handled by background.js for foreground + reuse
@@ -1482,20 +1484,23 @@ this.nevoflux = class extends ExtensionAPI {
           return { success: true, id };
         },
 
-        async updateArtifact(id, { code, state, title, files, entry: entryPoint }) {
+        async updateArtifact(id, { code, state, title, type: artifactType, files, entry: entryPoint }) {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
             "resource:///modules/NevofluxContentStore.sys.mjs"
           );
           const existing = NevofluxContentStore.get(`canvas:${id}`);
           if (!existing) {
+            console.log(`[ext-nevoflux] updateArtifact: id=${id} NOT FOUND, state=${state}, type=${artifactType}`);
             return { success: false, error: { code: 12001, message: "Artifact not found", recoverable: false } };
           }
 
-          if (code !== undefined) existing.content = code;
-          if (state !== undefined) existing.state = state;
-          if (title !== undefined) existing.title = title;
-          if (files !== undefined) existing.files = files;
-          if (entryPoint !== undefined) existing.entry = entryPoint;
+          console.log(`[ext-nevoflux] updateArtifact: id=${id}, existingType=${existing.type}, newState=${state}, newType=${artifactType}, newCodeLen=${code?.length}, newFiles=${files ? Object.keys(files).length : 0}`);
+          if (code != null) existing.content = code;
+          if (state != null) existing.state = state;
+          if (title != null) existing.title = title;
+          if (artifactType != null) existing.type = artifactType;
+          if (files != null) existing.files = files;
+          if (entryPoint != null) existing.entry = entryPoint;
           existing.updatedAt = Date.now();
 
           NevofluxContentStore.set(`canvas:${id}`, existing);
@@ -1698,10 +1703,20 @@ this.nevoflux = class extends ExtensionAPI {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
             "resource:///modules/NevofluxContentStore.sys.mjs"
           );
+          console.log(`[ext-nevoflux] contentStoreLoad: ${entries.length} entries`);
           NevofluxContentStore._loading = true;
           try {
             for (const entry of entries) {
               if (entry.key && entry.value !== undefined) {
+                // Skip canvas artifact entries entirely during load.
+                // Canvas artifacts are session-specific — they're created by the
+                // streaming protocol (ARTIFACT_START/DELTA/COMPLETE) and the
+                // create_artifact tool call. Loading stale persisted data would
+                // overwrite correct data due to timing races.
+                if (entry.key.startsWith("canvas:")) {
+                  console.log(`[ext-nevoflux] contentStoreLoad: SKIPPING canvas entry ${entry.key} (type=${entry.value?.type}, state=${entry.value?.state})`);
+                  continue;
+                }
                 NevofluxContentStore.set(entry.key, entry.value);
               }
             }

@@ -971,19 +971,50 @@ fn handle_session_resolve_response(mut ctx: AppContext, data: serde_json::Value)
                 _ => {
                     // Regular text/thinking messages
                     let message = match role {
-                        "user" => Message::user(content.to_string()),
+                        "user" => {
+                            // Check for attachment metadata saved in history
+                            let attachments: Vec<ImageAttachment> = metadata
+                                .and_then(|m| m.get("attachments"))
+                                .and_then(|a| a.as_array())
+                                .map(|arr| {
+                                    arr.iter()
+                                        .filter_map(|v| {
+                                            let name = v.get("name")?.as_str()?.to_string();
+                                            let mime_type = v.get("mime_type")?.as_str()?.to_string();
+                                            Some(ImageAttachment {
+                                                id: format!("hist-{}", name),
+                                                name,
+                                                mime_type,
+                                                data: String::new(),
+                                            })
+                                        })
+                                        .collect()
+                                })
+                                .unwrap_or_default();
+
+                            if attachments.is_empty() {
+                                Message::user(content.to_string())
+                            } else {
+                                Message::user_with_images(content.to_string(), attachments)
+                            }
+                        }
                         "assistant" => Message::assistant_markdown(content.to_string()),
                         _ => continue,
                     };
                     let mut msg = message;
                     msg.id = id.to_string();
+                    if let Some(ts) = msg_json.get("created_at").and_then(|v| v.as_u64()) {
+                        msg.timestamp = ts * 1000; // Backend stores seconds, UI uses milliseconds
+                    }
                     new_messages.push(msg);
                 }
             }
         }
 
-        // Process artifacts from session — append ArtifactCards after messages
+        // Process artifacts from session — interleave at correct chronological positions
         if let Some(artifacts_arr) = data.get("artifacts").and_then(|a| a.as_array()) {
+            // Collect artifacts with their timestamps
+            let mut artifacts_with_ts: Vec<(u64, Message)> = Vec::new();
             for art_json in artifacts_arr {
                 if let (Some(id), Some(title)) = (
                     art_json.get("id").and_then(|v| v.as_str()),
@@ -993,16 +1024,34 @@ fn handle_session_resolve_response(mut ctx: AppContext, data: serde_json::Value)
                         .and_then(|v| v.as_str())
                         .unwrap_or("text/html")
                         .to_string();
+                    let ts = art_json.get("created_at")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or(0) * 1000;
 
-                    new_messages.push(Message::artifact(
+                    let mut art_msg = Message::artifact(
                         id.to_string(),
                         title.to_string(),
                         content_type,
                         ArtifactState::Complete,
-                    ));
+                    );
+                    art_msg.timestamp = ts;
+                    artifacts_with_ts.push((ts, art_msg));
                 }
             }
-            tracing::info!("Loaded {} artifacts from session", artifacts_arr.len());
+
+            // Sort by timestamp (earliest first) so insertions proceed in order
+            artifacts_with_ts.sort_by_key(|(ts, _)| *ts);
+
+            // Insert each artifact after the last message with timestamp <= artifact's timestamp
+            for (ts, art_msg) in artifacts_with_ts {
+                let insert_pos = new_messages.iter()
+                    .rposition(|m| m.timestamp <= ts)
+                    .map(|pos| pos + 1)
+                    .unwrap_or(0);
+                new_messages.insert(insert_pos, art_msg);
+            }
+
+            tracing::info!("Interleaved {} artifacts into message history", artifacts_arr.len());
         }
 
         let tool_count: usize = new_messages.iter().map(|m| m.tool_calls.len()).sum();

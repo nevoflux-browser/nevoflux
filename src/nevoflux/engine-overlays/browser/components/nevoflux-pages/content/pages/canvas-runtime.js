@@ -59,6 +59,9 @@ const CanvasRuntime = {
     "/src/main.svelte",
     "/src/App.svelte",
     "/App.svelte",
+    // HTML entry points (served directly, no bundling)
+    "/index.html",
+    "/src/index.html",
   ],
 
   /**
@@ -95,7 +98,7 @@ const CanvasRuntime = {
 
     // 3. Fallback: first .tsx/.jsx/.ts/.js file in VFS
     const allFiles = VirtualFS.list();
-    const jsExtensions = [".tsx", ".jsx", ".ts", ".js", ".vue", ".svelte"];
+    const jsExtensions = [".tsx", ".jsx", ".ts", ".js", ".vue", ".svelte", ".html"];
     for (const ext of jsExtensions) {
       const match = allFiles.find((f) => f.endsWith(ext));
       if (match) {
@@ -339,7 +342,14 @@ const CanvasRuntime = {
       }
       this._entry = entry;
 
-      // 3. Check if entry needs mount wrapper
+      // 3. HTML entry: serve directly with inlined VFS resources (no bundling)
+      if (entry.endsWith(".html") || entry.endsWith(".htm")) {
+        const html = this._assembleHTMLEntry(entry, sdkScript);
+        this._createIframe(viewport, html);
+        return { success: true };
+      }
+
+      // 4. Check if entry needs mount wrapper
       //    .vue and .svelte files are always component definitions and need wrapping.
       //    JS/TS files are checked for existing mount logic.
       const entryContent = VirtualFS.read(entry);
@@ -350,7 +360,7 @@ const CanvasRuntime = {
         bundleEntry = this._wrappedEntry;
       }
 
-      // 4. Bundle
+      // 5. Bundle
       const result = await Bundler.bundle({
         entry: bundleEntry,
         env: project.env || {},
@@ -363,19 +373,11 @@ const CanvasRuntime = {
         };
       }
 
-      // 5. Generate HTML
+      // 6. Generate HTML
       const html = this.generateHTML(result.js, result.css, sdkScript);
 
-      // 6. Create sandboxed iframe
-      if (this._iframe) {
-        this._iframe.remove();
-        this._iframe = null;
-      }
-
-      this._iframe = document.createElement("iframe");
-      this._iframe.setAttribute("sandbox", "allow-scripts allow-forms");
-      this._iframe.srcdoc = html;
-      viewport.appendChild(this._iframe);
+      // 7. Create sandboxed iframe
+      this._createIframe(viewport, html);
 
       return { success: true };
     } catch (e) {
@@ -385,6 +387,110 @@ const CanvasRuntime = {
         error: e.message || String(e),
       };
     }
+  },
+
+  // ── HTML Entry Assembly ──────────────────────────────────
+
+  /**
+   * Assemble an HTML entry file by inlining local VFS resources.
+   *
+   * Replaces `<script src="path">` and `<link rel="stylesheet" href="path">`
+   * references with inline content from VirtualFS, so the HTML is
+   * self-contained for srcdoc rendering.
+   *
+   * @param {string} entryPath - The HTML entry path in VFS.
+   * @param {string} sdkScript - The NevofluxSDK injection script.
+   * @returns {string} Self-contained HTML string.
+   */
+  _assembleHTMLEntry(entryPath, sdkScript) {
+    let html = VirtualFS.read(entryPath) || "";
+    const entryDir = entryPath.substring(0, entryPath.lastIndexOf("/")) || "/";
+
+    // Inline <script src="local-path"></script> from VFS
+    html = html.replace(
+      /<script\s+([^>]*?)src\s*=\s*["']([^"']+)["']([^>]*)>\s*<\/script>/gi,
+      (_match, pre, src, post) => {
+        // Skip external URLs
+        if (/^https?:\/\//.test(src)) return _match;
+        const resolved = VirtualFS.resolve(entryPath, src);
+        const withExt = VirtualFS.resolveWithExtension(resolved) || resolved;
+        const content = VirtualFS.read(withExt);
+        if (content !== null) {
+          // Preserve type attribute if present
+          const typeMatch = (pre + post).match(/type\s*=\s*["']([^"']+)["']/);
+          const typeAttr = typeMatch ? ` type="${typeMatch[1]}"` : "";
+          return `<script${typeAttr}>\n${content}\n<\/script>`;
+        }
+        return _match; // Keep original if file not found
+      }
+    );
+
+    // Inline <link rel="stylesheet" href="local-path"> from VFS
+    html = html.replace(
+      /<link\s+[^>]*rel\s*=\s*["']stylesheet["'][^>]*href\s*=\s*["']([^"']+)["'][^>]*\/?>/gi,
+      (_match, href) => {
+        if (/^https?:\/\//.test(href)) return _match;
+        const resolved = VirtualFS.resolve(entryPath, href);
+        const withExt = VirtualFS.resolveWithExtension(resolved) || resolved;
+        const content = VirtualFS.read(withExt);
+        if (content !== null) {
+          return `<style>\n${content}\n</style>`;
+        }
+        return _match;
+      }
+    );
+
+    // Also match href before rel (some HTML has href first)
+    html = html.replace(
+      /<link\s+[^>]*href\s*=\s*["']([^"']+)["'][^>]*rel\s*=\s*["']stylesheet["'][^>]*\/?>/gi,
+      (_match, href) => {
+        if (/^https?:\/\//.test(href)) return _match;
+        // Check if already inlined (this regex won't match <style> tags)
+        const resolved = VirtualFS.resolve(entryPath, href);
+        const withExt = VirtualFS.resolveWithExtension(resolved) || resolved;
+        const content = VirtualFS.read(withExt);
+        if (content !== null) {
+          return `<style>\n${content}\n</style>`;
+        }
+        return _match;
+      }
+    );
+
+    // Inject SDK script before </head> or at top
+    if (sdkScript) {
+      const headIdx = html.indexOf("</head>");
+      if (headIdx !== -1) {
+        html = html.slice(0, headIdx) + sdkScript + html.slice(headIdx);
+      } else {
+        const bodyIdx = html.indexOf("<body");
+        if (bodyIdx !== -1) {
+          html = html.slice(0, bodyIdx) + sdkScript + html.slice(bodyIdx);
+        } else {
+          html = sdkScript + html;
+        }
+      }
+    }
+
+    return html;
+  },
+
+  // ── Iframe Helper ───────────────────────────────────────
+
+  /**
+   * Create (or replace) a sandboxed iframe with the given srcdoc.
+   *
+   * @param {HTMLElement} viewport - The container element.
+   * @param {string} html - The HTML content for srcdoc.
+   */
+  _createIframe(viewport, html) {
+    if (this._iframe) {
+      this._iframe.remove();
+      this._iframe = null;
+    }
+    this._iframe = document.createElement("iframe");
+    this._iframe.setAttribute("sandbox", "allow-scripts allow-forms allow-same-origin");
+    this._iframe.srcdoc = html;
+    viewport.appendChild(this._iframe);
   },
 
   // ── Hot Update ─────────────────────────────────────────
@@ -456,7 +562,7 @@ const CanvasRuntime = {
         this._iframe.srcdoc = html;
       } else {
         this._iframe = document.createElement("iframe");
-        this._iframe.setAttribute("sandbox", "allow-scripts allow-forms");
+        this._iframe.setAttribute("sandbox", "allow-scripts allow-forms allow-same-origin");
         this._iframe.srcdoc = html;
         viewport.appendChild(this._iframe);
       }

@@ -445,9 +445,9 @@
           "state": { "type": "string", "optional": true, "description": "Artifact state (e.g. streaming, complete). Defaults to streaming" },
           "source": { "type": "string", "optional": true, "description": "Artifact source (e.g. agent). Defaults to agent" },
           "permissions": { "type": "array", "items": { "type": "string" }, "optional": true, "description": "Artifact permissions" },
-          "files": { "type": "object", "optional": true, "description": "Multi-file project: path to content map" },
+          "files": { "type": "object", "optional": true, "additionalProperties": { "type": "string" }, "description": "Multi-file project: path to content map" },
           "entry": { "type": "string", "optional": true, "description": "Entry point for multi-file projects" },
-          "options": { "type": "object", "optional": true, "description": "Build options for multi-file projects" }
+          "options": { "type": "object", "optional": true, "additionalProperties": true, "description": "Build options for multi-file projects" }
         }
       },
       {
@@ -458,7 +458,8 @@
           "code": { "type": "string", "optional": true, "description": "Updated content/code" },
           "state": { "type": "string", "optional": true, "description": "Updated state" },
           "title": { "type": "string", "optional": true, "description": "Updated title" },
-          "files": { "type": "object", "optional": true, "description": "Updated multi-file project content" },
+          "type": { "type": "string", "optional": true, "description": "Updated artifact type" },
+          "files": { "type": "object", "optional": true, "additionalProperties": { "type": "string" }, "description": "Updated multi-file project content" },
           "entry": { "type": "string", "optional": true, "description": "Updated entry point" }
         }
       },
@@ -476,9 +477,9 @@
           "permissions": { "type": "array", "items": { "type": "string" } },
           "createdAt": { "type": "number" },
           "updatedAt": { "type": "number" },
-          "files": { "type": "object", "optional": true },
+          "files": { "type": "object", "optional": true, "additionalProperties": { "type": "string" } },
           "entry": { "type": "string", "optional": true },
-          "options": { "type": "object", "optional": true }
+          "options": { "type": "object", "optional": true, "additionalProperties": true }
         }
       },
       {

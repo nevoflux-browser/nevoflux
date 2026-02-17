@@ -126,12 +126,53 @@ const CONTENT_STORE_DEBOUNCE_MS = 1000; // 1 second per-key debounce
 const CONTENT_STORE_MAX_VALUE_SIZE = 500_000; // 500KB max value size
 const contentStoreDebounceTimers = new Map(); // key -> timeoutId
 
+// Pending agent:command bridge requests: requestId → bridgeId
+const pendingAgentCommands = new Map();
+
+// Cleanup stale pending agent commands after 30s
+setInterval(() => {
+  const now = Date.now();
+  for (const [reqId, bridgeId] of pendingAgentCommands) {
+    const ts = parseInt(reqId.split("_")[1], 10);
+    if (now - ts > 30000) {
+      pendingAgentCommands.delete(reqId);
+      browser.nevoflux.bridgeRespond(bridgeId, {
+        success: false,
+        error: { code: "TIMEOUT", message: "Agent command timed out" },
+      }).catch(() => {});
+    }
+  }
+}, 10000);
+
 // Canvas tab tracking: reuse the same tab for artifacts within a conversation
 let _canvasTabId = null;
 
 // Artifact delta buffers: accumulate deltas synchronously to avoid read-modify-write races.
 // Each key is an artifact ID, value is the accumulated content string.
 const _artifactDeltaBuffers = new Map();
+
+// Per-artifact operation queue: ensures createArtifact completes before updateArtifact runs.
+// Each key is an artifact ID, value is a Promise representing the last queued operation.
+const _artifactOpQueues = new Map();
+
+// Track artifacts created via streaming protocol (artifact_start) to deduplicate
+// against create_artifact tool calls which arrive with different IDs.
+// Map<title, { id, timestamp }> — cleaned up after 60s.
+const _streamedArtifacts = new Map();
+
+/**
+ * Queue an async operation for a specific artifact so operations execute serially.
+ * This prevents race conditions where ARTIFACT_COMPLETE's updateArtifact runs
+ * before ARTIFACT_START's createArtifact has finished.
+ */
+function queueArtifactOp(artifactId, operation) {
+  const prev = _artifactOpQueues.get(artifactId) || Promise.resolve();
+  const next = prev.then(operation).catch(err => {
+    console.error(`[NevoFlux] Artifact op failed for ${artifactId}:`, err);
+  });
+  _artifactOpQueues.set(artifactId, next);
+  return next;
+}
 
 // =============================================================================
 // Chunking Configuration
@@ -676,17 +717,47 @@ class ChannelManager {
       });
     }
 
-    // Intercept create_artifact tool calls inside stream_chunk messages
+    // Intercept create_artifact tool calls inside stream_chunk messages.
+    // Process the artifact in background, then strip the large arguments
+    // from the forwarded message so WASM deserialization doesn't choke on
+    // 10KB+ of inline HTML content in the tool_call arguments.
     if (msgType === MessageTypes.STREAM_CHUNK) {
       const toolCalls = message.payload?.tool_calls;
-      if (Array.isArray(toolCalls)) {
+      if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+        const toolNames = toolCalls.map(tc => tc.name).join(", ");
+        console.log(`[NevoFlux] stream_chunk tool_calls: [${toolNames}] (count=${toolCalls.length})`);
         for (const tc of toolCalls) {
           if (tc.name === "create_artifact") {
+            console.log(`[NevoFlux] Found create_artifact tool call in stream_chunk: id=${tc.id}`);
             handleCreateArtifactToolCall(tc).catch((err) => {
               console.error("[NevoFlux] create_artifact tool call failed:", err);
             });
           }
         }
+        // Replace the message with a lightweight copy for the sidebar.
+        // Keep tool name/id for ActivityFeed but strip large arguments.
+        message = structuredClone(message);
+        message.payload.tool_calls = toolCalls.map(tc => ({
+          id: tc.id,
+          name: tc.name,
+          arguments: typeof tc.arguments === "string"
+            ? (tc.arguments.length > 512 ? tc.arguments.slice(0, 512) : tc.arguments)
+            : JSON.stringify({ title: tc.arguments?.title || "", type: tc.arguments?.type || "" }),
+        }));
+      }
+    }
+
+    // Intercept agent:command responses (bridge → agent → response)
+    if (msgType === MessageTypes.SYSTEM_RESPONSE) {
+      const reqId = message.payload?.request_id;
+      const bridgeId = pendingAgentCommands.get(reqId);
+      if (bridgeId) {
+        pendingAgentCommands.delete(reqId);
+        browser.nevoflux.bridgeRespond(bridgeId, message.payload).catch((err) => {
+          console.error("[NevoFlux] agent:command bridgeRespond failed:", err);
+        });
+        // Don't fall through to sidebar broadcast for this response
+        return;
       }
     }
 
@@ -700,6 +771,23 @@ class ChannelManager {
         if (entries.length > 0) {
           browser.nevoflux.contentStoreLoad(entries).catch((err) => {
             console.error("[NevoFlux] Content store load failed:", err);
+          });
+        }
+      } else if (cmd === "artifact.get" && payload?.success) {
+        const art = payload.data;
+        if (art && art.id) {
+          console.log(`[NevoFlux] artifact.get response: hydrating ContentStore for ${art.id}`);
+          const artifactObj = {
+            id: art.id,
+            type: art.content_type || "text/html",
+            title: art.title || "Untitled",
+            code: art.content || "",
+            state: "complete",
+          };
+          if (art.files) { artifactObj.files = art.files; artifactObj.type = "project"; }
+          if (art.entry) { artifactObj.entry = art.entry; }
+          browser.nevoflux.createArtifact(artifactObj).catch(err => {
+            console.error("[NevoFlux] Failed to hydrate artifact:", err);
           });
         }
       } else if ((cmd === "content_store.set" || cmd === "content_store.delete") && !payload?.success) {
@@ -1100,6 +1188,23 @@ browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
         break;
       }
 
+      case "agent:command": {
+        // Forward a system_command to the native agent and wait for matching system_response.
+        // The response comes back asynchronously via handleChatMessage → system_response interception.
+        const { command, params: cmdParams } = payload;
+        const requestId = `brcmd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+        pendingAgentCommands.set(requestId, id);
+
+        channelManager.sendToAgent({
+          type: MessageTypes.SYSTEM_COMMAND,
+          payload: { command, request_id: requestId, params: cmdParams || {} },
+        });
+
+        // Don't call bridgeRespond here — wait for system_response
+        return;
+      }
+
       default:
         result = { success: false, error: { code: -1, message: `Unknown bridge type: ${type}` } };
     }
@@ -1206,6 +1311,7 @@ function normalizeArtifactType(rawType) {
     "application/javascript": "react",
     "text/jsx": "react",
     "application/project": "project",
+    "application/project+json": "project",
   };
   if (MIME_MAP[rawType]) return MIME_MAP[rawType];
   // Already a short type
@@ -1226,11 +1332,12 @@ function normalizeArtifactType(rawType) {
  */
 async function handleArtifactMessage(message) {
   const { type, payload } = message;
+  console.log(`[NevoFlux] handleArtifactMessage: type=${type}, payloadKeys=${payload ? Object.keys(payload).join(",") : "null"}`);
 
   switch (type) {
     case MessageTypes.ARTIFACT_START: {
       const { id, content_type, title, source, permissions, files, entry, options } = payload;
-      console.log(`[NevoFlux] Artifact start: ${id} (${content_type})`);
+      console.log(`[NevoFlux] ARTIFACT_START: id=${id}, content_type=${content_type}, files=${!!files}, filesCount=${files ? Object.keys(files).length : 0}`);
 
       // Initialize delta buffer for this artifact
       _artifactDeltaBuffers.set(id, "");
@@ -1238,6 +1345,7 @@ async function handleArtifactMessage(message) {
       // Normalize MIME type to short canvas type
       // Daemon sends "text/html", canvas.js expects "html"
       const normalizedType = normalizeArtifactType(content_type);
+      console.log(`[NevoFlux] ARTIFACT_START: normalizedType=${normalizedType}`);
 
       const createOptions = {
         id,
@@ -1256,8 +1364,25 @@ async function handleArtifactMessage(message) {
         createOptions.options = options;
       }
 
-      // Store artifact in ContentStore first, then open tab for streaming display
-      await browser.nevoflux.createArtifact(createOptions);
+      // Queue the createArtifact call so subsequent operations (delta/complete)
+      // wait for it to finish before running.
+      console.log(`[NevoFlux] ARTIFACT_START: queuing createArtifact for ${id}`);
+      await queueArtifactOp(id, async () => {
+        console.log(`[NevoFlux] ARTIFACT_START: executing createArtifact for ${id}`);
+        try {
+          await browser.nevoflux.createArtifact(createOptions);
+          console.log(`[NevoFlux] Artifact ${id} created in ContentStore (type=${normalizedType})`);
+
+          // Track this streamed artifact for dedup against create_artifact tool calls
+          const artTitle = (title || "Untitled").toLowerCase().trim();
+          _streamedArtifacts.set(artTitle, { id, timestamp: Date.now() });
+          // Auto-cleanup after 60s
+          setTimeout(() => _streamedArtifacts.delete(artTitle), 60000);
+        } catch (createErr) {
+          console.error(`[NevoFlux] createArtifact FAILED for ${id}:`, createErr);
+          throw createErr;
+        }
+      });
 
       // Open canvas tab immediately — page subscribes to ContentStore updates
       // and will render content as artifact_delta messages arrive
@@ -1290,15 +1415,18 @@ async function handleArtifactMessage(message) {
         _artifactDeltaBuffers.set(id, "");
       }
       _artifactDeltaBuffers.set(id, _artifactDeltaBuffers.get(id) + (delta || ""));
-      // Write the full accumulated content to ContentStore
-      await browser.nevoflux.updateArtifact(id, { code: _artifactDeltaBuffers.get(id) });
+      // Queue the update to wait for createArtifact to finish first
+      const buffered = _artifactDeltaBuffers.get(id);
+      await queueArtifactOp(id, () =>
+        browser.nevoflux.updateArtifact(id, { code: buffered })
+      );
       break;
     }
 
     case MessageTypes.ARTIFACT_COMPLETE: {
       const { id, final_code, title, files, entry } = payload;
       const bufferedLen = _artifactDeltaBuffers.get(id)?.length || 0;
-      console.log(`[NevoFlux] Artifact complete: ${id}, bufferedContentLen=${bufferedLen}`);
+      console.log(`[NevoFlux] ARTIFACT_COMPLETE: id=${id}, bufferedContentLen=${bufferedLen}, hasFiles=${files !== undefined}`);
       // Clean up delta buffer
       _artifactDeltaBuffers.delete(id);
       const updates = { state: "complete" };
@@ -1307,7 +1435,13 @@ async function handleArtifactMessage(message) {
       // Multi-file project support
       if (files !== undefined) updates.files = files;
       if (entry !== undefined) updates.entry = entry;
-      await browser.nevoflux.updateArtifact(id, updates);
+      // Queue the update to wait for createArtifact to finish first
+      await queueArtifactOp(id, async () => {
+        const result = await browser.nevoflux.updateArtifact(id, updates);
+        if (!result?.success) {
+          console.warn(`[NevoFlux] ARTIFACT_COMPLETE: updateArtifact failed for ${id} (artifact not found), will rely on tool call handler`);
+        }
+      });
       break;
     }
   }
@@ -1345,60 +1479,96 @@ async function handleCreateArtifactToolCall(toolCall) {
   const title = args.title || "Untitled";
   const rawType = args.type || args.content_type || "html";
   const normalizedType = normalizeArtifactType(rawType);
+  const files = args.files || null;
+  const entry = args.entry || null;
+  const isProject = normalizedType === "project" || !!files;
 
-  console.log(`[NevoFlux] create_artifact tool call: id=${id}, type=${normalizedType}, contentLen=${content.length}, titleLen=${title.length}`);
+  console.log(`[NevoFlux] create_artifact tool call: id=${id}, type=${normalizedType}, contentLen=${content.length}, isProject=${isProject}, filesCount=${files ? Object.keys(files).length : 0}`);
 
   // The daemon sends BOTH the streaming protocol (artifact_start/delta/complete)
-  // AND the create_artifact tool call. The tool call has the FULL content, while
-  // the streaming deltas may have race conditions causing content loss.
-  // Always prefer the tool call's full content.
-  const existing = await browser.nevoflux.getArtifact(id).catch(() => null);
-  if (existing?.success) {
-    // Artifact exists from streaming protocol — update with full content from tool call
-    // which is more reliable than accumulated deltas.
-    const existingLen = existing.data?.content?.length || 0;
-    console.log(`[NevoFlux] create_artifact: artifact ${id} exists (streamedLen=${existingLen}), updating with tool call content (${content.length} bytes)`);
-    if (content.length > 0) {
-      await browser.nevoflux.updateArtifact(id, { code: content, state: "complete" });
+  // AND the create_artifact tool call for the same artifact. The tool call has
+  // the FULL content, so it's the authoritative source. Queue the operation to
+  // ensure it runs after any pending ARTIFACT_START createArtifact completes.
+  await queueArtifactOp(id, async () => {
+    const existing = await browser.nevoflux.getArtifact(id).catch(() => null);
+    if (existing?.success) {
+      // Artifact exists from streaming protocol — update with full content from tool call
+      // which is more reliable than accumulated deltas.
+      const existingLen = existing.data?.content?.length || 0;
+      const existingType = existing.data?.type || "unknown";
+      console.log(`[NevoFlux] create_artifact: artifact ${id} exists (type=${existingType}, streamedLen=${existingLen}), updating with tool call data`);
+      const updates = { state: "complete" };
+      // For project-type: always set type, files, entry from tool call (authoritative)
+      if (isProject) {
+        updates.type = "project";
+        if (files) { updates.files = files; updates.entry = entry; }
+      }
+      if (content.length > 0) updates.code = content;
+      await browser.nevoflux.updateArtifact(id, updates);
+      return;
     }
-    return;
-  }
 
-  // Create artifact with full content and mark as complete
-  await browser.nevoflux.createArtifact({
-    id,
-    type: normalizedType,
-    title,
-    code: content,
-    state: "complete",
-    source: "agent",
-    permissions: [],
-  });
-
-  // Open canvas tab
-  try {
-    if (_canvasTabId != null) {
-      try { await browser.tabs.remove(_canvasTabId); } catch {}
-      _canvasTabId = null;
+    // Check if the streaming protocol already created this artifact (different ID, same title)
+    const normalizedTitle = (title || "Untitled").toLowerCase().trim();
+    const streamedEntry = _streamedArtifacts.get(normalizedTitle);
+    if (streamedEntry) {
+      // Streaming protocol already created this artifact — update it with full content
+      console.log(`[NevoFlux] create_artifact: dedup hit — streamed artifact "${normalizedTitle}" exists as ${streamedEntry.id}, updating instead of creating ${id}`);
+      const updates = { state: "complete" };
+      if (isProject) {
+        updates.type = "project";
+        if (files) { updates.files = files; updates.entry = entry; }
+      }
+      if (content.length > 0) updates.code = content;
+      await browser.nevoflux.updateArtifact(streamedEntry.id, updates);
+      _streamedArtifacts.delete(normalizedTitle);
+      return;
     }
-    const result = await browser.nevoflux.openCanvasTab(id);
-    if (result?.success) {
-      if (result.tabId) _canvasTabId = result.tabId;
-    } else {
-      console.error("[NevoFlux] openCanvasTab failed:", result?.error);
-    }
-  } catch (e) {
-    console.error("[NevoFlux] Failed to open canvas tab:", e);
-  }
 
-  // Broadcast artifact_start + artifact_complete to sidebar for ArtifactCard
-  broadcastToSidebar({
-    type: MessageTypes.ARTIFACT_START,
-    payload: { id, content_type: normalizedType, title },
-  });
-  broadcastToSidebar({
-    type: MessageTypes.ARTIFACT_COMPLETE,
-    payload: { id, title },
+    // Artifact doesn't exist yet — create it with full content, mark as complete
+    console.log(`[NevoFlux] create_artifact: creating new artifact ${id} (type=${isProject ? "project" : normalizedType})`);
+    const createOpts = {
+      id,
+      type: isProject ? "project" : normalizedType,
+      title,
+      code: content,
+      state: "complete",
+      source: "agent",
+      permissions: [],
+    };
+    if (files) {
+      createOpts.files = files;
+      createOpts.entry = entry;
+    }
+    await browser.nevoflux.createArtifact(createOpts);
+
+    // Open canvas tab only if streaming protocol hasn't already
+    try {
+      if (_canvasTabId != null) {
+        try { await browser.tabs.remove(_canvasTabId); } catch {}
+        _canvasTabId = null;
+      }
+      const result = await browser.nevoflux.openCanvasTab(id);
+      if (result?.success) {
+        if (result.tabId) _canvasTabId = result.tabId;
+      } else {
+        console.error("[NevoFlux] openCanvasTab failed:", result?.error);
+      }
+    } catch (e) {
+      console.error("[NevoFlux] Failed to open canvas tab:", e);
+    }
+
+    // Broadcast artifact_start + artifact_complete to sidebar for ArtifactCard
+    const startPayload = { id, content_type: isProject ? "project" : normalizedType, title };
+    if (files) { startPayload.files = files; startPayload.entry = entry; }
+    broadcastToSidebar({
+      type: MessageTypes.ARTIFACT_START,
+      payload: startPayload,
+    });
+    broadcastToSidebar({
+      type: MessageTypes.ARTIFACT_COMPLETE,
+      payload: { id, title },
+    });
   });
 }
 
@@ -4020,10 +4190,62 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
         sendResponse({ success: false, error: "id required" });
         return true;
       }
-      // Always open new tab via privileged API (user clicked an old ArtifactCard)
-      browser.nevoflux.openCanvasTab(artifactId)
-        .then(result => sendResponse(result))
-        .catch(e => sendResponse({ success: false, error: e.message }));
+
+      // Hydrate ContentStore from backend if artifact not yet in memory
+      (async () => {
+        try {
+          const existing = await browser.nevoflux.getArtifact(artifactId);
+          if (!existing || !existing.success) {
+            // Not in ContentStore — request from backend
+            channelManager.sendToAgent({
+              type: "system_command",
+              payload: {
+                request_id: `art-get-${Date.now()}`,
+                command: "artifact.get",
+                params: { artifact_id: artifactId },
+              },
+            });
+          }
+        } catch (e) {
+          console.warn("[NevoFlux] getArtifact check failed, requesting from backend:", e);
+          channelManager.sendToAgent({
+            type: "system_command",
+            payload: {
+              request_id: `art-get-${Date.now()}`,
+              command: "artifact.get",
+              params: { artifact_id: artifactId },
+            },
+          });
+        }
+      })();
+
+      // Reuse existing canvas tab if already open, otherwise open new one
+      (async () => {
+        try {
+          if (_canvasTabId != null) {
+            // Canvas tab already open — just activate it
+            try {
+              await browser.tabs.update(_canvasTabId, { active: true });
+              // Navigate to the correct artifact if it changed
+              await browser.tabs.update(_canvasTabId, {
+                url: `nevoflux://canvas/${artifactId}`,
+              });
+              sendResponse({ success: true, tabId: _canvasTabId });
+              return;
+            } catch {
+              // Tab was closed — fall through to open new one
+              _canvasTabId = null;
+            }
+          }
+          const result = await browser.nevoflux.openCanvasTab(artifactId);
+          if (result?.success && result.tabId) {
+            _canvasTabId = result.tabId;
+          }
+          sendResponse(result);
+        } catch (e) {
+          sendResponse({ success: false, error: e.message });
+        }
+      })();
       return true;
     }
 

@@ -22,6 +22,29 @@ const Canvas = {
   // SDK script injected into every srcdoc iframe for postMessage bridge
   _SDK_SCRIPT: `<script>
 (function() {
+  // Polyfill localStorage/sessionStorage for chrome:// origins (NS_ERROR_NOT_AVAILABLE)
+  (function() {
+    var ok = false;
+    try { window.localStorage; ok = true; } catch(_) {}
+    if (!ok) {
+      var MS = function() { this._d = {}; };
+      MS.prototype = {
+        getItem: function(k) { return this._d.hasOwnProperty(k) ? this._d[k] : null; },
+        setItem: function(k, v) { this._d[k] = String(v); },
+        removeItem: function(k) { delete this._d[k]; },
+        clear: function() { this._d = {}; },
+        key: function(i) { return Object.keys(this._d)[i] || null; },
+        get length() { return Object.keys(this._d).length; }
+      };
+      try { Object.defineProperty(window, "localStorage", { value: new MS(), configurable: true }); } catch(_) {
+        try { Object.defineProperty(Window.prototype, "localStorage", { get: function() { return this.__ls || (this.__ls = new MS()); }, configurable: true }); } catch(_) {}
+      }
+      try { Object.defineProperty(window, "sessionStorage", { value: new MS(), configurable: true }); } catch(_) {
+        try { Object.defineProperty(Window.prototype, "sessionStorage", { get: function() { return this.__ss || (this.__ss = new MS()); }, configurable: true }); } catch(_) {}
+      }
+    }
+  })();
+
   var _reqId = 0;
   var _pending = {};
   var _agentSessions = {};
@@ -505,34 +528,54 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
 
   async _loadArtifact() {
     try {
-      console.error(`[Canvas] _loadArtifact: key=canvas:${this._artifactId}`);
       const result = await NevofluxPage.sendQuery("contentStore:get", {
         key: `canvas:${this._artifactId}`,
       });
-
-      console.error(`[Canvas] _loadArtifact result: hasValue=${!!(result && result.value)}, type=${result?.value?.type}, contentLen=${result?.value?.content?.length}, state=${result?.value?.state}`);
 
       if (result && result.value) {
         this._artifact = result.value;
         this._onArtifactUpdate(result.value);
       } else {
-        console.error(`[Canvas] _loadArtifact: Artifact not found!`);
-        this._showEmpty("Artifact not found");
-        this._updateStatus("Not found");
+        // Not in ContentStore — request hydration from backend
+        this._showEmpty("Loading artifact...");
+        this._updateStatus("Loading");
+
+        NevofluxPage.sendQuery("bridge:request", {
+          type: "send_to_agent",
+          payload: {
+            type: "system_command",
+            payload: {
+              request_id: `art-get-${Date.now()}`,
+              command: "artifact.get",
+              params: { artifact_id: this._artifactId },
+            },
+          },
+        }).catch(e => console.warn("[Canvas] artifact.get request failed:", e));
+
+        this._loadTimeout = setTimeout(() => {
+          if (!this._artifact) {
+            this._showEmpty("Artifact not found");
+            this._updateStatus("Not found");
+          }
+        }, 5000);
       }
 
-      // Subscribe to future updates
+      // Subscribe to future updates (clears loading state when data arrives)
       NevofluxPage.sendMessage("contentStore:subscribe", {
         key: `canvas:${this._artifactId}`,
       });
     } catch (e) {
-      console.error(`[Canvas] _loadArtifact ERROR: ${e}`);
-      console.error("Failed to load artifact:", e);
+      console.error("[Canvas] Failed to load artifact:", e);
       this._showEmpty("Failed to load artifact");
     }
   },
 
   _onArtifactUpdate(artifact) {
+    if (this._loadTimeout) {
+      clearTimeout(this._loadTimeout);
+      this._loadTimeout = null;
+    }
+
     if (!artifact) {
       this._showEmpty("Artifact deleted");
       return;
@@ -633,7 +676,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
       this._iframe.remove();
     }
     this._iframe = document.createElement("iframe");
-    this._iframe.setAttribute("sandbox", "allow-scripts allow-forms");
+    this._iframe.setAttribute("sandbox", "allow-scripts allow-forms allow-same-origin");
 
     // Inject NevofluxSDK into srcdoc using indexOf+slice (avoid String.replace
     // which can interpret $-patterns in the replacement string).
@@ -769,7 +812,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
         entry: artifact.entry,
         options: artifact.options,
       },
-      `<script>${this._SDK_SCRIPT}<\/script>`
+      this._SDK_SCRIPT
     );
 
     if (result.success) {
@@ -957,7 +1000,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
         await CanvasRuntime.render(
           previewPane,
           { files: this._artifact.files, entry: this._artifact.entry },
-          `<script>${this._SDK_SCRIPT}<\/script>`
+          this._SDK_SCRIPT
         );
       }, 500);
     };
@@ -1008,7 +1051,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
     CanvasRuntime.render(
       previewPane,
       { files: this._artifact.files, entry: this._artifact.entry },
-      `<script>${this._SDK_SCRIPT}<\/script>`
+      this._SDK_SCRIPT
     );
   },
 
@@ -1083,7 +1126,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
       case "html":
       case "svg": {
         const iframe = document.createElement("iframe");
-        iframe.setAttribute("sandbox", "allow-scripts allow-forms");
+        iframe.setAttribute("sandbox", "allow-scripts allow-forms allow-same-origin");
         iframe.srcdoc = code;
         previewPane.appendChild(iframe);
         break;
@@ -1097,7 +1140,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
   async _renderInContainer(container, artifact) {
     // Simple fallback: create iframe with srcdoc
     const iframe = document.createElement("iframe");
-    iframe.setAttribute("sandbox", "allow-scripts allow-forms");
+    iframe.setAttribute("sandbox", "allow-scripts allow-forms allow-same-origin");
     iframe.srcdoc = artifact.content;
     container.appendChild(iframe);
   },

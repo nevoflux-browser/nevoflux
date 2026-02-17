@@ -32,7 +32,7 @@ pub fn LiveToolFeed() -> Element {
 
 /// Individual live tool execution chip
 #[component]
-fn LiveToolChip(entry: LiveToolEntry) -> Element {
+pub fn LiveToolChip(entry: LiveToolEntry) -> Element {
     let status_icon = entry.status.icon();
     let status_class = entry.status.css_class();
     let is_running = matches!(entry.status, LiveToolStatus::Running);

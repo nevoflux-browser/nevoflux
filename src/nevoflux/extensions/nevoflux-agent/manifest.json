@@ -16,7 +16,8 @@
     "nativeMessaging",
     "storage",
     "scripting",
-    "tabs"
+    "tabs",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "<all_urls>"

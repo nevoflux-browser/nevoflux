@@ -7,7 +7,7 @@
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use crate::context::use_app_context;
-use crate::state::{Message, SessionSummary};
+use crate::state::SessionSummary;
 
 /// Welcome screen component shown when chat is empty
 #[component]
@@ -29,26 +29,7 @@ pub fn WelcomeScreen() -> Element {
 
             // Description
             p { class: "welcome-subtitle",
-                "I can summarize pages, draft content, or search the web."
-            }
-
-            // Quick action cards
-            div { class: "quick-actions",
-                QuickActionCard {
-                    icon: "📄",
-                    title: "Summarize this page",
-                    description: "Get key points from the current page",
-                }
-                QuickActionCard {
-                    icon: "✉️",
-                    title: "Draft an email",
-                    description: "Write a response or new message",
-                }
-                QuickActionCard {
-                    icon: "🔍",
-                    title: "Deep Search",
-                    description: "Find related sources on the web",
-                }
+                "Your AI assistant for browsing, research, and productivity."
             }
 
             // History section (shown when there are past sessions)
@@ -148,70 +129,3 @@ fn HistoryItem(session: SessionSummary) -> Element {
     }
 }
 
-/// Quick action card component
-#[component]
-fn QuickActionCard(
-    icon: &'static str,
-    title: &'static str,
-    description: &'static str,
-) -> Element {
-    let mut ctx = use_app_context();
-    let title_str = title.to_string();
-
-    let handle_click = move |_| {
-        // Use web_sys console for guaranteed visibility
-        web_sys::console::log_1(&format!("[NevoFlux WASM] QuickActionCard clicked: {}", title).into());
-        tracing::info!("QuickActionCard clicked: {}", title);
-
-        // Add user message
-        ctx.messages.write().push(Message::user(title));
-
-        // Send message (let mock_send_message handle status)
-        let tab_context = ctx.tab_context.read();
-        let session_id = tab_context.zen_sync_id.clone()
-            .unwrap_or_else(|| ctx.session.read().id.clone());
-        let tab_id = tab_context.tab_id;
-        drop(tab_context);
-        let text = title_str.clone();
-        let mock_enabled = ctx.mock_enabled;
-
-        web_sys::console::log_1(&format!("[NevoFlux WASM] Sending: mock={}, session={}, tab={}", mock_enabled, session_id, tab_id).into());
-        tracing::info!("Sending message: mock_enabled={}, session_id={}, tab_id={}", mock_enabled, session_id, tab_id);
-
-        web_sys::console::log_1(&"[NevoFlux WASM] About to spawn async task".into());
-        spawn_local(async move {
-            web_sys::console::log_1(&"[NevoFlux WASM] Inside spawn_local".into());
-            if mock_enabled {
-                web_sys::console::log_1(&"[NevoFlux WASM] Using mock mode".into());
-                tracing::info!("Using mock mode");
-                crate::mock::mock_send_message(ctx, text).await;
-            } else {
-                web_sys::console::log_1(&"[NevoFlux WASM] Using real mode - sending to agent".into());
-                tracing::info!("Using real mode - sending to agent");
-                // For real mode, set thinking before sending
-                ctx.agent_status.write().set_thinking();
-                if let Err(e) = crate::messaging::send_chat_message(&session_id, text, ctx.chat_mode.read().clone(), vec![], vec![], Some(tab_id), vec![]).await {
-                    web_sys::console::error_1(&format!("[NevoFlux WASM] Failed to send: {}", e).into());
-                    tracing::error!("Failed to send chat message: {}", e);
-                } else {
-                    web_sys::console::log_1(&"[NevoFlux WASM] Chat message sent successfully".into());
-                    tracing::info!("Chat message sent successfully");
-                }
-            }
-        });
-    };
-
-    rsx! {
-        button {
-            class: "quick-action-card",
-            onclick: handle_click,
-            aria_label: "{title}: {description}",
-
-            span { class: "action-icon", aria_hidden: "true", "{icon}" }
-            div { class: "action-content",
-                span { class: "action-title", "{title}" }
-                span { class: "action-description", "{description}" }
-            }
-        }
-    }
-}

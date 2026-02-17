@@ -5,22 +5,25 @@
 "use strict";
 
 /**
- * Bundler -- esbuild-wasm based in-browser bundler for Canvas multi-file projects.
+ * Bundler -- Babel-based in-browser bundler for Canvas multi-file projects.
  *
- * Uses esbuild-wasm (loaded via `<script>` tag, available as `globalThis.esbuild`)
- * with custom plugins to bundle multi-file projects stored in VirtualFS.
+ * Uses Babel standalone (loaded via `<script>` tag, available as `globalThis.Babel`)
+ * for JSX/TypeScript transformation, and a lightweight module system for bundling.
  *
- * Plugins:
- * - VFS Plugin: resolves relative/absolute imports from VirtualFS
- * - CDN Plugin: marks bare npm specifiers as external (resolved via importmap)
- * - Vue SFC Plugin: compiles .vue Single File Components to JavaScript
- * - Svelte Plugin: compiles .svelte components to JavaScript
- * - CSS Plugin: collects CSS from .css imports into a combined string
+ * Transforms:
+ * - JSX/TSX via Babel preset-react (automatic runtime)
+ * - TypeScript via Babel preset-typescript
+ * - ES module imports → CommonJS require() via Babel plugin
+ * - Vue SFC via vue-compiler-sfc (optional)
+ * - Svelte via svelte compiler (optional)
+ * - CSS collected and injected separately
  *
- * Assumes `globalThis.esbuild` and `VirtualFS` are available as globals.
+ * External packages (react, vue, svelte) are resolved via importmap at runtime.
+ *
+ * Assumes `globalThis.Babel` and `VirtualFS` are available as globals.
  */
 const Bundler = {
-  /** @type {boolean} Whether esbuild has been initialized. */
+  /** @type {boolean} Whether Babel has been verified available. */
   _initialized: false,
 
   /** @type {boolean} Whether initialization is currently in progress. */
@@ -56,13 +59,13 @@ const Bundler = {
   // ── Initialization ──────────────────────────────────────
 
   /**
-   * Initialize esbuild-wasm with the WASM binary.
+   * Initialize the Babel-based bundler.
    *
    * Idempotent: subsequent calls are no-ops once initialization completes.
    * Concurrent calls during initialization will wait for the first to finish.
    *
    * @returns {Promise<void>}
-   * @throws {Error} If esbuild global is not available or WASM init fails.
+   * @throws {Error} If Babel global is not available.
    */
   async init() {
     if (this._initialized) {
@@ -71,7 +74,6 @@ const Bundler = {
 
     // Guard against concurrent initialization calls
     if (this._initializing) {
-      // Wait for the in-flight initialization to complete
       while (this._initializing) {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
@@ -81,328 +83,18 @@ const Bundler = {
     this._initializing = true;
 
     try {
-      if (typeof esbuild === "undefined") {
-        throw new Error("Bundler: esbuild global not found. Ensure esbuild-wasm.min.js is loaded via <script> tag.");
+      if (typeof Babel === "undefined") {
+        throw new Error("Bundler: Babel global not found. Ensure babel.min.js is loaded via <script> tag.");
       }
 
-      await esbuild.initialize({
-        wasmURL: "chrome://nevoflux/content/nevoflux/vendor/esbuild.wasm",
-      });
-
       this._initialized = true;
-      console.info("[Bundler] esbuild-wasm initialized successfully.");
+      console.info("[Bundler] Babel-based bundler initialized successfully.");
     } catch (e) {
-      console.error("[Bundler] Failed to initialize esbuild-wasm:", e);
+      console.error("[Bundler] Failed to initialize:", e);
       throw e;
     } finally {
       this._initializing = false;
     }
-  },
-
-  // ── Plugins ─────────────────────────────────────────────
-
-  /**
-   * Create the VFS plugin for esbuild.
-   *
-   * Resolves relative (`./`, `../`), absolute (`/`), and alias (`@/`) imports
-   * from VirtualFS. Uses VirtualFS.resolve() for path resolution and
-   * VirtualFS.resolveWithExtension() for extension auto-completion.
-   *
-   * @returns {object} An esbuild plugin object.
-   */
-  _createVFSPlugin() {
-    return {
-      name: "vfs",
-      setup(build) {
-        // Resolve relative, absolute, and @/ imports
-        build.onResolve({ filter: /^[\.\/]|^@\// }, (args) => {
-          const importer = args.importer || "/";
-          const resolved = VirtualFS.resolve(importer, args.path);
-          const withExt = VirtualFS.resolveWithExtension(resolved);
-
-          if (withExt) {
-            return { path: withExt, namespace: "vfs" };
-          }
-
-          return {
-            errors: [{
-              text: `File not found: ${args.path} (resolved to ${resolved})`,
-            }],
-          };
-        });
-
-        // Load files from VirtualFS
-        build.onLoad({ filter: /.*/, namespace: "vfs" }, (args) => {
-          const contents = VirtualFS.read(args.path);
-
-          if (contents === null) {
-            return {
-              errors: [{
-                text: `File not found in VirtualFS: ${args.path}`,
-              }],
-            };
-          }
-
-          const loader = Bundler._getLoader(args.path);
-          return { contents, loader };
-        });
-      },
-    };
-  },
-
-  /**
-   * Create the CDN plugin for esbuild.
-   *
-   * Handles bare npm specifiers (e.g., `react`, `@tanstack/query`).
-   * Skips `@/` alias paths (handled by VFS plugin).
-   * Marks all bare specifiers as external -- they will be resolved at runtime
-   * via importmap or CDN URLs.
-   *
-   * @returns {object} An esbuild plugin object.
-   */
-  _createCDNPlugin() {
-    return {
-      name: "cdn",
-      setup(build) {
-        // Match bare specifiers: start with a letter or @ (scoped packages)
-        build.onResolve({ filter: /^[a-zA-Z@]/ }, (args) => {
-          // Skip @/ alias -- it's handled by VFS plugin
-          if (args.path.startsWith("@/")) {
-            return null;
-          }
-
-          // Mark all bare specifiers as external
-          return { path: args.path, external: true };
-        });
-      },
-    };
-  },
-
-  /**
-   * Create the CSS plugin for esbuild.
-   *
-   * Intercepts `.css` file loads from the VFS namespace, collects the CSS
-   * content into `_collectedCSS`, and returns an empty JS module so
-   * esbuild does not attempt to parse CSS as JavaScript.
-   *
-   * @returns {object} An esbuild plugin object.
-   */
-  _createCSSPlugin() {
-    const bundler = this;
-
-    return {
-      name: "css",
-      setup(build) {
-        build.onLoad({ filter: /\.css$/, namespace: "vfs" }, (args) => {
-          const contents = VirtualFS.read(args.path);
-
-          if (contents !== null) {
-            bundler._collectedCSS.push(contents);
-          }
-
-          // Return empty JS module so esbuild skips CSS parsing
-          return { contents: "", loader: "js" };
-        });
-      },
-    };
-  },
-
-  /**
-   * Create the Vue SFC plugin for esbuild.
-   *
-   * Compiles `.vue` Single File Components into JavaScript at bundle time.
-   * Lazily loads the Vue compiler-sfc ESM module from the vendor directory
-   * on first use via dynamic `import()`.
-   *
-   * Handles `<script>` / `<script setup>`, `<template>`, and `<style>` blocks.
-   * Extracted CSS is collected into `_collectedCSS` (same as the CSS plugin).
-   *
-   * @returns {object} An esbuild plugin object.
-   */
-  _createVuePlugin() {
-    const bundler = this;
-
-    return {
-      name: "vue-sfc",
-      setup(build) {
-        build.onLoad({ filter: /\.vue$/, namespace: "vfs" }, async (args) => {
-          const source = VirtualFS.read(args.path);
-
-          if (source === null) {
-            return {
-              errors: [{ text: `Vue SFC not found: ${args.path}` }],
-            };
-          }
-
-          // Lazy-load Vue compiler-sfc (ESM browser build)
-          if (!bundler._vueCompiler) {
-            try {
-              bundler._vueCompiler = await import(
-                "chrome://nevoflux/content/vendor/vue-compiler-sfc.esm.js"
-              );
-            } catch (e) {
-              return {
-                errors: [{
-                  text: `Vue compiler not available: ${e.message}. ` +
-                    "Ensure vue-compiler-sfc.esm.js is in the vendor directory.",
-                }],
-              };
-            }
-          }
-
-          const { parse, compileScript, compileTemplate } = bundler._vueCompiler;
-
-          try {
-            // Parse the SFC into descriptor blocks
-            const { descriptor, errors: parseErrors } = parse(source, {
-              filename: args.path,
-            });
-
-            if (parseErrors && parseErrors.length > 0) {
-              return {
-                errors: parseErrors.map((e) => ({
-                  text: `Vue SFC parse error in ${args.path}: ${e.message || e}`,
-                })),
-              };
-            }
-
-            const sfcId = args.path.replace(/[^a-zA-Z0-9]/g, "_");
-            const parts = [];
-
-            // 1. Compile <script> or <script setup>
-            let scriptResult = null;
-            if (descriptor.script || descriptor.scriptSetup) {
-              scriptResult = compileScript(descriptor, {
-                id: sfcId,
-                inlineTemplate: true,
-              });
-              parts.push(scriptResult.content);
-            }
-
-            // 2. Compile <template> (only if not inlined by compileScript)
-            if (descriptor.template && !(descriptor.scriptSetup && scriptResult)) {
-              const templateResult = compileTemplate({
-                source: descriptor.template.content,
-                filename: args.path,
-                id: sfcId,
-                compilerOptions: {
-                  bindingMetadata: scriptResult ? scriptResult.bindings : {},
-                },
-              });
-
-              if (templateResult.errors && templateResult.errors.length > 0) {
-                return {
-                  errors: templateResult.errors.map((e) => ({
-                    text: `Vue template error in ${args.path}: ${e.message || e}`,
-                  })),
-                };
-              }
-
-              parts.push(templateResult.code);
-
-              // If there is a script block but no <script setup>, wire up the render function
-              if (scriptResult && !descriptor.scriptSetup) {
-                parts.push(
-                  "\n__default__.render = render;",
-                  `__default__.__file = ${JSON.stringify(args.path)};`
-                );
-              }
-            }
-
-            // 3. Collect <style> blocks
-            for (const style of descriptor.styles || []) {
-              if (style.content) {
-                bundler._collectedCSS.push(style.content);
-              }
-            }
-
-            const code = parts.join("\n");
-            return { contents: code, loader: "js" };
-          } catch (e) {
-            return {
-              errors: [{
-                text: `Vue SFC compilation failed for ${args.path}: ${e.message || e}`,
-              }],
-            };
-          }
-        });
-      },
-    };
-  },
-
-  /**
-   * Create the Svelte plugin for esbuild.
-   *
-   * Compiles `.svelte` components into JavaScript at bundle time.
-   * Uses the Svelte compiler loaded as a UMD global (`globalThis.svelte`)
-   * via `<script>` tag from the vendor directory.
-   *
-   * The Svelte compiler generates DOM-targeting JavaScript with CSS
-   * injected into the component (default `css: "injected"` mode).
-   * If separate CSS is emitted, it is collected into `_collectedCSS`.
-   *
-   * @returns {object} An esbuild plugin object.
-   */
-  _createSveltePlugin() {
-    const bundler = this;
-
-    return {
-      name: "svelte",
-      setup(build) {
-        build.onLoad({ filter: /\.svelte$/, namespace: "vfs" }, (args) => {
-          const source = VirtualFS.read(args.path);
-
-          if (source === null) {
-            return {
-              errors: [{ text: `Svelte component not found: ${args.path}` }],
-            };
-          }
-
-          // Check that Svelte compiler global is available
-          if (!bundler._svelteCompilerReady) {
-            if (typeof globalThis.svelte === "undefined" || !globalThis.svelte.compile) {
-              return {
-                errors: [{
-                  text: "Svelte compiler not available. " +
-                    "Ensure svelte-compiler.min.js is loaded via <script> tag.",
-                }],
-              };
-            }
-            bundler._svelteCompilerReady = true;
-          }
-
-          try {
-            const result = globalThis.svelte.compile(source, {
-              filename: args.path,
-              generate: "dom",
-              css: "injected",
-              hydratable: false,
-              dev: false,
-            });
-
-            // Collect warnings (non-fatal)
-            if (result.warnings && result.warnings.length > 0) {
-              for (const w of result.warnings) {
-                console.warn(`[Bundler] Svelte warning in ${args.path}: ${w.message}`);
-              }
-            }
-
-            // Collect CSS if emitted separately (when css: "external")
-            if (result.css && result.css.code) {
-              bundler._collectedCSS.push(result.css.code);
-            }
-
-            return { contents: result.js.code, loader: "js" };
-          } catch (e) {
-            return {
-              errors: [{
-                text: `Svelte compilation failed for ${args.path}: ${e.message || e}`,
-              }],
-            };
-          }
-        });
-      },
-    };
   },
 
   // ── Caching ─────────────────────────────────────────────
@@ -410,34 +102,24 @@ const Bundler = {
   /**
    * Compute a cache key from VFS file contents and bundle options.
    *
-   * Uses a djb2-style hash over the entry point, env keys/values, and all
-   * VFS file paths and contents. Samples first and last 256 characters of
-   * each file for a balance between speed and collision resistance.
-   *
    * @param {string} entry - The entry point path.
    * @param {Record<string, string>} env - Environment variables.
    * @returns {string} A hash string for the current file state.
    * @private
    */
   _computeCacheKey(entry, env) {
-    const files = VirtualFS.list(); // Returns sorted array of paths
+    const files = VirtualFS.list();
     let hash = 5381;
 
-    /**
-     * Feed a string into the running hash.
-     * @param {string} str
-     */
     const feedString = (str) => {
       for (let i = 0; i < str.length; i++) {
         hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
       }
     };
 
-    // Include entry point
     feedString("entry:");
     feedString(entry);
 
-    // Include env variables (sorted for determinism)
     const envKeys = Object.keys(env).sort();
     for (const key of envKeys) {
       feedString("env:");
@@ -446,23 +128,18 @@ const Bundler = {
       feedString(env[key]);
     }
 
-    // Include all VFS file paths and content
     for (const path of files) {
       feedString("file:");
       feedString(path);
 
       const content = VirtualFS.read(path) || "";
-
-      // Hash content length
       hash = ((hash << 5) + hash + content.length) | 0;
 
-      // Hash first 256 chars
       const sampleLen = Math.min(256, content.length);
       for (let i = 0; i < sampleLen; i++) {
         hash = ((hash << 5) + hash + content.charCodeAt(i)) | 0;
       }
 
-      // Hash last 256 chars (if file is longer than 256)
       if (content.length > 256) {
         for (let i = content.length - 256; i < content.length; i++) {
           hash = ((hash << 5) + hash + content.charCodeAt(i)) | 0;
@@ -475,9 +152,6 @@ const Bundler = {
 
   /**
    * Clear the bundle result cache.
-   *
-   * Call this when VFS is reset or when cached results should be invalidated
-   * (e.g., after switching projects).
    */
   clearCache() {
     this._bundleCache.clear();
@@ -489,22 +163,14 @@ const Bundler = {
   /**
    * Bundle a multi-file project from VirtualFS.
    *
-   * Results are cached by a hash of VFS contents and bundle options.
-   * If the cache contains a matching entry, the cached result is returned
-   * without invoking esbuild. Only successful builds (no errors) are cached.
-   *
    * @param {object} options - Bundle options.
-   * @param {string} options.entry - Entry point path in VirtualFS (e.g., "/src/index.tsx").
-   * @param {Record<string, string>} [options.env={}] - Additional environment variables
-   *   to define as `process.env.KEY` replacements.
+   * @param {string} options.entry - Entry point path in VirtualFS.
+   * @param {Record<string, string>} [options.env={}] - Environment variables.
    * @returns {Promise<{ js: string, css: string, errors: string[] }>}
-   *   Bundled JavaScript, collected CSS, and any error messages.
    */
   async bundle({ entry, env = {} }) {
-    // Ensure esbuild is initialized
     await this.init();
 
-    // Check bundle cache
     const cacheKey = this._computeCacheKey(entry, env);
     const cached = this._bundleCache.get(cacheKey);
     if (cached) {
@@ -512,85 +178,307 @@ const Bundler = {
       return cached;
     }
 
-    // Reset collected CSS for this build
     this._collectedCSS = [];
 
-    // Build define map for process.env replacements
-    const define = {
-      "process.env.NODE_ENV": JSON.stringify("production"),
-    };
-    for (const [key, value] of Object.entries(env)) {
-      define[`process.env.${key}`] = JSON.stringify(value);
+    const modules = new Map();   // path -> transformed CJS code
+    const externals = new Set(); // external package names
+    const errors = [];
+
+    // 1. Resolve dependency graph and transform all modules
+    this._resolveAndTransform(entry, modules, externals, errors);
+
+    if (errors.length > 0) {
+      return { js: "", css: this._collectedCSS.join("\n"), errors };
     }
 
+    // 2. Generate bundled output
+    const js = this._generateBundle(entry, modules, externals, env);
+    const css = this._collectedCSS.join("\n");
+
+    const bundleResult = { js, css, errors: [] };
+
+    // Cache successful builds
+    this._bundleCache.set(cacheKey, bundleResult);
+
+    return bundleResult;
+  },
+
+  // ── Dependency Resolution & Transformation ──────────────
+
+  /**
+   * Recursively resolve and transform all modules starting from an entry path.
+   *
+   * @param {string} importPath - The path to resolve (may be relative or absolute).
+   * @param {Map<string, string>} modules - Accumulated modules map.
+   * @param {Set<string>} externals - Accumulated external package names.
+   * @param {string[]} errors - Accumulated error messages.
+   * @param {Set<string>} [visited] - Already-visited paths (cycle prevention).
+   * @param {string} [importer] - The file importing this module (for relative resolution).
+   * @private
+   */
+  _resolveAndTransform(importPath, modules, externals, errors, visited = new Set(), importer = null) {
+    // Resolve the absolute path
+    let absPath;
+    if (importer && (importPath.startsWith("./") || importPath.startsWith("../"))) {
+      absPath = VirtualFS.resolve(importer, importPath);
+    } else if (importPath.startsWith("@/")) {
+      absPath = VirtualFS.resolve("/", importPath);
+    } else {
+      absPath = importPath.startsWith("/") ? importPath : "/" + importPath;
+    }
+
+    // Try with extension
+    absPath = VirtualFS.resolveWithExtension(absPath) || absPath;
+
+    if (visited.has(absPath)) return;
+    visited.add(absPath);
+
+    const source = VirtualFS.read(absPath);
+    if (source === null) {
+      errors.push(`File not found: ${importPath} (resolved to ${absPath})`);
+      return;
+    }
+
+    // Handle CSS files — collect and register as empty module
+    if (absPath.endsWith(".css")) {
+      this._collectedCSS.push(source);
+      modules.set(absPath, "/* css */");
+      return;
+    }
+
+    // Preprocess Vue/Svelte to JS
+    let jsSource = source;
+    if (absPath.endsWith(".vue")) {
+      jsSource = this._compileVue(absPath, source, errors);
+      if (!jsSource) return;
+    } else if (absPath.endsWith(".svelte")) {
+      jsSource = this._compileSvelte(absPath, source, errors);
+      if (!jsSource) return;
+    }
+
+    // Transform with Babel
     try {
-      const result = await esbuild.build({
-        entryPoints: [entry],
-        bundle: true,
-        format: "esm",
-        jsx: "automatic",
-        jsxImportSource: "react",
-        write: false,
-        define,
-        plugins: [
-          this._createVFSPlugin(),
-          this._createCDNPlugin(),
-          this._createVuePlugin(),
-          this._createSveltePlugin(),
-          this._createCSSPlugin(),
+      const result = Babel.transform(jsSource, {
+        presets: [
+          ["react", { runtime: "automatic" }],
+          ["typescript", { allExtensions: true, isTSX: true }],
         ],
+        plugins: [["transform-modules-commonjs"]],
+        filename: absPath,
       });
 
-      const js = result.outputFiles && result.outputFiles.length > 0
-        ? result.outputFiles[0].text
-        : "";
+      const transformed = result.code;
 
-      const css = this._collectedCSS.join("\n");
-
-      const errors = (result.errors || []).map((e) => e.text || String(e));
-
-      const bundleResult = { js, css, errors };
-
-      // Cache successful builds only
-      if (errors.length === 0) {
-        this._bundleCache.set(cacheKey, bundleResult);
+      // Parse require() calls to find dependencies
+      const requireRegex = /require\(["']([^"']+)["']\)/g;
+      let match;
+      while ((match = requireRegex.exec(transformed)) !== null) {
+        const dep = match[1];
+        if (dep.startsWith(".") || dep.startsWith("/") || dep.startsWith("@/")) {
+          // Local import — resolve and recurse
+          this._resolveAndTransform(dep, modules, externals, errors, visited, absPath);
+        } else {
+          // External package
+          externals.add(dep);
+        }
       }
 
-      return bundleResult;
+      modules.set(absPath, transformed);
     } catch (e) {
-      console.error("[Bundler] Build failed:", e);
-
-      // esbuild throws with an errors array on build failure
-      const errors = e.errors
-        ? e.errors.map((err) => err.text || String(err))
-        : [e.message || String(e)];
-
-      return { js: "", css: "", errors };
+      errors.push(`Transform failed for ${absPath}: ${e.message}`);
     }
   },
 
-  // ── Helpers ─────────────────────────────────────────────
+  // ── Bundle Generation ───────────────────────────────────
 
   /**
-   * Map a file extension to an esbuild loader.
+   * Generate the final bundled JavaScript output.
    *
-   * @param {string} filePath - The file path to determine the loader for.
-   * @returns {string} The esbuild loader name.
+   * Output format:
+   * - ESM imports for external packages (resolved by importmap)
+   * - Lightweight CommonJS module registry
+   * - Module factory definitions
+   * - Entry point execution
+   *
+   * @param {string} entry - The entry point path.
+   * @param {Map<string, string>} modules - Transformed module map.
+   * @param {Set<string>} externals - External package names.
+   * @param {Record<string, string>} env - Environment variables.
+   * @returns {string} The bundled JavaScript code.
    * @private
    */
-  _getLoader(filePath) {
-    const ext = filePath.substring(filePath.lastIndexOf(".")).toLowerCase();
-    const loaderMap = {
-      ".ts": "ts",
-      ".tsx": "tsx",
-      ".js": "jsx",
-      ".jsx": "jsx",
-      ".mjs": "js",
-      ".json": "json",
-      ".css": "css",
-      ".vue": "js",
-      ".svelte": "js",
-    };
-    return loaderMap[ext] || "js";
+  _generateBundle(entry, modules, externals, env) {
+    const lines = [];
+
+    // 1. External imports via importmap
+    const extEntries = [...externals];
+    for (const ext of extEntries) {
+      const safeName = "__ext_" + ext.replace(/[^a-zA-Z0-9]/g, "_");
+      lines.push(`import * as ${safeName} from ${JSON.stringify(ext)};`);
+    }
+
+    // 2. process.env shim
+    lines.push(`\nvar process = { env: { NODE_ENV: "production"${
+      Object.entries(env).map(([k, v]) => `, ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join("")
+    } } };`);
+
+    // 3. Module system
+    lines.push(`
+var __modules = new Map();
+var __cache = new Map();`);
+
+    // Pre-populate external modules
+    for (const ext of extEntries) {
+      const safeName = "__ext_" + ext.replace(/[^a-zA-Z0-9]/g, "_");
+      lines.push(`__cache.set(${JSON.stringify(ext)}, ${safeName});`);
+    }
+
+    lines.push(`
+function __require(id) {
+  if (__cache.has(id)) return __cache.get(id);
+  var fn = __modules.get(id);
+  if (!fn) { console.error("[Bundle] Module not found:", id); return {}; }
+  var module = { exports: {} };
+  __cache.set(id, module.exports);
+  fn(module.exports, module);
+  if (module.exports !== __cache.get(id)) __cache.set(id, module.exports);
+  return __cache.get(id);
+}
+`);
+
+    // 4. Module definitions
+    for (const [path, code] of modules) {
+      if (code === "/* css */") {
+        // CSS module — return empty
+        lines.push(`__modules.set(${JSON.stringify(path)}, function(exports, module) {});`);
+        continue;
+      }
+
+      // Rewrite require("./foo") calls to use absolute resolved paths
+      const rewritten = code.replace(
+        /require\(["']([^"']+)["']\)/g,
+        (_match, dep) => {
+          if (dep.startsWith(".") || dep.startsWith("/") || dep.startsWith("@/")) {
+            const resolved = VirtualFS.resolve(path, dep);
+            const withExt = VirtualFS.resolveWithExtension(resolved) || resolved;
+            return `__require(${JSON.stringify(withExt)})`;
+          }
+          return `__require(${JSON.stringify(dep)})`;
+        }
+      );
+
+      lines.push(`__modules.set(${JSON.stringify(path)}, function(exports, module) {\n${rewritten}\n});`);
+    }
+
+    // 5. Execute entry point
+    const entryAbs = VirtualFS.resolveWithExtension(entry) || entry;
+    lines.push(`\n__require(${JSON.stringify(entryAbs)});`);
+
+    return lines.join("\n");
+  },
+
+  // ── Vue SFC Compilation ─────────────────────────────────
+
+  /**
+   * Compile a Vue SFC to JavaScript.
+   *
+   * @param {string} filePath - The file path.
+   * @param {string} source - The Vue SFC source code.
+   * @param {string[]} errors - Error accumulator.
+   * @returns {string|null} Compiled JavaScript or null on error.
+   * @private
+   */
+  _compileVue(filePath, source, errors) {
+    if (!this._vueCompiler) {
+      // Try lazy load — if unavailable, return an error
+      errors.push(`Vue compiler not loaded. Cannot compile ${filePath}.`);
+      return null;
+    }
+
+    const { parse, compileScript, compileTemplate } = this._vueCompiler;
+
+    try {
+      const { descriptor, errors: parseErrors } = parse(source, { filename: filePath });
+
+      if (parseErrors && parseErrors.length > 0) {
+        errors.push(...parseErrors.map((e) => `Vue parse error in ${filePath}: ${e.message || e}`));
+        return null;
+      }
+
+      const sfcId = filePath.replace(/[^a-zA-Z0-9]/g, "_");
+      const parts = [];
+
+      if (descriptor.script || descriptor.scriptSetup) {
+        const scriptResult = compileScript(descriptor, { id: sfcId, inlineTemplate: true });
+        parts.push(scriptResult.content);
+      }
+
+      if (descriptor.template && !(descriptor.scriptSetup)) {
+        const templateResult = compileTemplate({
+          source: descriptor.template.content,
+          filename: filePath,
+          id: sfcId,
+        });
+        if (templateResult.errors && templateResult.errors.length > 0) {
+          errors.push(...templateResult.errors.map((e) => `Vue template error in ${filePath}: ${e.message || e}`));
+          return null;
+        }
+        parts.push(templateResult.code);
+      }
+
+      for (const style of descriptor.styles || []) {
+        if (style.content) {
+          this._collectedCSS.push(style.content);
+        }
+      }
+
+      return parts.join("\n");
+    } catch (e) {
+      errors.push(`Vue SFC compilation failed for ${filePath}: ${e.message || e}`);
+      return null;
+    }
+  },
+
+  // ── Svelte Compilation ──────────────────────────────────
+
+  /**
+   * Compile a Svelte component to JavaScript.
+   *
+   * @param {string} filePath - The file path.
+   * @param {string} source - The Svelte source code.
+   * @param {string[]} errors - Error accumulator.
+   * @returns {string|null} Compiled JavaScript or null on error.
+   * @private
+   */
+  _compileSvelte(filePath, source, errors) {
+    if (typeof globalThis.svelte === "undefined" || !globalThis.svelte.compile) {
+      errors.push(`Svelte compiler not available. Cannot compile ${filePath}.`);
+      return null;
+    }
+
+    try {
+      const result = globalThis.svelte.compile(source, {
+        filename: filePath,
+        generate: "dom",
+        css: "injected",
+        hydratable: false,
+        dev: false,
+      });
+
+      if (result.warnings && result.warnings.length > 0) {
+        for (const w of result.warnings) {
+          console.warn(`[Bundler] Svelte warning in ${filePath}: ${w.message}`);
+        }
+      }
+
+      if (result.css && result.css.code) {
+        this._collectedCSS.push(result.css.code);
+      }
+
+      return result.js.code;
+    } catch (e) {
+      errors.push(`Svelte compilation failed for ${filePath}: ${e.message || e}`);
+      return null;
+    }
   },
 };

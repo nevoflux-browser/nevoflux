@@ -19,6 +19,26 @@ extern "C" {
     fn browser_tabs_query(query_info: &JsValue) -> Result<js_sys::Promise, JsValue>;
 }
 
+#[wasm_bindgen(inline_js = "
+export function base64_to_arraybuffer(base64_data) {
+    const bin = atob(base64_data);
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return buf.buffer;
+}
+")]
+extern "C" {
+    /// Decode a base64 string to an ArrayBuffer.
+    fn base64_to_arraybuffer(base64_data: &str) -> js_sys::ArrayBuffer;
+}
+
+#[wasm_bindgen]
+extern "C" {
+    /// Copy image data to the system clipboard via Firefox extension API.
+    #[wasm_bindgen(js_namespace = ["browser", "clipboard"], js_name = setImageData, catch)]
+    fn browser_clipboard_set_image_data(data: &js_sys::ArrayBuffer, image_type: &str) -> Result<js_sys::Promise, JsValue>;
+}
+
 /// Attached file metadata and content
 #[derive(Debug, Clone, PartialEq)]
 struct AttachedFile {
@@ -375,40 +395,70 @@ pub fn TextInput(disabled: bool) -> Element {
                         if let Some(result) = response.result {
                             web_sys::console::log_1(&format!("[NevoFlux] Screenshot result type: {:?}", result).into());
 
+                            // Extract base64 data and detect image type from data URL
+                            let mut detected_type = "jpeg"; // default: captureVisibleTab returns jpeg
                             let base64_data = if let Some(s) = result.as_str() {
                                 if s.starts_with("data:image/") {
+                                    // e.g. "data:image/jpeg;base64,/9j/4AAQ..."
+                                    if let Some(header) = s.split(',').next() {
+                                        if header.contains("image/png") { detected_type = "png"; }
+                                    }
                                     s.split(',').nth(1).map(|d| d.to_string())
                                 } else {
                                     Some(s.to_string())
                                 }
                             } else if let Some(obj) = result.as_object() {
-                                obj.get("data_url")
+                                let raw = obj.get("data_url")
                                     .or_else(|| obj.get("dataUrl"))
                                     .or_else(|| obj.get("data"))
-                                    .and_then(|v| v.as_str())
-                                    .and_then(|s| {
-                                        if s.starts_with("data:image/") {
-                                            s.split(',').nth(1).map(|d| d.to_string())
-                                        } else {
-                                            Some(s.to_string())
+                                    .and_then(|v| v.as_str());
+                                raw.and_then(|s| {
+                                    if s.starts_with("data:image/") {
+                                        if let Some(header) = s.split(',').next() {
+                                            if header.contains("image/png") { detected_type = "png"; }
                                         }
-                                    })
+                                        s.split(',').nth(1).map(|d| d.to_string())
+                                    } else {
+                                        Some(s.to_string())
+                                    }
+                                })
                             } else {
                                 web_sys::console::warn_1(&"[NevoFlux] Screenshot result is neither string nor object".into());
                                 None
                             };
 
+                            let mime_type = format!("image/{}", detected_type);
+                            let ext = detected_type;
+
                             if let Some(data) = base64_data {
                                 let timestamp = js_sys::Date::now() as u64;
                                 let size = (data.len() * 3 / 4) as u64;
 
-                                web_sys::console::log_1(&format!("[NevoFlux] Screenshot captured: {} bytes", size).into());
+                                web_sys::console::log_1(&format!("[NevoFlux] Screenshot captured: {} bytes, type={}", size, mime_type).into());
+
+                                // Copy to clipboard as a real image via browser.clipboard.setImageData
+                                let array_buffer = base64_to_arraybuffer(&data);
+                                match browser_clipboard_set_image_data(&array_buffer, ext) {
+                                    Ok(promise) => {
+                                        match wasm_bindgen_futures::JsFuture::from(promise).await {
+                                            Ok(_) => {
+                                                web_sys::console::log_1(&"[NevoFlux] Screenshot copied to clipboard".into());
+                                            }
+                                            Err(e) => {
+                                                web_sys::console::warn_1(&format!("[NevoFlux] Clipboard write failed: {:?}", e).into());
+                                            }
+                                        }
+                                    }
+                                    Err(e) => {
+                                        web_sys::console::warn_1(&format!("[NevoFlux] browser.clipboard.setImageData not available: {:?}", e).into());
+                                    }
+                                }
 
                                 attached_files.write().push(AttachedFile {
                                     id: uuid::Uuid::new_v4().to_string(),
-                                    name: format!("Screenshot_{}.png", timestamp),
+                                    name: format!("Screenshot_{}.{}", timestamp, ext),
                                     size,
-                                    file_type: "image/png".to_string(),
+                                    file_type: mime_type,
                                     data: Some(data),
                                     file_path: None,
                                     is_directory: false,
@@ -516,18 +566,17 @@ pub fn TextInput(disabled: bool) -> Element {
                         tab_title: file.name.clone(),
                     });
                 }
-            } else if file.file_type.starts_with("image/") {
-                // Image: send as base64 attachment
-                if let Some(ref data) = file.data {
-                    protocol_attachments.push(Attachment {
-                        name: file.name,
-                        mime_type: file.file_type,
-                        data: Some(data.clone()),
-                        file_path: None,
-                    });
-                }
+            } else if file.file_type.starts_with("image/") && file.data.is_some() {
+                // Image with inline data (screenshot/paste): send as base64 attachment
+                protocol_attachments.push(Attachment {
+                    name: file.name,
+                    mime_type: file.file_type,
+                    data: file.data,
+                    file_path: None,
+                });
             } else {
-                // Local file from native picker: send as local_files entry
+                // Local file from native picker (including images without inline data):
+                // send path so agent can read the file directly
                 if let Some(ref path) = file.file_path {
                     local_files.push(shared_protocol::FileInfo {
                         path: path.clone(),
@@ -1010,8 +1059,8 @@ fn VoiceSendButton(
                 aria_label: "Stop generation",
                 title: "Stop generation",
                 svg {
-                    width: "20",
-                    height: "20",
+                    width: "16",
+                    height: "16",
                     view_box: "0 0 24 24",
                     fill: "currentColor",
                     rect {
@@ -1033,8 +1082,8 @@ fn VoiceSendButton(
                 aria_label: "Send message",
                 title: "Send message",
                 svg {
-                    width: "20",
-                    height: "20",
+                    width: "16",
+                    height: "16",
                     view_box: "0 0 24 24",
                     fill: "currentColor",
                     path {
@@ -1053,8 +1102,8 @@ fn VoiceSendButton(
                 aria_label: if is_recording { "Stop recording" } else { "Start voice input" },
                 title: if is_recording { "Stop recording" } else { "Voice input" },
                 svg {
-                    width: "20",
-                    height: "20",
+                    width: "16",
+                    height: "16",
                     view_box: "0 0 24 24",
                     fill: "none",
                     stroke: "currentColor",
