@@ -1523,11 +1523,16 @@ const Settings = {
   // ── Markdown File Persistence ─────────────────────────
 
   async _loadMdFiles() {
-    for (const md of this._mdSections) {
-      try {
-        const data = await this._sendAgentCommand("config.file.read", {
-          filename: md.filename,
-        });
+    const results = await Promise.allSettled(
+      this._mdSections.map(md =>
+        this._sendAgentCommand("config.file.read", { filename: md.filename })
+          .then(data => ({ md, data }))
+      )
+    );
+
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        const { md, data } = result.value;
         const textarea = document.getElementById(`md-${md.key}`);
         if (!textarea) continue;
 
@@ -1541,15 +1546,23 @@ const Settings = {
           textarea.value = "";
           this._mdOriginal[md.key] = "";
         }
-      } catch (e) {
-        console.warn(`Failed to load ${md.filename}:`, e);
-        const textarea = document.getElementById(`md-${md.key}`);
-        if (textarea && md.defaultContent) {
-          textarea.value = md.defaultContent;
-        }
-        this._mdOriginal[md.key] = "";
+      } else {
+        // Find the md section from the error - extract from the rejection
+        // Since we can't easily map back, handle by checking which textareas are still empty
+        console.warn("Failed to load a config file:", result.reason);
       }
     }
+
+    // Fill in defaults for any textareas that failed to load
+    for (const md of this._mdSections) {
+      if (this._mdOriginal[md.key] !== undefined) continue;
+      const textarea = document.getElementById(`md-${md.key}`);
+      if (textarea && md.defaultContent) {
+        textarea.value = md.defaultContent;
+      }
+      this._mdOriginal[md.key] = "";
+    }
+
     this._checkMdDirty();
   },
 
@@ -1580,8 +1593,8 @@ const Settings = {
       const content = textarea.value;
       if (content === (this._mdOriginal[md.key] ?? "")) continue;
 
-      // Skip writing empty content for sections with no default
-      if (!content && !md.defaultContent) continue;
+      // Only skip if both current and original are empty (nothing to write)
+      if (!content && !(this._mdOriginal[md.key] ?? "")) continue;
 
       try {
         await this._sendAgentCommand("config.file.write", {
