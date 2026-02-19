@@ -10,8 +10,8 @@ ENGINE_DIR="${ROOT_DIR}/engine"
 
 echo "Applying nevoflux patches to src/zen..."
 
-# 1. Apply all .patch files
-find "${NEVOFLUX_DIR}/patches" -type f -name "*.patch" 2>/dev/null | while read -r patch_file; do
+# 1. Apply all .nfpatch files (using .nfpatch extension to avoid surfer scanning)
+find "${NEVOFLUX_DIR}/patches" -type f -name "*.nfpatch" 2>/dev/null | while read -r patch_file; do
   # Calculate the relative path from patches/ and map it to the zen/ directory
   relative_path="${patch_file#${NEVOFLUX_DIR}/patches/}"
   target_dir="${ZEN_DIR}/$(dirname "$relative_path")"
