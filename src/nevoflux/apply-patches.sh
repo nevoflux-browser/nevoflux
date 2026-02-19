@@ -8,6 +8,15 @@ ZEN_DIR="${NEVOFLUX_DIR}/../zen"
 ROOT_DIR="${NEVOFLUX_DIR}/../.."
 ENGINE_DIR="${ROOT_DIR}/engine"
 
+# Cross-platform sed -i (GNU vs BSD)
+sedi() {
+  if sed --version >/dev/null 2>&1; then
+    sed -i "$@"
+  else
+    sed -i '' "$@"
+  fi
+}
+
 echo "Applying nevoflux patches to src/zen..."
 
 # 1. Apply all .nfpatch files (using .nfpatch extension to avoid surfer scanning)
@@ -41,8 +50,7 @@ if [ -d "${NEVOFLUX_DIR}/root-overlays" ]; then
     source "${ROOT_DIR}/scripts/lib/detect-objdir.sh"
     OBJ_DIR="$(_detect_objdir "${ROOT_DIR}")"
     EXTENSION_URL="file://${OBJ_DIR}/dist/bin/distribution/extensions/agent@nevoflux.com.xpi"
-    sed -i.bak "s|__EXTENSION_INSTALL_URL__|${EXTENSION_URL}|g" "${POLICIES_FILE}"
-    rm -f "${POLICIES_FILE}.bak"
+    sedi "s|__EXTENSION_INSTALL_URL__|${EXTENSION_URL}|g" "${POLICIES_FILE}"
     echo "Updated policies.json install_url: ${EXTENSION_URL}"
   fi
 fi
@@ -58,7 +66,7 @@ COMPONENTS_MOZBUILD="${ENGINE_DIR}/browser/components/moz.build"
 if [ -f "${COMPONENTS_MOZBUILD}" ]; then
   if ! grep -q '"nevoflux-pages"' "${COMPONENTS_MOZBUILD}"; then
     echo "Adding nevoflux-pages to browser/components/moz.build DIRS..."
-    sed -i '/"newtab",/a\    "nevoflux-pages",' "${COMPONENTS_MOZBUILD}"
+    sedi '/"newtab",/a\    "nevoflux-pages",' "${COMPONENTS_MOZBUILD}"
   fi
 fi
 
@@ -68,11 +76,11 @@ MODULES_MOZBUILD="${ENGINE_DIR}/browser/modules/moz.build"
 if [ -f "${MODULES_MOZBUILD}" ]; then
   if ! grep -q '"NevofluxBridgeRouter.sys.mjs"' "${MODULES_MOZBUILD}"; then
     echo "Adding NevofluxBridgeRouter to browser/modules/moz.build..."
-    sed -i '/"LinksCache.sys.mjs",/a\    "NevofluxBridgeRouter.sys.mjs",' "${MODULES_MOZBUILD}"
+    sedi '/"LinksCache.sys.mjs",/a\    "NevofluxBridgeRouter.sys.mjs",' "${MODULES_MOZBUILD}"
   fi
   if ! grep -q '"NevofluxContentStore.sys.mjs"' "${MODULES_MOZBUILD}"; then
     echo "Adding NevofluxContentStore to browser/modules/moz.build..."
-    sed -i '/"NevofluxBridgeRouter.sys.mjs",/a\    "NevofluxContentStore.sys.mjs",' "${MODULES_MOZBUILD}"
+    sedi '/"NevofluxBridgeRouter.sys.mjs",/a\    "NevofluxContentStore.sys.mjs",' "${MODULES_MOZBUILD}"
   fi
 fi
 

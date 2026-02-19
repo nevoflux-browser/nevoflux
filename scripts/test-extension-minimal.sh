@@ -15,7 +15,12 @@ echo "Switching to minimal sidebar for testing..."
 cp "$MANIFEST" "$MANIFEST.backup"
 
 # Update manifest to use minimal sidebar
-sed -i 's/"default_panel": "sidebar\/sidebar.html"/"default_panel": "sidebar\/sidebar-minimal.html"/' "$MANIFEST"
+# Cross-platform sed -i
+if sed --version >/dev/null 2>&1; then
+  sed -i 's/"default_panel": "sidebar\/sidebar.html"/"default_panel": "sidebar\/sidebar-minimal.html"/' "$MANIFEST"
+else
+  sed -i '' 's/"default_panel": "sidebar\/sidebar.html"/"default_panel": "sidebar\/sidebar-minimal.html"/' "$MANIFEST"
+fi
 
 echo "✓ Manifest updated to use sidebar-minimal.html"
 
