@@ -126,12 +126,30 @@ fi
 echo "Using binary: $AGENT_BIN"
 echo ""
 
-# Create manifest directory (Firefox on Linux)
-echo "[2/3] Creating native messaging manifest..."
-MANIFEST_DIR="$HOME/.mozilla/native-messaging-hosts"
+# Register native messaging host (platform-specific)
+echo "[2/3] Registering native messaging host..."
+
+PLATFORM="$(uname -s)"
+case "$PLATFORM" in
+  Linux*)
+    MANIFEST_DIR="$HOME/.mozilla/native-messaging-hosts"
+    ;;
+  Darwin*)
+    MANIFEST_DIR="$HOME/Library/Application Support/Mozilla/NativeMessagingHosts"
+    ;;
+  MINGW*|MSYS*|CYGWIN*)
+    # Windows: manifest goes to a local directory, registered via Registry
+    MANIFEST_DIR="$APPDATA/Mozilla/NativeMessagingHosts"
+    ;;
+  *)
+    echo "Error: Unsupported platform: $PLATFORM"
+    exit 1
+    ;;
+esac
+
 mkdir -p "$MANIFEST_DIR"
 
-# Write manifest
+# Write manifest JSON (same format on all platforms)
 MANIFEST_FILE="$MANIFEST_DIR/${MANIFEST_NAME}.json"
 cat > "$MANIFEST_FILE" <<EOF
 {
@@ -144,11 +162,24 @@ cat > "$MANIFEST_FILE" <<EOF
 EOF
 
 echo "Manifest created: $MANIFEST_FILE"
+
+# Windows: also register in the Registry
+case "$PLATFORM" in
+  MINGW*|MSYS*|CYGWIN*)
+    # Convert to Windows path for registry
+    WIN_MANIFEST="$(cygpath -w "$MANIFEST_FILE" 2>/dev/null || echo "$MANIFEST_FILE")"
+    REG_KEY="HKCU\\Software\\Mozilla\\NativeMessagingHosts\\${MANIFEST_NAME}"
+    reg add "$REG_KEY" /ve /t REG_SZ /d "$WIN_MANIFEST" /f > /dev/null 2>&1 && \
+      echo "Registry key created: $REG_KEY" || \
+      echo "Warning: Failed to create registry key. You may need to run as administrator."
+    ;;
+esac
+
 echo ""
 
 # Verify installation
 echo "[3/3] Verifying installation..."
-echo "  Binary: $AGENT_BIN"
+echo "  Binary:   $AGENT_BIN"
 echo "  Manifest: $MANIFEST_FILE"
 echo ""
 
@@ -169,5 +200,12 @@ echo "  2. Open browser and press Ctrl+Shift+A to open the NevoFlux sidebar"
 echo "  3. Check the browser console (F12) for extension messages"
 echo ""
 echo "Note: AI functionality requires API keys. Configure them in:"
-echo "  ~/.config/nevoflux/config.toml"
+case "$PLATFORM" in
+  MINGW*|MSYS*|CYGWIN*)
+    echo "  %APPDATA%\\nevoflux\\config.toml"
+    ;;
+  *)
+    echo "  ~/.config/nevoflux/config.toml"
+    ;;
+esac
 echo ""
