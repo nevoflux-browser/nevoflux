@@ -35,9 +35,28 @@ find "${NEVOFLUX_DIR}/patches" -type f -name "*.nfpatch" 2>/dev/null | while rea
 done
 
 # 2. Copy overlay files (new or overwritten files) to src/zen/
+#    Then create symlinks in engine/zen/ for new files added by overlays.
+#    surfer import creates symlinks engine/zen/ -> src/zen/ but only for files
+#    that existed at import time. Overlay files added afterwards need manual symlinks.
 if [ -d "${NEVOFLUX_DIR}/overlays" ] && [ "$(ls -A "${NEVOFLUX_DIR}/overlays" 2>/dev/null)" ]; then
   echo "Copying overlay files to src/zen/..."
   cp -r "${NEVOFLUX_DIR}/overlays/"* "${ZEN_DIR}/"
+
+  # Sync new overlay files to engine/zen/ via symlinks
+  ENGINE_ZEN_DIR="${ENGINE_DIR}/zen"
+  if [ -d "${ENGINE_ZEN_DIR}" ]; then
+    echo "Syncing overlay symlinks to engine/zen/..."
+    (cd "${NEVOFLUX_DIR}/overlays" && find . -type f) | while read -r rel_file; do
+      rel_file="${rel_file#./}"
+      src_file="$(cd "${ZEN_DIR}" && pwd)/${rel_file}"
+      engine_file="${ENGINE_ZEN_DIR}/${rel_file}"
+      if [ ! -e "${engine_file}" ]; then
+        mkdir -p "$(dirname "${engine_file}")"
+        ln -s "${src_file}" "${engine_file}"
+        echo "  Symlinked: ${rel_file}"
+      fi
+    done
+  fi
 fi
 
 # 3. Copy root-overlays files (e.g., surfer.json, policies.json) to project root
@@ -50,7 +69,8 @@ if [ -d "${NEVOFLUX_DIR}/root-overlays" ]; then
   if [ -f "${POLICIES_FILE}" ] && grep -q "__EXTENSION_INSTALL_URL__" "${POLICIES_FILE}"; then
     source "${ROOT_DIR}/scripts/lib/detect-objdir.sh"
     OBJ_DIR="$(_detect_objdir "${ROOT_DIR}")"
-    EXTENSION_URL="file://${OBJ_DIR}/dist/bin/distribution/extensions/agent@nevoflux.com.xpi"
+    _DIST_DIR="$(_detect_distdir "$OBJ_DIR")"
+    EXTENSION_URL="file://${_DIST_DIR}/distribution/extensions/agent@nevoflux.com.xpi"
     sedi "s|__EXTENSION_INSTALL_URL__|${EXTENSION_URL}|g" "${POLICIES_FILE}"
     echo "Updated policies.json install_url: ${EXTENSION_URL}"
   fi

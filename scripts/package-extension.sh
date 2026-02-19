@@ -70,7 +70,7 @@ echo "✓ Extension packaged: $BUILD_DIR/$XPI_NAME"
 
 # Copy to engine directory if it exists
 source "$SCRIPT_DIR/lib/detect-objdir.sh"
-ENGINE_EXT_DIR="$OBJ_DIR/dist/bin/distribution/extensions"
+ENGINE_EXT_DIR="$DIST_DIR/distribution/extensions"
 if [ -d "$ENGINE_EXT_DIR" ]; then
   echo "Copying to engine directory..."
   cp "$BUILD_DIR/$XPI_NAME" "$ENGINE_EXT_DIR/$XPI_NAME"

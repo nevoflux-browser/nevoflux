@@ -9,7 +9,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 SOURCE_DIST="$PROJECT_ROOT/build/AppDir/distribution"
 source "$SCRIPT_DIR/lib/detect-objdir.sh"
-TARGET_DIST="$OBJ_DIR/dist/bin/distribution"
+TARGET_DIST="$DIST_DIR/distribution"
 
 echo "Copying NevoFlux distribution files to build output..."
 
