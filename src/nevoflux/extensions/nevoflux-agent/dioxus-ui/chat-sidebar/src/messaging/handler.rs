@@ -838,10 +838,46 @@ fn handle_system_response(mut ctx: AppContext, payload: SystemResponsePayload) {
                 tracing::error!("skill.list failed: {}", error_msg);
             }
         }
+        "content_store.set" => {
+            if payload.success {
+                // Check if settings changed — re-fetch avatar
+                if let Some(ref data) = payload.data {
+                    if data.get("key").and_then(|k| k.as_str()) == Some("config:settings") {
+                        tracing::info!("Settings updated via content_store.set, refreshing avatar");
+                        refresh_avatar(ctx);
+                    }
+                }
+            }
+        }
+        // ContentStore hydrated from persistence — re-fetch avatar
+        "content_store.loaded" => {
+            if payload.success {
+                tracing::info!("ContentStore hydrated, refreshing avatar");
+                refresh_avatar(ctx);
+            }
+        }
         _ => {
             tracing::debug!("Unhandled system response: {}", payload.command);
         }
     }
+}
+
+/// Re-fetch avatar from settings and update context
+fn refresh_avatar(mut ctx: AppContext) {
+    spawn_local(async move {
+        match crate::messaging::fetch_avatar().await {
+            Ok(Some(url)) => {
+                tracing::info!("Avatar refreshed (len={})", url.len());
+                ctx.avatar_url.set(Some(url));
+            }
+            Ok(None) => {
+                ctx.avatar_url.set(None);
+            }
+            Err(e) => {
+                tracing::warn!("Failed to refresh avatar: {}", e);
+            }
+        }
+    });
 }
 
 /// Handle file.pick response - add picked files to context
@@ -1077,6 +1113,7 @@ fn handle_session_list_response(mut ctx: AppContext, data: serde_json::Value) {
 
     let sessions_json = data.get("sessions").and_then(|s| s.as_array());
     let total = data.get("total").and_then(|t| t.as_u64()).unwrap_or(0) as u32;
+    let is_loading_more = ctx.history.read().loading_more;
 
     if let Some(sessions_arr) = sessions_json {
         let mut sessions = Vec::new();
@@ -1101,10 +1138,16 @@ fn handle_session_list_response(mut ctx: AppContext, data: serde_json::Value) {
             });
         }
 
-        ctx.history.write().set_sessions(sessions, total);
-        tracing::info!("Loaded {} sessions into history", ctx.history.read().sessions.len());
+        if is_loading_more {
+            ctx.history.write().append_sessions(sessions, total);
+        } else {
+            ctx.history.write().set_sessions(sessions, total);
+        }
+        tracing::info!("Loaded {} sessions into history (append={})", ctx.history.read().sessions.len(), is_loading_more);
     } else {
-        ctx.history.write().set_sessions(Vec::new(), 0);
+        if !is_loading_more {
+            ctx.history.write().set_sessions(Vec::new(), 0);
+        }
         tracing::info!("No sessions in history");
     }
 }

@@ -764,6 +764,41 @@ pub async fn send_tool_auth_response(
 }
 
 // ============================================
+// Settings / Avatar
+// ============================================
+
+/// Fetch the user avatar data URL from settings (via background.js → contentStore)
+pub async fn fetch_avatar() -> Result<Option<String>, String> {
+    let request = serde_json::json!({
+        "type": "bg:get_settings",
+        "key": "settings"
+    });
+    let js_value = to_js_value(&request)
+        .map_err(|e| format!("Serialize error: {:?}", e))?;
+
+    let response = JsFuture::from(runtime_send_message(js_value))
+        .await
+        .map_err(|e| format!("Fetch settings failed: {:?}", e))?;
+
+    let response_obj: serde_json::Value = from_js_value(response)
+        .map_err(|e| format!("Parse settings response error: {}", e))?;
+
+    if response_obj.get("success").and_then(|s| s.as_bool()) != Some(true) {
+        return Ok(None);
+    }
+
+    let avatar = response_obj
+        .get("data")
+        .and_then(|d| d.get("identity"))
+        .and_then(|i| i.get("avatar"))
+        .and_then(|a| a.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+
+    Ok(avatar)
+}
+
+// ============================================
 // Browser Tool Messages (Legacy - Deprecated)
 // ============================================
 
@@ -797,4 +832,14 @@ pub fn forward_browser_tool_request_sync(
     // Keep legacy behavior for backward compatibility
     let message = BrowserToolMessage::BrowserToolRequest(payload.clone());
     crate::messaging::bridge::send_message_sync(&message)
+}
+
+/// Async sleep using JavaScript setTimeout
+pub async fn sleep_ms(ms: u32) {
+    let promise = js_sys::Promise::new(&mut |resolve, _| {
+        let _ = web_sys::window()
+            .expect("no window")
+            .set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms as i32);
+    });
+    let _ = JsFuture::from(promise).await;
 }

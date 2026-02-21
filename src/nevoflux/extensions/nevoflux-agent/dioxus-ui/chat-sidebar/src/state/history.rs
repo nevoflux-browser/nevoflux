@@ -78,8 +78,10 @@ pub struct HistoryState {
     pub sessions: Vec<SessionSummary>,
     /// Total number of sessions available
     pub total: u32,
-    /// Whether we're currently loading
+    /// Whether we're currently loading (initial / replace)
     pub loading: bool,
+    /// Whether we're loading more (append mode)
+    pub loading_more: bool,
     /// Error message if loading failed
     pub error: Option<String>,
 }
@@ -90,23 +92,46 @@ impl HistoryState {
         Self::default()
     }
 
-    /// Set loading state
+    /// Set loading state (replaces sessions on response)
     pub fn set_loading(&mut self) {
         self.loading = true;
+        self.loading_more = false;
         self.error = None;
     }
 
-    /// Set loaded sessions
+    /// Set loading-more state (appends sessions on response)
+    pub fn set_loading_more(&mut self) {
+        self.loading_more = true;
+        self.error = None;
+    }
+
+    /// Set loaded sessions (replace mode)
     pub fn set_sessions(&mut self, sessions: Vec<SessionSummary>, total: u32) {
         self.sessions = sessions;
         self.total = total;
         self.loading = false;
+        self.loading_more = false;
         self.error = None;
+    }
+
+    /// Append loaded sessions (load-more mode)
+    pub fn append_sessions(&mut self, sessions: Vec<SessionSummary>, total: u32) {
+        self.total = total;
+        self.loading = false;
+        self.loading_more = false;
+        self.error = None;
+        // Deduplicate by ID before appending
+        for session in sessions {
+            if !self.sessions.iter().any(|s| s.id == session.id) {
+                self.sessions.push(session);
+            }
+        }
     }
 
     /// Set error state
     pub fn set_error(&mut self, error: String) {
         self.loading = false;
+        self.loading_more = false;
         self.error = Some(error);
     }
 

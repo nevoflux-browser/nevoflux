@@ -106,7 +106,7 @@ const Settings = {
     container.appendChild(this._renderLLMSection());
     container.appendChild(this._renderMcpSection());
     container.appendChild(this._renderPlaceholderSection("plugins", "Plugins", "Plugin management will be available in a future update."));
-    container.appendChild(this._renderPlaceholderSection("shortcuts", "Shortcuts", "Keyboard shortcut customization will be available in a future update."));
+    container.appendChild(this._renderShortcutsSection());
   },
 
   // ── General Section ─────────────────────────────────────
@@ -1309,18 +1309,13 @@ const Settings = {
     fileInput.addEventListener("change", () => {
       const file = fileInput.files[0];
       if (!file) return;
-      // Limit to 256KB source file
-      if (file.size > 256 * 1024) {
-        console.warn("Avatar file too large (max 256KB)");
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result;
+      console.log("[Settings] Avatar file selected:", file.name, file.size, file.type);
+      // Resize image to avatar size (256x256 max) using canvas
+      this._resizeImage(file, 256, (dataUrl) => {
+        console.log("[Settings] Avatar resized, dataUrl length:", dataUrl.length);
         this._setAvatarPreview(preview, dataUrl);
         this._onFieldChange(key, dataUrl);
-      };
-      reader.readAsDataURL(file);
+      });
       // Reset so the same file can be re-selected
       fileInput.value = "";
     });
@@ -1346,6 +1341,42 @@ const Settings = {
     row.dataset.key = key;
     row.dataset.avatarRow = "true";
     return row;
+  },
+
+  _resizeImage(file, maxSize, callback) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let w = img.width;
+        let h = img.height;
+        // Scale down to fit within maxSize x maxSize
+        if (w > maxSize || h > maxSize) {
+          const ratio = Math.min(maxSize / w, maxSize / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        // Use JPEG for photos (smaller), PNG for transparency
+        const isPng = file.type === "image/png";
+        const mimeType = isPng ? "image/png" : "image/jpeg";
+        const quality = isPng ? undefined : 0.85;
+        const dataUrl = canvas.toDataURL(mimeType, quality);
+        callback(dataUrl);
+      };
+      img.onerror = () => {
+        console.error("[Settings] Failed to load image for resize");
+      };
+      img.src = reader.result;
+    };
+    reader.onerror = () => {
+      console.error("[Settings] Failed to read avatar file:", reader.error);
+    };
+    reader.readAsDataURL(file);
   },
 
   _setAvatarPreview(preview, dataUrl) {
@@ -1376,18 +1407,57 @@ const Settings = {
     return section;
   },
 
+  _renderShortcutsSection() {
+    const section = this._createSection("shortcuts", "Shortcuts");
+    const group = this._createGroup("Keyboard Shortcuts");
+
+    const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+
+    const row = document.createElement("div");
+    row.className = "shortcut-row";
+
+    const label = document.createElement("span");
+    label.className = "shortcut-label";
+    label.textContent = "Toggle Agentic AI Sidebar";
+    row.appendChild(label);
+
+    const keys = document.createElement("span");
+    keys.className = "shortcut-keys";
+    const parts = isMac
+      ? ["\u2318", "Shift", "A"]
+      : ["Ctrl", "Shift", "A"];
+    for (let i = 0; i < parts.length; i++) {
+      if (i > 0) {
+        const sep = document.createElement("span");
+        sep.className = "shortcut-separator";
+        sep.textContent = "+";
+        keys.appendChild(sep);
+      }
+      const kbd = document.createElement("kbd");
+      kbd.textContent = parts[i];
+      keys.appendChild(kbd);
+    }
+    row.appendChild(keys);
+
+    group.appendChild(row);
+    section.appendChild(group);
+    return section;
+  },
+
   // ── Settings Persistence ────────────────────────────────
 
   async _loadSettings() {
     try {
+      console.log("[Settings] Loading settings via contentStore:get");
       const result = await NevofluxPage.sendQuery("contentStore:get", {
         key: "config:settings",
       });
+      console.log("[Settings] Loaded settings:", result ? "found" : "empty");
       if (result && result.value) {
         this._settings = result.value;
       }
     } catch (e) {
-      console.error("Failed to load settings:", e);
+      console.error("[Settings] Failed to load settings:", e);
     }
     this._populateFields();
   },
@@ -1546,20 +1616,24 @@ const Settings = {
 
   async _save() {
     try {
+      console.log("[Settings] Saving settings via contentStore:set");
       await NevofluxPage.sendQuery("contentStore:set", {
         key: "config:settings",
         value: this._settings,
       });
+      console.log("[Settings] Settings saved successfully");
       this._showSaveIndicator();
     } catch (e) {
-      console.error("Failed to save settings:", e);
+      console.error("[Settings] Failed to save settings:", e);
     }
   },
 
   _showSaveIndicator() {
     const indicator = document.getElementById("save-indicator");
-    indicator.classList.add("visible");
-    setTimeout(() => indicator.classList.remove("visible"), 1500);
+    if (indicator) {
+      indicator.classList.add("visible");
+      setTimeout(() => indicator.classList.remove("visible"), 1500);
+    }
   },
 
   _getNestedValue(obj, path) {

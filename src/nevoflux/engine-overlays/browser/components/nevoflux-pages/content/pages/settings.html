@@ -899,6 +899,51 @@
       width: 100%;
       padding-right: 60px;
     }
+
+    /* ── Shortcuts ─────────────────────────────────── */
+    .shortcut-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--nevoflux-space-md) 0;
+      border-bottom: 1px solid light-dark(#f0f0f0, #2a2a2e);
+    }
+
+    .shortcut-row:last-child {
+      border-bottom: none;
+    }
+
+    .shortcut-label {
+      font-size: var(--nevoflux-font-size-base);
+      color: var(--nevoflux-text);
+    }
+
+    .shortcut-keys {
+      display: flex;
+      align-items: center;
+      gap: var(--nevoflux-space-xs);
+    }
+
+    .shortcut-keys kbd {
+      display: inline-block;
+      padding: 3px 8px;
+      font-family: var(--nevoflux-font-family);
+      font-size: var(--nevoflux-font-size-sm);
+      font-weight: 500;
+      color: var(--nevoflux-text);
+      background: var(--nevoflux-bg-secondary);
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      box-shadow: 0 1px 0 light-dark(rgba(0,0,0,0.08), rgba(255,255,255,0.05));
+      line-height: 1.4;
+      min-width: 24px;
+      text-align: center;
+    }
+
+    .shortcut-separator {
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+    }
   </style>
 </head>
 <body>

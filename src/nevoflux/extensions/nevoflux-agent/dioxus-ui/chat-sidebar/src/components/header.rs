@@ -65,8 +65,24 @@ pub fn Header() -> Element {
         }
     };
 
+    // Read avatar
+    let avatar = ctx.avatar_url.read();
+
     rsx! {
         header { class: "header",
+            // Left side: Avatar (shown when configured)
+            div { class: "header-left",
+                if let Some(ref url) = *avatar {
+                    div { class: "header-avatar",
+                        img {
+                            src: "{url}",
+                            alt: "Avatar",
+                            class: "header-avatar-img",
+                        }
+                    }
+                }
+            }
+
             // Right side: Action buttons
             div { class: "header-right",
                 // History button

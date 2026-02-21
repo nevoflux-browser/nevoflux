@@ -121,6 +121,43 @@ pub fn HistoryPanel() -> Element {
                             }
                         }
                     }
+
+                    // Load more button
+                    if (history.sessions.len() as u32) < history.total {
+                        LoadMoreButton {}
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// "Load more" button for paginated history
+#[component]
+fn LoadMoreButton() -> Element {
+    let mut ctx = use_app_context();
+    let is_loading = ctx.history.read().loading_more;
+
+    let handle_load_more = move |_| {
+        let offset = ctx.history.read().sessions.len() as u32;
+        ctx.history.write().set_loading_more();
+        spawn_local(async move {
+            let _ = crate::messaging::send_session_list(50, offset).await;
+        });
+    };
+
+    rsx! {
+        div { class: "history-load-more",
+            if is_loading {
+                div { class: "history-panel-loading",
+                    span { class: "loading-spinner" }
+                    span { "Loading..." }
+                }
+            } else {
+                button {
+                    class: "history-load-more-btn",
+                    onclick: handle_load_more,
+                    "Load more conversations"
                 }
             }
         }

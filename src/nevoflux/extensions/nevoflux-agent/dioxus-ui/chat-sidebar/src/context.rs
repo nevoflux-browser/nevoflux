@@ -63,6 +63,8 @@ pub struct AppContext {
     pub live_tools: Signal<Vec<LiveToolEntry>>,
     /// Pending tool authorization request
     pub pending_tool_auth: Signal<Option<ToolAuthRequest>>,
+    /// User avatar data URL (from settings)
+    pub avatar_url: Signal<Option<String>>,
     /// Whether mock mode is enabled
     pub mock_enabled: bool,
 }
@@ -94,6 +96,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     let show_history_panel = use_signal(|| false);
     let live_tools = use_signal(Vec::<LiveToolEntry>::new);
     let pending_tool_auth = use_signal(|| None::<ToolAuthRequest>);
+    let avatar_url = use_signal(|| None::<String>);
 
     // Build context
     let mut ctx = AppContext {
@@ -117,6 +120,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         show_history_panel,
         live_tools,
         pending_tool_auth,
+        avatar_url,
         mock_enabled,
     };
 
@@ -186,6 +190,29 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                 // Request session list for history
                 ctx.history.write().set_loading();
                 let _ = crate::messaging::send_session_list(50, 0).await;
+
+                // Fetch avatar from settings (retry if ContentStore not hydrated yet)
+                for attempt in 0..3 {
+                    match crate::messaging::fetch_avatar().await {
+                        Ok(Some(url)) => {
+                            tracing::info!("Loaded avatar from settings (len={}, attempt={})", url.len(), attempt);
+                            ctx.avatar_url.set(Some(url));
+                            break;
+                        }
+                        Ok(None) => {
+                            if attempt < 2 {
+                                tracing::info!("No avatar yet (attempt {}), retrying after delay...", attempt);
+                                crate::messaging::sleep_ms(1500).await;
+                            } else {
+                                tracing::info!("No avatar configured in settings");
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to fetch avatar: {}", e);
+                            break;
+                        }
+                    }
+                }
             });
         }
     });

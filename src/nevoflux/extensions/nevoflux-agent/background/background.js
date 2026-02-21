@@ -56,6 +56,9 @@ const BackgroundAPI = {
   // Sidebar control
   SIDEBAR_CLOSE: "bg:sidebar_close",
   SIDEBAR_OPEN: "bg:sidebar_open",
+
+  // Settings (ContentStore)
+  GET_SETTINGS: "bg:get_settings",
 };
 
 // =============================================================================
@@ -769,7 +772,14 @@ class ChannelManager {
         const entries = payload.data?.entries || [];
         console.log(`[NevoFlux] Content store load response: ${entries.length} entries`);
         if (entries.length > 0) {
-          browser.nevoflux.contentStoreLoad(entries).catch((err) => {
+          browser.nevoflux.contentStoreLoad(entries).then(() => {
+            // Notify sidebar that ContentStore has been hydrated so it can re-fetch settings
+            console.log("[NevoFlux] ContentStore hydrated, notifying sidebar");
+            broadcastToSidebar({
+              type: MessageTypes.SYSTEM_RESPONSE,
+              payload: { command: "content_store.loaded", success: true },
+            });
+          }).catch((err) => {
             console.error("[NevoFlux] Content store load failed:", err);
           });
         }
@@ -4243,6 +4253,20 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
           }
           sendResponse(result);
         } catch (e) {
+          sendResponse({ success: false, error: e.message });
+        }
+      })();
+      return true;
+    }
+
+    case BackgroundAPI.GET_SETTINGS: {
+      (async () => {
+        try {
+          const key = message.key || "settings";
+          const result = await browser.nevoflux.getSettings(key);
+          sendResponse({ success: true, data: result?.data || null });
+        } catch (e) {
+          console.error("[NevoFlux] GET_SETTINGS error:", e);
           sendResponse({ success: false, error: e.message });
         }
       })();

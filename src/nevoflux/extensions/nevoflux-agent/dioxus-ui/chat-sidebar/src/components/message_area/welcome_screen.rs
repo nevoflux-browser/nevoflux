@@ -15,7 +15,6 @@ pub fn WelcomeScreen() -> Element {
     let ctx = use_app_context();
     let history = ctx.history.read();
     let has_history = history.has_sessions();
-
     rsx! {
         div { class: "welcome-screen",
             // Logo - embedded SVG (cleaned, without outer white rectangle)
@@ -43,8 +42,25 @@ pub fn WelcomeScreen() -> Element {
 /// History section showing recent sessions
 #[component]
 fn HistorySection() -> Element {
-    let ctx = use_app_context();
+    let mut ctx = use_app_context();
     let history = ctx.history.read();
+    let total = history.total;
+
+    // Sort by updated_at descending to show most recent first
+    let mut sorted: Vec<&SessionSummary> = history.sessions.iter().collect();
+    sorted.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    let recent: Vec<SessionSummary> = sorted.into_iter().take(3).cloned().collect();
+
+    let has_more = total > 3 || history.sessions.len() > 3;
+
+    let handle_view_all = move |_| {
+        ctx.show_history_panel.set(true);
+        // Refresh history when opening panel
+        ctx.history.write().set_loading();
+        spawn_local(async move {
+            let _ = crate::messaging::send_session_list(50, 0).await;
+        });
+    };
 
     rsx! {
         div { class: "history-section",
@@ -61,8 +77,16 @@ fn HistorySection() -> Element {
                 }
             } else {
                 div { class: "history-list",
-                    for session in history.sessions.iter().take(5) {
+                    for session in recent.iter() {
                         HistoryItem { session: session.clone() }
+                    }
+                }
+
+                if has_more {
+                    button {
+                        class: "history-view-all",
+                        onclick: handle_view_all,
+                        "View all conversations"
                     }
                 }
             }
@@ -81,21 +105,12 @@ fn HistoryItem(session: SessionSummary) -> Element {
 
     let handle_click = move |_| {
         let source_id = session_id.clone();
-        let tab_context = ctx.tab_context.read();
-        let target_id = tab_context.zen_sync_id.clone();
-        drop(tab_context);
-
-        if let Some(target_id) = target_id {
-            tracing::info!("Cloning session {} to {}", source_id, target_id);
-            // Clone the historical session to current tab's session
-            spawn_local(async move {
-                if let Err(e) = crate::messaging::send_session_clone(&source_id, &target_id).await {
-                    tracing::error!("Failed to clone session: {}", e);
-                }
-            });
-        } else {
-            tracing::warn!("No zen_sync_id for current tab, cannot restore session");
-        }
+        tracing::info!("Loading historical session: {}", source_id);
+        spawn_local(async move {
+            if let Err(e) = crate::messaging::send_session_resolve(&source_id).await {
+                tracing::error!("Failed to load session: {}", e);
+            }
+        });
     };
 
     rsx! {
