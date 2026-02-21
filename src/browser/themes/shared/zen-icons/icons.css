@@ -236,6 +236,10 @@
   list-style-image: url('settings.svg') !important;
 }
 
+#appMenu-nevoflux-button {
+  list-style-image: url('sparkles.svg') !important;
+}
+
 #spell-check-enabled {
   list-style-image: url('spell-check.svg') !important;
 }

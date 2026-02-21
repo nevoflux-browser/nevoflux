@@ -117,7 +117,32 @@ if [ -f "${MODULES_MOZBUILD}" ]; then
   fi
 fi
 
-# 8. Package nevoflux-agent extension as XPI
+# 8. Add NevoFlux menu item to hamburger menu (app menu)
+APPMENU_XHTML="${ENGINE_DIR}/browser/base/content/appmenu-viewcache.inc.xhtml"
+if [ -f "${APPMENU_XHTML}" ]; then
+  if ! grep -q 'appMenu-nevoflux-button' "${APPMENU_XHTML}"; then
+    echo "Adding NevoFlux button to app menu..."
+    sedi 's|<toolbarbutton id="appMenu-more-button2"|<toolbarbutton id="appMenu-nevoflux-button"\
+                     class="subviewbutton"\
+                     label="NevoFlux"\
+                     />\
+      <toolbarbutton id="appMenu-more-button2"|' "${APPMENU_XHTML}"
+  fi
+fi
+
+# 9. Add NevoFlux command handler to panelUI.js
+PANELUI_JS="${ENGINE_DIR}/browser/components/customizableui/content/panelUI.js"
+if [ -f "${PANELUI_JS}" ]; then
+  if ! grep -q 'appMenu-nevoflux-button' "${PANELUI_JS}"; then
+    echo "Adding NevoFlux command handler to panelUI.js..."
+    sedi 's|case "appMenu-more-button2":|case "appMenu-nevoflux-button":\
+        switchToTabHavingURI("nevoflux://settings", true);\
+        break;\
+      case "appMenu-more-button2":|' "${PANELUI_JS}"
+  fi
+fi
+
+# 10. Package nevoflux-agent extension as XPI
 if [ -f "${ROOT_DIR}/scripts/package-extension.sh" ]; then
   echo "Packaging nevoflux-agent extension..."
   bash "${ROOT_DIR}/scripts/package-extension.sh"
