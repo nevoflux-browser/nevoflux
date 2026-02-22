@@ -1,14 +1,18 @@
-name: Pull request test
+name: PR Check
 permissions:
   contents: read
 
 on:
   pull_request:
     branches:
+      - main
       - dev
 
 jobs:
-  pr-test:
+  lint:
+    uses: ./.github/workflows/code-linter.yml
+
+  validate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
