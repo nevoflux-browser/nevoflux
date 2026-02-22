@@ -402,3 +402,11 @@ nevoflux is licensed under the [Mozilla Public License 2.0](./LICENSE).
 <p align="center">
   <strong>nevoflux</strong> — AI-powered browsing for the autonomous future.
 </p>
+
+---
+
+## Maintainer
+
+This project is developed and maintained by **YULIN GAN**.
+
+- Contact: doris_gyl@hotmail.com
