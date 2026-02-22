@@ -171,8 +171,8 @@ jobs:
         if: ${{ inputs.update_version }}
         with:
           commit_message: 🔖 Update version to ${{ steps.data.outputs.version }}
-          commit_user_name: Zen Browser Robot
-          commit_user_email: zen-browser-auto@users.noreply.github.com
+          commit_user_name: NevoFlux Bot
+          commit_user_email: nevoflux-bot@users.noreply.github.com
 
   lint:
     uses: ./.github/workflows/code-linter.yml
@@ -238,8 +238,8 @@ jobs:
 
       - name: Setup Git
         run: |
-          git config --global user.email "mauro-balades@users.noreply.github.com"
-          git config --global user.name "mauro-balades"
+          git config --global user.email "nevoflux-bot@users.noreply.github.com"
+          git config --global user.name "NevoFlux Bot"
 
       - name: Install dependencies
         run: |
@@ -388,8 +388,8 @@ jobs:
           export ARCH=${{ matrix.arch }}
           UPINFO="gh-releases-zsync|$GITHUB_REPOSITORY_OWNER|desktop|latest|zen-$ARCH.AppImage.zsync"
           rm build/AppDir/.DirIcon || true
-          cp configs/branding/${{ inputs.update_branch }}/logo128.png build/AppDir/usr/share/icons/hicolor/128x128/apps/zen.png
-          cp configs/branding/${{ inputs.update_branch }}/logo128.png build/AppDir/zen.png && ln -s zen.png build/AppDir/.DirIcon
+          cp configs/branding/release/logo128.png build/AppDir/usr/share/icons/hicolor/128x128/apps/zen.png
+          cp configs/branding/release/logo128.png build/AppDir/zen.png && ln -s zen.png build/AppDir/.DirIcon
 
           APPDIR=build/AppDir
           tar -xvf *.tar.* && rm -rf *.tar.*
@@ -458,13 +458,13 @@ jobs:
       - name: Checkout updates repository
         uses: actions/checkout@v4
         with:
-          repository: zen-browser/updates-server
+          repository: dorisgyl/nevoflux-updates
           path: updates-server
           token: ${{ secrets.DEPLOY_KEY }}
 
       - name: Download object files
         run: |
-          git clone https://github.com/zen-browser/windows-binaries.git .github/workflows/object --depth 1
+          git clone https://github.com/dorisgyl/windows-binaries.git .github/workflows/object --depth 1
 
       - name: Copy update manifests
         run: |
@@ -480,8 +480,8 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: 🚀 Update update manifests
-          commit_user_name: Zen Browser Robot
-          commit_user_email: zen-browser-auto@users.noreply.github.com
+          commit_user_name: NevoFlux Bot
+          commit_user_email: nevoflux-bot@users.noreply.github.com
           repository: ./updates-server
 
       - name: Generate Release Notes
@@ -529,7 +529,7 @@ jobs:
       - name: Checkout Flatpak repository
         uses: actions/checkout@v4
         with:
-          repository: zen-browser/release-utils
+          repository: dorisgyl/nevoflux-release-utils
           token: ${{ secrets.DEPLOY_KEY }}
 
       - name: Install dependencies
@@ -547,13 +547,13 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: 🚀 Update releases for Flatpak
-          commit_user_name: Zen Browser Robot
-          commit_user_email: zen-browser-auto@users.noreply.github.com
+          commit_user_name: NevoFlux Bot
+          commit_user_email: nevoflux-bot@users.noreply.github.com
 
       - name: Checkout Flatpak repository
         uses: actions/checkout@v4
         with:
-          repository: zen-browser/flatpak
+          repository: dorisgyl/nevoflux-flatpak
           token: ${{ secrets.DEPLOY_KEY }}
           path: flatpak
 
@@ -570,8 +570,8 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: '[release]: Update Flatpak manifest'
-          commit_user_name: Zen Browser Robot
-          commit_user_email: zen-browser-auto@users.noreply.github.com
+          commit_user_name: NevoFlux Bot
+          commit_user_email: nevoflux-bot@users.noreply.github.com
           repository: ./flatpak
 
       - name: Wait 2 minutes for the Flatpak repo to update
@@ -609,12 +609,12 @@ jobs:
 
       - name: Download Flatpak archive
         run: |
-          wget https://github.com/zen-browser/flatpak/releases/latest/download/archive.tar -O archive.tar
+          wget https://github.com/dorisgyl/nevoflux-flatpak/releases/latest/download/archive.tar -O archive.tar
 
       - name: Setup Git
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "NevoFlux Bot"
+          git config --global user.email "nevoflux-bot@users.noreply.github.com"
 
       - name: Prepare Flatpak manifest
         run: |
