@@ -462,7 +462,8 @@ jobs:
           path: updates-server
           token: ${{ secrets.DEPLOY_KEY }}
 
-      - name: Download object files
+      - name: Download signed Windows binaries
+        if: ${{ inputs.sign_windows }}
         run: |
           git clone https://github.com/dorisgyl/windows-binaries.git .github/workflows/object --depth 1
 
@@ -472,8 +473,10 @@ jobs:
           mkdir -p updates
           cp -a ../linux_update_manifest_x86_64/.  updates/
           cp -a ../linux_update_manifest_aarch64/.  updates/
-          cp -a ../.github/workflows/object/windows-x64-signed-x86_64/update_manifest/.  updates/
-          cp -a ../.github/workflows/object/windows-x64-signed-arm64/update_manifest/.  updates/
+          if [ "${{ inputs.sign_windows }}" = "true" ]; then
+            cp -a ../.github/workflows/object/windows-x64-signed-x86_64/update_manifest/.  updates/
+            cp -a ../.github/workflows/object/windows-x64-signed-arm64/update_manifest/.  updates/
+          fi
           cp -a ../macos_update_manifest/.  updates/
 
       - name: Commit
@@ -488,6 +491,27 @@ jobs:
         env:
           RELEASE_BRANCH: ${{ inputs.update_branch }}
         run: bash .github/workflows/src/generate_release_notes.sh
+
+      - name: Prepare Windows binaries for release
+        run: |
+          mkdir -p windows-release
+          if [ "${{ inputs.sign_windows }}" = "true" ]; then
+            # Signed binaries from windows-binaries repo
+            cp .github/workflows/object/windows-x64-signed-x86_64/zen.win-x86_64.zip windows-release/
+            cp .github/workflows/object/windows-x64-signed-arm64/zen.win-arm64.zip windows-release/
+            cp .github/workflows/object/windows-x64-signed-x86_64/windows.mar windows-release/
+            cp .github/workflows/object/windows-x64-signed-arm64/windows-arm64.mar windows-release/
+            cp .github/workflows/object/windows-x64-signed-x86_64/zen.installer.exe windows-release/
+            cp .github/workflows/object/windows-x64-signed-arm64/zen.installer-arm64.exe windows-release/
+          else
+            # Unsigned binaries from CI artifacts (already downloaded by actions/download-artifact)
+            cp zen.win-x86_64.zip/zen.win-x86_64.zip windows-release/ || true
+            cp zen.win-arm64.zip/zen.win-arm64.zip windows-release/ || true
+            cp windows.mar/windows.mar windows-release/ || true
+            cp windows-arm64.mar/windows-arm64.mar windows-release/ || true
+            cp zen.installer.exe/zen.installer.exe windows-release/ || true
+            cp zen.installer-arm64.exe/zen.installer-arm64.exe windows-release/ || true
+          fi
 
       - name: Release
         uses: softprops/action-gh-release@v2.2.2
@@ -507,15 +531,15 @@ jobs:
             ./zen-x86_64.AppImage.zsync/*
             ./zen-aarch64.AppImage/*
             ./zen-aarch64.AppImage.zsync/*
-            ./.github/workflows/object/windows-x64-signed-x86_64/zen.win-x86_64.zip
-            ./.github/workflows/object/windows-x64-signed-arm64/zen.win-arm64.zip
+            ./windows-release/zen.win-x86_64.zip
+            ./windows-release/zen.win-arm64.zip
             ./linux.mar/*
             ./linux-aarch64.mar/*
-            ./.github/workflows/object/windows-x64-signed-x86_64/windows.mar
-            ./.github/workflows/object/windows-x64-signed-arm64/windows-arm64.mar
+            ./windows-release/windows.mar
+            ./windows-release/windows-arm64.mar
             ./macos.mar/*
-            ./.github/workflows/object/windows-x64-signed-x86_64/zen.installer.exe
-            ./.github/workflows/object/windows-x64-signed-arm64/zen.installer-arm64.exe
+            ./windows-release/zen.installer.exe
+            ./windows-release/zen.installer-arm64.exe
             ./zen.macos-universal.dmg/*
 
   prepare-flatpak:

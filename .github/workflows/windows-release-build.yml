@@ -328,3 +328,27 @@ jobs:
           name: windows-x64-obj-${{ matrix.arch == 'aarch64' && 'arm64' || matrix.arch }}
           path: obj-${{ matrix.arch }}-pc-windows-msvc
 
+      - name: Upload Windows zip
+        if: ${{ !inputs.generate-gpo }}
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 5
+          name: zen.win-${{ matrix.arch == 'aarch64' && 'arm64' || matrix.arch }}.zip
+          path: ./zen.win-${{ matrix.arch == 'aarch64' && 'arm64' || matrix.arch }}.zip
+
+      - name: Upload Windows installer
+        if: ${{ !inputs.generate-gpo }}
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 5
+          name: zen.installer${{ matrix.arch == 'aarch64' && '-arm64' || '' }}.exe
+          path: ./zen.installer${{ matrix.arch == 'aarch64' && '-arm64' || '' }}.exe
+
+      - name: Upload Windows MAR
+        if: ${{ !inputs.generate-gpo }}
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 5
+          name: windows${{ matrix.arch == 'aarch64' && '-arm64' || '' }}.mar
+          path: ./windows${{ matrix.arch == 'aarch64' && '-arm64' || '' }}.mar
+
