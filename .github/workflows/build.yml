@@ -98,30 +98,6 @@ jobs:
             echo ">>> Branch matches"
           fi
 
-  start-self-host:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download aws-cli
-        if: ${{ inputs.create_release && inputs.update_branch == 'release' }}
-        run: |
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
-          sudo ./aws/install --update
-
-      - name: Start self-hosted runner
-        if: ${{ inputs.create_release && inputs.update_branch == 'release' }}
-        run: |
-          echo "Starting self-hosted runner"
-          echo "${{ secrets.SELF_HOSTED_RUNNER_START_SCRIPT }}" | base64 -d > start.sh
-          sudo chmod +x start.sh
-          bash ./start.sh
-
-      - name: Remove self-hosted runner script
-        if: always() && ${{ inputs.create_release && inputs.update_branch == 'release' }}
-        run: |
-          echo "Removing self-hosted runner script"
-          rm start.sh || true
-
   build-data:
     permissions:
       contents: write
@@ -315,7 +291,7 @@ jobs:
     permissions:
       contents: write
     secrets: inherit
-    needs: [build-data, windows-step-2, start-self-host, buildid]
+    needs: [build-data, windows-step-2, buildid]
     with:
       build-version: ${{ needs.build-data.outputs.version }}
       generate-gpo: false
@@ -329,7 +305,7 @@ jobs:
     permissions:
       contents: write
     secrets: inherit
-    needs: [build-data, start-self-host, buildid]
+    needs: [build-data, buildid]
     with:
       build-version: ${{ needs.build-data.outputs.version }}
       release-branch: ${{ inputs.update_branch }}
@@ -441,32 +417,6 @@ jobs:
           name: zen-${{ matrix.arch }}.AppImage.zsync
           path: ./dist/zen-${{ matrix.arch }}.AppImage.zsync
 
-  stop-self-hosted:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    needs: [windows-step-3, linux]
-    if: always()
-    steps:
-      - name: Download aws-cli
-        if: ${{ inputs.create_release && inputs.update_branch == 'release' }}
-        run: |
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
-          sudo ./aws/install --update
-
-      - name: Stop self-hosted runner
-        if: ${{ inputs.create_release && inputs.update_branch == 'release' }}
-        run: |
-          echo "Stopping self-hosted runner"
-          echo "${{ secrets.SELF_HOSTED_RUNNER_STOP_SCRIPT }}" | base64 -d > stop.sh
-          sudo chmod +x stop.sh
-          bash ./stop.sh > /dev/null
-
-      - name: Remove self-hosted runner script
-        if: always() && ${{ inputs.create_release && inputs.update_branch == 'release' }}
-        run: |
-          echo "Removing self-hosted runner script"
-          rm stop.sh || true
-
   release:
     if: ${{ inputs.create_release || inputs.update_branch == 'twilight' }}
     permissions: write-all
@@ -481,7 +431,6 @@ jobs:
         appimage,
         source,
         lint,
-        stop-self-hosted,
       ]
     runs-on: blacksmith-2vcpu-ubuntu-2404
     environment:
