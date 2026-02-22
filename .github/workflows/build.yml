@@ -20,7 +20,16 @@ on:
         type: 'choice'
         options:
           - 'release'
-          - 'twilight'
+      build_flatpak:
+        description: 'Build Flatpak package'
+        required: false
+        default: false
+        type: 'boolean'
+      sign_windows:
+        description: 'Use signed Windows binaries (requires manual signing step)'
+        required: false
+        default: false
+        type: 'boolean'
       use-sccache:
         description: 'Use sccache'
         required: true
@@ -43,6 +52,16 @@ on:
         required: true
         default: 'release'
         type: 'string'
+      build_flatpak:
+        description: 'Build Flatpak package'
+        required: false
+        default: false
+        type: 'boolean'
+      sign_windows:
+        description: 'Use signed Windows binaries (requires manual signing step)'
+        required: false
+        default: false
+        type: 'boolean'
       use-sccache:
         description: 'Use sccache'
         required: true
@@ -85,12 +104,7 @@ jobs:
           git branch
           git status
           git branch --show-current
-          branch="${{ inputs.update_branch }}"
-          if [[ $branch == "twilight" ]]; then
-            branch="dev"
-          elif [[ $branch == "release" ]]; then
-            branch="stable"
-          fi
+          branch="stable"
           if [[ $(git branch --show-current) != $branch ]]; then
             echo ">>> Branch mismatch"
           # exit 1
@@ -129,12 +143,12 @@ jobs:
           npm i -g @zen-browser/surfer
 
       - name: Bump version
-        if: ${{ inputs.update_version && inputs.update_branch == 'release' }}
+        if: ${{ inputs.update_version }}
         run: |
           npm run surfer -- ci --brand ${{ inputs.update_branch }} --bump prerelease
 
       - name: Bump version without new version
-        if: ${{ !inputs.update_version || inputs.update_branch == 'twilight' }}
+        if: ${{ !inputs.update_version }}
         run: |
           npm run surfer -- ci --brand ${{ inputs.update_branch }}
 
@@ -377,11 +391,6 @@ jobs:
           cp configs/branding/${{ inputs.update_branch }}/logo128.png build/AppDir/usr/share/icons/hicolor/128x128/apps/zen.png
           cp configs/branding/${{ inputs.update_branch }}/logo128.png build/AppDir/zen.png && ln -s zen.png build/AppDir/.DirIcon
 
-          if [ "${{ inputs.update_branch }}" = "twilight" ]; then
-            sed -i -e 's/Name=Zen Browser/Name=Zen Twilight/g' build/AppDir/zen.desktop
-            sed -i -e 's/StartupWMClass=zen/StartupWMClass=zen-twilight/g' build/AppDir/zen.desktop
-          fi
-
           APPDIR=build/AppDir
           tar -xvf *.tar.* && rm -rf *.tar.*
           mv zen/* $APPDIR/
@@ -418,7 +427,7 @@ jobs:
           path: ./dist/zen-${{ matrix.arch }}.AppImage.zsync
 
   release:
-    if: ${{ inputs.create_release || inputs.update_branch == 'twilight' }}
+    if: ${{ inputs.create_release }}
     permissions: write-all
     name: Release
     needs:
@@ -434,7 +443,7 @@ jobs:
       ]
     runs-on: blacksmith-2vcpu-ubuntu-2404
     environment:
-      name: ${{ inputs.update_branch == 'release' && 'Deploy-Release' || 'Deploy-Twilight' }}
+      name: Deploy-Release
 
     steps:
       - name: Checkout repository
@@ -454,27 +463,17 @@ jobs:
           token: ${{ secrets.DEPLOY_KEY }}
 
       - name: Download object files
-        if: ${{ inputs.update_branch == 'release' }}
         run: |
           git clone https://github.com/zen-browser/windows-binaries.git .github/workflows/object --depth 1
 
       - name: Copy update manifests
-        env:
-          RELEASE_BRANCH: ${{ inputs.update_branch }}
         run: |
           cd updates-server
           mkdir -p updates
           cp -a ../linux_update_manifest_x86_64/.  updates/
           cp -a ../linux_update_manifest_aarch64/.  updates/
-
-          if [[ $RELEASE_BRANCH == 'release' ]]; then
-            cp -a ../.github/workflows/object/windows-x64-signed-x86_64/update_manifest/.  updates/
-            cp -a ../.github/workflows/object/windows-x64-signed-arm64/update_manifest/.  updates/
-          else
-            cp -a ../windows_update_manifest_x86_64/.  updates/
-            cp -a ../windows_update_manifest_arm64/.  updates/
-          fi
-
+          cp -a ../.github/workflows/object/windows-x64-signed-x86_64/update_manifest/.  updates/
+          cp -a ../.github/workflows/object/windows-x64-signed-arm64/update_manifest/.  updates/
           cp -a ../macos_update_manifest/.  updates/
 
       - name: Commit
@@ -490,43 +489,8 @@ jobs:
           RELEASE_BRANCH: ${{ inputs.update_branch }}
         run: bash .github/workflows/src/generate_release_notes.sh
 
-        # If we are on Twilight, we want to just update the Twilight tag's release
-      - name: Update Twilight tag
-        if: ${{ inputs.update_branch == 'twilight' }}
-        uses: softprops/action-gh-release@v2.2.2
-        with:
-          body_path: release_notes.md
-          files: |
-            ./zen.source.tar.zst/*
-            ./zen.linux-x86_64.tar.xz/*
-            ./zen.linux-aarch64.tar.xz/*
-            ./zen-x86_64.AppImage/*
-            ./zen-x86_64.AppImage.zsync/*
-            ./zen-aarch64.AppImage/*
-            ./zen-aarch64.AppImage.zsync/*
-            ./zen.win-x86_64.zip/*
-            ./zen.win-arm64.zip/*
-            ./linux.mar/*
-            ./linux-aarch64.mar/*
-            ./windows.mar/*
-            ./windows-arm64.mar/*
-            ./macos.mar/*
-            ./zen.installer.exe/*
-            ./zen.installer-arm64.exe/*
-            ./zen.macos-universal.dmg/*
-          tag_name: 'twilight'
-          name: 'Twilight build - ${{ needs.build-data.outputs.version }} (${{ needs.build-data.outputs.build_date }} at ${{ needs.build-data.outputs.build_time }})'
-          draft: false
-          generate_release_notes: false
-          prerelease: true
-          token: ${{ secrets.DEPLOY_KEY }}
-          fail_on_unmatched_files: false
-        env:
-          GITHUB_REPOSITORY: ${{ github.repository }}
-
       - name: Release
         uses: softprops/action-gh-release@v2.2.2
-        if: ${{ inputs.update_branch == 'release' }}
         with:
           token: ${{ secrets.DEPLOY_KEY }}
           tag_name: ${{ needs.build-data.outputs.version }}
@@ -555,7 +519,7 @@ jobs:
             ./zen.macos-universal.dmg/*
 
   prepare-flatpak:
-    if: ${{ inputs.create_release && inputs.update_branch == 'release' }}
+    if: ${{ inputs.create_release && inputs.build_flatpak }}
     permissions: write-all
     name: Prepare Flatpak
     needs: [release, linux, build-data]
@@ -614,7 +578,7 @@ jobs:
         run: sleep 120
 
   release-flatpak:
-    if: ${{ inputs.create_release && inputs.update_branch == 'release' }}
+    if: ${{ inputs.create_release && inputs.build_flatpak }}
     permissions: write-all
     name: Release Flatpak
     needs: [prepare-flatpak, build-data]
