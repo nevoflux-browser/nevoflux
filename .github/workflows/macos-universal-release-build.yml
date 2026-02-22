@@ -132,7 +132,7 @@ jobs:
       - name: Find first .app folder name
         run: |
           cd engine/obj-x86_64-apple-darwin/dist
-          export APP_NAME=${{ inputs.release-branch == 'twilight' && 'Twilight' || 'Zen' }}
+          export APP_NAME='Zen'
           echo "APP_NAME=$APP_NAME" >> $GITHUB_ENV
           echo "APP_NAME=$APP_NAME"
 
