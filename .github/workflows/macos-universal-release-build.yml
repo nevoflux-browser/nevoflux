@@ -37,10 +37,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        # note: This will use the version defined in '.python-version' by default
-
       - name: Setup Git
         run: |
           git config --global user.email "mauro-balades@users.noreply.github.com"
