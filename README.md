@@ -5,357 +5,297 @@
    -->
 
 <p align="center">
-  <img src="./docs/assets/nevoflux-logo.svg" width="120px" alt="nevoflux Logo">
+  <img src="./docs/assets/nevoflux-logo.svg" width="120px" alt="Nevoflux Logo">
 </p>
 
-<h1 align="center">nevoflux</h1>
+<h1 align="center">Nevoflux</h1>
 
 <p align="center">
-  <strong>AI-powered agentic browser built on Zen Browser for autonomous web navigation and intelligent task automation</strong>
+  <em>"Don't Just Browse. Command."</em>
 </p>
 
 <p align="center">
-  <a href="https://github.com/user/nevoflux/releases">
-    <img src="https://img.shields.io/github/downloads/user/nevoflux/total.svg" alt="Downloads">
+  <strong>The AI-native browser that acts as your agentic companion.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/dorisgyl/nevoflux/actions/workflows/build.yml">
+    <img src="https://github.com/dorisgyl/nevoflux/actions/workflows/build.yml/badge.svg" alt="Build Status">
   </a>
-  <a href="https://github.com/user/nevoflux/actions/workflows/build.yml">
-    <img src="https://github.com/user/nevoflux/actions/workflows/build.yml/badge.svg" alt="Build Status">
-  </a>
-  <a href="https://github.com/user/nevoflux/blob/main/LICENSE">
+  <a href="https://github.com/dorisgyl/nevoflux/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-MPL--2.0-blue.svg" alt="License">
   </a>
-  <a href="https://github.com/user/nevoflux/stargazers">
-    <img src="https://img.shields.io/github/stars/user/nevoflux?style=social" alt="Stars">
+  <a href="https://github.com/dorisgyl/nevoflux/stargazers">
+    <img src="https://img.shields.io/github/stars/dorisgyl/nevoflux?style=social" alt="Stars">
   </a>
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> •
-  <a href="#installation">Installation</a> •
-  <a href="#plugins">Plugins</a> •
-  <a href="#documentation">Documentation</a> •
+  <a href="#highlights">Highlights</a> &middot;
+  <a href="#three-execution-modes">Modes</a> &middot;
+  <a href="#getting-started">Getting Started</a> &middot;
+  <a href="#architecture">Architecture</a> &middot;
   <a href="#contributing">Contributing</a>
 </p>
 
 ---
 
-## What is nevoflux?
+## What is Nevoflux?
 
-**nevoflux** is an AI-native agentic browser that combines the power of [Zen Browser](https://zen-browser.app/) with autonomous AI agents. It enables intelligent task automation, autonomous web navigation, and seamless human-AI collaboration — all within a beautiful, productivity-focused browser.
+**Nevoflux** is not just another browser. It's your personal AI companion that lives in your browser — it has its own identity, its own soul, and it learns from every interaction with you.
+
+Built on [Zen Browser](https://zen-browser.app/) (Firefox/Gecko), Nevoflux bridges the gap between you, AI, and the internet. It browses with you, thinks with you, and acts for you — from simple conversations to autonomous web navigation and full computer control.
+
+Under the hood: a Rust-native agent daemon with 16+ LLM providers, 80+ browser automation APIs, cross-platform computer control, MCP integration, and an encrypted cross-session memory system.
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    nevoflux                         │
-│                                                     │
-│   User Intent  ──►  Agent Plugins  ──►  Results    │
-│                         │                           │
-│                   Human in the Loop                 │
-│                                                     │
-└─────────────────────────────────────────────────────┘
+User ──► Sidebar UI ──► Browser Extension ──► Native Messaging ──► Rust Agent Daemon
+                                                                       ├── LLM (16+ providers)
+                                                                       ├── Browser Control (80+ APIs)
+                                                                       ├── Computer Control
+                                                                       ├── MCP (Server + Client)
+                                                                       ├── Memory & Learning
+                                                                       └── WASM Skills
 ```
-
-### Why nevoflux?
-
-- 🚀 **Built on Zen Browser** — Inherit all productivity features from Zen, powered by Firefox/Gecko
-- 🤖 **Autonomous Agents** — AI agents that can browse, click, type, and complete tasks for you
-- 🔌 **Extensible Plugin System** — Build custom agents with WASM plugins
-- 🔓 **Model Freedom** — Choose any LLM provider (OpenAI, Anthropic, local models, etc.)
-- 👤 **Human in the Loop** — Stay in control at critical decision points
-- 🏢 **Enterprise Ready** — Zero-trust architecture for corporate deployments
 
 ---
 
-## Features
+## Highlights
 
-### 🤖 Agentic Capabilities
+- 🧬 **Identity & Soul** — Your companion has its own personality, values, and behavioral patterns that evolve over time
+- 🧠 **Memory & Learning** — Remembers across sessions, learns your preferences, adapts to how you work — with encrypted storage
+- 🎛️ **Progressive Autonomy** — Three modes (Chat, Browser, Agent) — you decide how much control to hand over
+- ⚡ **Micro Apps** — Generate fully functional mini-apps on the fly — not just rendered artifacts, but living apps with full agent capabilities (browser automation, native tools, MCP services). Think Claude Artifacts, but alive.
+- 🧩 **WASM Skills** — Extensible skill system powered by WebAssembly — sandboxed, pluggable, and progressively loaded
+- 🖥️ **Browser + Computer Control** — 80+ browser APIs and cross-platform desktop control (screenshot, mouse, keyboard)
+- 🤖 **Multi-LLM Freedom** — 16+ providers: Anthropic, OpenAI, Qwen, DeepSeek, Gemini, Ollama, and more — your choice
 
-- **Autonomous Web Navigation** — AI agents that understand web pages and interact intelligently
-- **Intelligent Task Automation** — Automate repetitive tasks with natural language instructions
-- **WASM Plugin System** — Build custom agents using Rust, Go, TypeScript, or any WASM-compatible language
-- **Capability-based Security** — Plugins have no inherent privileges; all capabilities require browser authorization
-- **Dual Control Loop** — Plugins control agent logic while the browser acts as a gatekeeper
+---
 
-### 🔗 Protocol Support
+## Three Execution Modes
 
-- **MCP (Model Context Protocol)** — Connect to external data sources and tools
-- **A2A (Agent-to-Agent)** — Enable collaboration between multiple agents
+Nevoflux uses progressive capability unlocking — each mode builds on the previous one, giving you control over how much autonomy your companion has.
 
-### 👁️ Human in the Loop
+**Chat** — Talk to your companion. Ask questions, search the web, let it read what's on your screen.
 
-Four types of human intervention, all supported:
+**Browser** — Let it take the wheel. It clicks, types, navigates, and fills forms for you.
 
-| Type | Description |
+**Agent** — Full autonomy. File operations, shell commands, computer control, sub-agents — your companion handles complex multi-step tasks end-to-end.
+
+| Mode | Capabilities |
 |------|-------------|
-| **Security Approval** | Confirm sensitive operations |
-| **Quality Control** | Review AI-generated content before proceeding |
-| **Decision Branch** | Choose between multiple options |
-| **Error Intervention** | Correct agent when it's stuck or off-track |
-
-### 🌐 Zen Browser Foundation
-
-Built on [Zen Browser](https://zen-browser.app/), which is based on Firefox:
-
-- 🎨 Beautiful, modern UI designed for productivity
-- ⚡ Fast and efficient, powered by Gecko engine
-- 🔒 Privacy-focused with Firefox's security features
-- 🧩 Full Firefox extension compatibility
-- 💻 Cross-platform (Windows, macOS, Linux)
+| **Chat** | LLM reasoning, memory, web search, read-only browser access |
+| **Browser** | Chat + click, type, navigate, fill forms, interact with pages |
+| **Agent** | Browser + file ops, shell commands, computer control, MCP, sub-agents |
 
 ---
 
-## Installation
+## Supported LLM Providers
 
-### Download
+| Provider | Type | Notes |
+|----------|------|-------|
+| Anthropic Claude | API | Default (claude-sonnet-4) |
+| OpenAI | API | GPT-4o series |
+| Google Gemini | API | Up to 1M context window |
+| Qwen (通义千问) | API | DashScope integration |
+| DeepSeek | API | |
+| Ollama | Local | Run local models |
+| Groq | API | |
+| Mistral | API | |
+| XAi | API | |
+| Cohere | API | |
+| Perplexity | API | |
+| Together | API | |
+| OpenRouter | API | |
+| Claude Code | CLI | Subprocess integration |
+| Gemini CLI | CLI | Subprocess integration |
 
-> 🚧 **Coming Soon** — nevoflux is currently in active development.
+Configure your preferred provider in `~/.config/nevoflux/config.toml`:
 
-<!--
-| Platform | Download |
-|----------|----------|
-| Windows  | [nevoflux-win-x64.exe](#) |
-| macOS    | [nevoflux-macos-arm64.dmg](#) |
-| Linux    | [nevoflux-linux-x64.AppImage](#) |
--->
+```toml
+[llm]
+active_provider = "anthropic"
+default_model = "claude-sonnet-4-20250514"
+```
 
-### Build from Source
+---
+
+## Getting Started
+
+Nevoflux consists of two components: **the browser** (this repository) and the **Rust native agent** ([nevoflux-agent](https://github.com/dorisgyl/nevoflux-agent)). Both are needed for full functionality.
+
+### Browser
 
 ```bash
-# Clone the repository
-git clone https://github.com/user/nevoflux.git
+# Prerequisites: Node.js 22+, npm, Python 3
+
+git clone https://github.com/dorisgyl/nevoflux.git
 cd nevoflux
 
-# Install dependencies (requires Node.js 18+, npm, Python 3)
 npm install
-
-# Download and bootstrap Zen Browser dependencies
 npm run download
 npm run bootstrap
-
-# Import patches and overlays to src/zen/
 npm run import
-
-# Build the browser (this takes a while on first run)
 npm run build
-
-# Run the browser
 npm run start
 ```
 
----
-
-## Plugins
-
-nevoflux's power comes from its extensible plugin system. Plugins are WASM components that can:
-
-- Control browser actions (navigate, click, type, read DOM)
-- Call LLM APIs through a unified interface
-- Access external resources via MCP
-- Collaborate with other plugins via A2A
-
-### Example Plugin
-
-```rust
-// A simple agent that searches and summarizes
-use nevoflux_sdk::prelude::*;
-
-#[nevoflux_plugin]
-fn run(ctx: &mut Context) -> Result<()> {
-    // Read user intent
-    let query = ctx.input("What would you like to research?")?;
-    
-    loop {
-        // Request permission for next iteration
-        ctx.request_iteration()?;
-        
-        // Observe the page
-        let page_content = ctx.browser().get_page_content()?;
-        
-        // Think with LLM
-        let action = ctx.llm().chat(&[
-            Message::system("You are a research assistant..."),
-            Message::user(&format!("Query: {}\nPage: {}", query, page_content)),
-        ])?;
-        
-        // Execute action
-        match action.action_type {
-            ActionType::Search(q) => ctx.browser().navigate(&format!("https://google.com/search?q={}", q))?,
-            ActionType::Click(selector) => ctx.browser().click(&selector)?,
-            ActionType::Done(summary) => {
-                ctx.output(&summary)?;
-                break;
-            }
-        }
-    }
-    
-    Ok(())
-}
-```
-
-### Plugin Development
+### Native Agent
 
 ```bash
-# Install the nevoflux plugin CLI
-cargo install nevoflux-cli
+# Prerequisites: Rust 1.75+
 
-# Create a new plugin project
-nevoflux new my-agent
+git clone https://github.com/dorisgyl/nevoflux-agent.git
+cd nevoflux-agent
 
-# Build the plugin
-cd my-agent
-nevoflux build
-
-# Install locally for testing
-nevoflux install ./target/my-agent.wasm
+cargo build --release
 ```
 
-📖 See the [Plugin Development Guide](./docs/plugins/README.md) for more details.
+Then register the native messaging host:
+
+```bash
+# From the nevoflux (browser) repo
+./scripts/setup-native-host.sh
+```
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         nevoflux                                │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                    Plugin Runtime                        │   │
-│  │   ┌─────────┐  ┌─────────┐  ┌─────────┐                │   │
-│  │   │Plugin A │  │Plugin B │  │Plugin C │  (WASM)        │   │
-│  │   └────┬────┘  └────┬────┘  └────┬────┘                │   │
-│  └────────┼────────────┼────────────┼──────────────────────┘   │
-│           │            │            │                           │
-│  ┌────────▼────────────▼────────────▼──────────────────────┐   │
-│  │              Capability Interface (WIT)                  │   │
-│  │   DOM │ LLM │ Network │ Files │ HITL │ MCP │ A2A       │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                              │                                  │
-│  ┌───────────────────────────┴──────────────────────────────┐  │
-│  │                   Zen Browser Core                        │  │
-│  │                  (Firefox / Gecko Engine)                 │  │
-│  └───────────────────────────────────────────────────────────┘  │
-│                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                   Zen Browser UI                          │  │
-│  │    (Sidebar, Split View, Workspaces, Compact Mode)        │  │
-│  └──────────────────────────────────────────────────────────┘  │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                       Entry Layer                                    │
+│                                                                      │
+│  Browser Extension        Claude Code (MCP)        CLI               │
+│  (Native Messaging)       (stdio JSON-RPC)         (--daemon/--mcp)  │
+│         │                       │                        │           │
+└─────────┼───────────────────────┼────────────────────────┼───────────┘
+          │                       │                        │
+          └───────────────────────┼────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Daemon Layer (ZeroMQ ROUTER)                       │
+│                                                                      │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────┐  ┌────────────┐ │
+│  │ Agent Engine │  │ Context      │  │ Session    │  │ Permission │ │
+│  │ (50 iter max)│  │ Builder      │  │ Manager    │  │ Enforcer   │ │
+│  └──────┬───────┘  └──────────────┘  └────────────┘  └────────────┘ │
+│         │                                                            │
+│  ┌──────▼────────────────────────────────────────────────────────┐  │
+│  │                    Backend Services                            │  │
+│  │  LLM Providers │ Browser Tools │ Computer │ WASM │ MCP │ Memory│ │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                      │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │               SQLite Storage (WAL mode, encrypted)             │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Crate Structure
+
+The native agent is organized as a Rust workspace with 10 crates:
+
+```
+nevoflux-agent/
+├── nevoflux-daemon        # Core daemon (agent engine, session, memory, permissions, WASM runtime)
+├── nevoflux-bridge        # Proxy bridges (Native Messaging, MCP)
+├── nevoflux-protocol      # Message types and serialization (MessagePack + JSON)
+├── nevoflux-llm           # LLM provider abstraction (via rig-core)
+├── nevoflux-storage       # SQLite persistence (sessions, messages, memory, permissions)
+├── nevoflux-mcp           # MCP server + client integration
+├── nevoflux-computer      # Cross-platform computer control (X11, macOS, Windows)
+├── nevoflux-skills        # WASM skill loading and management
+├── nevoflux-builtin-wasm  # Built-in WASM agent module
+└── nevoflux-testing       # Test infrastructure (mocks, builders, helpers)
 ```
 
 ---
 
-## Roadmap
+## MCP Integration
 
-| Phase | Status | Description |
-|-------|--------|-------------|
-| Phase 0 | 🔨 In Progress | Foundation — Zen Browser integration, WASM runtime setup |
-| Phase 1 | ⏳ Planned | MVP — Complete agent loop, LLM integration, demo plugin |
-| Phase 2 | ⏳ Planned | Plugin ecosystem — Packaging, management UI, developer docs |
-| Phase 3 | ⏳ Planned | Protocol integration — MCP client, A2A hub |
-| Phase 4 | ⏳ Planned | Full browser — Enhanced Zen features with agentic capabilities |
-| Phase 5 | ⏳ Planned | Enterprise — SSO, audit logs, policy management |
+Nevoflux plays a dual role in the MCP ecosystem:
 
----
+- **As MCP Server** — Exposes 23+ tools (browser, computer, agent) to external clients like Claude Code
+- **As MCP Client** — Connects to external MCP servers (filesystem, GitHub, and more)
 
-## Comparison
+```toml
+# ~/.config/nevoflux/mcp-servers.toml
 
-| Feature | nevoflux | Traditional Browsers | Other AI Browsers |
-|---------|----------|---------------------|-------------------|
-| Autonomous Agents | ✅ | ❌ | ⚠️ Limited |
-| Custom Agent Plugins | ✅ WASM | ❌ | ❌ |
-| Human in the Loop | ✅ 4 types | ❌ | ⚠️ Basic |
-| Model Freedom | ✅ Any LLM | ❌ | ❌ Vendor-locked |
-| MCP Support | ✅ | ❌ | ❌ |
-| A2A Protocol | ✅ | ❌ | ❌ |
-| Firefox Extensions | ✅ | ✅ Firefox only | ❌ |
-| Privacy-focused | ✅ | ⚠️ Varies | ⚠️ Varies |
-| Open Source | ✅ | ⚠️ Varies | ❌ Most |
+[servers.filesystem]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"]
+
+[servers.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+env = { GITHUB_TOKEN = "..." }
+```
 
 ---
 
-## Documentation
+## Security & Permissions
 
-- 📖 [User Guide](./docs/user-guide/README.md)
-- 🔌 [Plugin Development](./docs/plugins/README.md)
-- 🏗️ [Architecture](./docs/architecture/README.md)
-- 🔧 [API Reference](./docs/api/README.md)
-- 🏢 [Enterprise Deployment](./docs/enterprise/README.md)
+Nevoflux uses a **default-deny** permission model. Every sensitive action requires explicit approval.
+
+- **Human-in-the-loop** — Security approval, quality control, decision branching, and error intervention
+- **Sensitive path blocklist** — `.ssh/`, `.gnupg/`, `.aws/credentials`, and other critical paths are always blocked
+- **Permission scopes** — Grant access once, for the session, or permanently
+- **Encrypted storage** — Memory and knowledge data encrypted with AES-256-GCM
+
+---
+
+## Configuration
+
+```toml
+# ~/.config/nevoflux/config.toml
+
+[daemon]
+port_range_start = 19500
+idle_timeout_secs = 1800          # 30 min idle shutdown
+
+[llm]
+active_provider = "anthropic"
+default_model = "claude-sonnet-4-20250514"
+max_tokens = 4096
+temperature = 0.7
+
+[session]
+max_sessions = 500
+inactive_cleanup_days = 90
+
+[storage]
+max_size_mb = 1024
+wal_mode = true
+```
+
+API keys are resolved in order: environment variables → system keychain → config file.
 
 ---
 
 ## Contributing
 
-nevoflux is an open-source project, and we welcome contributions from the community!
+Nevoflux is open source and welcomes contributions.
 
-- 🐛 **Bug Reports** — [GitHub Issues](https://github.com/user/nevoflux/issues)
-- 💡 **Feature Requests** — [GitHub Discussions](https://github.com/user/nevoflux/discussions)
-- 🔧 **Code Contributions** — See [CONTRIBUTING.md](./CONTRIBUTING.md)
-
-### Development Setup
-
-```bash
-# Prerequisites: Node.js 18+, npm, Python 3, Rust (for native agent)
-
-# Clone and setup
-git clone https://github.com/user/nevoflux.git
-cd nevoflux
-npm install
-npm run download
-npm run bootstrap
-
-# Apply patches and overlays to src/zen/
-npm run import
-
-# Run the browser
-npm run start
-
-# Run tests
-npm run test
-```
+- **Bug Reports** — [GitHub Issues](https://github.com/dorisgyl/nevoflux/issues)
+- **Feature Requests** — [GitHub Discussions](https://github.com/dorisgyl/nevoflux/discussions)
+- **Code Contributions** — See [CONTRIBUTING.md](./CONTRIBUTING.md)
 
 ### Development Workflow
 
-nevoflux uses a **patch-based system** for customizing Zen Browser. The `src/zen/` directory contains the upstream Zen code, and customizations are stored as patches in `src/nevoflux/`.
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  npm run import                                             │
-│      ↓                                                      │
-│  Develop & Test (src/zen/ has patches + overlays applied)   │
-│      ↓                                                      │
-│  git commit                                                 │
-│      ↓                                                      │
-│  [pre-commit] Auto-revert src/zen/                          │
-│      ↓                                                      │
-│  Commit succeeds                                            │
-│      ↓                                                      │
-│  [post-commit] Auto-restore src/zen/                        │
-│      ↓                                                      │
-│  Continue development                                       │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**Key points:**
-- **Never commit changes directly to `src/zen/`** — all customizations go through patches
-- Git hooks automatically handle `src/zen/` cleanup and restoration
-- After first `npm run import`, you can develop and commit freely
-
-### Modifying Zen Browser Code
-
-If you need to modify Zen Browser code:
+Nevoflux uses a **patch-based system** for customizing Zen Browser. The `engine/` directory is regenerated from upstream + patches — never edit it directly.
 
 ```bash
-# 1. Make changes in src/zen/
-# 2. Test your changes
-# 3. Export as patches
-./scripts/export-nevoflux-patches.sh
+# Development cycle
+npm run import          # Apply patches/overlays
+# ... make changes in src/zen/ ...
+npm run build:ui        # Quick UI rebuild
+npm run start           # Test in browser
 
-# 4. Revert src/zen/ (or just commit - hooks will auto-revert)
-./scripts/revert-zen-changes.sh
-
-# 5. Commit the patches
+# Before committing
+./scripts/export-nevoflux-patches.sh    # Export changes as patches
+./scripts/revert-zen-changes.sh         # Revert src/zen/
 git add src/nevoflux/patches/
 git commit -m "patch(feature): description"
 ```
@@ -364,11 +304,11 @@ git commit -m "patch(feature): description"
 
 | Command | Description |
 |---------|-------------|
-| `npm run import` | Apply patches and overlays to src/zen/ |
+| `npm run import` | Apply patches and overlays |
 | `npm run build` | Full browser build |
 | `npm run build:ui` | UI-only rebuild (faster) |
 | `npm run start` | Launch the browser |
-| `npm run reload-ext` | Reload extension (packages + clears caches) |
+| `npm run reload-ext` | Reload extension + clear caches |
 | `npm run test` | Run tests |
 | `npm run lint` | Run ESLint/Prettier |
 
@@ -376,31 +316,21 @@ git commit -m "patch(feature): description"
 
 ## Acknowledgments
 
-nevoflux is built on the shoulders of giants:
-
-- [Zen Browser](https://zen-browser.app/) — The beautiful, productivity-focused browser that serves as our foundation
-- [Firefox](https://www.mozilla.org/firefox/) — The open-source browser engine (Gecko)
-- [Wasmtime](https://wasmtime.dev/) — WebAssembly runtime for plugin execution
-- [Model Context Protocol](https://modelcontextprotocol.io/) — Protocol for AI-tool integration
-
----
-
-## Community
-
-- 💬 [Discord](https://discord.gg/nevoflux) (Coming Soon)
-- 🐦 [Twitter](https://twitter.com/nevoflux) (Coming Soon)
-- 📧 [Mailing List](mailto:dev@nevoflux.app) (Coming Soon)
+- [Zen Browser](https://zen-browser.app/) — The productivity-focused browser that serves as our foundation
+- [Firefox](https://www.mozilla.org/firefox/) — The open-source Gecko engine
+- [Wasmtime](https://wasmtime.dev/) — WebAssembly runtime
+- [Model Context Protocol](https://modelcontextprotocol.io/) — AI-tool integration protocol
 
 ---
 
 ## License
 
-nevoflux is licensed under the [Mozilla Public License 2.0](./LICENSE).
+Nevoflux is licensed under the [Mozilla Public License 2.0](./LICENSE).
 
 ---
 
 <p align="center">
-  <strong>nevoflux</strong> — AI-powered browsing for the autonomous future.
+  <strong>Nevoflux</strong> — Don't Just Browse. Command.
 </p>
 
 ---
