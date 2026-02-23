@@ -154,6 +154,17 @@ jobs:
           ./mach --no-interactive bootstrap --application-choice browser
           cd ..
 
+      - name: Pin Rust version after bootstrap
+        run: |
+          source $HOME/.cargo/env
+          rustup default $(cat .rust-toolchain)
+          rustc --version
+          if test "${{ matrix.arch }}" = "aarch64"; then
+            rustup target add aarch64-unknown-linux-gnu
+          else
+            rustup target add x86_64-unknown-linux-gnu
+          fi
+
       - name: Insert API Keys
         run: |
           mkdir -p ~/.zen-keys
