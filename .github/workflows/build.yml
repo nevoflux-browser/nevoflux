@@ -30,6 +30,11 @@ on:
         required: false
         default: false
         type: 'boolean'
+      sign_macos:
+        description: 'Sign macOS builds (requires Apple certificates)'
+        required: false
+        default: false
+        type: 'boolean'
       use-sccache:
         description: 'Use sccache'
         required: true
@@ -59,6 +64,11 @@ on:
         type: 'boolean'
       sign_windows:
         description: 'Use signed Windows binaries (requires manual signing step)'
+        required: false
+        default: false
+        type: 'boolean'
+      sign_macos:
+        description: 'Sign macOS builds (requires Apple certificates)'
         required: false
         default: false
         type: 'boolean'
@@ -349,6 +359,7 @@ jobs:
     with:
       build-version: ${{ needs.build-data.outputs.version }}
       release-branch: ${{ inputs.update_branch }}
+      sign_macos: ${{ inputs.sign_macos || false }}
 
   appimage:
     name: AppImage build - Linux ${{ matrix.arch }}

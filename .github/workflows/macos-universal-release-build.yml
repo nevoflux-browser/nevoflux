@@ -11,6 +11,11 @@ on:
         description: 'The branch to build'
         required: true
         type: string
+      sign_macos:
+        description: 'Sign macOS builds'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   mac-build:
@@ -60,7 +65,9 @@ jobs:
 
           brew install watchman
 
-          cargo install apple-codesign
+          if [ "${{ inputs.sign_macos }}" = "true" ]; then
+            cargo install apple-codesign
+          fi
 
       - name: Force usage of gnu-tar
         run: |
@@ -145,6 +152,7 @@ jobs:
           cd ../..
 
       - name: create .p12 for codesign 🖊️
+        if: ${{ inputs.sign_macos }}
         run: |
           cd engine
           echo "${{ secrets.macOS_CERTIFICATES_P12_For_App_BASE64 }}" > cert.txt
@@ -152,10 +160,12 @@ jobs:
           echo "${{ secrets.macOS_CERTIFICATES_P12_PASSWORD }}" > zenpCertPassword.passwd
 
       - name: Remove certificate sensitive information
+        if: ${{ inputs.sign_macos }}
         run: |
           rm engine/cert.txt || true
 
       - name: Import provisioning profile for .app
+        if: ${{ inputs.sign_macos }}
         run: |
           echo "${{ secrets.macOS_PROVISIONING_PROFILE }}" | base64 --decode > ./engine/Zen_Browser.provisionprofile
           ls -la
@@ -167,18 +177,21 @@ jobs:
           echo "Merged aaarch64 into x86_64!"
 
       - name: Import APPLE DEVELOPER ID CERTIFICATE for .app
+        if: ${{ inputs.sign_macos }}
         uses: Apple-Actions/import-codesign-certs@v3
         with:
           p12-file-base64: ${{ secrets.macOS_CERTIFICATES_P12_For_App_BASE64 }}
           p12-password: ${{ secrets.macOS_CERTIFICATES_P12_PASSWORD }}
 
       - name: Copy provisioning profile for .app (embedded in .app)
+        if: ${{ inputs.sign_macos }}
         run: |
           cd engine
           echo "Copying provisioning profile for .app on both architectures (${{ env.APP_NAME }})"
           cp ./Zen_Browser.provisionprofile "./embedded.provisionprofile"
 
       - name: Sign .app
+        if: ${{ inputs.sign_macos }}
         run: |
           cd engine
           # TODO: Change it to "production" once we figure out the issue with the webauth
@@ -195,10 +208,12 @@ jobs:
             ./obj-x86_64-apple-darwin/dist/ ../zen-macOS-universal-temp.dmg
 
       - name: Remove sensitive information
+        if: ${{ inputs.sign_macos }}
         run: |
           rm -f ./engine/Zen_Browser.provisionprofile
 
       - name: Sign .dmg
+        if: ${{ inputs.sign_macos }}
         run: |
           set -ex
           hdiutil convert zen-macOS-universal-temp.dmg -format UDZO -imagekey zlib-level=9 -o zen.macos-universal.dmg
@@ -210,6 +225,12 @@ jobs:
             --no-s3-acceleration \
             --wait
           xcrun stapler staple "zen.macos-universal.dmg"
+
+      - name: Create unsigned DMG
+        if: ${{ !inputs.sign_macos }}
+        run: |
+          set -ex
+          hdiutil convert zen-macOS-universal-temp.dmg -format UDZO -imagekey zlib-level=9 -o zen.macos-universal.dmg
 
       - name: Download host mar
         uses: actions/download-artifact@v4
