@@ -22,10 +22,15 @@ cd $CURRENT_DIR
 LAST_FIREFOX_L10N_COMMIT=$(cat ./build/firefox-cache/l10n-last-commit-hash)
 
 cd ./locales
-rm -rf firefox-l10n
-# clone only from LAST_FIREFOX_L10N_COMMIT
-git clone https://github.com/mozilla-l10n/firefox-l10n
-cd firefox-l10n
+if [ -d "firefox-l10n/.git" ]; then
+  echo "firefox-l10n already cloned, fetching updates..."
+  cd firefox-l10n
+  git fetch origin || echo "Warning: git fetch failed, using existing local data"
+else
+  rm -rf firefox-l10n
+  git clone https://github.com/mozilla-l10n/firefox-l10n
+  cd firefox-l10n
+fi
 git checkout $LAST_FIREFOX_L10N_COMMIT
 cd $CURRENT_DIR
 
@@ -91,4 +96,5 @@ for lang in $(cat ./locales/supported-languages); do
   find ./locales/$lang -type f -not -name "zen*" -delete
 done
 
-rm -rf ./locales/firefox-l10n
+# Keep firefox-l10n clone for reuse in future builds
+# rm -rf ./locales/firefox-l10n
