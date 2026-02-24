@@ -69,7 +69,17 @@ jobs:
         run: npm run surfer -- ci --brand ${{ inputs.release-branch }} --display-version ${{ inputs.build-version }}
 
       - name: Download Firefox source and dependencies
-        run: npm run download
+        run: |
+          for attempt in 1 2 3 4 5; do
+            npm run download && break
+            if [ $attempt -lt 5 ]; then
+              echo "::warning::Download attempt $attempt/5 failed. Retrying in $((attempt * 15))s..."
+              sleep $((attempt * 15))
+            else
+              echo "::error::Download failed after 5 attempts"
+              exit 1
+            fi
+          done
 
       - name: Bootstrap
         run: |

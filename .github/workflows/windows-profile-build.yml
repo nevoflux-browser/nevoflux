@@ -70,14 +70,41 @@ jobs:
 
       - name: Setup
         run: |
-          (New-Object System.Net.WebClient).DownloadFile("https://ftp.mozilla.org/pub/mozilla/libraries/win32/MozillaBuildSetup-Latest.exe", "C:\MozillaBuildSetup-Latest.exe")
+          $maxAttempts = 5
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+              try {
+                  (New-Object System.Net.WebClient).DownloadFile("https://ftp.mozilla.org/pub/mozilla/libraries/win32/MozillaBuildSetup-Latest.exe", "C:\MozillaBuildSetup-Latest.exe")
+                  break
+              } catch {
+                  if ($attempt -lt $maxAttempts) {
+                      $delay = $attempt * 15
+                      Write-Host "::warning::Download attempt $attempt/$maxAttempts failed: $_. Retrying in ${delay}s..."
+                      Start-Sleep -Seconds $delay
+                  } else {
+                      Write-Host "::error::Download failed after $maxAttempts attempts"
+                      throw
+                  }
+              }
+          }
           C:\MozillaBuildSetup-Latest.exe /S | out-null
 
       - name: Download Firefox and dependencies
         if: ${{ matrix.arch == 'x86_64' }}
         run: |
           git config --global core.safecrlf false
-          npm run download
+          $maxAttempts = 5
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+              npm run download
+              if ($LASTEXITCODE -eq 0) { break }
+              if ($attempt -lt $maxAttempts) {
+                  $delay = $attempt * 15
+                  Write-Host "::warning::Download attempt $attempt/$maxAttempts failed. Retrying in ${delay}s..."
+                  Start-Sleep -Seconds $delay
+              } else {
+                  Write-Host "::error::Download failed after $maxAttempts attempts"
+                  exit 1
+              }
+          }
 
       - name: Import patches
         if: ${{ matrix.arch == 'x86_64' }}

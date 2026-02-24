@@ -88,7 +88,7 @@ jobs:
           done
           if [ -n "$MISSING" ]; then
             echo "Installing missing packages:$MISSING"
-            sudo apt-get update
+            sudo apt-get update || true
             sudo apt-get install -y $MISSING
           else
             echo "All system dependencies already installed, skipping."
@@ -99,7 +99,17 @@ jobs:
 
       - name: Download Firefox and dependencies
         if: ${{ !(inputs.generate-gpo && matrix.arch == 'aarch64') }}
-        run: npm run download
+        run: |
+          for attempt in 1 2 3 4 5; do
+            npm run download && break
+            if [ $attempt -lt 5 ]; then
+              echo "::warning::Download attempt $attempt/5 failed. Retrying in $((attempt * 15))s..."
+              sleep $((attempt * 15))
+            else
+              echo "::error::Download failed after 5 attempts"
+              exit 1
+            fi
+          done
 
       - name: Setup for Windows
         if: ${{ !(inputs.generate-gpo && matrix.arch == 'aarch64') }}
@@ -112,7 +122,7 @@ jobs:
             cd engine/
             sudo apt-get install -y python3-launchpadlib
             sudo add-apt-repository -y ppa:savoury1/backports
-            sudo apt-get update
+            sudo apt-get update || true
             sudo apt-get install -y python3-pip autoconf \
               autoconf2.13 \
               automake \
@@ -155,7 +165,16 @@ jobs:
               zlib1g-dev \
               aria2
             echo Setup wine
-            aria2c "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-1.toolchains.v3.linux64-wine.latest/artifacts/public%2Fbuild%2Fwine.tar.zst" -o wine.tar.zst
+            for attempt in 1 2 3 4 5; do
+              aria2c "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-1.toolchains.v3.linux64-wine.latest/artifacts/public%2Fbuild%2Fwine.tar.zst" -o wine.tar.zst && break
+              if [ $attempt -lt 5 ]; then
+                echo "::warning::Download attempt $attempt/5 failed. Retrying in $((attempt * 15))s..."
+                sleep $((attempt * 15))
+              else
+                echo "::error::Download failed after 5 attempts"
+                exit 1
+              fi
+            done
             tar --zstd -xf wine.tar.zst -C ~/win-cross
             rm wine.tar.zst
             echo Setup Visual Studio
@@ -176,10 +195,18 @@ jobs:
           ARCH="${{ matrix.arch }}"
           ASSET_NAME="nevoflux-agent-${PLATFORM}-${ARCH}.exe"
           mkdir -p /tmp/agent/
-          gh release download latest \
-            --repo dorisgyl/nevoflux-agent \
-            --pattern "${ASSET_NAME}" \
-            --dir /tmp/agent/ || echo "Warning: Agent binary not available for ${PLATFORM}-${ARCH}"
+          for attempt in 1 2 3 4 5; do
+            gh release download latest \
+              --repo dorisgyl/nevoflux-agent \
+              --pattern "${ASSET_NAME}" \
+              --dir /tmp/agent/ && break
+            if [ $attempt -lt 5 ]; then
+              echo "::warning::Download attempt $attempt/5 failed. Retrying in $((attempt * 15))s..."
+              sleep $((attempt * 15))
+            else
+              echo "::warning::Agent binary download failed after 5 attempts, continuing..."
+            fi
+          done
           if [ -f "/tmp/agent/${ASSET_NAME}" ]; then
             mkdir -p build/AppDir/distribution/bin/
             mv "/tmp/agent/${ASSET_NAME}" build/AppDir/distribution/bin/nevoflux-agent.exe
@@ -201,8 +228,8 @@ jobs:
           ls ~/.mozbuild/clang/lib/clang/
           echo "export LIB=\"$(cd ~/.mozbuild/clang/lib/clang/* && cd lib/windows && pwd)\"" >> ../configs/common/mozconfig
           cat ../configs/common/mozconfig
-          sudo apt-get update
-          sudo apt-get install dos2unix
+          sudo apt-get update || true
+          sudo apt-get install -y dos2unix
           ls ~/win-cross/wine || true
           ls ~/win-cross/vs2022 || true
 
@@ -221,14 +248,33 @@ jobs:
           fi
           cd engine/
           cargo install cargo-download --locked
-          cargo download -x windows=0.58.0
+          for attempt in 1 2 3 4 5; do
+            cargo download -x windows=0.58.0 && break
+            if [ $attempt -lt 5 ]; then
+              echo "::warning::Download attempt $attempt/5 failed. Retrying in $((attempt * 15))s..."
+              sleep $((attempt * 15))
+            else
+              echo "::error::Download failed after 5 attempts"
+              exit 1
+            fi
+          done
           export CARGO_INCREMENTAL=0
           echo "" >> ../configs/common/mozconfig
           echo "export MOZ_WINDOWS_RS_DIR=$(pwd)/windows-0.58.0" >> ../configs/common/mozconfig
 
       - name: Build language packs
         if: ${{ !(inputs.generate-gpo && matrix.arch == 'aarch64') }}
-        run: sh scripts/download-language-packs.sh
+        run: |
+          for attempt in 1 2 3 4 5; do
+            sh scripts/download-language-packs.sh && break
+            if [ $attempt -lt 5 ]; then
+              echo "::warning::Download attempt $attempt/5 failed. Retrying in $((attempt * 15))s..."
+              sleep $((attempt * 15))
+            else
+              echo "::error::Download failed after 5 attempts"
+              exit 1
+            fi
+          done
 
       - name: Download artifact (if use profdata)
         uses: actions/download-artifact@v4
