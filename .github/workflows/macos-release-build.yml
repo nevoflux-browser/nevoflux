@@ -49,6 +49,7 @@ jobs:
   mac-build:
     name: Build macOS - ${{ matrix.arch }}
     runs-on: [self-hosted, macos]
+    timeout-minutes: 720
 
     strategy:
       fail-fast: false
