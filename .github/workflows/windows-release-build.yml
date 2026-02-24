@@ -195,24 +195,41 @@ jobs:
           ARCH="${{ matrix.arch }}"
           ARCHIVE_NAME="nevoflux-agent-${PLATFORM}-${ARCH}.zip"
           mkdir -p /tmp/agent/
-          for attempt in 1 2 3 4 5; do
-            gh release download \
-              --repo dorisgyl/nevoflux-agent \
-              --pattern "${ARCHIVE_NAME}" \
-              --dir /tmp/agent/ && break
-            if [ $attempt -lt 5 ]; then
-              echo "::warning::Download attempt $attempt/5 failed. Retrying in $((attempt * 15))s..."
-              sleep $((attempt * 15))
+
+          # Find the latest release tag
+          LATEST_TAG=$(gh release list --repo dorisgyl/nevoflux-agent --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || true)
+          if [ -z "$LATEST_TAG" ]; then
+            echo "::warning::No releases found in nevoflux-agent repo, skipping agent download."
+          else
+            echo "Latest release tag: $LATEST_TAG"
+            # Check if the asset exists for this platform/arch
+            ASSET_EXISTS=$(gh release view "$LATEST_TAG" --repo dorisgyl/nevoflux-agent --json assets --jq ".assets[].name" 2>/dev/null | grep -c "^${ARCHIVE_NAME}$" || true)
+            if [ "$ASSET_EXISTS" = "0" ]; then
+              echo "::warning::Asset ${ARCHIVE_NAME} not found in release ${LATEST_TAG}, skipping agent download."
             else
-              echo "::warning::Agent binary download failed after 5 attempts, continuing..."
+              for attempt in 1 2 3; do
+                gh release download "$LATEST_TAG" \
+                  --repo dorisgyl/nevoflux-agent \
+                  --pattern "${ARCHIVE_NAME}" \
+                  --dir /tmp/agent/ && break
+                if [ $attempt -lt 3 ]; then
+                  echo "::warning::Download attempt $attempt/3 failed. Retrying in $((attempt * 10))s..."
+                  sleep $((attempt * 10))
+                else
+                  echo "::warning::Agent binary download failed after 3 attempts, continuing..."
+                fi
+              done
             fi
-          done
+          fi
+
           if [ -f "/tmp/agent/${ARCHIVE_NAME}" ]; then
             mkdir -p build/AppDir/distribution/bin/
             cd /tmp/agent && unzip -o "${ARCHIVE_NAME}" && cd -
             mv /tmp/agent/nevoflux-agent.exe build/AppDir/distribution/bin/nevoflux-agent.exe || \
               mv /tmp/agent/nevoflux-agent build/AppDir/distribution/bin/nevoflux-agent.exe || true
             echo "Agent binary installed: build/AppDir/distribution/bin/nevoflux-agent.exe"
+          else
+            echo "::notice::No agent binary available for ${PLATFORM}-${ARCH}, build continues without it."
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
