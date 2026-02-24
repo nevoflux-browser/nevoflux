@@ -281,7 +281,7 @@ jobs:
           export ZEN_CROSS_COMPILING=1
           export ZEN_RELEASE=1
           npm run package
-          mv ./dist/zen-$(npm run --silent surfer -- get version | xargs).en-US.win64${{ matrix.arch == 'aarch64' && '-aarch64' || '' }}.zip zen.win64.zip
+          mv ./dist/nevoflux-$(npm run --silent surfer -- get version | xargs).en-US.win64${{ matrix.arch == 'aarch64' && '-aarch64' || '' }}.zip zen.win64.zip
           ls ./dist
           ls .
 
@@ -300,7 +300,7 @@ jobs:
         run: |
           mv ./zen.win64.zip zen.win-${{ matrix.arch == 'aarch64' && 'arm64' || matrix.arch }}.zip
           mv ./dist/output.mar windows${{ matrix.arch == 'aarch64' && '-arm64' || '' }}.mar
-          mv ./dist/zen.installer.exe ./zen.installer${{ matrix.arch == 'aarch64' && '-arm64' || '' }}.exe
+          mv ./dist/nevoflux.installer.exe ./zen.installer${{ matrix.arch == 'aarch64' && '-arm64' || '' }}.exe
 
       - name: Upload artifact (PGO)
         uses: actions/upload-artifact@v4
