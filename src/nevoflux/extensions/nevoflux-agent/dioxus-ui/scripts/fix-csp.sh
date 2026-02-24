@@ -13,8 +13,8 @@ HTML_FILE="$DIST_DIR/index.html"
 INIT_JS="$DIST_DIR/init.js"
 
 if [ ! -f "$HTML_FILE" ]; then
-    echo "Error: $HTML_FILE not found"
-    exit 1
+  echo "Error: $HTML_FILE not found"
+  exit 1
 fi
 
 echo "Fixing CSP for $HTML_FILE..."

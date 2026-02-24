@@ -30,16 +30,16 @@ for file in $MODIFIED_FILES; do
   RELATIVE_PATH="${file#src/zen/}"
   PATCH_SUBDIR="$(dirname "$RELATIVE_PATH")"
   FILENAME="$(basename "$RELATIVE_PATH" | tr '.' '-').nfpatch"
-  
+
   PATCH_DIR="$PATCHES_DIR/$PATCH_SUBDIR"
   PATCH_FILE="$PATCH_DIR/$FILENAME"
-  
+
   # Create patch directory
   mkdir -p "$PATCH_DIR"
-  
+
   # Generate patch
   git diff "$file" > "$PATCH_FILE"
-  
+
   echo "✓ Created: $PATCH_FILE"
 done
 

@@ -39,14 +39,14 @@ echo ""
 PATCH_COUNT=0
 FAILED_COUNT=0
 
-find "$PATCHES_DIR" -type f -name "*.patch" 2>/dev/null | while read -r patch_file; do
+find "$PATCHES_DIR" -type f -name "*.patch" 2> /dev/null | while read -r patch_file; do
   echo "Applying: ${patch_file#$PROJECT_ROOT/}"
-  
-  if (cd "$ZEN_DIR" && git apply --ignore-whitespace "$patch_file" 2>/dev/null); then
+
+  if (cd "$ZEN_DIR" && git apply --ignore-whitespace "$patch_file" 2> /dev/null); then
     echo "  ✓ Success"
   else
     # Try with --3way for conflicts
-    if (cd "$ZEN_DIR" && git apply --3way "$patch_file" 2>/dev/null); then
+    if (cd "$ZEN_DIR" && git apply --3way "$patch_file" 2> /dev/null); then
       echo "  ✓ Success (with 3-way merge)"
     else
       echo "  ✗ FAILED - patch may need manual update"

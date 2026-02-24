@@ -94,7 +94,7 @@ class TestRunner {
           console.log(`    ${colors.dim}${error.message}${colors.reset}`);
           if (error.stack) {
             const stackLines = error.stack.split('\n').slice(1, 3);
-            stackLines.forEach(line => {
+            stackLines.forEach((line) => {
               console.log(`    ${colors.dim}${line.trim()}${colors.reset}`);
             });
           }
@@ -111,9 +111,8 @@ class TestRunner {
     console.log(`${colors.cyan}Test Summary${colors.reset}`);
     console.log('='.repeat(60));
 
-    const passRate = this.results.total > 0
-      ? ((this.results.passed / this.results.total) * 100).toFixed(1)
-      : 0;
+    const passRate =
+      this.results.total > 0 ? ((this.results.passed / this.results.total) * 100).toFixed(1) : 0;
 
     console.log(`Total:   ${this.results.total}`);
     console.log(`${colors.green}Passed:  ${this.results.passed}${colors.reset}`);
@@ -187,7 +186,9 @@ export function expect(actual) {
         throw new Error(`Expected object to have property "${key}"`);
       }
       if (value !== undefined && actual[key] !== value) {
-        throw new Error(`Expected property "${key}" to be ${JSON.stringify(value)}, but got ${JSON.stringify(actual[key])}`);
+        throw new Error(
+          `Expected property "${key}" to be ${JSON.stringify(value)}, but got ${JSON.stringify(actual[key])}`
+        );
       }
     },
     toBeGreaterThan(num) {
@@ -229,7 +230,9 @@ export function expect(actual) {
     not: {
       toBe(expected) {
         if (actual === expected) {
-          throw new Error(`Expected ${JSON.stringify(actual)} not to be ${JSON.stringify(expected)}`);
+          throw new Error(
+            `Expected ${JSON.stringify(actual)} not to be ${JSON.stringify(expected)}`
+          );
         }
       },
       toEqual(expected) {
@@ -257,7 +260,7 @@ export function expect(actual) {
           throw new Error(`Expected string not to contain "${item}"`);
         }
       },
-    }
+    },
   };
 }
 

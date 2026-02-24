@@ -1,38 +1,38 @@
-const fs = require("fs");
-const path = require("path");
-const Handlebars = require("handlebars");
+const fs = require('fs');
+const path = require('path');
+const Handlebars = require('handlebars');
 
-const SCHEMA_PATH = path.join(__dirname, "nevoflux-api.json");
-const OUTPUT_DIR = path.join(__dirname, "generated");
-const TEMPLATES_DIR = path.join(__dirname, "templates");
+const SCHEMA_PATH = path.join(__dirname, 'nevoflux-api.json');
+const OUTPUT_DIR = path.join(__dirname, 'generated');
+const TEMPLATES_DIR = path.join(__dirname, 'templates');
 
 // Handlebars helpers
-Handlebars.registerHelper("mapType", function(field) {
-  if (!field) return "void";
+Handlebars.registerHelper('mapType', function (field) {
+  if (!field) return 'void';
   if (field.$ref) {
-    return field.$ref.split("/").pop();
+    return field.$ref.split('/').pop();
   }
-  if (field.type === "array") {
+  if (field.type === 'array') {
     return `${Handlebars.helpers.mapType(field.items)}[]`;
   }
   const typeMap = {
-    string: "string",
-    number: "number",
-    integer: "number",
-    boolean: "boolean",
-    object: "Record<string, any>",
+    string: 'string',
+    number: 'number',
+    integer: 'number',
+    boolean: 'boolean',
+    object: 'Record<string, any>',
   };
-  return typeMap[field.type] || "any";
+  return typeMap[field.type] || 'any';
 });
 
-Handlebars.registerHelper("isRequired", function(key, required) {
+Handlebars.registerHelper('isRequired', function (key, required) {
   return required && required.includes(key);
 });
 
 async function generate() {
-  console.log("Generating API types from schema...\n");
+  console.log('Generating API types from schema...\n');
 
-  const schema = JSON.parse(fs.readFileSync(SCHEMA_PATH, "utf-8"));
+  const schema = JSON.parse(fs.readFileSync(SCHEMA_PATH, 'utf-8'));
 
   // Ensure output directory exists
   if (!fs.existsSync(OUTPUT_DIR)) {
@@ -48,14 +48,14 @@ async function generate() {
   // Generate version file
   generateVersion(schema);
 
-  console.log("\n✅ Generation complete!");
+  console.log('\n✅ Generation complete!');
 }
 
 function generateTypeScript(schema) {
-  const templatePath = path.join(TEMPLATES_DIR, "typescript.hbs");
+  const templatePath = path.join(TEMPLATES_DIR, 'typescript.hbs');
 
   if (!fs.existsSync(templatePath)) {
-    console.log("  ⚠️  TypeScript template not found, creating minimal output");
+    console.log('  ⚠️  TypeScript template not found, creating minimal output');
 
     // Generate minimal TypeScript without template
     let output = `/**
@@ -71,7 +71,7 @@ function generateTypeScript(schema) {
       output += `export interface ${name} {\n`;
       if (def.properties) {
         for (const [propName, prop] of Object.entries(def.properties)) {
-          const optional = !def.required?.includes(propName) ? "?" : "";
+          const optional = !def.required?.includes(propName) ? '?' : '';
           const type = mapTypeSimple(prop);
           output += `  ${propName}${optional}: ${type};\n`;
         }
@@ -85,8 +85,8 @@ function generateTypeScript(schema) {
       output += `  ${nsName}: {\n`;
       for (const [methodName, method] of Object.entries(ns.methods)) {
         const params = Object.entries(method.params || {})
-          .map(([k, v]) => `${k}${v.optional ? "?" : ""}: ${mapTypeSimple(v)}`)
-          .join(", ");
+          .map(([k, v]) => `${k}${v.optional ? '?' : ''}: ${mapTypeSimple(v)}`)
+          .join(', ');
         const returnType = mapTypeSimple(method.returns);
         output += `    ${methodName}(${params}): Promise<${returnType}>;\n`;
       }
@@ -94,27 +94,27 @@ function generateTypeScript(schema) {
     }
     output += `}\n`;
 
-    fs.writeFileSync(path.join(OUTPUT_DIR, "types.ts"), output);
-    console.log("  → generated/types.ts");
+    fs.writeFileSync(path.join(OUTPUT_DIR, 'types.ts'), output);
+    console.log('  → generated/types.ts');
     return;
   }
 
   // Compute API_BY_MODE: group namespaces by mode
   const apiByMode = { chat: [], agent: [], browser_use: [] };
   for (const [nsName, ns] of Object.entries(schema.namespaces)) {
-    if (ns.mode === "chat") {
+    if (ns.mode === 'chat') {
       apiByMode.chat.push(nsName);
       apiByMode.agent.push(nsName);
       apiByMode.browser_use.push(nsName);
-    } else if (ns.mode === "agent") {
+    } else if (ns.mode === 'agent') {
       apiByMode.agent.push(nsName);
       apiByMode.browser_use.push(nsName);
-    } else if (ns.mode === "browser_use") {
+    } else if (ns.mode === 'browser_use') {
       apiByMode.browser_use.push(nsName);
     }
   }
 
-  const template = Handlebars.compile(fs.readFileSync(templatePath, "utf-8"));
+  const template = Handlebars.compile(fs.readFileSync(templatePath, 'utf-8'));
   const output = template({
     version: schema.version,
     generatedAt: new Date().toISOString(),
@@ -123,8 +123,8 @@ function generateTypeScript(schema) {
     apiByMode,
   });
 
-  fs.writeFileSync(path.join(OUTPUT_DIR, "types.ts"), output);
-  console.log("  → generated/types.ts");
+  fs.writeFileSync(path.join(OUTPUT_DIR, 'types.ts'), output);
+  console.log('  → generated/types.ts');
 }
 
 function generateLLMTools(schema) {
@@ -138,7 +138,7 @@ function generateLLMTools(schema) {
         description: method.description,
         mode: ns.mode,
         input_schema: {
-          type: "object",
+          type: 'object',
           properties: method.params,
           required: Object.entries(method.params)
             .filter(([_, v]) => !v.optional)
@@ -148,33 +148,30 @@ function generateLLMTools(schema) {
       tools.push(tool);
 
       // Add to mode-specific list and inherited modes
-      if (ns.mode === "chat") {
+      if (ns.mode === 'chat') {
         toolsByMode.chat.push(tool.name);
         toolsByMode.agent.push(tool.name);
         toolsByMode.browser_use.push(tool.name);
-      } else if (ns.mode === "agent") {
+      } else if (ns.mode === 'agent') {
         toolsByMode.agent.push(tool.name);
         toolsByMode.browser_use.push(tool.name);
-      } else if (ns.mode === "browser_use") {
+      } else if (ns.mode === 'browser_use') {
         toolsByMode.browser_use.push(tool.name);
       }
     }
   }
 
   const output = { version: schema.version, tools, toolsByMode };
-  fs.writeFileSync(
-    path.join(OUTPUT_DIR, "llm-tools.json"),
-    JSON.stringify(output, null, 2)
-  );
-  console.log("  → generated/llm-tools.json");
+  fs.writeFileSync(path.join(OUTPUT_DIR, 'llm-tools.json'), JSON.stringify(output, null, 2));
+  console.log('  → generated/llm-tools.json');
 }
 
 function generateVersion(schema) {
-  const crypto = require("crypto");
+  const crypto = require('crypto');
   const checksum = crypto
-    .createHash("md5")
+    .createHash('md5')
     .update(JSON.stringify(schema))
-    .digest("hex")
+    .digest('hex')
     .slice(0, 8);
 
   const versionInfo = {
@@ -184,18 +181,24 @@ function generateVersion(schema) {
   };
 
   fs.writeFileSync(
-    path.join(OUTPUT_DIR, "schema-version.json"),
+    path.join(OUTPUT_DIR, 'schema-version.json'),
     JSON.stringify(versionInfo, null, 2)
   );
-  console.log("  → generated/schema-version.json");
+  console.log('  → generated/schema-version.json');
 }
 
 function mapTypeSimple(field) {
-  if (!field) return "void";
-  if (field.$ref) return field.$ref.split("/").pop();
-  if (field.type === "array") return `${mapTypeSimple(field.items)}[]`;
-  const typeMap = { string: "string", number: "number", integer: "number", boolean: "boolean", object: "Record<string, any>" };
-  return typeMap[field.type] || "any";
+  if (!field) return 'void';
+  if (field.$ref) return field.$ref.split('/').pop();
+  if (field.type === 'array') return `${mapTypeSimple(field.items)}[]`;
+  const typeMap = {
+    string: 'string',
+    number: 'number',
+    integer: 'number',
+    boolean: 'boolean',
+    object: 'Record<string, any>',
+  };
+  return typeMap[field.type] || 'any';
 }
 
 generate().catch(console.error);

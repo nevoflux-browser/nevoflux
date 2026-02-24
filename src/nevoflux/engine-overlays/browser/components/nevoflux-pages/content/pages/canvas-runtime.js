@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-"use strict";
+'use strict';
 
 /**
  * CanvasRuntime -- orchestrates the full multi-file project lifecycle:
@@ -31,37 +31,37 @@ const CanvasRuntime = {
    * @type {string[]}
    */
   _ENTRY_CANDIDATES: [
-    "/src/index.tsx",
-    "/src/index.ts",
-    "/src/index.jsx",
-    "/src/index.js",
-    "/src/main.tsx",
-    "/src/main.ts",
-    "/src/main.jsx",
-    "/src/main.js",
-    "/src/App.tsx",
-    "/src/App.ts",
-    "/src/App.jsx",
-    "/src/App.js",
-    "/index.tsx",
-    "/index.ts",
-    "/index.jsx",
-    "/index.js",
-    "/App.tsx",
-    "/App.ts",
-    "/App.jsx",
-    "/App.js",
+    '/src/index.tsx',
+    '/src/index.ts',
+    '/src/index.jsx',
+    '/src/index.js',
+    '/src/main.tsx',
+    '/src/main.ts',
+    '/src/main.jsx',
+    '/src/main.js',
+    '/src/App.tsx',
+    '/src/App.ts',
+    '/src/App.jsx',
+    '/src/App.js',
+    '/index.tsx',
+    '/index.ts',
+    '/index.jsx',
+    '/index.js',
+    '/App.tsx',
+    '/App.ts',
+    '/App.jsx',
+    '/App.js',
     // Vue entry points
-    "/src/main.vue",
-    "/src/App.vue",
-    "/App.vue",
+    '/src/main.vue',
+    '/src/App.vue',
+    '/App.vue',
     // Svelte entry points
-    "/src/main.svelte",
-    "/src/App.svelte",
-    "/App.svelte",
+    '/src/main.svelte',
+    '/src/App.svelte',
+    '/App.svelte',
     // HTML entry points (served directly, no bundling)
-    "/index.html",
-    "/src/index.html",
+    '/index.html',
+    '/src/index.html',
   ],
 
   /**
@@ -98,7 +98,7 @@ const CanvasRuntime = {
 
     // 3. Fallback: first .tsx/.jsx/.ts/.js file in VFS
     const allFiles = VirtualFS.list();
-    const jsExtensions = [".tsx", ".jsx", ".ts", ".js", ".vue", ".svelte", ".html"];
+    const jsExtensions = ['.tsx', '.jsx', '.ts', '.js', '.vue', '.svelte', '.html'];
     for (const ext of jsExtensions) {
       const match = allFiles.find((f) => f.endsWith(ext));
       if (match) {
@@ -126,11 +126,11 @@ const CanvasRuntime = {
   _needsMountWrapper(content) {
     // Already has mounting logic -- no wrapper needed
     if (
-      content.includes("createRoot") ||
-      content.includes("ReactDOM.render") ||
-      content.includes("createApp") ||
-      content.includes("document.getElementById") ||
-      content.includes("document.querySelector")
+      content.includes('createRoot') ||
+      content.includes('ReactDOM.render') ||
+      content.includes('createApp') ||
+      content.includes('document.getElementById') ||
+      content.includes('document.querySelector')
     ) {
       return false;
     }
@@ -155,13 +155,13 @@ const CanvasRuntime = {
    * @returns {"react"|"vue"|"svelte"} The detected framework.
    */
   _detectFramework(filePath) {
-    if (filePath.endsWith(".vue")) {
-      return "vue";
+    if (filePath.endsWith('.vue')) {
+      return 'vue';
     }
-    if (filePath.endsWith(".svelte")) {
-      return "svelte";
+    if (filePath.endsWith('.svelte')) {
+      return 'svelte';
     }
-    return "react";
+    return 'react';
   },
 
   /**
@@ -185,42 +185,42 @@ const CanvasRuntime = {
     let wrapperCode;
 
     switch (framework) {
-      case "vue": {
-        wrapperPath = "/__nevoflux_entry_wrapper.js";
+      case 'vue': {
+        wrapperPath = '/__nevoflux_entry_wrapper.js';
         wrapperCode = [
           'import { createApp } from "vue";',
           `import App from "${entryPath}";`,
-          "",
+          '',
           'createApp(App).mount("#root");',
-          "",
-        ].join("\n");
+          '',
+        ].join('\n');
         break;
       }
 
-      case "svelte": {
-        wrapperPath = "/__nevoflux_entry_wrapper.js";
+      case 'svelte': {
+        wrapperPath = '/__nevoflux_entry_wrapper.js';
         wrapperCode = [
           `import App from "${entryPath}";`,
-          "",
-          "new App({",
+          '',
+          'new App({',
           '  target: document.getElementById("root"),',
-          "});",
-          "",
-        ].join("\n");
+          '});',
+          '',
+        ].join('\n');
         break;
       }
 
       default: {
         // React
-        wrapperPath = "/__nevoflux_entry_wrapper.jsx";
+        wrapperPath = '/__nevoflux_entry_wrapper.jsx';
         wrapperCode = [
           'import { createRoot } from "react-dom/client";',
           `import App from "${entryPath}";`,
-          "",
+          '',
           'const root = createRoot(document.getElementById("root"));',
-          "root.render(<App />);",
-          "",
-        ].join("\n");
+          'root.render(<App />);',
+          '',
+        ].join('\n');
         break;
       }
     }
@@ -259,24 +259,24 @@ const CanvasRuntime = {
     const importmapJSON = JSON.stringify(importmapObj, null, 2);
 
     // Escape closing script tags inside JS to prevent premature HTML parsing
-    const safeJS = js.replace(/<\/script>/gi, "<\\/script>");
+    const safeJS = js.replace(/<\/script>/gi, '<\\/script>');
 
     const parts = [
-      "<!DOCTYPE html>",
-      "<html>",
-      "<head>",
+      '<!DOCTYPE html>',
+      '<html>',
+      '<head>',
       '<meta charset="utf-8">',
       '<meta name="viewport" content="width=device-width, initial-scale=1">',
-      "<style>",
-      "*, *::before, *::after { box-sizing: border-box; }",
-      "body { margin: 0; }",
-      "#root { min-height: 100vh; }",
-      "</style>",
+      '<style>',
+      '*, *::before, *::after { box-sizing: border-box; }',
+      'body { margin: 0; }',
+      '#root { min-height: 100vh; }',
+      '</style>',
     ];
 
     // Inject collected CSS
     if (css) {
-      parts.push("<style>", css, "</style>");
+      parts.push('<style>', css, '</style>');
     }
 
     // Inject SDK script
@@ -285,23 +285,19 @@ const CanvasRuntime = {
     }
 
     // Inject importmap
-    parts.push(
-      '<script type="importmap">',
-      importmapJSON,
-      "</script>"
-    );
+    parts.push('<script type="importmap">', importmapJSON, '</script>');
 
-    parts.push("</head>");
-    parts.push("<body>");
+    parts.push('</head>');
+    parts.push('<body>');
     parts.push('<div id="root"></div>');
 
     // Inject bundled JS as ES module
-    parts.push('<script type="module">', safeJS, "</script>");
+    parts.push('<script type="module">', safeJS, '</script>');
 
-    parts.push("</body>");
-    parts.push("</html>");
+    parts.push('</body>');
+    parts.push('</html>');
 
-    return parts.join("\n");
+    return parts.join('\n');
   },
 
   // ── Main Render ────────────────────────────────────────
@@ -337,13 +333,13 @@ const CanvasRuntime = {
       if (!entry) {
         return {
           success: false,
-          error: "No entry point found. Add an index.tsx, index.js, App.tsx, or App.js file.",
+          error: 'No entry point found. Add an index.tsx, index.js, App.tsx, or App.js file.',
         };
       }
       this._entry = entry;
 
       // 3. HTML entry: serve directly with inlined VFS resources (no bundling)
-      if (entry.endsWith(".html") || entry.endsWith(".htm")) {
+      if (entry.endsWith('.html') || entry.endsWith('.htm')) {
         const html = this._assembleHTMLEntry(entry, sdkScript);
         this._createIframe(viewport, html);
         return { success: true };
@@ -354,7 +350,7 @@ const CanvasRuntime = {
       //    JS/TS files are checked for existing mount logic.
       const entryContent = VirtualFS.read(entry);
       let bundleEntry = entry;
-      const isComponentFile = entry.endsWith(".vue") || entry.endsWith(".svelte");
+      const isComponentFile = entry.endsWith('.vue') || entry.endsWith('.svelte');
       if (isComponentFile || (entryContent && this._needsMountWrapper(entryContent))) {
         this._wrapEntryWithMount(entry);
         bundleEntry = this._wrappedEntry;
@@ -369,7 +365,7 @@ const CanvasRuntime = {
       if (result.errors && result.errors.length > 0) {
         return {
           success: false,
-          error: result.errors.join("\n"),
+          error: result.errors.join('\n'),
         };
       }
 
@@ -381,7 +377,7 @@ const CanvasRuntime = {
 
       return { success: true };
     } catch (e) {
-      console.error("[CanvasRuntime] render failed:", e);
+      console.error('[CanvasRuntime] render failed:', e);
       return {
         success: false,
         error: e.message || String(e),
@@ -403,8 +399,8 @@ const CanvasRuntime = {
    * @returns {string} Self-contained HTML string.
    */
   _assembleHTMLEntry(entryPath, sdkScript) {
-    let html = VirtualFS.read(entryPath) || "";
-    const entryDir = entryPath.substring(0, entryPath.lastIndexOf("/")) || "/";
+    let html = VirtualFS.read(entryPath) || '';
+    const entryDir = entryPath.substring(0, entryPath.lastIndexOf('/')) || '/';
 
     // Inline <script src="local-path"></script> from VFS
     html = html.replace(
@@ -418,7 +414,7 @@ const CanvasRuntime = {
         if (content !== null) {
           // Preserve type attribute if present
           const typeMatch = (pre + post).match(/type\s*=\s*["']([^"']+)["']/);
-          const typeAttr = typeMatch ? ` type="${typeMatch[1]}"` : "";
+          const typeAttr = typeMatch ? ` type="${typeMatch[1]}"` : '';
           return `<script${typeAttr}>\n${content}\n<\/script>`;
         }
         return _match; // Keep original if file not found
@@ -458,11 +454,11 @@ const CanvasRuntime = {
 
     // Inject SDK script before </head> or at top
     if (sdkScript) {
-      const headIdx = html.indexOf("</head>");
+      const headIdx = html.indexOf('</head>');
       if (headIdx !== -1) {
         html = html.slice(0, headIdx) + sdkScript + html.slice(headIdx);
       } else {
-        const bodyIdx = html.indexOf("<body");
+        const bodyIdx = html.indexOf('<body');
         if (bodyIdx !== -1) {
           html = html.slice(0, bodyIdx) + sdkScript + html.slice(bodyIdx);
         } else {
@@ -487,8 +483,8 @@ const CanvasRuntime = {
       this._iframe.remove();
       this._iframe = null;
     }
-    this._iframe = document.createElement("iframe");
-    this._iframe.setAttribute("sandbox", "allow-scripts allow-forms allow-same-origin");
+    this._iframe = document.createElement('iframe');
+    this._iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin');
     this._iframe.srcdoc = html;
     viewport.appendChild(this._iframe);
   },
@@ -517,7 +513,7 @@ const CanvasRuntime = {
       if (!bundleEntry) {
         return {
           success: false,
-          error: "No entry point set. Call render() first.",
+          error: 'No entry point set. Call render() first.',
         };
       }
 
@@ -525,7 +521,7 @@ const CanvasRuntime = {
       // .vue and .svelte files always need wrapping (they are component definitions).
       const normalizedPath = VirtualFS.normalize(path);
       if (normalizedPath === this._entry) {
-        const isComponentFile = this._entry.endsWith(".vue") || this._entry.endsWith(".svelte");
+        const isComponentFile = this._entry.endsWith('.vue') || this._entry.endsWith('.svelte');
         const updatedContent = VirtualFS.read(normalizedPath);
         if (isComponentFile || (updatedContent && this._needsMountWrapper(updatedContent))) {
           if (!this._wrappedEntry) {
@@ -550,7 +546,7 @@ const CanvasRuntime = {
       if (result.errors && result.errors.length > 0) {
         return {
           success: false,
-          error: result.errors.join("\n"),
+          error: result.errors.join('\n'),
         };
       }
 
@@ -561,15 +557,15 @@ const CanvasRuntime = {
       if (this._iframe && this._iframe.parentNode) {
         this._iframe.srcdoc = html;
       } else {
-        this._iframe = document.createElement("iframe");
-        this._iframe.setAttribute("sandbox", "allow-scripts allow-forms allow-same-origin");
+        this._iframe = document.createElement('iframe');
+        this._iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin');
         this._iframe.srcdoc = html;
         viewport.appendChild(this._iframe);
       }
 
       return { success: true };
     } catch (e) {
-      console.error("[CanvasRuntime] updateFile failed:", e);
+      console.error('[CanvasRuntime] updateFile failed:', e);
       return {
         success: false,
         error: e.message || String(e),

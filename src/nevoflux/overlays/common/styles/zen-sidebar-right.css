@@ -38,7 +38,8 @@
 
 /* Keep expand-on-hover border on the right edge (as if position-start) */
 :root[sidebar-expand-on-hover] #sidebar-main[sidebar-positionend][sidebar-launcher-expanded],
-:root[sidebar-expand-on-hover] #sidebar-main[sidebar-positionend][sidebar-ongoing-animations]:not([sidebar-launcher-expanded]) {
+:root[sidebar-expand-on-hover]
+  #sidebar-main[sidebar-positionend][sidebar-ongoing-animations]:not([sidebar-launcher-expanded]) {
   border-inline-end: 0.01px solid var(--sidebar-border-color) !important;
   border-inline-start: none !important;
 }

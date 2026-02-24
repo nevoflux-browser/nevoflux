@@ -14,80 +14,146 @@
 var TurndownService = (function () {
   'use strict';
 
-  function extend (destination) {
+  function extend(destination) {
     for (var i = 1; i < arguments.length; i++) {
       var source = arguments[i];
       for (var key in source) {
         if (source.hasOwnProperty(key)) destination[key] = source[key];
       }
     }
-    return destination
+    return destination;
   }
 
-  function repeat (character, count) {
-    return Array(count + 1).join(character)
+  function repeat(character, count) {
+    return Array(count + 1).join(character);
   }
 
-  function trimLeadingNewlines (string) {
-    return string.replace(/^\n*/, '')
+  function trimLeadingNewlines(string) {
+    return string.replace(/^\n*/, '');
   }
 
-  function trimTrailingNewlines (string) {
+  function trimTrailingNewlines(string) {
     var indexEnd = string.length;
     while (indexEnd > 0 && string[indexEnd - 1] === '\n') indexEnd--;
-    return string.substring(0, indexEnd)
+    return string.substring(0, indexEnd);
   }
 
   var blockElements = [
-    'ADDRESS', 'ARTICLE', 'ASIDE', 'AUDIO', 'BLOCKQUOTE', 'BODY', 'CANVAS',
-    'CENTER', 'DD', 'DIR', 'DIV', 'DL', 'DT', 'FIELDSET', 'FIGCAPTION', 'FIGURE',
-    'FOOTER', 'FORM', 'FRAMESET', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HEADER',
-    'HGROUP', 'HR', 'HTML', 'ISINDEX', 'LI', 'MAIN', 'MENU', 'NAV', 'NOFRAMES',
-    'NOSCRIPT', 'OL', 'OUTPUT', 'P', 'PRE', 'SECTION', 'TABLE', 'TBODY', 'TD',
-    'TFOOT', 'TH', 'THEAD', 'TR', 'UL'
+    'ADDRESS',
+    'ARTICLE',
+    'ASIDE',
+    'AUDIO',
+    'BLOCKQUOTE',
+    'BODY',
+    'CANVAS',
+    'CENTER',
+    'DD',
+    'DIR',
+    'DIV',
+    'DL',
+    'DT',
+    'FIELDSET',
+    'FIGCAPTION',
+    'FIGURE',
+    'FOOTER',
+    'FORM',
+    'FRAMESET',
+    'H1',
+    'H2',
+    'H3',
+    'H4',
+    'H5',
+    'H6',
+    'HEADER',
+    'HGROUP',
+    'HR',
+    'HTML',
+    'ISINDEX',
+    'LI',
+    'MAIN',
+    'MENU',
+    'NAV',
+    'NOFRAMES',
+    'NOSCRIPT',
+    'OL',
+    'OUTPUT',
+    'P',
+    'PRE',
+    'SECTION',
+    'TABLE',
+    'TBODY',
+    'TD',
+    'TFOOT',
+    'TH',
+    'THEAD',
+    'TR',
+    'UL',
   ];
 
-  function isBlock (node) {
-    return is(node, blockElements)
+  function isBlock(node) {
+    return is(node, blockElements);
   }
 
   var voidElements = [
-    'AREA', 'BASE', 'BR', 'COL', 'COMMAND', 'EMBED', 'HR', 'IMG', 'INPUT',
-    'KEYGEN', 'LINK', 'META', 'PARAM', 'SOURCE', 'TRACK', 'WBR'
+    'AREA',
+    'BASE',
+    'BR',
+    'COL',
+    'COMMAND',
+    'EMBED',
+    'HR',
+    'IMG',
+    'INPUT',
+    'KEYGEN',
+    'LINK',
+    'META',
+    'PARAM',
+    'SOURCE',
+    'TRACK',
+    'WBR',
   ];
 
-  function isVoid (node) {
-    return is(node, voidElements)
+  function isVoid(node) {
+    return is(node, voidElements);
   }
 
-  function hasVoid (node) {
-    return has(node, voidElements)
+  function hasVoid(node) {
+    return has(node, voidElements);
   }
 
   var meaningfulWhenBlankElements = [
-    'A', 'TABLE', 'THEAD', 'TBODY', 'TFOOT', 'TH', 'TD', 'IFRAME', 'SCRIPT',
-    'AUDIO', 'VIDEO'
+    'A',
+    'TABLE',
+    'THEAD',
+    'TBODY',
+    'TFOOT',
+    'TH',
+    'TD',
+    'IFRAME',
+    'SCRIPT',
+    'AUDIO',
+    'VIDEO',
   ];
 
-  function isMeaningfulWhenBlank (node) {
-    return is(node, meaningfulWhenBlankElements)
+  function isMeaningfulWhenBlank(node) {
+    return is(node, meaningfulWhenBlankElements);
   }
 
-  function hasMeaningfulWhenBlank (node) {
-    return has(node, meaningfulWhenBlankElements)
+  function hasMeaningfulWhenBlank(node) {
+    return has(node, meaningfulWhenBlankElements);
   }
 
-  function is (node, tagNames) {
-    return tagNames.indexOf(node.nodeName) >= 0
+  function is(node, tagNames) {
+    return tagNames.indexOf(node.nodeName) >= 0;
   }
 
-  function has (node, tagNames) {
+  function has(node, tagNames) {
     return (
       node.getElementsByTagName &&
       tagNames.some(function (tagName) {
-        return node.getElementsByTagName(tagName).length
+        return node.getElementsByTagName(tagName).length;
       })
-    )
+    );
   }
 
   var rules = {};
@@ -95,15 +161,15 @@ var TurndownService = (function () {
   rules.paragraph = {
     filter: 'p',
     replacement: function (content) {
-      return '\n\n' + content + '\n\n'
-    }
+      return '\n\n' + content + '\n\n';
+    },
   };
 
   rules.lineBreak = {
     filter: 'br',
     replacement: function (content, node, options) {
-      return options.br + '\n'
-    }
+      return options.br + '\n';
+    },
   };
 
   rules.heading = {
@@ -111,12 +177,12 @@ var TurndownService = (function () {
     replacement: function (content, node, options) {
       var hLevel = Number(node.nodeName.charAt(1));
       if (options.headingStyle === 'setext' && hLevel < 3) {
-        var underline = repeat((hLevel === 1 ? '=' : '-'), content.length);
-        return '\n\n' + content + '\n' + underline + '\n\n'
+        var underline = repeat(hLevel === 1 ? '=' : '-', content.length);
+        return '\n\n' + content + '\n' + underline + '\n\n';
       } else {
-        return '\n\n' + repeat('#', hLevel) + ' ' + content + '\n\n'
+        return '\n\n' + repeat('#', hLevel) + ' ' + content + '\n\n';
       }
-    }
+    },
   };
 
   rules.blockquote = {
@@ -124,8 +190,8 @@ var TurndownService = (function () {
     replacement: function (content) {
       content = content.replace(/^\n+|\n+$/g, '');
       content = content.replace(/^/gm, '> ');
-      return '\n\n' + content + '\n\n'
-    }
+      return '\n\n' + content + '\n\n';
+    },
   };
 
   rules.list = {
@@ -133,20 +199,17 @@ var TurndownService = (function () {
     replacement: function (content, node) {
       var parent = node.parentNode;
       if (parent.nodeName === 'LI' && parent.lastElementChild === node) {
-        return '\n' + content
+        return '\n' + content;
       } else {
-        return '\n\n' + content + '\n\n'
+        return '\n\n' + content + '\n\n';
       }
-    }
+    },
   };
 
   rules.listItem = {
     filter: 'li',
     replacement: function (content, node, options) {
-      content = content
-        .replace(/^\n+/, '')
-        .replace(/\n+$/, '\n')
-        .replace(/\n/gm, '\n    ');
+      content = content.replace(/^\n+/, '').replace(/\n+$/, '\n').replace(/\n/gm, '\n    ');
       var prefix = options.bulletListMarker + '   ';
       var parent = node.parentNode;
       if (parent.nodeName === 'OL') {
@@ -154,8 +217,8 @@ var TurndownService = (function () {
         var index = Array.prototype.indexOf.call(parent.children, node);
         prefix = (start ? Number(start) + index : index + 1) + '.  ';
       }
-      return prefix + content + (node.nextSibling && !/\n$/.test(content) ? '\n' : '')
-    }
+      return prefix + content + (node.nextSibling && !/\n$/.test(content) ? '\n' : '');
+    },
   };
 
   rules.indentedCodeBlock = {
@@ -165,11 +228,11 @@ var TurndownService = (function () {
         node.nodeName === 'PRE' &&
         node.firstChild &&
         node.firstChild.nodeName === 'CODE'
-      )
+      );
     },
     replacement: function (content, node, options) {
-      return '\n\n    ' + node.firstChild.textContent.replace(/\n/g, '\n    ') + '\n\n'
-    }
+      return '\n\n    ' + node.firstChild.textContent.replace(/\n/g, '\n    ') + '\n\n';
+    },
   };
 
   rules.fencedCodeBlock = {
@@ -179,7 +242,7 @@ var TurndownService = (function () {
         node.nodeName === 'PRE' &&
         node.firstChild &&
         node.firstChild.nodeName === 'CODE'
-      )
+      );
     },
     replacement: function (content, node, options) {
       var className = node.firstChild.getAttribute('class') || '';
@@ -198,41 +261,35 @@ var TurndownService = (function () {
       }
 
       var fence = repeat(fenceChar, fenceSize);
-      return '\n\n' + fence + language + '\n' + code.replace(/\n$/, '') + '\n' + fence + '\n\n'
-    }
+      return '\n\n' + fence + language + '\n' + code.replace(/\n$/, '') + '\n' + fence + '\n\n';
+    },
   };
 
   rules.horizontalRule = {
     filter: 'hr',
     replacement: function (content, node, options) {
-      return '\n\n' + options.hr + '\n\n'
-    }
+      return '\n\n' + options.hr + '\n\n';
+    },
   };
 
   rules.inlineLink = {
     filter: function (node, options) {
-      return (
-        options.linkStyle === 'inlined' &&
-        node.nodeName === 'A' &&
-        node.getAttribute('href')
-      )
+      return options.linkStyle === 'inlined' && node.nodeName === 'A' && node.getAttribute('href');
     },
     replacement: function (content, node) {
       var href = node.getAttribute('href');
       if (href) href = href.replace(/([()])/g, '\\$1');
       var title = cleanAttribute(node.getAttribute('title'));
       if (title) title = ' "' + title.replace(/"/g, '\\"') + '"';
-      return '[' + content + '](' + href + title + ')'
-    }
+      return '[' + content + '](' + href + title + ')';
+    },
   };
 
   rules.referenceLink = {
     filter: function (node, options) {
       return (
-        options.linkStyle === 'referenced' &&
-        node.nodeName === 'A' &&
-        node.getAttribute('href')
-      )
+        options.linkStyle === 'referenced' && node.nodeName === 'A' && node.getAttribute('href')
+      );
     },
     replacement: function (content, node, options) {
       var href = node.getAttribute('href');
@@ -245,11 +302,11 @@ var TurndownService = (function () {
         case 'collapsed':
           replacement = '[' + content + '][]';
           reference = '[' + content + ']: ' + href + title;
-          break
+          break;
         case 'shortcut':
           replacement = '[' + content + ']';
           reference = '[' + content + ']: ' + href + title;
-          break
+          break;
         default:
           var id = this.references.length + 1;
           replacement = '[' + content + '][' + id + ']';
@@ -257,7 +314,7 @@ var TurndownService = (function () {
       }
 
       this.references.push(reference);
-      return replacement
+      return replacement;
     },
     references: [],
     append: function (options) {
@@ -266,41 +323,41 @@ var TurndownService = (function () {
         references = '\n\n' + this.references.join('\n') + '\n\n';
         this.references = [];
       }
-      return references
-    }
+      return references;
+    },
   };
 
   rules.emphasis = {
     filter: ['em', 'i'],
     replacement: function (content, node, options) {
-      if (!content.trim()) return ''
-      return options.emDelimiter + content + options.emDelimiter
-    }
+      if (!content.trim()) return '';
+      return options.emDelimiter + content + options.emDelimiter;
+    },
   };
 
   rules.strong = {
     filter: ['strong', 'b'],
     replacement: function (content, node, options) {
-      if (!content.trim()) return ''
-      return options.strongDelimiter + content + options.strongDelimiter
-    }
+      if (!content.trim()) return '';
+      return options.strongDelimiter + content + options.strongDelimiter;
+    },
   };
 
   rules.code = {
     filter: function (node) {
       var hasSiblings = node.previousSibling || node.nextSibling;
       var isCodeBlock = node.parentNode.nodeName === 'PRE' && !hasSiblings;
-      return node.nodeName === 'CODE' && !isCodeBlock
+      return node.nodeName === 'CODE' && !isCodeBlock;
     },
     replacement: function (content) {
-      if (!content) return ''
+      if (!content) return '';
       content = content.replace(/\r?\n|\r/g, ' ');
       var extraSpace = /^`|^ .*?[^ ].* $|`$/.test(content) ? ' ' : '';
       var delimiter = '`';
       var matches = content.match(/`+/gm) || [];
       while (matches.indexOf(delimiter) !== -1) delimiter = delimiter + '`';
-      return delimiter + extraSpace + content + extraSpace + delimiter
-    }
+      return delimiter + extraSpace + content + extraSpace + delimiter;
+    },
   };
 
   rules.image = {
@@ -310,27 +367,27 @@ var TurndownService = (function () {
       var src = node.getAttribute('src') || '';
       var title = cleanAttribute(node.getAttribute('title'));
       var titlePart = title ? ' "' + title + '"' : '';
-      return src ? '![' + alt + ']' + '(' + src + titlePart + ')' : ''
-    }
+      return src ? '![' + alt + ']' + '(' + src + titlePart + ')' : '';
+    },
   };
 
-  function cleanAttribute (attribute) {
-    return attribute ? attribute.replace(/(\n+\s*)+/g, '\n') : ''
+  function cleanAttribute(attribute) {
+    return attribute ? attribute.replace(/(\n+\s*)+/g, '\n') : '';
   }
 
-  function Rules (options) {
+  function Rules(options) {
     this.options = options;
     this._keep = [];
     this._remove = [];
 
     this.blankRule = {
-      replacement: options.blankReplacement
+      replacement: options.blankReplacement,
     };
 
     this.keepReplacement = options.keepReplacement;
 
     this.defaultRule = {
-      replacement: options.defaultReplacement
+      replacement: options.defaultReplacement,
     };
 
     this.array = [];
@@ -344,58 +401,62 @@ var TurndownService = (function () {
     keep: function (filter) {
       this._keep.unshift({
         filter: filter,
-        replacement: this.keepReplacement
+        replacement: this.keepReplacement,
       });
     },
     remove: function (filter) {
       this._remove.unshift({
         filter: filter,
-        replacement: function () { return '' }
+        replacement: function () {
+          return '';
+        },
       });
     },
     forNode: function (node) {
-      if (node.isBlank) return this.blankRule
+      if (node.isBlank) return this.blankRule;
       var rule;
-      if ((rule = findRule(this.array, node, this.options))) return rule
-      if ((rule = findRule(this._keep, node, this.options))) return rule
-      if ((rule = findRule(this._remove, node, this.options))) return rule
-      return this.defaultRule
+      if ((rule = findRule(this.array, node, this.options))) return rule;
+      if ((rule = findRule(this._keep, node, this.options))) return rule;
+      if ((rule = findRule(this._remove, node, this.options))) return rule;
+      return this.defaultRule;
     },
     forEach: function (fn) {
       for (var i = 0; i < this.array.length; i++) fn(this.array[i], i);
-    }
+    },
   };
 
-  function findRule (rules, node, options) {
+  function findRule(rules, node, options) {
     for (var i = 0; i < rules.length; i++) {
       var rule = rules[i];
-      if (filterValue(rule, node, options)) return rule
+      if (filterValue(rule, node, options)) return rule;
     }
-    return void 0
+    return void 0;
   }
 
-  function filterValue (rule, node, options) {
+  function filterValue(rule, node, options) {
     var filter = rule.filter;
     if (typeof filter === 'string') {
-      if (filter === node.nodeName.toLowerCase()) return true
+      if (filter === node.nodeName.toLowerCase()) return true;
     } else if (Array.isArray(filter)) {
-      if (filter.indexOf(node.nodeName.toLowerCase()) > -1) return true
+      if (filter.indexOf(node.nodeName.toLowerCase()) > -1) return true;
     } else if (typeof filter === 'function') {
-      if (filter.call(rule, node, options)) return true
+      if (filter.call(rule, node, options)) return true;
     } else {
-      throw new TypeError('`filter` needs to be a string, array, or function')
+      throw new TypeError('`filter` needs to be a string, array, or function');
     }
   }
 
-  function collapseWhitespace (options) {
+  function collapseWhitespace(options) {
     var element = options.element;
     var isBlockFn = options.isBlock;
     var isVoidFn = options.isVoid;
-    var isPre = options.isPre || function (node) {
-      return node.nodeName === 'PRE'
-    };
+    var isPre =
+      options.isPre ||
+      function (node) {
+        return node.nodeName === 'PRE';
+      };
 
-    if (!element.firstChild || isPre(element)) return
+    if (!element.firstChild || isPre(element)) return;
 
     var prevText = null;
     var keepLeadingWs = false;
@@ -407,14 +468,13 @@ var TurndownService = (function () {
       if (node.nodeType === 3 || node.nodeType === 4) {
         var text = node.data.replace(/[ \r\n\t]+/g, ' ');
 
-        if ((!prevText || / $/.test(prevText.data)) &&
-            !keepLeadingWs && text[0] === ' ') {
+        if ((!prevText || / $/.test(prevText.data)) && !keepLeadingWs && text[0] === ' ') {
           text = text.substr(1);
         }
 
         if (!text) {
           node = remove(node);
-          continue
+          continue;
         }
 
         node.data = text;
@@ -434,7 +494,7 @@ var TurndownService = (function () {
         }
       } else {
         node = remove(node);
-        continue
+        continue;
       }
 
       var nextNode = next(prev, node, isPre);
@@ -450,20 +510,20 @@ var TurndownService = (function () {
     }
   }
 
-  function remove (node) {
+  function remove(node) {
     var nextNode = node.nextSibling || node.parentNode;
     node.parentNode.removeChild(node);
-    return nextNode
+    return nextNode;
   }
 
-  function next (prev, current, isPre) {
+  function next(prev, current, isPre) {
     if ((prev && prev.parentNode === current) || isPre(current)) {
-      return current.nextSibling || current.parentNode
+      return current.nextSibling || current.parentNode;
     }
-    return current.firstChild || current.nextSibling || current.parentNode
+    return current.firstChild || current.nextSibling || current.parentNode;
   }
 
-  function RootNode (input, options, doc) {
+  function RootNode(input, options, doc) {
     var root;
     if (typeof input === 'string') {
       // Use the provided document context for parsing
@@ -480,37 +540,37 @@ var TurndownService = (function () {
       element: root,
       isBlock: isBlock,
       isVoid: isVoid,
-      isPre: options.preformattedCode ? isPreOrCode : null
+      isPre: options.preformattedCode ? isPreOrCode : null,
     });
 
-    return root
+    return root;
   }
 
-  function isPreOrCode (node) {
-    return node.nodeName === 'PRE' || node.nodeName === 'CODE'
+  function isPreOrCode(node) {
+    return node.nodeName === 'PRE' || node.nodeName === 'CODE';
   }
 
-  function Node (node, options) {
+  function Node(node, options) {
     node.isBlock = isBlock(node);
     node.isCode = node.nodeName === 'CODE' || node.parentNode.isCode;
     node.isBlank = isBlank(node);
     node.flankingWhitespace = flankingWhitespace(node, options);
-    return node
+    return node;
   }
 
-  function isBlank (node) {
+  function isBlank(node) {
     return (
       !isVoid(node) &&
       !isMeaningfulWhenBlank(node) &&
       /^\s*$/i.test(node.textContent) &&
       !hasVoid(node) &&
       !hasMeaningfulWhenBlank(node)
-    )
+    );
   }
 
-  function flankingWhitespace (node, options) {
+  function flankingWhitespace(node, options) {
     if (node.isBlock || (options.preformattedCode && node.isCode)) {
-      return { leading: '', trailing: '' }
+      return { leading: '', trailing: '' };
     }
 
     var edges = edgeWhitespace(node.textContent);
@@ -523,10 +583,10 @@ var TurndownService = (function () {
       edges.trailing = edges.trailingNonAscii;
     }
 
-    return { leading: edges.leading, trailing: edges.trailing }
+    return { leading: edges.leading, trailing: edges.trailing };
   }
 
-  function edgeWhitespace (string) {
+  function edgeWhitespace(string) {
     var m = string.match(/^(([ \t\r\n]*)(\s*))(?:(?=\S)[\s\S]*\S)?((\s*?)([ \t\r\n]*))$/);
     return {
       leading: m[1],
@@ -534,11 +594,11 @@ var TurndownService = (function () {
       leadingNonAscii: m[3],
       trailing: m[4],
       trailingNonAscii: m[5],
-      trailingAscii: m[6]
-    }
+      trailingAscii: m[6],
+    };
   }
 
-  function isFlankedByWhitespace (side, node, options) {
+  function isFlankedByWhitespace(side, node, options) {
     var sibling;
     var regExp;
     var isFlanked;
@@ -560,7 +620,7 @@ var TurndownService = (function () {
         isFlanked = regExp.test(sibling.textContent);
       }
     }
-    return isFlanked
+    return isFlanked;
   }
 
   var reduce = Array.prototype.reduce;
@@ -577,11 +637,11 @@ var TurndownService = (function () {
     [/\]/g, '\\]'],
     [/^>/g, '\\>'],
     [/_/g, '\\_'],
-    [/^(\d+)\. /g, '$1\\. ']
+    [/^(\d+)\. /g, '$1\\. '],
   ];
 
-  function TurndownService (options) {
-    if (!(this instanceof TurndownService)) return new TurndownService(options)
+  function TurndownService(options) {
+    if (!(this instanceof TurndownService)) return new TurndownService(options);
 
     var defaults = {
       rules: rules,
@@ -597,14 +657,14 @@ var TurndownService = (function () {
       br: '  ',
       preformattedCode: false,
       blankReplacement: function (content, node) {
-        return node.isBlock ? '\n\n' : ''
+        return node.isBlock ? '\n\n' : '';
       },
       keepReplacement: function (content, node) {
-        return node.isBlock ? '\n\n' + node.outerHTML + '\n\n' : node.outerHTML
+        return node.isBlock ? '\n\n' + node.outerHTML + '\n\n' : node.outerHTML;
       },
       defaultReplacement: function (content, node) {
-        return node.isBlock ? '\n\n' + content + '\n\n' : content
-      }
+        return node.isBlock ? '\n\n' + content + '\n\n' : content;
+      },
     };
     this.options = extend({}, defaults, options);
     this.rules = new Rules(this.options);
@@ -617,7 +677,7 @@ var TurndownService = (function () {
      */
     setDocument: function (doc) {
       this._document = doc;
-      return this
+      return this;
     },
 
     /**
@@ -625,20 +685,20 @@ var TurndownService = (function () {
      */
     turndown: function (input) {
       if (!canConvert(input)) {
-        throw new TypeError(
-          input + ' is not a string, or an element/document/fragment node.'
-        )
+        throw new TypeError(input + ' is not a string, or an element/document/fragment node.');
       }
 
-      if (input === '') return ''
+      if (input === '') return '';
 
       var doc = this._document || (typeof document !== 'undefined' ? document : null);
       if (!doc && typeof input === 'string') {
-        throw new Error('Document context required for parsing HTML strings. Use setDocument() first.')
+        throw new Error(
+          'Document context required for parsing HTML strings. Use setDocument() first.'
+        );
       }
 
       var output = process.call(this, new RootNode(input, this.options, doc));
-      return postProcess.call(this, output)
+      return postProcess.call(this, output);
     },
 
     use: function (plugin) {
@@ -647,50 +707,54 @@ var TurndownService = (function () {
       } else if (typeof plugin === 'function') {
         plugin(this);
       } else {
-        throw new TypeError('plugin must be a Function or an Array of Functions')
+        throw new TypeError('plugin must be a Function or an Array of Functions');
       }
-      return this
+      return this;
     },
 
     addRule: function (key, rule) {
       this.rules.add(key, rule);
-      return this
+      return this;
     },
 
     keep: function (filter) {
       this.rules.keep(filter);
-      return this
+      return this;
     },
 
     remove: function (filter) {
       this.rules.remove(filter);
-      return this
+      return this;
     },
 
     escape: function (string) {
       return escapes.reduce(function (accumulator, escape) {
-        return accumulator.replace(escape[0], escape[1])
-      }, string)
-    }
+        return accumulator.replace(escape[0], escape[1]);
+      }, string);
+    },
   };
 
-  function process (parentNode) {
+  function process(parentNode) {
     var self = this;
-    return reduce.call(parentNode.childNodes, function (output, node) {
-      node = new Node(node, self.options);
+    return reduce.call(
+      parentNode.childNodes,
+      function (output, node) {
+        node = new Node(node, self.options);
 
-      var replacement = '';
-      if (node.nodeType === 3) {
-        replacement = node.isCode ? node.nodeValue : self.escape(node.nodeValue);
-      } else if (node.nodeType === 1) {
-        replacement = replacementForNode.call(self, node);
-      }
+        var replacement = '';
+        if (node.nodeType === 3) {
+          replacement = node.isCode ? node.nodeValue : self.escape(node.nodeValue);
+        } else if (node.nodeType === 1) {
+          replacement = replacementForNode.call(self, node);
+        }
 
-      return join(output, replacement)
-    }, '')
+        return join(output, replacement);
+      },
+      ''
+    );
   }
 
-  function postProcess (output) {
+  function postProcess(output) {
     var self = this;
     this.rules.forEach(function (rule) {
       if (typeof rule.append === 'function') {
@@ -698,42 +762,34 @@ var TurndownService = (function () {
       }
     });
 
-    return output.replace(/^[\t\r\n]+/, '').replace(/[\t\r\n\s]+$/, '')
+    return output.replace(/^[\t\r\n]+/, '').replace(/[\t\r\n\s]+$/, '');
   }
 
-  function replacementForNode (node) {
+  function replacementForNode(node) {
     var rule = this.rules.forNode(node);
     var content = process.call(this, node);
     var whitespace = node.flankingWhitespace;
     if (whitespace.leading || whitespace.trailing) content = content.trim();
-    return (
-      whitespace.leading +
-      rule.replacement(content, node, this.options) +
-      whitespace.trailing
-    )
+    return whitespace.leading + rule.replacement(content, node, this.options) + whitespace.trailing;
   }
 
-  function join (output, replacement) {
+  function join(output, replacement) {
     var s1 = trimTrailingNewlines(output);
     var s2 = trimLeadingNewlines(replacement);
     var nls = Math.max(output.length - s1.length, replacement.length - s2.length);
     var separator = '\n\n'.substring(0, nls);
-    return s1 + separator + s2
+    return s1 + separator + s2;
   }
 
-  function canConvert (input) {
+  function canConvert(input) {
     return (
-      input != null && (
-        typeof input === 'string' ||
-        (input.nodeType && (
-          input.nodeType === 1 || input.nodeType === 9 || input.nodeType === 11
-        ))
-      )
-    )
+      input != null &&
+      (typeof input === 'string' ||
+        (input.nodeType && (input.nodeType === 1 || input.nodeType === 9 || input.nodeType === 11)))
+    );
   }
 
   return TurndownService;
-
 })();
 
 /**
@@ -750,7 +806,7 @@ function gfmTables(turndownService) {
     filter: ['th', 'td'],
     replacement: function (content, node) {
       return cell(content, node);
-    }
+    },
   });
 
   turndownService.addRule('tableRow', {
@@ -762,9 +818,7 @@ function gfmTables(turndownService) {
       if (isHeadingRow(node)) {
         for (var i = 0; i < node.childNodes.length; i++) {
           var border = '---';
-          var align = (
-            node.childNodes[i].getAttribute('align') || ''
-          ).toLowerCase();
+          var align = (node.childNodes[i].getAttribute('align') || '').toLowerCase();
 
           if (align) border = alignMap[align] || border;
 
@@ -772,7 +826,7 @@ function gfmTables(turndownService) {
         }
       }
       return '\n' + content + (borderCells ? '\n' + borderCells : '');
-    }
+    },
   });
 
   turndownService.addRule('table', {
@@ -783,14 +837,14 @@ function gfmTables(turndownService) {
       // Ensure the table is wrapped in newlines
       content = content.replace(/^\n+/, '').replace(/\n+$/, '');
       return '\n\n' + content + '\n\n';
-    }
+    },
   });
 
   turndownService.addRule('tableSection', {
     filter: ['thead', 'tbody', 'tfoot'],
     replacement: function (content) {
       return content;
-    }
+    },
   });
 
   // Helper: wrap cell content
@@ -809,13 +863,11 @@ function gfmTables(turndownService) {
     var parentNode = tr.parentNode;
     return (
       parentNode.nodeName === 'THEAD' ||
-      (
-        parentNode.firstChild === tr &&
+      (parentNode.firstChild === tr &&
         (parentNode.nodeName === 'TABLE' || isFirstTbody(parentNode)) &&
         Array.prototype.every.call(tr.childNodes, function (n) {
           return n.nodeName === 'TH';
-        })
-      )
+        }))
     );
   }
 
@@ -824,10 +876,8 @@ function gfmTables(turndownService) {
     var previousSibling = node.previousSibling;
     return (
       node.nodeName === 'TBODY' &&
-      (!previousSibling || (
-        previousSibling.nodeName === 'THEAD' &&
-        /^\s*$/i.test(previousSibling.textContent)
-      ))
+      (!previousSibling ||
+        (previousSibling.nodeName === 'THEAD' && /^\s*$/i.test(previousSibling.textContent)))
     );
   }
 }
@@ -840,7 +890,7 @@ function gfmStrikethrough(turndownService) {
     filter: ['del', 's', 'strike'],
     replacement: function (content) {
       return '~~' + content + '~~';
-    }
+    },
   });
 }
 

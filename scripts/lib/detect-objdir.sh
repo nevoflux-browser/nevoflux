@@ -11,7 +11,7 @@ _detect_objdir() {
 
   # Try to find existing obj-* directory
   local found
-  found=$(find "$engine_dir" -maxdepth 1 -name 'obj-*' -type d 2>/dev/null | head -1)
+  found=$(find "$engine_dir" -maxdepth 1 -name 'obj-*' -type d 2> /dev/null | head -1)
   if [ -n "$found" ]; then
     echo "$found"
     return 0
@@ -29,7 +29,7 @@ _detect_objdir() {
       [ "$arch" = "arm64" ] && arch="aarch64"
       os_triple="${arch}-apple-darwin"
       ;;
-    MINGW*|MSYS*|CYGWIN*)
+    MINGW* | MSYS* | CYGWIN*)
       os_triple="${arch}-pc-windows-msvc"
       ;;
     *)
@@ -55,7 +55,7 @@ _detect_distdir() {
 
   # macOS: dist/<AppName>.app/Contents/Resources
   local app_bundle
-  app_bundle=$(find "$obj_dir/dist" -maxdepth 1 -name "*.app" -type d 2>/dev/null | head -1)
+  app_bundle=$(find "$obj_dir/dist" -maxdepth 1 -name "*.app" -type d 2> /dev/null | head -1)
   if [ -n "$app_bundle" ]; then
     echo "$app_bundle/Contents/Resources"
     return 0

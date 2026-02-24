@@ -20,7 +20,7 @@
 
 // ========== Test Utilities ==========
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const log = (msg, success = null) => {
   const icon = success === true ? '[PASS]' : success === false ? '[FAIL]' : '[INFO]';
@@ -329,10 +329,7 @@ const testServerListView = async () => {
 
     // In a real test with mock, we'd verify empty state
     // For now, just check structure is valid
-    assert(
-      emptyState || serverCards.length > 0,
-      'Should show either empty state or server cards'
-    );
+    assert(emptyState || serverCards.length > 0, 'Should show either empty state or server cards');
 
     if (emptyState) {
       const text = await getText('.mcp-empty-state');
@@ -375,8 +372,8 @@ const testServerListView = async () => {
 
     // The loading state should briefly appear or we check structure
     const doc = getDoc();
-    const hasLoadingStyles = !!doc.querySelector('.mcp-loading') ||
-      !!doc.querySelector('.loading-spinner');
+    const hasLoadingStyles =
+      !!doc.querySelector('.mcp-loading') || !!doc.querySelector('.loading-spinner');
 
     // Even if loading completes, verify the structure supports loading
     await delay(500);
@@ -567,9 +564,7 @@ const testEditServer = async () => {
 
     // Verify "Save Changes" button exists
     const submitBtns = queryAll('.mcp-btn-primary');
-    const saveBtn = Array.from(submitBtns).find(btn =>
-      btn.textContent.includes('Save Changes')
-    );
+    const saveBtn = Array.from(submitBtns).find((btn) => btn.textContent.includes('Save Changes'));
     assert(saveBtn, 'Save Changes button should exist when editing');
 
     await goBackToList();
@@ -798,13 +793,17 @@ const runAllMcpTests = async () => {
   console.log(`Total: ${testResults.passed + testResults.failed}`);
   console.log(`Passed: ${testResults.passed}`);
   console.log(`Failed: ${testResults.failed}`);
-  console.log(`Pass Rate: ${((testResults.passed / (testResults.passed + testResults.failed)) * 100).toFixed(1)}%`);
+  console.log(
+    `Pass Rate: ${((testResults.passed / (testResults.passed + testResults.failed)) * 100).toFixed(1)}%`
+  );
 
   if (testResults.failed > 0) {
     console.log('\nFailed tests:');
-    testResults.tests.filter(t => !t.passed).forEach(t => {
-      console.log(`  - ${t.name}: ${t.error}`);
-    });
+    testResults.tests
+      .filter((t) => !t.passed)
+      .forEach((t) => {
+        console.log(`  - ${t.name}: ${t.error}`);
+      });
   }
 
   return testResults;

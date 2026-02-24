@@ -21,22 +21,22 @@
   --nevo-surface: #f3f4f6;
   --nevo-surface-hover: #e5e7eb;
   --nevo-surface-active: #d1d5db;
-  
+
   /* Code Blocks */
   --nevo-code-bg: #f6f8fa;
   --nevo-code-header: #eaeef2;
   --nevo-code-text: #24292f;
 
   /* Text colors */
-  --nevo-text: #1f2937;          /* Deep Charcoal */
+  --nevo-text: #1f2937; /* Deep Charcoal */
   --nevo-text-secondary: #4b5563; /* Cool Grey */
-  --nevo-text-muted: #9ca3af;     /* Light Grey */
+  --nevo-text-muted: #9ca3af; /* Light Grey */
 
   /* Semantic colors */
   --nevo-success: #16a34a; /* Slightly darker green for light mode contrast */
   --nevo-warning: #d97706; /* Slightly darker amber */
-  --nevo-error: #dc2626;   /* Slightly darker red */
-  --nevo-info: #2563eb;    /* Slightly darker blue */
+  --nevo-error: #dc2626; /* Slightly darker red */
+  --nevo-info: #2563eb; /* Slightly darker blue */
 
   /* Borders */
   --nevo-border: #e5e7eb;
@@ -64,7 +64,8 @@
 
   /* Typography */
   --nevo-font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --nevo-font-mono: 'Ui Monospace', 'SFMono-Regular', 'SF Mono', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
+  --nevo-font-mono:
+    'Ui Monospace', 'SFMono-Regular', 'SF Mono', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
   --nevo-font-size-xs: 10px;
   --nevo-font-size-sm: 12px;
   --nevo-font-size-base: 14px;
@@ -80,7 +81,9 @@
 /* ============================================
    Reset & Base Styles
    ============================================ */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -712,7 +715,7 @@ body {
 .assistant-toolbar {
   justify-content: flex-start;
   margin-top: var(--nevo-space-sm);
-  opacity: 1;  /* always visible, not hover-dependent */
+  opacity: 1; /* always visible, not hover-dependent */
 }
 
 .toolbar-btn {
@@ -1014,9 +1017,15 @@ body {
   color: var(--nevo-text);
 }
 
-.markdown-content h1 { font-size: 1.3em; }
-.markdown-content h2 { font-size: 1.2em; }
-.markdown-content h3 { font-size: 1.1em; }
+.markdown-content h1 {
+  font-size: 1.3em;
+}
+.markdown-content h2 {
+  font-size: 1.2em;
+}
+.markdown-content h3 {
+  font-size: 1.1em;
+}
 
 .markdown-content p {
   margin: var(--nevo-space-sm) 0;
@@ -1277,7 +1286,7 @@ body {
   overflow-y: auto;
 }
 
-.text-input[rows="6"] {
+.text-input[rows='6'] {
   max-height: 126px;
   overflow-y: auto;
 }
@@ -1456,7 +1465,8 @@ body {
 }
 
 @keyframes pulse-recording {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
   }
   50% {
@@ -1590,7 +1600,9 @@ body {
 
 /* Keyframes */
 @keyframes thinking-bounce {
-  0%, 80%, 100% {
+  0%,
+  80%,
+  100% {
     transform: scale(0.6);
     opacity: 0.4;
   }
@@ -1767,7 +1779,7 @@ body {
   border-color: var(--nevo-primary);
 }
 
-.scope-option input[type="radio"] {
+.scope-option input[type='radio'] {
   accent-color: var(--nevo-primary);
 }
 
@@ -1867,16 +1879,19 @@ body {
 }
 
 @keyframes blink {
-  0%, 50% {
+  0%,
+  50% {
     opacity: 1;
   }
-  51%, 100% {
+  51%,
+  100% {
     opacity: 0;
   }
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
   }
   50% {
@@ -2491,7 +2506,7 @@ body {
   color: var(--nevo-text);
 }
 
-.mcp-form-field input[type="text"] {
+.mcp-form-field input[type='text'] {
   padding: var(--nevo-space-sm) var(--nevo-space-md);
   background: var(--nevo-background);
   border: 1px solid var(--nevo-border);
@@ -2501,13 +2516,13 @@ body {
   transition: all var(--nevo-transition-fast);
 }
 
-.mcp-form-field input[type="text"]:focus {
+.mcp-form-field input[type='text']:focus {
   outline: none;
   border-color: var(--nevo-primary);
   box-shadow: 0 0 0 2px var(--nevo-primary-light);
 }
 
-.mcp-form-field input[type="text"]:disabled {
+.mcp-form-field input[type='text']:disabled {
   background: var(--nevo-surface);
   color: var(--nevo-text-muted);
   cursor: not-allowed;
@@ -2530,7 +2545,7 @@ body {
   cursor: pointer;
 }
 
-.mcp-checkbox-label input[type="checkbox"] {
+.mcp-checkbox-label input[type='checkbox'] {
   width: 18px;
   height: 18px;
   accent-color: var(--nevo-primary);
@@ -3017,7 +3032,7 @@ body {
 }
 
 .plan-step::before {
-  content: counter(plan-step) ".";
+  content: counter(plan-step) '.';
   font-weight: 600;
   color: var(--nevo-primary);
   min-width: 20px;
@@ -3086,7 +3101,9 @@ body {
   padding: var(--nevo-space-md) var(--nevo-space-lg);
   margin: var(--nevo-space-sm) 0;
   cursor: pointer;
-  transition: border-color var(--nevo-transition-fast), box-shadow var(--nevo-transition-fast);
+  transition:
+    border-color var(--nevo-transition-fast),
+    box-shadow var(--nevo-transition-fast);
 }
 
 .artifact-card:hover {
@@ -3162,7 +3179,9 @@ body {
 }
 
 @keyframes artifact-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .artifact-open-hint {
@@ -3355,7 +3374,9 @@ body {
   font-size: var(--nevo-font-size-sm);
   font-family: var(--nevo-font-family);
   cursor: pointer;
-  transition: background var(--nevo-transition-fast), border-color var(--nevo-transition-fast);
+  transition:
+    background var(--nevo-transition-fast),
+    border-color var(--nevo-transition-fast);
 }
 
 .history-load-more-btn:hover {
@@ -3540,7 +3561,9 @@ body {
 }
 
 @keyframes tool-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .tool-chip__icon {
@@ -3589,8 +3612,12 @@ body {
 }
 
 @keyframes tool-auth-fadein {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .tool-auth-dialog {
@@ -3605,8 +3632,14 @@ body {
 }
 
 @keyframes tool-auth-scalein {
-  from { transform: scale(0.95); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .tool-auth-header {
@@ -3665,7 +3698,9 @@ body {
   font-size: var(--nevo-font-size-sm);
   font-family: var(--nevo-font-family);
   cursor: pointer;
-  transition: background var(--nevo-transition-fast), border-color var(--nevo-transition-fast);
+  transition:
+    background var(--nevo-transition-fast),
+    border-color var(--nevo-transition-fast);
   text-align: left;
 }
 
@@ -3808,7 +3843,8 @@ body {
 }
 
 @keyframes streaming-pulse {
-  0%, 100% {
+  0%,
+  100% {
     border-color: var(--nevo-border);
   }
   50% {

@@ -11,10 +11,12 @@
 ## NevofluxChild.sys.mjs Coverage (Content Process)
 
 ### Execute Handler
+
 - [x] `execute()` - Unknown action handling
 - [x] `execute()` - Null params handling
 
 ### Data Extraction
+
 - [x] `getText()` - Return text content
 - [x] `getText()` - Empty string for non-existent
 - [x] `getHtml()` - Return innerHTML
@@ -22,12 +24,14 @@
 - [x] `snapshot()` - Return tree and refs
 
 ### State Checking
+
 - [x] `exists()` - True for existing element
 - [x] `exists()` - False for non-existent
 - [x] `isVisible()` - True for visible element
 - [x] `isVisible()` - False for non-existent
 
 ### Keyboard Control
+
 - [x] `keyPress()` - Valid key
 - [x] `keyPress()` - Missing key error
 - [x] `keyPress()` - With modifiers (ctrl, shift, alt, meta)
@@ -36,6 +40,7 @@
 - [x] `_getKeyCode()` - Key code mapping (Enter, Tab, Escape, arrows, function keys)
 
 ### Mouse Control
+
 - [x] `mouseMove()` - Move to coordinates
 - [x] `mouseDown()` - Default button
 - [x] `mouseDown()` - Right button
@@ -53,6 +58,7 @@
 - [x] `clear()` - Non-existent element error
 
 ### Storage - LocalStorage
+
 - [x] `setLocalStorage()` - String value
 - [x] `setLocalStorage()` - Object value (JSON)
 - [x] `getLocalStorage()` - Null for non-existent
@@ -64,6 +70,7 @@
 - [x] `clearLocalStorage()` - Clear all
 
 ### Storage - SessionStorage
+
 - [x] `setSessionStorage()` - Set value
 - [x] `getSessionStorage()` - Return stored value
 - [x] `removeSessionStorage()` - Remove item
@@ -71,6 +78,7 @@
 - [x] `clearSessionStorage()` - Clear all
 
 ### JavaScript Execution
+
 - [x] `evalScript()` - Simple expression
 - [x] `evalScript()` - String type
 - [x] `evalScript()` - Object type
@@ -86,12 +94,14 @@
 - [x] `removeScript()` - Non-existent script error
 
 ### Type and Fill
+
 - [x] `type()` - Append text to input
 - [x] `type()` - Non-existent element error
 - [x] `fill()` - Replace input value
 - [x] `fill()` - Non-existent element error
 
 ### Wait
+
 - [x] `waitForSelector()` - Attached state
 - [x] `waitForSelector()` - Visible state
 - [x] `waitForSelector()` - Detached state
@@ -100,9 +110,11 @@
 ## ext-nevoflux.js Coverage (Parent Process)
 
 ### Version
+
 - [x] `getVersion()` - Return API version
 
 ### Tab Management
+
 - [x] `createTab()` - Create new tab
 - [x] `createTab()` - Default URL
 - [x] `createTab()` - Window dimensions
@@ -123,6 +135,7 @@
 - [x] `closeWindow()` - Non-existent window error
 
 ### Cookie Management
+
 - [x] `setCookie()` - Set cookie
 - [x] `setCookie()` - Missing URL error
 - [x] `setCookie()` - Missing name error
@@ -136,6 +149,7 @@
 - [x] `clearCookies()` - Clear by domain
 
 ### Storage API Proxies
+
 - [x] `getLocalStorage()` - Proxy to child
 - [x] `setLocalStorage()` - Proxy to child
 - [x] `removeLocalStorage()` - Proxy to child
@@ -146,6 +160,7 @@
 - [x] `clearSessionStorage()` - Proxy to child
 
 ### Network
+
 - [x] `startCapture()` - Return handle
 - [x] `startCapture()` - Unique handles
 - [x] `stopCapture()` - Return requests
@@ -160,6 +175,7 @@
 - [x] `clearIntercepts()` - Clear all
 
 ### Execute
+
 - [x] `eval()` - Missing script error
 - [x] `eval()` - Non-string script error
 - [x] `eval()` - Valid script
@@ -167,6 +183,7 @@
 - [x] `removeScript()` - Proxy to child
 
 ### Keyboard/Mouse Proxies
+
 - [x] `keyPress()` - Proxy to child
 - [x] `keyDown()` - Proxy to child
 - [x] `keyUp()` - Proxy to child
@@ -180,6 +197,7 @@
 - [x] `clear()` - Proxy to child
 
 ### Data Extraction Proxies
+
 - [x] `getText()` - Proxy to child
 - [x] `getHtml()` - Proxy to child
 - [x] `getValue()` - Proxy to child
@@ -187,22 +205,26 @@
 - [x] `screenshot()` - Proxy to child
 
 ### State Checking Proxies
+
 - [x] `isVisible()` - Proxy to child
 - [x] `exists()` - Proxy to child
 
 ### Interaction Proxies
+
 - [x] `click()` - Proxy to child
 - [x] `type()` - Proxy to child
 - [x] `fill()` - Proxy to child
 - [x] `waitForSelector()` - Proxy to child
 
 ### Privacy API
+
 - [x] `getPrivacyConfig()` - Return config
 - [x] `setPrivacyConfig()` - Update config
 - [x] `filterSensitive()` - Redact email
 - [x] `filterSensitive()` - No modification for clean text
 
 ### Wait Methods
+
 - [x] `waitForTimeout()` - Wait and succeed
 - [x] `waitForRequest()` - Return request data
 - [x] `waitForResponse()` - Return response data
@@ -210,6 +232,7 @@
 ## Methods Not in P1 Scope (Not Tested)
 
 The following methods are part of the full implementation but not included in P1:
+
 - `screenshot()` (full implementation with canvas) - requires browser context
 - Navigation methods (`open`, `reload`, `back`, `forward`) - require actual browser navigation
 - Helper methods (`inferRole`, `getAccessibleName`, `isInteractive`, `hasContent`, `generateSelector`) - internal helpers

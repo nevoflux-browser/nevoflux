@@ -2,14 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-"use strict";
+'use strict';
 
 // API version for compatibility checking
-const API_VERSION = "1.0.0";
+const API_VERSION = '1.0.0';
 
 // Lazy import for SessionStore (used for restoring discarded tabs)
 ChromeUtils.defineESModuleGetters(this, {
-  SessionStore: "resource:///modules/sessionstore/SessionStore.sys.mjs",
+  SessionStore: 'resource:///modules/sessionstore/SessionStore.sys.mjs',
 });
 
 // Default timeout for tab restoration (ms)
@@ -17,7 +17,7 @@ const DEFAULT_RESTORE_TIMEOUT = 10000;
 
 // Helper to escape regex special characters for safe pattern construction
 function escapeRegExp(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // Default privacy config
@@ -31,15 +31,15 @@ const DEFAULT_PRIVACY_CONFIG = {
     address: false,
     name: false,
   },
-  mode: "redact",
-  scope: "external_only",
+  mode: 'redact',
+  scope: 'external_only',
 };
 
 // Privacy config storage
 let privacyConfig = { ...DEFAULT_PRIVACY_CONFIG };
 
 // Network capture state
-const networkCaptures = new Map();  // handle -> { options, requests, createdAt }
+const networkCaptures = new Map(); // handle -> { options, requests, createdAt }
 const networkIntercepts = new Map(); // handle -> { options, listener }
 let captureCounter = 0;
 let interceptCounter = 0;
@@ -67,46 +67,50 @@ this.nevoflux = class extends ExtensionAPI {
 
         async getText(tabId, selector) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "getText", { selector: selector || "body" });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'getText', {
+            selector: selector || 'body',
+          });
         },
 
         async getHtml(tabId, selector) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "getHtml", { selector: selector || "body" });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'getHtml', {
+            selector: selector || 'body',
+          });
         },
 
         async getValue(tabId, selector) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "getValue", { selector });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'getValue', { selector });
         },
 
         async getUrl(tabId) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
           const tab = extension.tabManager.get(resolvedTabId);
-          return tab?.browser?.currentURI?.spec || "";
+          return tab?.browser?.currentURI?.spec || '';
         },
 
         async getTitle(tabId) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
           const tab = extension.tabManager.get(resolvedTabId);
-          return tab?.browser?.contentTitle || "";
+          return tab?.browser?.contentTitle || '';
         },
 
         async snapshot(tabId, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "snapshot", options);
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'snapshot', options);
         },
 
         async screenshot(tabId, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "screenshot", options);
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'screenshot', options);
         },
 
         async getMarkdown(tabId, options = {}) {
           // Delegate to getTabContent for unified logic (auto-restore, etc.)
           const result = await this.getTabContent(tabId, {
             ...options,
-            format: "markdown",
+            format: 'markdown',
           });
 
           // Convert to original return format for backward compatibility
@@ -126,29 +130,36 @@ this.nevoflux = class extends ExtensionAPI {
 
         async isVisible(tabId, selector) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "isVisible", { selector });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'isVisible', { selector });
         },
 
         async exists(tabId, selector) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "exists", { selector });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'exists', { selector });
         },
 
         // ========== Interaction (browser_use mode) ==========
 
         async click(tabId, selector, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "click", { selector, ...options });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'click', {
+            selector,
+            ...options,
+          });
         },
 
         async type(tabId, selector, text, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "type", { selector, text, ...options });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'type', {
+            selector,
+            text,
+            ...options,
+          });
         },
 
         async fill(tabId, selector, text) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "fill", { selector, text });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'fill', { selector, text });
         },
 
         // ========== Navigation (browser_use mode) ==========
@@ -158,7 +169,10 @@ this.nevoflux = class extends ExtensionAPI {
           const tab = extension.tabManager.get(resolvedTabId);
 
           if (!tab?.browser) {
-            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 3001, message: 'Tab not found', recoverable: false },
+            };
           }
 
           try {
@@ -174,7 +188,7 @@ this.nevoflux = class extends ExtensionAPI {
           } catch (e) {
             // Fallback: try using the tabs API
             try {
-              const tabsApi = extension.apiManager.getAPI("tabs", extension, "addon_parent");
+              const tabsApi = extension.apiManager.getAPI('tabs', extension, 'addon_parent');
               if (tabsApi?.tabs?.update) {
                 await tabsApi.tabs.update(resolvedTabId, { url });
                 return { success: true, url };
@@ -191,7 +205,10 @@ this.nevoflux = class extends ExtensionAPI {
           const tab = extension.tabManager.get(resolvedTabId);
 
           if (!tab?.browser) {
-            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 3001, message: 'Tab not found', recoverable: false },
+            };
           }
 
           try {
@@ -207,14 +224,20 @@ this.nevoflux = class extends ExtensionAPI {
           const tab = extension.tabManager.get(resolvedTabId);
 
           if (!tab?.browser) {
-            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 3001, message: 'Tab not found', recoverable: false },
+            };
           }
 
           if (tab.browser.canGoBack) {
             tab.browser.goBack();
             return { success: true };
           }
-          return { success: false, error: { code: 2002, message: "Cannot go back", recoverable: false } };
+          return {
+            success: false,
+            error: { code: 2002, message: 'Cannot go back', recoverable: false },
+          };
         },
 
         async forward(tabId) {
@@ -222,14 +245,20 @@ this.nevoflux = class extends ExtensionAPI {
           const tab = extension.tabManager.get(resolvedTabId);
 
           if (!tab?.browser) {
-            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 3001, message: 'Tab not found', recoverable: false },
+            };
           }
 
           if (tab.browser.canGoForward) {
             tab.browser.goForward();
             return { success: true };
           }
-          return { success: false, error: { code: 2002, message: "Cannot go forward", recoverable: false } };
+          return {
+            success: false,
+            error: { code: 2002, message: 'Cannot go forward', recoverable: false },
+          };
         },
 
         // ========== Tab Management (browser_use mode) ==========
@@ -256,31 +285,43 @@ this.nevoflux = class extends ExtensionAPI {
 
             // Fallback: get most recent browser window directly
             if (!nativeWindow) {
-              nativeWindow = Services.wm.getMostRecentWindow("navigator:browser");
+              nativeWindow = Services.wm.getMostRecentWindow('navigator:browser');
             }
 
             // Validate window
             if (!nativeWindow) {
-              return { success: false, error: { code: 5002, message: "No browser window found", recoverable: false } };
+              return {
+                success: false,
+                error: { code: 5002, message: 'No browser window found', recoverable: false },
+              };
             }
 
             // Validate gBrowser
             if (!nativeWindow.gBrowser) {
-              return { success: false, error: { code: 5003, message: "Window has no gBrowser", recoverable: false } };
+              return {
+                success: false,
+                error: { code: 5003, message: 'Window has no gBrowser', recoverable: false },
+              };
             }
 
             // Create the tab
             let tab;
             try {
-              tab = nativeWindow.gBrowser.addTab(url || "about:newtab", {
+              tab = nativeWindow.gBrowser.addTab(url || 'about:newtab', {
                 triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
               });
             } catch (e) {
-              return { success: false, error: { code: 6002, message: `Failed to add tab: ${e}`, recoverable: false } };
+              return {
+                success: false,
+                error: { code: 6002, message: `Failed to add tab: ${e}`, recoverable: false },
+              };
             }
 
             if (!tab) {
-              return { success: false, error: { code: 6003, message: "addTab returned null", recoverable: false } };
+              return {
+                success: false,
+                error: { code: 6003, message: 'addTab returned null', recoverable: false },
+              };
             }
 
             // Move tab to the active workspace using Zen's workspace management
@@ -297,7 +338,7 @@ this.nevoflux = class extends ExtensionAPI {
               try {
                 const gZenWorkspaces = nativeWindow.gZenWorkspaces;
                 if (gZenWorkspaces && gZenWorkspaces.activeWorkspace) {
-                  tab.setAttribute("zen-workspace-id", gZenWorkspaces.activeWorkspace);
+                  tab.setAttribute('zen-workspace-id', gZenWorkspaces.activeWorkspace);
                 }
               } catch {
                 // Ignore if gZenWorkspaces is not available
@@ -325,11 +366,17 @@ this.nevoflux = class extends ExtensionAPI {
             let tabId;
             try {
               if (!tabTracker) {
-                return { success: false, error: { code: 6004, message: "Tab tracker unavailable", recoverable: false } };
+                return {
+                  success: false,
+                  error: { code: 6004, message: 'Tab tracker unavailable', recoverable: false },
+                };
               }
               tabId = tabTracker.getId(tab);
             } catch (e) {
-              return { success: false, error: { code: 6005, message: `Failed to get tab ID: ${e}`, recoverable: false } };
+              return {
+                success: false,
+                error: { code: 6005, message: `Failed to get tab ID: ${e}`, recoverable: false },
+              };
             }
 
             // Get windowId - use wrapper if available, otherwise get from docShell
@@ -347,7 +394,7 @@ this.nevoflux = class extends ExtensionAPI {
             // Defensive check for tab position - the tab object should still be valid
             let tabPosition = 0;
             try {
-              if (tab && typeof tab._tPos === "number") {
+              if (tab && typeof tab._tPos === 'number') {
                 tabPosition = tab._tPos;
               }
             } catch (e) {
@@ -358,17 +405,24 @@ this.nevoflux = class extends ExtensionAPI {
               success: true,
               tab: {
                 id: tabId,
-                url: url || "about:newtab",
-                title: "",
+                url: url || 'about:newtab',
+                title: '',
                 active,
                 index: tabPosition,
                 windowId: resolvedWindowId,
-                status: "loading",
+                status: 'loading',
               },
             };
           } catch (e) {
             // Catch-all for any unexpected errors
-            return { success: false, error: { code: 6000, message: `Unexpected error in createTab: ${e}`, recoverable: false } };
+            return {
+              success: false,
+              error: {
+                code: 6000,
+                message: `Unexpected error in createTab: ${e}`,
+                recoverable: false,
+              },
+            };
           }
         },
 
@@ -386,22 +440,32 @@ this.nevoflux = class extends ExtensionAPI {
           }
 
           if (!nativeTab) {
-            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 3001, message: 'Tab not found', recoverable: false },
+            };
           }
 
           const win = nativeTab.ownerGlobal;
           if (!win || !win.gBrowser) {
-            return { success: false, error: { code: 6007, message: "Tab's window is no longer available", recoverable: false } };
+            return {
+              success: false,
+              error: {
+                code: 6007,
+                message: "Tab's window is no longer available",
+                recoverable: false,
+              },
+            };
           }
 
           const gBrowser = win.gBrowser;
 
           // Ensure tab has zen-workspace-id for Zen compatibility
-          if (!nativeTab.hasAttribute("zen-workspace-id")) {
+          if (!nativeTab.hasAttribute('zen-workspace-id')) {
             try {
               const gZenWorkspaces = win.gZenWorkspaces;
               if (gZenWorkspaces && gZenWorkspaces.activeWorkspace) {
-                nativeTab.setAttribute("zen-workspace-id", gZenWorkspaces.activeWorkspace);
+                nativeTab.setAttribute('zen-workspace-id', gZenWorkspaces.activeWorkspace);
               }
             } catch (e) {
               // Ignore
@@ -439,13 +503,24 @@ this.nevoflux = class extends ExtensionAPI {
 
               // Check if tab was actually closed, regardless of internal errors
               // Zen's event handlers may throw errors but the tab can still be successfully closed
-              const tabActuallyClosed = nativeTab.closing || !nativeTab.parentNode || !gBrowser.tabs.includes(nativeTab);
+              const tabActuallyClosed =
+                nativeTab.closing || !nativeTab.parentNode || !gBrowser.tabs.includes(nativeTab);
               if (tabActuallyClosed) {
                 resolve({ success: true });
               } else if (internalError) {
-                resolve({ success: false, error: { code: 6002, message: `closeTab error: ${internalError.message || internalError}`, recoverable: false } });
+                resolve({
+                  success: false,
+                  error: {
+                    code: 6002,
+                    message: `closeTab error: ${internalError.message || internalError}`,
+                    recoverable: false,
+                  },
+                });
               } else {
-                resolve({ success: false, error: { code: 6008, message: "Tab was not closed", recoverable: false } });
+                resolve({
+                  success: false,
+                  error: { code: 6008, message: 'Tab was not closed', recoverable: false },
+                });
               }
             }, 0);
           });
@@ -469,17 +544,27 @@ this.nevoflux = class extends ExtensionAPI {
             }
             return {
               id: tabId,
-              zenSyncId: nativeTab.id || null,  // Zen Browser's persistent tab ID for session association
-              url: browser?.currentURI?.spec || "",
-              title: browser?.contentTitle || "",
+              zenSyncId: nativeTab.id || null, // Zen Browser's persistent tab ID for session association
+              url: browser?.currentURI?.spec || '',
+              title: browser?.contentTitle || '',
               active,
               index: nativeTab._tPos ?? 0,
               windowId,
-              status: nativeTab.linkedBrowser?.webProgress?.isLoadingDocument ? "loading" : "complete",
+              status: nativeTab.linkedBrowser?.webProgress?.isLoadingDocument
+                ? 'loading'
+                : 'complete',
             };
           } catch (e) {
             // Return minimal info on failure to avoid crashing the entire listTabs call
-            return { id: tabId, url: "", title: "", active: false, index: 0, windowId: 0, status: "unknown" };
+            return {
+              id: tabId,
+              url: '',
+              title: '',
+              active: false,
+              index: 0,
+              windowId: 0,
+              status: 'unknown',
+            };
           }
         },
 
@@ -488,7 +573,10 @@ this.nevoflux = class extends ExtensionAPI {
           const tab = extension.tabManager.get(resolvedTabId);
 
           if (!tab) {
-            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 3001, message: 'Tab not found', recoverable: false },
+            };
           }
 
           return this._getTabInfo(tab, resolvedTabId);
@@ -537,21 +625,21 @@ this.nevoflux = class extends ExtensionAPI {
         async queryTabs(filter = {}) {
           const allTabs = await this.listTabs();
 
-          return allTabs.filter(tab => {
+          return allTabs.filter((tab) => {
             if (filter.active !== undefined && tab.active !== filter.active) return false;
             if (filter.windowId !== undefined && tab.windowId !== filter.windowId) return false;
             if (filter.url) {
               // Escape regex special chars first, then convert wildcards to regex
               const escaped = escapeRegExp(filter.url);
-              const pattern = escaped.replace(/\\\*/g, ".*");
+              const pattern = escaped.replace(/\\\*/g, '.*');
               const regex = new RegExp(`^${pattern}$`);
               if (!regex.test(tab.url)) return false;
             }
             if (filter.title) {
               // Escape regex special chars first, then convert wildcards to regex
               const escaped = escapeRegExp(filter.title);
-              const pattern = escaped.replace(/\\\*/g, ".*");
-              const regex = new RegExp(`^${pattern}$`, "i");
+              const pattern = escaped.replace(/\\\*/g, '.*');
+              const regex = new RegExp(`^${pattern}$`, 'i');
               if (!regex.test(tab.title)) return false;
             }
             return true;
@@ -563,7 +651,10 @@ this.nevoflux = class extends ExtensionAPI {
           const tab = extension.tabManager.get(resolvedTabId);
 
           if (!tab) {
-            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 3001, message: 'Tab not found', recoverable: false },
+            };
           }
 
           try {
@@ -573,7 +664,10 @@ this.nevoflux = class extends ExtensionAPI {
             win.focus();
             return { success: true };
           } catch (e) {
-            return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+            return {
+              success: false,
+              error: { code: 5001, message: String(e), recoverable: false },
+            };
           }
         },
 
@@ -591,23 +685,23 @@ this.nevoflux = class extends ExtensionAPI {
             if (incognito) {
               newWindow = Services.ww.openWindow(
                 null,
-                "chrome://browser/content/browser.xhtml",
-                "_blank",
-                `chrome,dialog=no,all,private${features.length ? "," + features.join(",") : ""}`,
+                'chrome://browser/content/browser.xhtml',
+                '_blank',
+                `chrome,dialog=no,all,private${features.length ? ',' + features.join(',') : ''}`,
                 null
               );
             } else {
               newWindow = Services.ww.openWindow(
                 null,
-                "chrome://browser/content/browser.xhtml",
-                "_blank",
-                `chrome,dialog=no,all${features.length ? "," + features.join(",") : ""}`,
+                'chrome://browser/content/browser.xhtml',
+                '_blank',
+                `chrome,dialog=no,all${features.length ? ',' + features.join(',') : ''}`,
                 null
               );
             }
 
-            await new Promise(resolve => {
-              newWindow.addEventListener("load", resolve, { once: true });
+            await new Promise((resolve) => {
+              newWindow.addEventListener('load', resolve, { once: true });
             });
 
             if (url) {
@@ -619,7 +713,10 @@ this.nevoflux = class extends ExtensionAPI {
             const windowId = extension.windowManager.getWrapper(newWindow)?.id || 0;
             return { success: true, windowId };
           } catch (e) {
-            return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+            return {
+              success: false,
+              error: { code: 5001, message: String(e), recoverable: false },
+            };
           }
         },
 
@@ -634,13 +731,19 @@ this.nevoflux = class extends ExtensionAPI {
             }
 
             if (!targetWindow) {
-              return { success: false, error: { code: 5001, message: "Window not found", recoverable: false } };
+              return {
+                success: false,
+                error: { code: 5001, message: 'Window not found', recoverable: false },
+              };
             }
 
             targetWindow.close();
             return { success: true };
           } catch (e) {
-            return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+            return {
+              success: false,
+              error: { code: 5001, message: String(e), recoverable: false },
+            };
           }
         },
 
@@ -648,15 +751,18 @@ this.nevoflux = class extends ExtensionAPI {
 
         async waitForSelector(tabId, selector, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "waitForSelector", { selector, ...options });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'waitForSelector', {
+            selector,
+            ...options,
+          });
         },
 
         async waitForTimeout(ms) {
           // In extension parent context, use lazy getter for ChromeUtils
           const { setTimeout: chromeSetTimeout } = ChromeUtils.importESModule(
-            "resource://gre/modules/Timer.sys.mjs"
+            'resource://gre/modules/Timer.sys.mjs'
           );
-          await new Promise(resolve => chromeSetTimeout(resolve, ms));
+          await new Promise((resolve) => chromeSetTimeout(resolve, ms));
           return { success: true };
         },
 
@@ -664,67 +770,84 @@ this.nevoflux = class extends ExtensionAPI {
 
         async keyPress(tabId, key, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "keyPress", { key, ...options });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'keyPress', {
+            key,
+            ...options,
+          });
         },
 
         async keyDown(tabId, key, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "keyDown", { key, ...options });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'keyDown', {
+            key,
+            ...options,
+          });
         },
 
         async keyUp(tabId, key) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "keyUp", { key });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'keyUp', { key });
         },
 
         async mouseMove(tabId, x, y, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "mouseMove", { x, y, ...options });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'mouseMove', {
+            x,
+            y,
+            ...options,
+          });
         },
 
         async mouseDown(tabId, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "mouseDown", options);
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'mouseDown', options);
         },
 
         async mouseUp(tabId, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "mouseUp", options);
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'mouseUp', options);
         },
 
         async wheel(tabId, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "wheel", options);
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'wheel', options);
         },
 
         async scroll(tabId, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "scroll", options);
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'scroll', options);
         },
 
         async waitForStable(tabId, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "waitForStable", options);
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'waitForStable', options);
         },
 
         async dblclick(tabId, selector, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "dblclick", { selector, ...options });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'dblclick', {
+            selector,
+            ...options,
+          });
         },
 
         async drag(tabId, fromSelector, toSelector, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "drag", { fromSelector, toSelector, ...options });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'drag', {
+            fromSelector,
+            toSelector,
+            ...options,
+          });
         },
 
         async focus(tabId, selector) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "focus", { selector });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'focus', { selector });
         },
 
         async clear(tabId, selector) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "clear", { selector });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'clear', { selector });
         },
 
         // ========== Privacy (all modes) ==========
@@ -761,7 +884,14 @@ this.nevoflux = class extends ExtensionAPI {
                 const parsedUrl = new URL(filter.url);
                 filterHostname = parsedUrl.hostname;
               } catch (urlError) {
-                return { success: false, error: { code: 7002, message: `Invalid URL in filter: ${filter.url}`, recoverable: false } };
+                return {
+                  success: false,
+                  error: {
+                    code: 7002,
+                    message: `Invalid URL in filter: ${filter.url}`,
+                    recoverable: false,
+                  },
+                };
               }
             }
 
@@ -777,42 +907,79 @@ this.nevoflux = class extends ExtensionAPI {
                 path: cookie.path,
                 secure: cookie.isSecure,
                 httpOnly: cookie.isHttpOnly,
-                sameSite: ["none", "lax", "strict"][cookie.sameSite] || "none",
+                sameSite: ['none', 'lax', 'strict'][cookie.sameSite] || 'none',
                 expirationDate: cookie.expiry,
-                session: cookie.isSession
+                session: cookie.isSession,
               });
             }
 
             return cookies;
           } catch (e) {
-            return { success: false, error: { code: 7001, message: String(e), recoverable: false } };
+            return {
+              success: false,
+              error: { code: 7001, message: String(e), recoverable: false },
+            };
           }
         },
 
         async setCookie(cookie) {
           try {
-            const { url, name, value, domain, path = "/", secure = false, httpOnly = false, sameSite = "lax", expirationDate } = cookie;
+            const {
+              url,
+              name,
+              value,
+              domain,
+              path = '/',
+              secure = false,
+              httpOnly = false,
+              sameSite = 'lax',
+              expirationDate,
+            } = cookie;
 
             // Validate required parameters
             if (!url) {
-              return { success: false, error: { code: 7002, message: "Missing required parameter: url", recoverable: false } };
+              return {
+                success: false,
+                error: {
+                  code: 7002,
+                  message: 'Missing required parameter: url',
+                  recoverable: false,
+                },
+              };
             }
             if (!name) {
-              return { success: false, error: { code: 7002, message: "Missing required parameter: name", recoverable: false } };
+              return {
+                success: false,
+                error: {
+                  code: 7002,
+                  message: 'Missing required parameter: name',
+                  recoverable: false,
+                },
+              };
             }
             if (value === undefined || value === null) {
-              return { success: false, error: { code: 7002, message: "Missing required parameter: value", recoverable: false } };
+              return {
+                success: false,
+                error: {
+                  code: 7002,
+                  message: 'Missing required parameter: value',
+                  recoverable: false,
+                },
+              };
             }
 
             let parsedUrl;
             try {
               parsedUrl = new URL(url);
             } catch (urlError) {
-              return { success: false, error: { code: 7002, message: `Invalid URL: ${url}`, recoverable: false } };
+              return {
+                success: false,
+                error: { code: 7002, message: `Invalid URL: ${url}`, recoverable: false },
+              };
             }
 
             const cookieDomain = domain || parsedUrl.hostname;
-            const sameSiteMap = { "none": 0, "lax": 1, "strict": 2 };
+            const sameSiteMap = { none: 0, lax: 1, strict: 2 };
 
             Services.cookies.add(
               cookieDomain,
@@ -821,16 +988,19 @@ this.nevoflux = class extends ExtensionAPI {
               value,
               secure,
               httpOnly,
-              !expirationDate,  // isSession
+              !expirationDate, // isSession
               expirationDate || Math.floor(Date.now() / 1000) + 86400 * 365,
-              {},  // originAttributes
+              {}, // originAttributes
               sameSiteMap[sameSite] || 1,
               Ci.nsICookie.SCHEME_HTTPS
             );
 
             return { success: true };
           } catch (e) {
-            return { success: false, error: { code: 7001, message: String(e), recoverable: false } };
+            return {
+              success: false,
+              error: { code: 7001, message: String(e), recoverable: false },
+            };
           }
         },
 
@@ -844,7 +1014,10 @@ this.nevoflux = class extends ExtensionAPI {
 
             return { success: true };
           } catch (e) {
-            return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+            return {
+              success: false,
+              error: { code: 5001, message: String(e), recoverable: false },
+            };
           }
         },
 
@@ -858,7 +1031,10 @@ this.nevoflux = class extends ExtensionAPI {
               return { success: true };
             }
           } catch (e) {
-            return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+            return {
+              success: false,
+              error: { code: 5001, message: String(e), recoverable: false },
+            };
           }
         },
 
@@ -866,42 +1042,54 @@ this.nevoflux = class extends ExtensionAPI {
 
         async getLocalStorage(tabId, key) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "getLocalStorage", { key });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'getLocalStorage', { key });
         },
 
         async setLocalStorage(tabId, key, value) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "setLocalStorage", { key, value });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'setLocalStorage', {
+            key,
+            value,
+          });
         },
 
         async removeLocalStorage(tabId, key) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "removeLocalStorage", { key });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'removeLocalStorage', {
+            key,
+          });
         },
 
         async clearLocalStorage(tabId) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "clearLocalStorage", {});
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'clearLocalStorage', {});
         },
 
         async getSessionStorage(tabId, key) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "getSessionStorage", { key });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'getSessionStorage', {
+            key,
+          });
         },
 
         async setSessionStorage(tabId, key, value) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "setSessionStorage", { key, value });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'setSessionStorage', {
+            key,
+            value,
+          });
         },
 
         async removeSessionStorage(tabId, key) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "removeSessionStorage", { key });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'removeSessionStorage', {
+            key,
+          });
         },
 
         async clearSessionStorage(tabId) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "clearSessionStorage", {});
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'clearSessionStorage', {});
         },
 
         // ========== Network ==========
@@ -912,7 +1100,7 @@ this.nevoflux = class extends ExtensionAPI {
             options,
             requests: [],
             listener: null,
-            createdAt: Date.now()
+            createdAt: Date.now(),
           };
 
           const { urlPattern, resourceTypes, recordBody = false } = options;
@@ -922,7 +1110,7 @@ this.nevoflux = class extends ExtensionAPI {
             // Check URL pattern
             if (urlPattern) {
               const escaped = escapeRegExp(urlPattern);
-              const pattern = escaped.replace(/\\\*/g, ".*");
+              const pattern = escaped.replace(/\\\*/g, '.*');
               const regex = new RegExp(`^${pattern}$`);
               if (!regex.test(details.url)) return;
             }
@@ -934,9 +1122,10 @@ this.nevoflux = class extends ExtensionAPI {
               url: details.url,
               method: details.method,
               resourceType: details.type,
-              headers: details.requestHeaders ?
-                Object.fromEntries(details.requestHeaders.map(h => [h.name, h.value])) : {},
-              timestamp: Date.now()
+              headers: details.requestHeaders
+                ? Object.fromEntries(details.requestHeaders.map((h) => [h.name, h.value]))
+                : {},
+              timestamp: Date.now(),
             });
           };
 
@@ -959,7 +1148,10 @@ this.nevoflux = class extends ExtensionAPI {
 
           const captureData = networkCaptures.get(handle);
           if (!captureData) {
-            return { success: false, error: { code: 8001, message: "Capture not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 8001, message: 'Capture not found', recoverable: false },
+            };
           }
 
           const requests = [...captureData.requests];
@@ -978,7 +1170,10 @@ this.nevoflux = class extends ExtensionAPI {
 
           const captureData = networkCaptures.get(handle);
           if (!captureData) {
-            return { success: false, error: { code: 8001, message: "Capture not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 8001, message: 'Capture not found', recoverable: false },
+            };
           }
           return [...captureData.requests];
         },
@@ -989,7 +1184,7 @@ this.nevoflux = class extends ExtensionAPI {
 
           const interceptData = {
             options,
-            active: true
+            active: true,
           };
 
           // Note: Full implementation would use browser.webRequest.onBeforeRequest
@@ -1001,7 +1196,10 @@ this.nevoflux = class extends ExtensionAPI {
 
         async removeIntercept(handle) {
           if (!networkIntercepts.has(handle)) {
-            return { success: false, error: { code: 8002, message: "Intercept not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 8002, message: 'Intercept not found', recoverable: false },
+            };
           }
 
           networkIntercepts.delete(handle);
@@ -1019,7 +1217,7 @@ this.nevoflux = class extends ExtensionAPI {
 
           // Import timer functions once, outside the loop
           const { setTimeout: chromeSetTimeout } = ChromeUtils.importESModule(
-            "resource://gre/modules/Timer.sys.mjs"
+            'resource://gre/modules/Timer.sys.mjs'
           );
 
           const startTime = Date.now();
@@ -1029,13 +1227,16 @@ this.nevoflux = class extends ExtensionAPI {
               await this.stopCapture(handle);
               return requests[0];
             }
-            await new Promise(resolve => {
+            await new Promise((resolve) => {
               chromeSetTimeout(resolve, 100);
             });
           }
 
           await this.stopCapture(handle);
-          return { success: false, error: { code: 8003, message: "Timeout waiting for request", recoverable: true } };
+          return {
+            success: false,
+            error: { code: 8003, message: 'Timeout waiting for request', recoverable: true },
+          };
         },
 
         async waitForResponse(urlPattern, timeout = 30000) {
@@ -1050,38 +1251,53 @@ this.nevoflux = class extends ExtensionAPI {
         // ========== JavaScript Execution ==========
 
         async eval(tabId, script, options = {}) {
-          if (!script || typeof script !== "string") {
-            return { success: false, error: { code: 9002, message: "Missing or invalid required parameter: script", recoverable: false } };
+          if (!script || typeof script !== 'string') {
+            return {
+              success: false,
+              error: {
+                code: 9002,
+                message: 'Missing or invalid required parameter: script',
+                recoverable: false,
+              },
+            };
           }
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "eval", { script, ...options });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'eval', {
+            script,
+            ...options,
+          });
         },
 
         async addScript(tabId, script, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "addScript", { script, ...options });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'addScript', {
+            script,
+            ...options,
+          });
         },
 
         async removeScript(tabId, handle) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "removeScript", { handle });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'removeScript', { handle });
         },
 
         // ========== Frame Management ==========
 
         async listFrames(tabId) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "listFrames", {});
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'listFrames', {});
         },
 
         async switchFrame(tabId, selector) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "switchFrame", { selector });
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'switchFrame', {
+            selector,
+          });
         },
 
         async frameMain(tabId) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
-          return self.executeInTabWithRestore(resolvedTabId, extension, "frameMain", {});
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'frameMain', {});
         },
 
         // ========== Dialog Handling ==========
@@ -1097,8 +1313,8 @@ this.nevoflux = class extends ExtensionAPI {
           }
 
           try {
-            const actor = tab.browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
-            return actor.sendQuery("dialogAccept", { text });
+            const actor = tab.browser.browsingContext.currentWindowGlobal.getActor('Nevoflux');
+            return actor.sendQuery('dialogAccept', { text });
           } catch (e) {
             // Actor not available - silently succeed (no dialog)
             return { success: true };
@@ -1113,8 +1329,8 @@ this.nevoflux = class extends ExtensionAPI {
           }
 
           try {
-            const actor = tab.browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
-            return actor.sendQuery("dialogDismiss", {});
+            const actor = tab.browser.browsingContext.currentWindowGlobal.getActor('Nevoflux');
+            return actor.sendQuery('dialogDismiss', {});
           } catch (e) {
             return { success: true };
           }
@@ -1126,9 +1342,8 @@ this.nevoflux = class extends ExtensionAPI {
           const timeout = options.timeout || 30000;
 
           // Import timer functions for extension parent context
-          const { setTimeout: chromeSetTimeout, clearTimeout: chromeClearTimeout } = ChromeUtils.importESModule(
-            "resource://gre/modules/Timer.sys.mjs"
-          );
+          const { setTimeout: chromeSetTimeout, clearTimeout: chromeClearTimeout } =
+            ChromeUtils.importESModule('resource://gre/modules/Timer.sys.mjs');
 
           return new Promise((resolve) => {
             let timeoutId;
@@ -1142,7 +1357,7 @@ this.nevoflux = class extends ExtensionAPI {
                 try {
                   // Remove listener using internal API
                   // Note: This uses Firefox's internal download manager
-                  Services.obs.removeObserver(downloadListener, "dl-start");
+                  Services.obs.removeObserver(downloadListener, 'dl-start');
                 } catch (e) {
                   // Listener already removed
                 }
@@ -1153,13 +1368,13 @@ this.nevoflux = class extends ExtensionAPI {
               cleanup();
               resolve({
                 success: false,
-                error: { code: 12001, message: "Download timeout", recoverable: true }
+                error: { code: 12001, message: 'Download timeout', recoverable: true },
               });
             }, timeout);
 
             downloadListener = {
               observe: (subject, topic, data) => {
-                if (topic === "dl-start") {
+                if (topic === 'dl-start') {
                   cleanup();
 
                   try {
@@ -1167,32 +1382,36 @@ this.nevoflux = class extends ExtensionAPI {
                     const download = subject.QueryInterface(Ci.nsIDownload);
                     resolve({
                       success: true,
-                      url: download.source?.spec || "",
-                      filename: download.targetFile?.leafName || "",
-                      mimeType: download.MIMEInfo?.MIMEType || "",
-                      size: download.totalBytes || -1
+                      url: download.source?.spec || '',
+                      filename: download.targetFile?.leafName || '',
+                      mimeType: download.MIMEInfo?.MIMEType || '',
+                      size: download.totalBytes || -1,
                     });
                   } catch (e) {
                     // Fallback for different Firefox versions
                     resolve({
                       success: true,
-                      url: "",
-                      filename: "",
-                      mimeType: "",
-                      size: -1
+                      url: '',
+                      filename: '',
+                      mimeType: '',
+                      size: -1,
                     });
                   }
                 }
-              }
+              },
             };
 
             try {
-              Services.obs.addObserver(downloadListener, "dl-start");
+              Services.obs.addObserver(downloadListener, 'dl-start');
             } catch (e) {
               cleanup();
               resolve({
                 success: false,
-                error: { code: 12001, message: `Failed to observe downloads: ${e}`, recoverable: false }
+                error: {
+                  code: 12001,
+                  message: `Failed to observe downloads: ${e}`,
+                  recoverable: false,
+                },
               });
             }
           });
@@ -1202,7 +1421,7 @@ this.nevoflux = class extends ExtensionAPI {
 
         async getTabContent(tabId, options = {}) {
           const {
-            format = "markdown",
+            format = 'markdown',
             selector = null,
             autoRestore = true,
             timeout = DEFAULT_RESTORE_TIMEOUT,
@@ -1212,7 +1431,10 @@ this.nevoflux = class extends ExtensionAPI {
           const tab = extension.tabManager.get(resolvedTabId);
 
           if (!tab) {
-            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 3001, message: 'Tab not found', recoverable: false },
+            };
           }
 
           const nativeTab = tab.nativeTab;
@@ -1222,44 +1444,67 @@ this.nevoflux = class extends ExtensionAPI {
           if (wasDiscarded && autoRestore) {
             const restored = await self.restoreTabIfNeeded(nativeTab, timeout);
             if (!restored) {
-              return { success: false, error: { code: 5005, message: "Failed to restore discarded tab", recoverable: true } };
+              return {
+                success: false,
+                error: {
+                  code: 5005,
+                  message: 'Failed to restore discarded tab',
+                  recoverable: true,
+                },
+              };
             }
 
             // Wait for browsingContext to be ready
             const browser = tab.browser || nativeTab.linkedBrowser;
             const bc = await self.waitForBrowsingContext(browser, 2000);
             if (!bc?.currentWindowGlobal) {
-              return { success: false, error: { code: 5006, message: "Tab restored but browsingContext not ready", recoverable: true } };
+              return {
+                success: false,
+                error: {
+                  code: 5006,
+                  message: 'Tab restored but browsingContext not ready',
+                  recoverable: true,
+                },
+              };
             }
           }
 
           // Get content based on format
-          let content = "";
-          let title = "";
-          let url = "";
+          let content = '';
+          let title = '';
+          let url = '';
 
-          if (format === "markdown") {
-            const result = await self.executeInTab(resolvedTabId, extension, "getMarkdown", { selector });
+          if (format === 'markdown') {
+            const result = await self.executeInTab(resolvedTabId, extension, 'getMarkdown', {
+              selector,
+            });
             if (result.success === false) {
               return result;
             }
-            content = result.markdown || "";
-            title = result.title || "";
-            url = result.url || "";
-          } else if (format === "html") {
-            const result = await self.executeInTab(resolvedTabId, extension, "getHtml", { selector: selector || "body" });
-            content = typeof result === "string" ? result : (result || "");
+            content = result.markdown || '';
+            title = result.title || '';
+            url = result.url || '';
+          } else if (format === 'html') {
+            const result = await self.executeInTab(resolvedTabId, extension, 'getHtml', {
+              selector: selector || 'body',
+            });
+            content = typeof result === 'string' ? result : result || '';
             const browser = tab.browser || nativeTab.linkedBrowser;
-            title = browser?.contentTitle || "";
-            url = browser?.currentURI?.spec || "";
-          } else if (format === "text") {
-            const result = await self.executeInTab(resolvedTabId, extension, "getText", { selector: selector || "body" });
-            content = typeof result === "string" ? result : (result || "");
+            title = browser?.contentTitle || '';
+            url = browser?.currentURI?.spec || '';
+          } else if (format === 'text') {
+            const result = await self.executeInTab(resolvedTabId, extension, 'getText', {
+              selector: selector || 'body',
+            });
+            content = typeof result === 'string' ? result : result || '';
             const browser = tab.browser || nativeTab.linkedBrowser;
-            title = browser?.contentTitle || "";
-            url = browser?.currentURI?.spec || "";
+            title = browser?.contentTitle || '';
+            url = browser?.currentURI?.spec || '';
           } else {
-            return { success: false, error: { code: 4001, message: `Unsupported format: ${format}`, recoverable: false } };
+            return {
+              success: false,
+              error: { code: 4001, message: `Unsupported format: ${format}`, recoverable: false },
+            };
           }
 
           return {
@@ -1278,7 +1523,10 @@ this.nevoflux = class extends ExtensionAPI {
           const tab = extension.tabManager.get(resolvedTabId);
 
           if (!tab) {
-            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 3001, message: 'Tab not found', recoverable: false },
+            };
           }
 
           const nativeTab = tab.nativeTab;
@@ -1286,36 +1534,35 @@ this.nevoflux = class extends ExtensionAPI {
           const discarded = self.isTabDiscarded(nativeTab);
 
           // Determine loading status
-          let status = "unloaded";
+          let status = 'unloaded';
           if (!discarded && browser) {
             const webProgress = browser.webProgress;
             if (webProgress?.isLoadingDocument) {
-              status = "loading";
+              status = 'loading';
             } else if (browser.browsingContext?.currentWindowGlobal) {
-              status = "complete";
+              status = 'complete';
             }
           }
 
           return {
             discarded,
             status,
-            url: browser?.currentURI?.spec || "",
-            title: browser?.contentTitle || nativeTab.label || "",
+            url: browser?.currentURI?.spec || '',
+            title: browser?.contentTitle || nativeTab.label || '',
           };
         },
 
         async pickElement(tabId, options = {}) {
-          const {
-            filter = "any",
-            timeout = 60000,
-            highlightColor = "#6366f1",
-          } = options;
+          const { filter = 'any', timeout = 60000, highlightColor = '#6366f1' } = options;
 
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
           const tab = extension.tabManager.get(resolvedTabId);
 
           if (!tab) {
-            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 3001, message: 'Tab not found', recoverable: false },
+            };
           }
 
           const nativeTab = tab.nativeTab;
@@ -1325,38 +1572,47 @@ this.nevoflux = class extends ExtensionAPI {
 
           const browser = tab.browser || nativeTab.linkedBrowser;
           if (!browser?.browsingContext?.currentWindowGlobal) {
-            return { success: false, error: { code: 5002, message: "Tab not fully loaded", recoverable: true } };
+            return {
+              success: false,
+              error: { code: 5002, message: 'Tab not fully loaded', recoverable: true },
+            };
           }
 
           try {
-            const actor = browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
+            const actor = browser.browsingContext.currentWindowGlobal.getActor('Nevoflux');
 
             // Start picker with timeout
             const { setTimeout: chromeSetTimeout } = ChromeUtils.importESModule(
-              "resource://gre/modules/Timer.sys.mjs"
+              'resource://gre/modules/Timer.sys.mjs'
             );
 
             const timeoutPromise = new Promise((_, reject) => {
-              chromeSetTimeout(() => reject(new Error("Picker timeout")), timeout);
+              chromeSetTimeout(() => reject(new Error('Picker timeout')), timeout);
             });
 
-            const pickerPromise = actor.sendQuery("startPicker", {
+            const pickerPromise = actor.sendQuery('startPicker', {
               filter,
               highlightColor,
             });
 
             const result = await Promise.race([pickerPromise, timeoutPromise]);
             if (!result.success) {
-              return { success: false, error: { code: 10001, message: result.error || "Picker failed", recoverable: true } };
+              return {
+                success: false,
+                error: { code: 10001, message: result.error || 'Picker failed', recoverable: true },
+              };
             }
             return result.data;
           } catch (e) {
             // Ensure picker is stopped on error
             try {
-              const actor = browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
-              await actor.sendQuery("stopPicker", {});
-            } catch { }
-            return { success: false, error: { code: 10001, message: e.message, recoverable: true } };
+              const actor = browser.browsingContext.currentWindowGlobal.getActor('Nevoflux');
+              await actor.sendQuery('stopPicker', {});
+            } catch {}
+            return {
+              success: false,
+              error: { code: 10001, message: e.message, recoverable: true },
+            };
           }
         },
 
@@ -1365,7 +1621,10 @@ this.nevoflux = class extends ExtensionAPI {
           const tab = extension.tabManager.get(resolvedTabId);
 
           if (!tab) {
-            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 3001, message: 'Tab not found', recoverable: false },
+            };
           }
 
           const browser = tab.browser || tab.nativeTab.linkedBrowser;
@@ -1374,8 +1633,8 @@ this.nevoflux = class extends ExtensionAPI {
           }
 
           try {
-            const actor = browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
-            await actor.sendQuery("stopPicker", {});
+            const actor = browser.browsingContext.currentWindowGlobal.getActor('Nevoflux');
+            await actor.sendQuery('stopPicker', {});
             return { success: true };
           } catch (e) {
             return { success: true }; // Picker already stopped
@@ -1401,8 +1660,8 @@ this.nevoflux = class extends ExtensionAPI {
           }
 
           try {
-            const actor = browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
-            const result = await actor.sendQuery("getSelection", {});
+            const actor = browser.browsingContext.currentWindowGlobal.getActor('Nevoflux');
+            const result = await actor.sendQuery('getSelection', {});
             return result.success ? result.data : null;
           } catch (e) {
             return null;
@@ -1410,26 +1669,35 @@ this.nevoflux = class extends ExtensionAPI {
         },
 
         async lockPage(tabId, options = {}) {
-          const { showOverlay = true, message = "" } = options;
+          const { showOverlay = true, message = '' } = options;
 
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
           const tab = extension.tabManager.get(resolvedTabId);
 
           if (!tab) {
-            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 3001, message: 'Tab not found', recoverable: false },
+            };
           }
 
           const browser = tab.browser || tab.nativeTab.linkedBrowser;
           if (!browser?.browsingContext?.currentWindowGlobal) {
-            return { success: false, error: { code: 5002, message: "Tab not fully loaded", recoverable: true } };
+            return {
+              success: false,
+              error: { code: 5002, message: 'Tab not fully loaded', recoverable: true },
+            };
           }
 
           try {
-            const actor = browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
-            await actor.sendQuery("lockPage", { showOverlay, message });
+            const actor = browser.browsingContext.currentWindowGlobal.getActor('Nevoflux');
+            await actor.sendQuery('lockPage', { showOverlay, message });
             return { success: true };
           } catch (e) {
-            return { success: false, error: { code: 11001, message: e.message, recoverable: false } };
+            return {
+              success: false,
+              error: { code: 11001, message: e.message, recoverable: false },
+            };
           }
         },
 
@@ -1438,7 +1706,10 @@ this.nevoflux = class extends ExtensionAPI {
           const tab = extension.tabManager.get(resolvedTabId);
 
           if (!tab) {
-            return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 3001, message: 'Tab not found', recoverable: false },
+            };
           }
 
           const browser = tab.browser || tab.nativeTab.linkedBrowser;
@@ -1447,8 +1718,8 @@ this.nevoflux = class extends ExtensionAPI {
           }
 
           try {
-            const actor = browser.browsingContext.currentWindowGlobal.getActor("Nevoflux");
-            await actor.sendQuery("unlockPage", {});
+            const actor = browser.browsingContext.currentWindowGlobal.getActor('Nevoflux');
+            await actor.sendQuery('unlockPage', {});
             return { success: true };
           } catch (e) {
             return { success: true }; // Already unlocked
@@ -1457,18 +1728,31 @@ this.nevoflux = class extends ExtensionAPI {
 
         // ========== Artifact Management ==========
 
-        async createArtifact({ id, type, title, code, files, entry: entryPoint, options, state, source, permissions }) {
+        async createArtifact({
+          id,
+          type,
+          title,
+          code,
+          files,
+          entry: entryPoint,
+          options,
+          state,
+          source,
+          permissions,
+        }) {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
-            "resource:///modules/NevofluxContentStore.sys.mjs"
+            'resource:///modules/NevofluxContentStore.sys.mjs'
           );
-          console.log(`[ext-nevoflux] createArtifact: id=${id}, type=${type}, codeLen=${code?.length}, filesCount=${files ? Object.keys(files).length : 0}, entry=${entryPoint}, state=${state}`);
+          console.log(
+            `[ext-nevoflux] createArtifact: id=${id}, type=${type}, codeLen=${code?.length}, filesCount=${files ? Object.keys(files).length : 0}, entry=${entryPoint}, state=${state}`
+          );
           const now = Date.now();
           const entry = {
-            type: type || "html",
-            title: title || "Untitled",
-            content: code || "",
-            state: state || "streaming",
-            source: source || "agent",
+            type: type || 'html',
+            title: title || 'Untitled',
+            content: code || '',
+            state: state || 'streaming',
+            source: source || 'agent',
             permissions: permissions || [],
             createdAt: now,
             updatedAt: now,
@@ -1476,7 +1760,9 @@ this.nevoflux = class extends ExtensionAPI {
           if (files) entry.files = files;
           if (entryPoint) entry.entry = entryPoint;
           if (options) entry.options = options;
-          console.log(`[ext-nevoflux] createArtifact SET: key=canvas:${id}, type=${entry.type}, contentLen=${entry.content?.length}, hasFiles=${!!entry.files}, entry=${entry.entry}`);
+          console.log(
+            `[ext-nevoflux] createArtifact SET: key=canvas:${id}, type=${entry.type}, contentLen=${entry.content?.length}, hasFiles=${!!entry.files}, entry=${entry.entry}`
+          );
           NevofluxContentStore.set(`canvas:${id}`, entry);
 
           // Tab opening is now handled by background.js for foreground + reuse
@@ -1484,17 +1770,27 @@ this.nevoflux = class extends ExtensionAPI {
           return { success: true, id };
         },
 
-        async updateArtifact(id, { code, state, title, type: artifactType, files, entry: entryPoint }) {
+        async updateArtifact(
+          id,
+          { code, state, title, type: artifactType, files, entry: entryPoint }
+        ) {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
-            "resource:///modules/NevofluxContentStore.sys.mjs"
+            'resource:///modules/NevofluxContentStore.sys.mjs'
           );
           const existing = NevofluxContentStore.get(`canvas:${id}`);
           if (!existing) {
-            console.log(`[ext-nevoflux] updateArtifact: id=${id} NOT FOUND, state=${state}, type=${artifactType}`);
-            return { success: false, error: { code: 12001, message: "Artifact not found", recoverable: false } };
+            console.log(
+              `[ext-nevoflux] updateArtifact: id=${id} NOT FOUND, state=${state}, type=${artifactType}`
+            );
+            return {
+              success: false,
+              error: { code: 12001, message: 'Artifact not found', recoverable: false },
+            };
           }
 
-          console.log(`[ext-nevoflux] updateArtifact: id=${id}, existingType=${existing.type}, newState=${state}, newType=${artifactType}, newCodeLen=${code?.length}, newFiles=${files ? Object.keys(files).length : 0}`);
+          console.log(
+            `[ext-nevoflux] updateArtifact: id=${id}, existingType=${existing.type}, newState=${state}, newType=${artifactType}, newCodeLen=${code?.length}, newFiles=${files ? Object.keys(files).length : 0}`
+          );
           if (code != null) existing.content = code;
           if (state != null) existing.state = state;
           if (title != null) existing.title = title;
@@ -1509,25 +1805,31 @@ this.nevoflux = class extends ExtensionAPI {
 
         async getArtifact(id) {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
-            "resource:///modules/NevofluxContentStore.sys.mjs"
+            'resource:///modules/NevofluxContentStore.sys.mjs'
           );
           const entry = NevofluxContentStore.get(`canvas:${id}`);
           return entry
             ? { success: true, data: entry }
-            : { success: false, error: { code: 12001, message: "Artifact not found", recoverable: false } };
+            : {
+                success: false,
+                error: { code: 12001, message: 'Artifact not found', recoverable: false },
+              };
         },
 
         async readArtifact(id, params = {}) {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
-            "resource:///modules/NevofluxContentStore.sys.mjs"
+            'resource:///modules/NevofluxContentStore.sys.mjs'
           );
           const entry = NevofluxContentStore.get(`canvas:${id}`);
           if (!entry) {
-            return { success: false, error: { code: 12001, message: "Artifact not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 12001, message: 'Artifact not found', recoverable: false },
+            };
           }
 
-          const content = entry.content || "";
-          const allLines = content.split("\n");
+          const content = entry.content || '';
+          const allLines = content.split('\n');
           const totalLines = allLines.length;
           const MAX_LINES = 500;
 
@@ -1542,12 +1844,24 @@ this.nevoflux = class extends ExtensionAPI {
               }
             }
             if (matchIndices.length === 0) {
-              return { success: true, content: "", totalLines, matches: 0, truncated: false, title: entry.title, type: entry.type };
+              return {
+                success: true,
+                content: '',
+                totalLines,
+                matches: 0,
+                truncated: false,
+                title: entry.title,
+                type: entry.type,
+              };
             }
             // Collect unique line ranges around matches
             const lineSet = new Set();
             for (const idx of matchIndices) {
-              for (let j = Math.max(0, idx - ctxLines); j <= Math.min(allLines.length - 1, idx + ctxLines); j++) {
+              for (
+                let j = Math.max(0, idx - ctxLines);
+                j <= Math.min(allLines.length - 1, idx + ctxLines);
+                j++
+              ) {
                 lineSet.add(j);
               }
             }
@@ -1556,14 +1870,14 @@ this.nevoflux = class extends ExtensionAPI {
             let prev = -2;
             for (const ln of sortedLines) {
               if (ln !== prev + 1 && sections.length > 0) {
-                sections.push("...");
+                sections.push('...');
               }
               sections.push(`${ln + 1}\t${allLines[ln]}`);
               prev = ln;
             }
             return {
               success: true,
-              content: sections.join("\n"),
+              content: sections.join('\n'),
               totalLines,
               matches: matchIndices.length,
               truncated: false,
@@ -1580,7 +1894,7 @@ this.nevoflux = class extends ExtensionAPI {
             const numbered = sliced.map((line, i) => `${offset + i + 1}\t${line}`);
             return {
               success: true,
-              content: numbered.join("\n"),
+              content: numbered.join('\n'),
               totalLines,
               truncated: offset + limit < totalLines,
               title: entry.title,
@@ -1593,7 +1907,9 @@ this.nevoflux = class extends ExtensionAPI {
             const numbered = allLines.slice(0, MAX_LINES).map((line, i) => `${i + 1}\t${line}`);
             return {
               success: true,
-              content: numbered.join("\n") + `\n\n[Truncated at line ${MAX_LINES} of ${totalLines}. Use offset/limit or grep to read more.]`,
+              content:
+                numbered.join('\n') +
+                `\n\n[Truncated at line ${MAX_LINES} of ${totalLines}. Use offset/limit or grep to read more.]`,
               totalLines,
               truncated: true,
               title: entry.title,
@@ -1613,36 +1929,61 @@ this.nevoflux = class extends ExtensionAPI {
 
         async editArtifact(id, oldStr, newStr) {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
-            "resource:///modules/NevofluxContentStore.sys.mjs"
+            'resource:///modules/NevofluxContentStore.sys.mjs'
           );
           const entry = NevofluxContentStore.get(`canvas:${id}`);
           if (!entry) {
-            return { success: false, error: { code: 12001, message: "Artifact not found", recoverable: false } };
+            return {
+              success: false,
+              error: { code: 12001, message: 'Artifact not found', recoverable: false },
+            };
           }
-          if (entry.state === "streaming") {
-            return { success: false, error: { code: 12004, message: "Artifact is still generating. Wait for completion.", recoverable: true } };
+          if (entry.state === 'streaming') {
+            return {
+              success: false,
+              error: {
+                code: 12004,
+                message: 'Artifact is still generating. Wait for completion.',
+                recoverable: true,
+              },
+            };
           }
 
-          const content = entry.content || "";
+          const content = entry.content || '';
           const count = content.split(oldStr).length - 1;
 
           if (count === 0) {
-            return { success: false, error: { code: 12005, message: "old_str not found in artifact. Use browser_read_artifact to verify the current content.", recoverable: true } };
+            return {
+              success: false,
+              error: {
+                code: 12005,
+                message:
+                  'old_str not found in artifact. Use browser_read_artifact to verify the current content.',
+                recoverable: true,
+              },
+            };
           }
           if (count > 1) {
-            return { success: false, error: { code: 12006, message: `old_str matches ${count} locations. Provide more surrounding context to make it unique.`, recoverable: true } };
+            return {
+              success: false,
+              error: {
+                code: 12006,
+                message: `old_str matches ${count} locations. Provide more surrounding context to make it unique.`,
+                recoverable: true,
+              },
+            };
           }
 
           entry.content = content.replace(oldStr, newStr);
           entry.updatedAt = Date.now();
           NevofluxContentStore.set(`canvas:${id}`, entry);
 
-          return { success: true, lines: entry.content.split("\n").length };
+          return { success: true, lines: entry.content.split('\n').length };
         },
 
         async deleteArtifact(id) {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
-            "resource:///modules/NevofluxContentStore.sys.mjs"
+            'resource:///modules/NevofluxContentStore.sys.mjs'
           );
           NevofluxContentStore.delete(`canvas:${id}`);
           return { success: true };
@@ -1650,17 +1991,23 @@ this.nevoflux = class extends ExtensionAPI {
 
         async listArtifacts() {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
-            "resource:///modules/NevofluxContentStore.sys.mjs"
+            'resource:///modules/NevofluxContentStore.sys.mjs'
           );
-          const entries = NevofluxContentStore.query("canvas:");
-          return { success: true, data: entries.map(e => ({ id: e.key.replace("canvas:", ""), ...e.value })) };
+          const entries = NevofluxContentStore.query('canvas:');
+          return {
+            success: true,
+            data: entries.map((e) => ({ id: e.key.replace('canvas:', ''), ...e.value })),
+          };
         },
 
         async openCanvasTab(id, options) {
           const opts = options || {};
           const win = Services.wm.getMostRecentBrowserWindow();
           if (!win?.gBrowser) {
-            return { success: false, error: { code: 12003, message: "No browser window", recoverable: true } };
+            return {
+              success: false,
+              error: { code: 12003, message: 'No browser window', recoverable: true },
+            };
           }
           const url = `nevoflux://canvas/${id}`;
           const nativeTab = win.gBrowser.addTab(url, {
@@ -1675,7 +2022,7 @@ this.nevoflux = class extends ExtensionAPI {
           try {
             extTabId = tabTracker.getId(nativeTab);
           } catch (e) {
-            console.warn("[ext-nevoflux] openCanvasTab: could not get tab ID:", e);
+            console.warn('[ext-nevoflux] openCanvasTab: could not get tab ID:', e);
           }
           return { success: true, id, tabId: extTabId };
         },
@@ -1684,14 +2031,14 @@ this.nevoflux = class extends ExtensionAPI {
 
         async getSettings(key) {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
-            "resource:///modules/NevofluxContentStore.sys.mjs"
+            'resource:///modules/NevofluxContentStore.sys.mjs'
           );
           return { success: true, data: NevofluxContentStore.get(`config:${key}`) };
         },
 
         async setSettings(key, value) {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
-            "resource:///modules/NevofluxContentStore.sys.mjs"
+            'resource:///modules/NevofluxContentStore.sys.mjs'
           );
           NevofluxContentStore.set(`config:${key}`, value);
           return { success: true };
@@ -1701,7 +2048,7 @@ this.nevoflux = class extends ExtensionAPI {
 
         async contentStoreLoad(entries) {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
-            "resource:///modules/NevofluxContentStore.sys.mjs"
+            'resource:///modules/NevofluxContentStore.sys.mjs'
           );
           console.log(`[ext-nevoflux] contentStoreLoad: ${entries.length} entries`);
           NevofluxContentStore._loading = true;
@@ -1713,8 +2060,10 @@ this.nevoflux = class extends ExtensionAPI {
                 // streaming protocol (ARTIFACT_START/DELTA/COMPLETE) and the
                 // create_artifact tool call. Loading stale persisted data would
                 // overwrite correct data due to timing races.
-                if (entry.key.startsWith("canvas:")) {
-                  console.log(`[ext-nevoflux] contentStoreLoad: SKIPPING canvas entry ${entry.key} (type=${entry.value?.type}, state=${entry.value?.state})`);
+                if (entry.key.startsWith('canvas:')) {
+                  console.log(
+                    `[ext-nevoflux] contentStoreLoad: SKIPPING canvas entry ${entry.key} (type=${entry.value?.type}, state=${entry.value?.state})`
+                  );
                   continue;
                 }
                 NevofluxContentStore.set(entry.key, entry.value);
@@ -1730,7 +2079,7 @@ this.nevoflux = class extends ExtensionAPI {
 
         async bridgeRespond(id, result) {
           const { NevofluxBridgeRouter } = ChromeUtils.importESModule(
-            "resource:///modules/NevofluxBridgeRouter.sys.mjs"
+            'resource:///modules/NevofluxBridgeRouter.sys.mjs'
           );
           NevofluxBridgeRouter.respond(id, result);
           return { success: true };
@@ -1738,7 +2087,7 @@ this.nevoflux = class extends ExtensionAPI {
 
         async bridgePush(sessionId, message) {
           const { NevofluxBridgeRouter } = ChromeUtils.importESModule(
-            "resource:///modules/NevofluxBridgeRouter.sys.mjs"
+            'resource:///modules/NevofluxBridgeRouter.sys.mjs'
           );
           const delivered = NevofluxBridgeRouter.push(sessionId, message);
           return { success: true, delivered };
@@ -1746,11 +2095,11 @@ this.nevoflux = class extends ExtensionAPI {
 
         onBridgeRequest: new EventManager({
           context,
-          module: "nevoflux",
-          event: "onBridgeRequest",
-          register: fire => {
+          module: 'nevoflux',
+          event: 'onBridgeRequest',
+          register: (fire) => {
             const { NevofluxBridgeRouter } = ChromeUtils.importESModule(
-              "resource:///modules/NevofluxBridgeRouter.sys.mjs"
+              'resource:///modules/NevofluxBridgeRouter.sys.mjs'
             );
             const handler = (id, type, payload) => {
               fire.async(id, type, payload);
@@ -1764,11 +2113,11 @@ this.nevoflux = class extends ExtensionAPI {
 
         onContentStoreChanged: new EventManager({
           context,
-          module: "nevoflux",
-          event: "onContentStoreChanged",
-          register: fire => {
+          module: 'nevoflux',
+          event: 'onContentStoreChanged',
+          register: (fire) => {
             const { NevofluxContentStore } = ChromeUtils.importESModule(
-              "resource:///modules/NevofluxContentStore.sys.mjs"
+              'resource:///modules/NevofluxContentStore.sys.mjs'
             );
             const unsubscribe = NevofluxContentStore.onPersist((op, key, value) => {
               fire.async(op, key, value);
@@ -1804,7 +2153,7 @@ this.nevoflux = class extends ExtensionAPI {
     if (!nativeTab) {
       return false;
     }
-    return nativeTab.hasAttribute("pending");
+    return nativeTab.hasAttribute('pending');
   }
 
   /**
@@ -1824,9 +2173,8 @@ this.nevoflux = class extends ExtensionAPI {
       return true; // Already restored
     }
 
-    const { setTimeout: chromeSetTimeout, clearTimeout: chromeClearTimeout } = ChromeUtils.importESModule(
-      "resource://gre/modules/Timer.sys.mjs"
-    );
+    const { setTimeout: chromeSetTimeout, clearTimeout: chromeClearTimeout } =
+      ChromeUtils.importESModule('resource://gre/modules/Timer.sys.mjs');
 
     return new Promise((resolve) => {
       let timeoutId;
@@ -1838,7 +2186,7 @@ this.nevoflux = class extends ExtensionAPI {
         resolved = true;
         if (timeoutId) chromeClearTimeout(timeoutId);
         if (pollId) nativeTab.ownerGlobal?.clearInterval(pollId);
-        nativeTab.removeEventListener("SSTabRestored", onRestored);
+        nativeTab.removeEventListener('SSTabRestored', onRestored);
       };
 
       const onRestored = () => {
@@ -1849,7 +2197,7 @@ this.nevoflux = class extends ExtensionAPI {
       // Set up timeout
       timeoutId = chromeSetTimeout(() => {
         // Last chance: check if pending attribute was already removed
-        if (!nativeTab.hasAttribute("pending")) {
+        if (!nativeTab.hasAttribute('pending')) {
           cleanup();
           resolve(true);
           return;
@@ -1859,11 +2207,11 @@ this.nevoflux = class extends ExtensionAPI {
       }, timeout);
 
       // Listen for restoration complete
-      nativeTab.addEventListener("SSTabRestored", onRestored);
+      nativeTab.addEventListener('SSTabRestored', onRestored);
 
       // Also poll for attribute removal as fallback (SSTabRestored may not fire)
       pollId = nativeTab.ownerGlobal?.setInterval?.(() => {
-        if (!nativeTab.hasAttribute("pending")) {
+        if (!nativeTab.hasAttribute('pending')) {
           onRestored();
         }
       }, 200);
@@ -1872,7 +2220,7 @@ this.nevoflux = class extends ExtensionAPI {
       try {
         SessionStore.restoreTabContent(nativeTab);
       } catch (e) {
-        console.warn("[ext-nevoflux] restoreTabContent failed, trying tab activation:", e);
+        console.warn('[ext-nevoflux] restoreTabContent failed, trying tab activation:', e);
         // Fallback: activate the tab to force load
         try {
           const tabbrowser = nativeTab.ownerGlobal?.gBrowser;
@@ -1901,24 +2249,39 @@ this.nevoflux = class extends ExtensionAPI {
 
     const tab = extension.tabManager.get(tabId);
     if (!tab) {
-      return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 3001, message: 'Tab not found', recoverable: false },
+      };
     }
 
     const nativeTab = tab.nativeTab;
 
     // Auto-restore discarded tabs if needed
     if (autoRestore && this.isTabDiscarded(nativeTab)) {
-      console.log(`[ext-nevoflux] executeInTabWithRestore: Tab ${tabId} is discarded, restoring...`);
+      console.log(
+        `[ext-nevoflux] executeInTabWithRestore: Tab ${tabId} is discarded, restoring...`
+      );
       const restored = await this.restoreTabIfNeeded(nativeTab, timeout);
       if (!restored) {
-        return { success: false, error: { code: 5005, message: "Failed to restore discarded tab", recoverable: true } };
+        return {
+          success: false,
+          error: { code: 5005, message: 'Failed to restore discarded tab', recoverable: true },
+        };
       }
 
       // Wait for browsingContext to be ready
       const browser = tab.browser || nativeTab.linkedBrowser;
       const bc = await this.waitForBrowsingContext(browser, 2000);
       if (!bc?.currentWindowGlobal) {
-        return { success: false, error: { code: 5006, message: "Tab restored but browsingContext not ready", recoverable: true } };
+        return {
+          success: false,
+          error: {
+            code: 5006,
+            message: 'Tab restored but browsingContext not ready',
+            recoverable: true,
+          },
+        };
       }
       console.log(`[ext-nevoflux] executeInTabWithRestore: Tab ${tabId} restored successfully`);
     }
@@ -1927,11 +2290,17 @@ this.nevoflux = class extends ExtensionAPI {
   }
 
   async executeInTab(tabId, extension, action, params) {
-    console.log(`[ext-nevoflux] executeInTab: action=${action}, tabId=${tabId}, params=`, JSON.stringify(params));
+    console.log(
+      `[ext-nevoflux] executeInTab: action=${action}, tabId=${tabId}, params=`,
+      JSON.stringify(params)
+    );
     const tab = extension.tabManager.get(tabId);
     if (!tab) {
-      console.log("[ext-nevoflux] executeInTab: Tab not found");
-      return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+      console.log('[ext-nevoflux] executeInTab: Tab not found');
+      return {
+        success: false,
+        error: { code: 3001, message: 'Tab not found', recoverable: false },
+      };
     }
 
     try {
@@ -1944,12 +2313,17 @@ this.nevoflux = class extends ExtensionAPI {
       // If no browser directly, try to get it from the native tab
       if (!browser && nativeTab) {
         browser = nativeTab.linkedBrowser;
-        console.log(`[ext-nevoflux] executeInTab: got browser from nativeTab.linkedBrowser=${!!browser}`);
+        console.log(
+          `[ext-nevoflux] executeInTab: got browser from nativeTab.linkedBrowser=${!!browser}`
+        );
       }
 
       if (!browser) {
-        console.log("[ext-nevoflux] executeInTab: No browser element found");
-        return { success: false, error: { code: 3002, message: "No browser element found", recoverable: false } };
+        console.log('[ext-nevoflux] executeInTab: No browser element found');
+        return {
+          success: false,
+          error: { code: 3002, message: 'No browser element found', recoverable: false },
+        };
       }
 
       let bc = browser.browsingContext;
@@ -1957,26 +2331,31 @@ this.nevoflux = class extends ExtensionAPI {
 
       // If no browsingContext, the tab needs to be activated first
       if (!bc) {
-        const isPending = nativeTab?.hasAttribute("pending");
-        const isDiscarded = nativeTab?.hasAttribute("discarded");
-        console.log(`[ext-nevoflux] executeInTab: No browsingContext, isPending=${isPending}, isDiscarded=${isDiscarded}`);
+        const isPending = nativeTab?.hasAttribute('pending');
+        const isDiscarded = nativeTab?.hasAttribute('discarded');
+        console.log(
+          `[ext-nevoflux] executeInTab: No browsingContext, isPending=${isPending}, isDiscarded=${isDiscarded}`
+        );
 
         return {
           success: false,
           error: {
             code: 5004,
-            message: "Tab not loaded",
+            message: 'Tab not loaded',
             recoverable: true,
-            reason: isPending ? "pending" : (isDiscarded ? "discarded" : "unknown"),
-            suggestion: "Use activate_tab to load the tab first"
-          }
+            reason: isPending ? 'pending' : isDiscarded ? 'discarded' : 'unknown',
+            suggestion: 'Use activate_tab to load the tab first',
+          },
         };
       }
 
       // Check if browsing context is discarded
       if (bc.isDiscarded) {
-        console.log("[ext-nevoflux] executeInTab: BrowsingContext is discarded");
-        return { success: false, error: { code: 5003, message: "BrowsingContext is discarded", recoverable: false } };
+        console.log('[ext-nevoflux] executeInTab: BrowsingContext is discarded');
+        return {
+          success: false,
+          error: { code: 5003, message: 'BrowsingContext is discarded', recoverable: false },
+        };
       }
 
       // Strategy 1: Try currentWindowGlobal first (fast path for active tabs)
@@ -1985,12 +2364,14 @@ this.nevoflux = class extends ExtensionAPI {
 
       // Strategy 2: If null, try getWindowGlobals() to find any valid WindowGlobal
       if (!windowGlobal) {
-        console.log("[ext-nevoflux] executeInTab: currentWindowGlobal is null, trying getWindowGlobals()");
+        console.log(
+          '[ext-nevoflux] executeInTab: currentWindowGlobal is null, trying getWindowGlobals()'
+        );
         const windowGlobals = bc.getWindowGlobals();
         console.log(`[ext-nevoflux] executeInTab: found ${windowGlobals.length} windowGlobals`);
 
         // Find a valid (non-closed, non-BFCache) window global
-        windowGlobal = windowGlobals.find(wg => !wg.isClosed && !wg.isInBFCache);
+        windowGlobal = windowGlobals.find((wg) => !wg.isClosed && !wg.isInBFCache);
 
         if (windowGlobal) {
           console.log(`[ext-nevoflux] executeInTab: using windowGlobal from getWindowGlobals()`);
@@ -1999,27 +2380,27 @@ this.nevoflux = class extends ExtensionAPI {
 
       // Strategy 3: If still null, wait briefly for tab transition
       if (!windowGlobal) {
-        console.log("[ext-nevoflux] executeInTab: waiting for windowGlobal...");
+        console.log('[ext-nevoflux] executeInTab: waiting for windowGlobal...');
         windowGlobal = await this.waitForWindowGlobal(bc, 500);
       }
 
       // Final check
       if (!windowGlobal) {
-        console.log("[ext-nevoflux] executeInTab: No windowGlobal available after all strategies");
+        console.log('[ext-nevoflux] executeInTab: No windowGlobal available after all strategies');
         return {
           success: false,
           error: {
             code: 5002,
-            message: "No windowGlobal available (tab may be unloaded)",
+            message: 'No windowGlobal available (tab may be unloaded)',
             recoverable: true,
-            suggestion: "Try activating the tab first"
-          }
+            suggestion: 'Try activating the tab first',
+          },
         };
       }
 
-      const actor = windowGlobal.getActor("Nevoflux");
+      const actor = windowGlobal.getActor('Nevoflux');
       console.log(`[ext-nevoflux] executeInTab: actor=${!!actor}, sending query...`);
-      const result = await actor.sendQuery("execute", { action, params });
+      const result = await actor.sendQuery('execute', { action, params });
       console.log(`[ext-nevoflux] executeInTab: result=`, result);
       return result;
     } catch (e) {
@@ -2030,14 +2411,14 @@ this.nevoflux = class extends ExtensionAPI {
 
   async waitForWindowGlobal(bc, maxWaitMs = 500) {
     const { setTimeout: chromeSetTimeout } = ChromeUtils.importESModule(
-      "resource://gre/modules/Timer.sys.mjs"
+      'resource://gre/modules/Timer.sys.mjs'
     );
 
     const waitInterval = 50;
     let waited = 0;
 
     while (waited < maxWaitMs) {
-      await new Promise(resolve => chromeSetTimeout(resolve, waitInterval));
+      await new Promise((resolve) => chromeSetTimeout(resolve, waitInterval));
       waited += waitInterval;
 
       // Check currentWindowGlobal first
@@ -2047,7 +2428,7 @@ this.nevoflux = class extends ExtensionAPI {
 
       // Also check getWindowGlobals()
       const windowGlobals = bc.getWindowGlobals();
-      const validWg = windowGlobals.find(wg => !wg.isClosed && !wg.isInBFCache);
+      const validWg = windowGlobals.find((wg) => !wg.isClosed && !wg.isInBFCache);
       if (validWg) {
         return validWg;
       }
@@ -2058,7 +2439,7 @@ this.nevoflux = class extends ExtensionAPI {
 
   async waitForBrowsingContext(browser, maxWaitMs = 2000) {
     const { setTimeout: chromeSetTimeout } = ChromeUtils.importESModule(
-      "resource://gre/modules/Timer.sys.mjs"
+      'resource://gre/modules/Timer.sys.mjs'
     );
 
     const waitInterval = 100;
@@ -2070,7 +2451,7 @@ this.nevoflux = class extends ExtensionAPI {
         return browser.browsingContext;
       }
 
-      await new Promise(resolve => chromeSetTimeout(resolve, waitInterval));
+      await new Promise((resolve) => chromeSetTimeout(resolve, waitInterval));
       waited += waitInterval;
     }
 
@@ -2080,14 +2461,13 @@ this.nevoflux = class extends ExtensionAPI {
 
   waitForLoad(browser, waitUntil, timeout) {
     // Import timer functions for extension parent context
-    const { setTimeout: chromeSetTimeout, clearTimeout: chromeClearTimeout } = ChromeUtils.importESModule(
-      "resource://gre/modules/Timer.sys.mjs"
-    );
+    const { setTimeout: chromeSetTimeout, clearTimeout: chromeClearTimeout } =
+      ChromeUtils.importESModule('resource://gre/modules/Timer.sys.mjs');
 
     return new Promise((resolve, reject) => {
       const timeoutId = chromeSetTimeout(() => {
         cleanup();
-        reject(new Error("Navigation timeout"));
+        reject(new Error('Navigation timeout'));
       }, timeout);
 
       const listener = {
@@ -2095,12 +2475,15 @@ this.nevoflux = class extends ExtensionAPI {
           const isStop = flags & Ci.nsIWebProgressListener.STATE_STOP;
           const isNetwork = flags & Ci.nsIWebProgressListener.STATE_IS_NETWORK;
 
-          if (waitUntil === "load" && isStop && isNetwork) {
+          if (waitUntil === 'load' && isStop && isNetwork) {
             cleanup();
             resolve();
           }
         },
-        QueryInterface: ChromeUtils.generateQI(["nsIWebProgressListener", "nsISupportsWeakReference"]),
+        QueryInterface: ChromeUtils.generateQI([
+          'nsIWebProgressListener',
+          'nsISupportsWeakReference',
+        ]),
       };
 
       const cleanup = () => {
@@ -2127,7 +2510,7 @@ this.nevoflux = class extends ExtensionAPI {
       const idRegex = /\d{17}[\dXx]/g;
       const matches = result.match(idRegex) || [];
       filteredCount += matches.length;
-      result = result.replace(idRegex, "[ID_REDACTED]");
+      result = result.replace(idRegex, '[ID_REDACTED]');
     }
 
     if (config.phone !== false) {
@@ -2135,14 +2518,14 @@ this.nevoflux = class extends ExtensionAPI {
       const phoneRegex = /(?<!\d)1[3-9]\d{9}(?!\d)/g;
       const matches = result.match(phoneRegex) || [];
       filteredCount += matches.length;
-      result = result.replace(phoneRegex, "[PHONE_REDACTED]");
+      result = result.replace(phoneRegex, '[PHONE_REDACTED]');
     }
 
     if (config.email !== false) {
       const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
       const matches = result.match(emailRegex) || [];
       filteredCount += matches.length;
-      result = result.replace(emailRegex, "[EMAIL_REDACTED]");
+      result = result.replace(emailRegex, '[EMAIL_REDACTED]');
     }
 
     return {

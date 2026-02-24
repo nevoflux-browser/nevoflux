@@ -8,11 +8,11 @@
  * Built-in route table: nevoflux://{host} -> chrome://nevoflux/content/pages/{host}.html
  */
 const BUILTIN_ROUTES = {
-  home: "chrome://nevoflux/content/pages/home.html",
-  settings: "chrome://nevoflux/content/pages/settings.html",
-  canvas: "chrome://nevoflux/content/pages/canvas.html",
-  history: "chrome://nevoflux/content/pages/history.html",
-  plan: "chrome://nevoflux/content/pages/plan.html",
+  home: 'chrome://nevoflux/content/pages/home.html',
+  settings: 'chrome://nevoflux/content/pages/settings.html',
+  canvas: 'chrome://nevoflux/content/pages/canvas.html',
+  history: 'chrome://nevoflux/content/pages/history.html',
+  plan: 'chrome://nevoflux/content/pages/plan.html',
 };
 
 /**
@@ -28,7 +28,7 @@ const BUILTIN_ROUTES = {
  *   4. Otherwise -> NS_ERROR_FILE_NOT_FOUND
  */
 export class NevofluxProtocolHandler {
-  scheme = "nevoflux";
+  scheme = 'nevoflux';
 
   allowPort(_port, _scheme) {
     return false;
@@ -39,52 +39,40 @@ export class NevofluxProtocolHandler {
     try {
       parsedURL = new URL(uri.spec);
     } catch (e) {
-      throw Components.Exception(
-        `Invalid nevoflux URL: ${uri.spec}`,
-        Cr.NS_ERROR_MALFORMED_URI
-      );
+      throw Components.Exception(`Invalid nevoflux URL: ${uri.spec}`, Cr.NS_ERROR_MALFORMED_URI);
     }
 
     const host = parsedURL.hostname;
-    const pathSegments = parsedURL.pathname
-      .replace(/^\/+/, "")
-      .split("/")
-      .filter(Boolean);
+    const pathSegments = parsedURL.pathname.replace(/^\/+/, '').split('/').filter(Boolean);
 
     // Dynamic route namespace (P2 -- not implemented yet)
-    if (host === "x") {
-      throw Components.Exception(
-        "Dynamic routes not yet implemented",
-        Cr.NS_ERROR_NOT_IMPLEMENTED
-      );
+    if (host === 'x') {
+      throw Components.Exception('Dynamic routes not yet implemented', Cr.NS_ERROR_NOT_IMPLEMENTED);
     }
 
     const chromeBase = BUILTIN_ROUTES[host];
     if (!chromeBase) {
-      throw Components.Exception(
-        `Unknown nevoflux route: ${host}`,
-        Cr.NS_ERROR_FILE_NOT_FOUND
-      );
+      throw Components.Exception(`Unknown nevoflux route: ${host}`, Cr.NS_ERROR_FILE_NOT_FOUND);
     }
 
     // Build query parameters based on host type
     const params = new URLSearchParams();
 
     switch (host) {
-      case "canvas":
+      case 'canvas':
         if (pathSegments[0]) {
-          params.set("id", pathSegments[0]);
+          params.set('id', pathSegments[0]);
         }
-        params.set("mode", pathSegments[1] || "preview");
+        params.set('mode', pathSegments[1] || 'preview');
         break;
 
-      case "settings":
-        params.set("section", pathSegments[0] || "general");
+      case 'settings':
+        params.set('section', pathSegments[0] || 'general');
         break;
 
-      case "plan":
+      case 'plan':
         if (pathSegments[0]) {
-          params.set("id", pathSegments[0]);
+          params.set('id', pathSegments[0]);
         }
         break;
 
@@ -92,20 +80,15 @@ export class NevofluxProtocolHandler {
     }
 
     const queryString = params.toString();
-    const targetSpec = queryString
-      ? `${chromeBase}?${queryString}`
-      : chromeBase;
+    const targetSpec = queryString ? `${chromeBase}?${queryString}` : chromeBase;
     const targetURI = Services.io.newURI(targetSpec);
 
     // Create channel using the same pattern as AboutNewTabRedirector:
     // Pass the original loadInfo directly to preserve navigation context.
-    const channel = Services.io.newChannelFromURIWithLoadInfo(
-      targetURI,
-      loadInfo
-    );
+    const channel = Services.io.newChannelFromURIWithLoadInfo(targetURI, loadInfo);
     channel.originalURI = uri;
     return channel;
   }
 
-  QueryInterface = ChromeUtils.generateQI(["nsIProtocolHandler"]);
+  QueryInterface = ChromeUtils.generateQI(['nsIProtocolHandler']);
 }

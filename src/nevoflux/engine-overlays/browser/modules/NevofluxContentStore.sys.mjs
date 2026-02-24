@@ -44,7 +44,7 @@ export const NevofluxContentStore = {
     const cloned = structuredClone(value);
     this._data.set(key, cloned);
     this._notify(key, cloned);
-    this._notifyPersist("set", key, cloned);
+    this._notifyPersist('set', key, cloned);
   },
 
   /**
@@ -56,7 +56,7 @@ export const NevofluxContentStore = {
     const existed = this._data.delete(key);
     if (existed) {
       this._notify(key, undefined);
-      this._notifyPersist("delete", key);
+      this._notifyPersist('delete', key);
     }
     return existed;
   },

@@ -15,7 +15,7 @@
 
 // ========== Test Utilities ==========
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const log = (msg, success = null) => {
   const icon = success === true ? '✅' : success === false ? '❌' : '📝';
@@ -256,7 +256,9 @@ const runNetworkTests = async () => {
   await runTest('stopCapture - should stop capture and return requests', async () => {
     if (!captureHandle) throw new Error('No capture started');
     const result = await api.stopCapture(captureHandle);
-    log(`stopCapture result: ${Array.isArray(result) ? result.length + ' requests' : JSON.stringify(result)}`);
+    log(
+      `stopCapture result: ${Array.isArray(result) ? result.length + ' requests' : JSON.stringify(result)}`
+    );
     captureHandle = null;
   });
 
@@ -266,7 +268,7 @@ const runNetworkTests = async () => {
     // handler is required: 'block', 'mock', or 'modify'
     interceptHandle = await api.intercept({
       urlPattern: '*.test.invalid/*',
-      handler: 'block'
+      handler: 'block',
     });
     log(`intercept handle: ${interceptHandle}`);
     assert(interceptHandle, 'Should return intercept handle');
@@ -297,7 +299,7 @@ const runNetworkTests = async () => {
   await runTest('startCapture - should accept options', async () => {
     const handle = await api.startCapture({
       urlPattern: '*.json',
-      recordBody: true
+      recordBody: true,
     });
     log(`startCapture with options: ${handle}`);
     assert(handle, 'Should return handle');
@@ -337,7 +339,9 @@ const runDragTests = async () => {
   }
 
   if (!testTabId) {
-    console.warn('⚠️ Test page not open. Please open: file://<project-root>/src/nevoflux/tests/e2e/test-page.html');
+    console.warn(
+      '⚠️ Test page not open. Please open: file://<project-root>/src/nevoflux/tests/e2e/test-page.html'
+    );
     console.warn('Then run: runDragTests()');
 
     // Try to find any tab with drag elements
@@ -463,13 +467,17 @@ const runAllRemainingTests = async () => {
   console.log(`Total:   ${testResults.passed + testResults.failed}`);
   console.log(`Passed:  ${testResults.passed}`);
   console.log(`Failed:  ${testResults.failed}`);
-  console.log(`Rate:    ${((testResults.passed / (testResults.passed + testResults.failed)) * 100).toFixed(1)}%`);
+  console.log(
+    `Rate:    ${((testResults.passed / (testResults.passed + testResults.failed)) * 100).toFixed(1)}%`
+  );
 
   if (testResults.failed > 0) {
     console.log('\n❌ Failed tests:');
-    testResults.tests.filter(t => !t.passed).forEach(t => {
-      console.log(`  - ${t.name}: ${t.error}`);
-    });
+    testResults.tests
+      .filter((t) => !t.passed)
+      .forEach((t) => {
+        console.log(`  - ${t.name}: ${t.error}`);
+      });
   }
 
   return testResults;

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-"use strict";
+'use strict';
 
 /**
  * Bundler -- Babel-based in-browser bundler for Canvas multi-file projects.
@@ -46,14 +46,14 @@ const Bundler = {
    * @type {Record<string, string>}
    */
   IMPORTMAP_PACKAGES: {
-    "react": "https://esm.sh/react@18?dev",
-    "react-dom": "https://esm.sh/react-dom@18?dev",
-    "react-dom/client": "https://esm.sh/react-dom@18/client?dev",
-    "react/jsx-runtime": "https://esm.sh/react@18/jsx-runtime?dev",
-    "react/jsx-dev-runtime": "https://esm.sh/react@18/jsx-dev-runtime?dev",
-    "vue": "https://esm.sh/vue@3?dev",
-    "svelte": "https://esm.sh/svelte@4?dev",
-    "svelte/internal": "https://esm.sh/svelte@4/internal?dev",
+    react: 'https://esm.sh/react@18?dev',
+    'react-dom': 'https://esm.sh/react-dom@18?dev',
+    'react-dom/client': 'https://esm.sh/react-dom@18/client?dev',
+    'react/jsx-runtime': 'https://esm.sh/react@18/jsx-runtime?dev',
+    'react/jsx-dev-runtime': 'https://esm.sh/react@18/jsx-dev-runtime?dev',
+    vue: 'https://esm.sh/vue@3?dev',
+    svelte: 'https://esm.sh/svelte@4?dev',
+    'svelte/internal': 'https://esm.sh/svelte@4/internal?dev',
   },
 
   // ── Initialization ──────────────────────────────────────
@@ -83,14 +83,16 @@ const Bundler = {
     this._initializing = true;
 
     try {
-      if (typeof Babel === "undefined") {
-        throw new Error("Bundler: Babel global not found. Ensure babel.min.js is loaded via <script> tag.");
+      if (typeof Babel === 'undefined') {
+        throw new Error(
+          'Bundler: Babel global not found. Ensure babel.min.js is loaded via <script> tag.'
+        );
       }
 
       this._initialized = true;
-      console.info("[Bundler] Babel-based bundler initialized successfully.");
+      console.info('[Bundler] Babel-based bundler initialized successfully.');
     } catch (e) {
-      console.error("[Bundler] Failed to initialize:", e);
+      console.error('[Bundler] Failed to initialize:', e);
       throw e;
     } finally {
       this._initializing = false;
@@ -117,22 +119,22 @@ const Bundler = {
       }
     };
 
-    feedString("entry:");
+    feedString('entry:');
     feedString(entry);
 
     const envKeys = Object.keys(env).sort();
     for (const key of envKeys) {
-      feedString("env:");
+      feedString('env:');
       feedString(key);
-      feedString("=");
+      feedString('=');
       feedString(env[key]);
     }
 
     for (const path of files) {
-      feedString("file:");
+      feedString('file:');
       feedString(path);
 
-      const content = VirtualFS.read(path) || "";
+      const content = VirtualFS.read(path) || '';
       hash = ((hash << 5) + hash + content.length) | 0;
 
       const sampleLen = Math.min(256, content.length);
@@ -155,7 +157,7 @@ const Bundler = {
    */
   clearCache() {
     this._bundleCache.clear();
-    console.info("[Bundler] Cache cleared.");
+    console.info('[Bundler] Cache cleared.');
   },
 
   // ── Bundle ──────────────────────────────────────────────
@@ -174,13 +176,13 @@ const Bundler = {
     const cacheKey = this._computeCacheKey(entry, env);
     const cached = this._bundleCache.get(cacheKey);
     if (cached) {
-      console.info("[Bundler] Cache hit, skipping rebuild.");
+      console.info('[Bundler] Cache hit, skipping rebuild.');
       return cached;
     }
 
     this._collectedCSS = [];
 
-    const modules = new Map();   // path -> transformed CJS code
+    const modules = new Map(); // path -> transformed CJS code
     const externals = new Set(); // external package names
     const errors = [];
 
@@ -188,12 +190,12 @@ const Bundler = {
     this._resolveAndTransform(entry, modules, externals, errors);
 
     if (errors.length > 0) {
-      return { js: "", css: this._collectedCSS.join("\n"), errors };
+      return { js: '', css: this._collectedCSS.join('\n'), errors };
     }
 
     // 2. Generate bundled output
     const js = this._generateBundle(entry, modules, externals, env);
-    const css = this._collectedCSS.join("\n");
+    const css = this._collectedCSS.join('\n');
 
     const bundleResult = { js, css, errors: [] };
 
@@ -216,15 +218,22 @@ const Bundler = {
    * @param {string} [importer] - The file importing this module (for relative resolution).
    * @private
    */
-  _resolveAndTransform(importPath, modules, externals, errors, visited = new Set(), importer = null) {
+  _resolveAndTransform(
+    importPath,
+    modules,
+    externals,
+    errors,
+    visited = new Set(),
+    importer = null
+  ) {
     // Resolve the absolute path
     let absPath;
-    if (importer && (importPath.startsWith("./") || importPath.startsWith("../"))) {
+    if (importer && (importPath.startsWith('./') || importPath.startsWith('../'))) {
       absPath = VirtualFS.resolve(importer, importPath);
-    } else if (importPath.startsWith("@/")) {
-      absPath = VirtualFS.resolve("/", importPath);
+    } else if (importPath.startsWith('@/')) {
+      absPath = VirtualFS.resolve('/', importPath);
     } else {
-      absPath = importPath.startsWith("/") ? importPath : "/" + importPath;
+      absPath = importPath.startsWith('/') ? importPath : '/' + importPath;
     }
 
     // Try with extension
@@ -240,18 +249,18 @@ const Bundler = {
     }
 
     // Handle CSS files — collect and register as empty module
-    if (absPath.endsWith(".css")) {
+    if (absPath.endsWith('.css')) {
       this._collectedCSS.push(source);
-      modules.set(absPath, "/* css */");
+      modules.set(absPath, '/* css */');
       return;
     }
 
     // Preprocess Vue/Svelte to JS
     let jsSource = source;
-    if (absPath.endsWith(".vue")) {
+    if (absPath.endsWith('.vue')) {
       jsSource = this._compileVue(absPath, source, errors);
       if (!jsSource) return;
-    } else if (absPath.endsWith(".svelte")) {
+    } else if (absPath.endsWith('.svelte')) {
       jsSource = this._compileSvelte(absPath, source, errors);
       if (!jsSource) return;
     }
@@ -260,10 +269,10 @@ const Bundler = {
     try {
       const result = Babel.transform(jsSource, {
         presets: [
-          ["react", { runtime: "automatic" }],
-          ["typescript", { allExtensions: true, isTSX: true }],
+          ['react', { runtime: 'automatic' }],
+          ['typescript', { allExtensions: true, isTSX: true }],
         ],
-        plugins: [["transform-modules-commonjs"]],
+        plugins: [['transform-modules-commonjs']],
         filename: absPath,
       });
 
@@ -274,7 +283,7 @@ const Bundler = {
       let match;
       while ((match = requireRegex.exec(transformed)) !== null) {
         const dep = match[1];
-        if (dep.startsWith(".") || dep.startsWith("/") || dep.startsWith("@/")) {
+        if (dep.startsWith('.') || dep.startsWith('/') || dep.startsWith('@/')) {
           // Local import — resolve and recurse
           this._resolveAndTransform(dep, modules, externals, errors, visited, absPath);
         } else {
@@ -313,14 +322,16 @@ const Bundler = {
     // 1. External imports via importmap
     const extEntries = [...externals];
     for (const ext of extEntries) {
-      const safeName = "__ext_" + ext.replace(/[^a-zA-Z0-9]/g, "_");
+      const safeName = '__ext_' + ext.replace(/[^a-zA-Z0-9]/g, '_');
       lines.push(`import * as ${safeName} from ${JSON.stringify(ext)};`);
     }
 
     // 2. process.env shim
-    lines.push(`\nvar process = { env: { NODE_ENV: "production"${
-      Object.entries(env).map(([k, v]) => `, ${JSON.stringify(k)}: ${JSON.stringify(v)}`).join("")
-    } } };`);
+    lines.push(
+      `\nvar process = { env: { NODE_ENV: "production"${Object.entries(env)
+        .map(([k, v]) => `, ${JSON.stringify(k)}: ${JSON.stringify(v)}`)
+        .join('')} } };`
+    );
 
     // 3. Module system
     lines.push(`
@@ -329,7 +340,7 @@ var __cache = new Map();`);
 
     // Pre-populate external modules
     for (const ext of extEntries) {
-      const safeName = "__ext_" + ext.replace(/[^a-zA-Z0-9]/g, "_");
+      const safeName = '__ext_' + ext.replace(/[^a-zA-Z0-9]/g, '_');
       lines.push(`__cache.set(${JSON.stringify(ext)}, ${safeName});`);
     }
 
@@ -348,33 +359,32 @@ function __require(id) {
 
     // 4. Module definitions
     for (const [path, code] of modules) {
-      if (code === "/* css */") {
+      if (code === '/* css */') {
         // CSS module — return empty
         lines.push(`__modules.set(${JSON.stringify(path)}, function(exports, module) {});`);
         continue;
       }
 
       // Rewrite require("./foo") calls to use absolute resolved paths
-      const rewritten = code.replace(
-        /require\(["']([^"']+)["']\)/g,
-        (_match, dep) => {
-          if (dep.startsWith(".") || dep.startsWith("/") || dep.startsWith("@/")) {
-            const resolved = VirtualFS.resolve(path, dep);
-            const withExt = VirtualFS.resolveWithExtension(resolved) || resolved;
-            return `__require(${JSON.stringify(withExt)})`;
-          }
-          return `__require(${JSON.stringify(dep)})`;
+      const rewritten = code.replace(/require\(["']([^"']+)["']\)/g, (_match, dep) => {
+        if (dep.startsWith('.') || dep.startsWith('/') || dep.startsWith('@/')) {
+          const resolved = VirtualFS.resolve(path, dep);
+          const withExt = VirtualFS.resolveWithExtension(resolved) || resolved;
+          return `__require(${JSON.stringify(withExt)})`;
         }
-      );
+        return `__require(${JSON.stringify(dep)})`;
+      });
 
-      lines.push(`__modules.set(${JSON.stringify(path)}, function(exports, module) {\n${rewritten}\n});`);
+      lines.push(
+        `__modules.set(${JSON.stringify(path)}, function(exports, module) {\n${rewritten}\n});`
+      );
     }
 
     // 5. Execute entry point
     const entryAbs = VirtualFS.resolveWithExtension(entry) || entry;
     lines.push(`\n__require(${JSON.stringify(entryAbs)});`);
 
-    return lines.join("\n");
+    return lines.join('\n');
   },
 
   // ── Vue SFC Compilation ─────────────────────────────────
@@ -405,7 +415,7 @@ function __require(id) {
         return null;
       }
 
-      const sfcId = filePath.replace(/[^a-zA-Z0-9]/g, "_");
+      const sfcId = filePath.replace(/[^a-zA-Z0-9]/g, '_');
       const parts = [];
 
       if (descriptor.script || descriptor.scriptSetup) {
@@ -413,14 +423,18 @@ function __require(id) {
         parts.push(scriptResult.content);
       }
 
-      if (descriptor.template && !(descriptor.scriptSetup)) {
+      if (descriptor.template && !descriptor.scriptSetup) {
         const templateResult = compileTemplate({
           source: descriptor.template.content,
           filename: filePath,
           id: sfcId,
         });
         if (templateResult.errors && templateResult.errors.length > 0) {
-          errors.push(...templateResult.errors.map((e) => `Vue template error in ${filePath}: ${e.message || e}`));
+          errors.push(
+            ...templateResult.errors.map(
+              (e) => `Vue template error in ${filePath}: ${e.message || e}`
+            )
+          );
           return null;
         }
         parts.push(templateResult.code);
@@ -432,7 +446,7 @@ function __require(id) {
         }
       }
 
-      return parts.join("\n");
+      return parts.join('\n');
     } catch (e) {
       errors.push(`Vue SFC compilation failed for ${filePath}: ${e.message || e}`);
       return null;
@@ -451,7 +465,7 @@ function __require(id) {
    * @private
    */
   _compileSvelte(filePath, source, errors) {
-    if (typeof globalThis.svelte === "undefined" || !globalThis.svelte.compile) {
+    if (typeof globalThis.svelte === 'undefined' || !globalThis.svelte.compile) {
       errors.push(`Svelte compiler not available. Cannot compile ${filePath}.`);
       return null;
     }
@@ -459,8 +473,8 @@ function __require(id) {
     try {
       const result = globalThis.svelte.compile(source, {
         filename: filePath,
-        generate: "dom",
-        css: "injected",
+        generate: 'dom',
+        css: 'injected',
         hydratable: false,
         dev: false,
       });

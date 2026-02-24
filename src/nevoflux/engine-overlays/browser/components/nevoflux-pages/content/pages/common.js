@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-"use strict";
+'use strict';
 
 /**
  * NevofluxPage -- shared utilities for all nevoflux:// pages.
@@ -42,7 +42,7 @@ const NevofluxPage = {
   async sendQuery(messageName, data = {}) {
     const actor = this._getActor();
     if (!actor) {
-      throw new Error("NevofluxChild actor not available");
+      throw new Error('NevofluxChild actor not available');
     }
     return actor.sendQuery(messageName, data);
   },
@@ -56,7 +56,7 @@ const NevofluxPage = {
   sendMessage(messageName, data = {}) {
     const actor = this._getActor();
     if (!actor) {
-      console.warn("NevofluxChild actor not available for message:", messageName);
+      console.warn('NevofluxChild actor not available for message:', messageName);
       return;
     }
     actor.sendAsyncMessage(messageName, data);
@@ -69,9 +69,9 @@ const NevofluxPage = {
    */
   _getActor() {
     try {
-      return window.windowGlobalChild?.getActor("Nevoflux");
+      return window.windowGlobalChild?.getActor('Nevoflux');
     } catch (e) {
-      console.error("Failed to get Nevoflux actor:", e);
+      console.error('Failed to get Nevoflux actor:', e);
       return null;
     }
   },

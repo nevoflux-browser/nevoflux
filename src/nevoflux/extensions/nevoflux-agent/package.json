@@ -1,19 +1,19 @@
 {
-    "name": "nevoflux-agent-extension",
-    "version": "0.3.0",
-    "description": "NevoFlux Agent browser extension with Dioxus WASM UI",
-    "type": "module",
-    "scripts": {
-        "build:chat": "cd dioxus-ui/chat-sidebar && trunk build --release",
-        "build:content": "cd dioxus-ui/content-sidebar && trunk build --release",
-        "build:wasm": "npm run build:chat && npm run build:content",
-        "postbuild:wasm": "npm run copy:wasm",
-        "copy:wasm": "node scripts/copy-wasm.mjs",
-        "build": "npm run build:wasm",
-        "dev:chat": "cd dioxus-ui/chat-sidebar && trunk serve",
-        "dev:content": "cd dioxus-ui/content-sidebar && trunk serve --port 8081",
-        "clean:wasm": "rm -rf wasm/",
-        "clean": "npm run clean:wasm && rm -rf dioxus-ui/dist/"
-    },
-    "devDependencies": {}
+  "name": "nevoflux-agent-extension",
+  "version": "0.3.0",
+  "description": "NevoFlux Agent browser extension with Dioxus WASM UI",
+  "type": "module",
+  "scripts": {
+    "build:chat": "cd dioxus-ui/chat-sidebar && trunk build --release",
+    "build:content": "cd dioxus-ui/content-sidebar && trunk build --release",
+    "build:wasm": "npm run build:chat && npm run build:content",
+    "postbuild:wasm": "npm run copy:wasm",
+    "copy:wasm": "node scripts/copy-wasm.mjs",
+    "build": "npm run build:wasm",
+    "dev:chat": "cd dioxus-ui/chat-sidebar && trunk serve",
+    "dev:content": "cd dioxus-ui/content-sidebar && trunk serve --port 8081",
+    "clean:wasm": "rm -rf wasm/",
+    "clean": "npm run clean:wasm && rm -rf dioxus-ui/dist/"
+  },
+  "devDependencies": {}
 }

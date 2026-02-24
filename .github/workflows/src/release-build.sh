@@ -6,7 +6,7 @@ if command -v apt-get &> /dev/null; then
   PACKAGES="python3-launchpadlib xvfb libnvidia-egl-wayland1 mesa-utils libgl1-mesa-dri"
   MISSING=""
   for pkg in $PACKAGES; do
-    if ! dpkg -s "$pkg" &>/dev/null; then
+    if ! dpkg -s "$pkg" &> /dev/null; then
       MISSING="$MISSING $pkg"
     fi
   done

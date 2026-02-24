@@ -82,33 +82,33 @@ Nevoflux uses progressive capability unlocking — each mode builds on the previ
 
 **Agent** — Full autonomy. File operations, shell commands, computer control, sub-agents — your companion handles complex multi-step tasks end-to-end.
 
-| Mode | Capabilities |
-|------|-------------|
-| **Chat** | LLM reasoning, memory, web search, read-only browser access |
-| **Browser** | Chat + click, type, navigate, fill forms, interact with pages |
-| **Agent** | Browser + file ops, shell commands, computer control, MCP, sub-agents |
+| Mode        | Capabilities                                                          |
+| ----------- | --------------------------------------------------------------------- |
+| **Chat**    | LLM reasoning, memory, web search, read-only browser access           |
+| **Browser** | Chat + click, type, navigate, fill forms, interact with pages         |
+| **Agent**   | Browser + file ops, shell commands, computer control, MCP, sub-agents |
 
 ---
 
 ## Supported LLM Providers
 
-| Provider | Type | Notes |
-|----------|------|-------|
-| Anthropic Claude | API | Default (claude-sonnet-4) |
-| OpenAI | API | GPT-4o series |
-| Google Gemini | API | Up to 1M context window |
-| Qwen (通义千问) | API | DashScope integration |
-| DeepSeek | API | |
-| Ollama | Local | Run local models |
-| Groq | API | |
-| Mistral | API | |
-| XAi | API | |
-| Cohere | API | |
-| Perplexity | API | |
-| Together | API | |
-| OpenRouter | API | |
-| Claude Code | CLI | Subprocess integration |
-| Gemini CLI | CLI | Subprocess integration |
+| Provider         | Type  | Notes                     |
+| ---------------- | ----- | ------------------------- |
+| Anthropic Claude | API   | Default (claude-sonnet-4) |
+| OpenAI           | API   | GPT-4o series             |
+| Google Gemini    | API   | Up to 1M context window   |
+| Qwen (通义千问)  | API   | DashScope integration     |
+| DeepSeek         | API   |                           |
+| Ollama           | Local | Run local models          |
+| Groq             | API   |                           |
+| Mistral          | API   |                           |
+| XAi              | API   |                           |
+| Cohere           | API   |                           |
+| Perplexity       | API   |                           |
+| Together         | API   |                           |
+| OpenRouter       | API   |                           |
+| Claude Code      | CLI   | Subprocess integration    |
+| Gemini CLI       | CLI   | Subprocess integration    |
 
 Configure your preferred provider in `~/.config/nevoflux/config.toml`:
 
@@ -288,29 +288,29 @@ Nevoflux uses a **patch-based system** for customizing Zen Browser. The `engine/
 
 ```bash
 # Development cycle
-npm run import          # Apply patches/overlays
+npm run import # Apply patches/overlays
 # ... make changes in src/zen/ ...
-npm run build:ui        # Quick UI rebuild
-npm run start           # Test in browser
+npm run build:ui # Quick UI rebuild
+npm run start    # Test in browser
 
 # Before committing
-./scripts/export-nevoflux-patches.sh    # Export changes as patches
-./scripts/revert-zen-changes.sh         # Revert src/zen/
+./scripts/export-nevoflux-patches.sh # Export changes as patches
+./scripts/revert-zen-changes.sh      # Revert src/zen/
 git add src/nevoflux/patches/
 git commit -m "patch(feature): description"
 ```
 
 ### Build Commands
 
-| Command | Description |
-|---------|-------------|
-| `npm run import` | Apply patches and overlays |
-| `npm run build` | Full browser build |
-| `npm run build:ui` | UI-only rebuild (faster) |
-| `npm run start` | Launch the browser |
+| Command              | Description                     |
+| -------------------- | ------------------------------- |
+| `npm run import`     | Apply patches and overlays      |
+| `npm run build`      | Full browser build              |
+| `npm run build:ui`   | UI-only rebuild (faster)        |
+| `npm run start`      | Launch the browser              |
 | `npm run reload-ext` | Reload extension + clear caches |
-| `npm run test` | Run tests |
-| `npm run lint` | Run ESLint/Prettier |
+| `npm run test`       | Run tests                       |
+| `npm run lint`       | Run ESLint/Prettier             |
 
 ---
 

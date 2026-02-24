@@ -23,13 +23,13 @@ const BUILDS = [
   {
     name: 'chat-sidebar',
     src: path.join(ROOT, 'dioxus-ui', 'dist', 'chat-sidebar'),
-    dest: path.join(ROOT, 'wasm', 'chat-sidebar')
+    dest: path.join(ROOT, 'wasm', 'chat-sidebar'),
   },
   {
     name: 'content-sidebar',
     src: path.join(ROOT, 'dioxus-ui', 'dist', 'content-sidebar'),
-    dest: path.join(ROOT, 'wasm', 'content-sidebar')
-  }
+    dest: path.join(ROOT, 'wasm', 'content-sidebar'),
+  },
 ];
 
 async function copyDir(src, dest) {
@@ -72,7 +72,6 @@ async function main() {
       // Copy files
       await copyDir(build.src, build.dest);
       console.log(`  ✓ Copied to ${path.relative(ROOT, build.dest)}\n`);
-
     } catch (error) {
       if (error.code === 'ENOENT') {
         console.log(`  ⚠ Source not found: ${path.relative(ROOT, build.src)}`);

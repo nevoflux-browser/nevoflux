@@ -97,7 +97,10 @@ class MockNevofluxChild {
 
     const handler = handlers[action];
     if (!handler) {
-      return { success: false, error: { code: 5002, message: `Unknown action: ${action}`, recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5002, message: `Unknown action: ${action}`, recoverable: false },
+      };
     }
 
     try {
@@ -110,17 +113,17 @@ class MockNevofluxChild {
   // ========== Data Extraction ==========
   getText({ selector }) {
     const el = this.currentDoc?.querySelector(selector);
-    return el?.textContent || "";
+    return el?.textContent || '';
   }
 
   getHtml({ selector }) {
     const el = this.currentDoc?.querySelector(selector);
-    return el?.innerHTML || "";
+    return el?.innerHTML || '';
   }
 
   getValue({ selector }) {
     const el = this.document.querySelector(selector);
-    return el?.value || "";
+    return el?.value || '';
   }
 
   // ========== State Checking ==========
@@ -138,9 +141,9 @@ class MockNevofluxChild {
     return (
       rect.width > 0 &&
       rect.height > 0 &&
-      style.visibility !== "hidden" &&
-      style.display !== "none" &&
-      style.opacity !== "0"
+      style.visibility !== 'hidden' &&
+      style.display !== 'none' &&
+      style.opacity !== '0'
     );
   }
 
@@ -152,33 +155,46 @@ class MockNevofluxChild {
   async keyPress({ key, modifiers = [], delay = 0 }) {
     const win = this.document?.defaultView || this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
-    if (!key || typeof key !== "string") {
-      return { success: false, error: { code: 9002, message: "Missing or invalid required parameter: key", recoverable: false } };
+    if (!key || typeof key !== 'string') {
+      return {
+        success: false,
+        error: {
+          code: 9002,
+          message: 'Missing or invalid required parameter: key',
+          recoverable: false,
+        },
+      };
     }
 
     try {
       const domUtils = win.windowUtils;
-      if (!domUtils || typeof domUtils.sendKeyEvent !== "function") {
-        return { success: false, error: { code: 5001, message: "windowUtils not available", recoverable: false } };
+      if (!domUtils || typeof domUtils.sendKeyEvent !== 'function') {
+        return {
+          success: false,
+          error: { code: 5001, message: 'windowUtils not available', recoverable: false },
+        };
       }
 
       let modifierFlags = 0;
-      if (modifiers.includes("ctrl")) modifierFlags |= 0x02;
-      if (modifiers.includes("alt")) modifierFlags |= 0x01;
-      if (modifiers.includes("shift")) modifierFlags |= 0x04;
-      if (modifiers.includes("meta")) modifierFlags |= 0x08;
+      if (modifiers.includes('ctrl')) modifierFlags |= 0x02;
+      if (modifiers.includes('alt')) modifierFlags |= 0x01;
+      if (modifiers.includes('shift')) modifierFlags |= 0x04;
+      if (modifiers.includes('meta')) modifierFlags |= 0x08;
 
       const keyCode = this._getKeyCode(key);
       const charCode = key.length === 1 ? key.charCodeAt(0) : 0;
 
-      domUtils.sendKeyEvent("keydown", keyCode, charCode, modifierFlags);
+      domUtils.sendKeyEvent('keydown', keyCode, charCode, modifierFlags);
       if (delay > 0) await this.sleep(delay);
-      domUtils.sendKeyEvent("keypress", keyCode, charCode, modifierFlags);
+      domUtils.sendKeyEvent('keypress', keyCode, charCode, modifierFlags);
       if (delay > 0) await this.sleep(delay);
-      domUtils.sendKeyEvent("keyup", keyCode, charCode, modifierFlags);
+      domUtils.sendKeyEvent('keyup', keyCode, charCode, modifierFlags);
 
       return { success: true };
     } catch (e) {
@@ -189,25 +205,31 @@ class MockNevofluxChild {
   keyDown({ key, modifiers = [] }) {
     const win = this.document?.defaultView || this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
     try {
       const domUtils = win.windowUtils;
-      if (!domUtils || typeof domUtils.sendKeyEvent !== "function") {
-        return { success: false, error: { code: 5001, message: "windowUtils not available", recoverable: false } };
+      if (!domUtils || typeof domUtils.sendKeyEvent !== 'function') {
+        return {
+          success: false,
+          error: { code: 5001, message: 'windowUtils not available', recoverable: false },
+        };
       }
 
       let modifierFlags = 0;
-      if (modifiers.includes("ctrl")) modifierFlags |= 0x02;
-      if (modifiers.includes("alt")) modifierFlags |= 0x01;
-      if (modifiers.includes("shift")) modifierFlags |= 0x04;
-      if (modifiers.includes("meta")) modifierFlags |= 0x08;
+      if (modifiers.includes('ctrl')) modifierFlags |= 0x02;
+      if (modifiers.includes('alt')) modifierFlags |= 0x01;
+      if (modifiers.includes('shift')) modifierFlags |= 0x04;
+      if (modifiers.includes('meta')) modifierFlags |= 0x08;
 
       const keyCode = this._getKeyCode(key);
       const charCode = key.length === 1 ? key.charCodeAt(0) : 0;
 
-      domUtils.sendKeyEvent("keydown", keyCode, charCode, modifierFlags);
+      domUtils.sendKeyEvent('keydown', keyCode, charCode, modifierFlags);
       return { success: true };
     } catch (e) {
       return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
@@ -217,25 +239,31 @@ class MockNevofluxChild {
   keyUp({ key, modifiers = [] }) {
     const win = this.document?.defaultView || this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
     try {
       const domUtils = win.windowUtils;
-      if (!domUtils || typeof domUtils.sendKeyEvent !== "function") {
-        return { success: false, error: { code: 5001, message: "windowUtils not available", recoverable: false } };
+      if (!domUtils || typeof domUtils.sendKeyEvent !== 'function') {
+        return {
+          success: false,
+          error: { code: 5001, message: 'windowUtils not available', recoverable: false },
+        };
       }
 
       let modifierFlags = 0;
-      if (modifiers.includes("ctrl")) modifierFlags |= 0x02;
-      if (modifiers.includes("alt")) modifierFlags |= 0x01;
-      if (modifiers.includes("shift")) modifierFlags |= 0x04;
-      if (modifiers.includes("meta")) modifierFlags |= 0x08;
+      if (modifiers.includes('ctrl')) modifierFlags |= 0x02;
+      if (modifiers.includes('alt')) modifierFlags |= 0x01;
+      if (modifiers.includes('shift')) modifierFlags |= 0x04;
+      if (modifiers.includes('meta')) modifierFlags |= 0x08;
 
       const keyCode = this._getKeyCode(key);
       const charCode = key.length === 1 ? key.charCodeAt(0) : 0;
 
-      domUtils.sendKeyEvent("keyup", keyCode, charCode, modifierFlags);
+      domUtils.sendKeyEvent('keyup', keyCode, charCode, modifierFlags);
       return { success: true };
     } catch (e) {
       return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
@@ -244,12 +272,33 @@ class MockNevofluxChild {
 
   _getKeyCode(key) {
     const keyCodeMap = {
-      "Enter": 13, "Tab": 9, "Escape": 27, "Backspace": 8, "Delete": 46,
-      "ArrowUp": 38, "ArrowDown": 40, "ArrowLeft": 37, "ArrowRight": 39,
-      "Home": 36, "End": 35, "PageUp": 33, "PageDown": 34,
-      "F1": 112, "F2": 113, "F3": 114, "F4": 115, "F5": 116, "F6": 117,
-      "F7": 118, "F8": 119, "F9": 120, "F10": 121, "F11": 122, "F12": 123,
-      "Space": 32, " ": 32,
+      Enter: 13,
+      Tab: 9,
+      Escape: 27,
+      Backspace: 8,
+      Delete: 46,
+      ArrowUp: 38,
+      ArrowDown: 40,
+      ArrowLeft: 37,
+      ArrowRight: 39,
+      Home: 36,
+      End: 35,
+      PageUp: 33,
+      PageDown: 34,
+      F1: 112,
+      F2: 113,
+      F3: 114,
+      F4: 115,
+      F5: 116,
+      F6: 117,
+      F7: 118,
+      F8: 119,
+      F9: 120,
+      F10: 121,
+      F11: 122,
+      F12: 123,
+      Space: 32,
+      ' ': 32,
     };
     return keyCodeMap[key] || (key.length === 1 ? key.toUpperCase().charCodeAt(0) : 0);
   }
@@ -258,13 +307,16 @@ class MockNevofluxChild {
   mouseMove({ x, y, steps = 1 }) {
     const win = this.document?.defaultView || this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
     try {
       const domUtils = win.windowUtils;
-      if (domUtils && typeof domUtils.sendMouseEvent === "function") {
-        domUtils.sendMouseEvent("mousemove", x, y, 0, 0, 0);
+      if (domUtils && typeof domUtils.sendMouseEvent === 'function') {
+        domUtils.sendMouseEvent('mousemove', x, y, 0, 0, 0);
       }
       return { success: true };
     } catch (e) {
@@ -272,19 +324,22 @@ class MockNevofluxChild {
     }
   }
 
-  mouseDown({ button = "left", x, y }) {
+  mouseDown({ button = 'left', x, y }) {
     const win = this.document?.defaultView || this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
     try {
       const buttonCode = { left: 0, middle: 1, right: 2 }[button] || 0;
       const domUtils = win.windowUtils;
-      if (domUtils && typeof domUtils.sendMouseEvent === "function") {
+      if (domUtils && typeof domUtils.sendMouseEvent === 'function') {
         const posX = x !== undefined ? x : win.innerWidth / 2;
         const posY = y !== undefined ? y : win.innerHeight / 2;
-        domUtils.sendMouseEvent("mousedown", posX, posY, buttonCode, 1, 0);
+        domUtils.sendMouseEvent('mousedown', posX, posY, buttonCode, 1, 0);
       }
       return { success: true };
     } catch (e) {
@@ -292,19 +347,22 @@ class MockNevofluxChild {
     }
   }
 
-  mouseUp({ button = "left", x, y }) {
+  mouseUp({ button = 'left', x, y }) {
     const win = this.document?.defaultView || this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
     try {
       const buttonCode = { left: 0, middle: 1, right: 2 }[button] || 0;
       const domUtils = win.windowUtils;
-      if (domUtils && typeof domUtils.sendMouseEvent === "function") {
+      if (domUtils && typeof domUtils.sendMouseEvent === 'function') {
         const posX = x !== undefined ? x : win.innerWidth / 2;
         const posY = y !== undefined ? y : win.innerHeight / 2;
-        domUtils.sendMouseEvent("mouseup", posX, posY, buttonCode, 1, 0);
+        domUtils.sendMouseEvent('mouseup', posX, posY, buttonCode, 1, 0);
       }
       return { success: true };
     } catch (e) {
@@ -315,12 +373,15 @@ class MockNevofluxChild {
   wheel({ deltaX = 0, deltaY = 0 }) {
     const win = this.document?.defaultView || this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
     try {
       const domUtils = win.windowUtils;
-      if (domUtils && typeof domUtils.sendWheelEvent === "function") {
+      if (domUtils && typeof domUtils.sendWheelEvent === 'function') {
         const x = win.innerWidth / 2;
         const y = win.innerHeight / 2;
         domUtils.sendWheelEvent(x, y, deltaX, deltaY, 0, 0, 0, 0, 0);
@@ -331,20 +392,31 @@ class MockNevofluxChild {
     }
   }
 
-  async dblclick({ selector, button = "left", delay = 0 }) {
+  async dblclick({ selector, button = 'left', delay = 0 }) {
     return this.click({ selector, button, clickCount: 2, delay });
   }
 
-  async click({ selector, button = "left", clickCount = 1, delay = 0, force = false }) {
+  async click({ selector, button = 'left', clickCount = 1, delay = 0, force = false }) {
     const doc = this.doc;
     const win = this.document?.defaultView || this.contentWindow;
     if (!doc) {
-      return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No document available', recoverable: false },
+      };
     }
 
     const el = doc.querySelector(selector);
     if (!el) {
-      return { success: false, error: { code: 1001, message: "Element not found", recoverable: true, suggestion: "Use waitForSelector first" } };
+      return {
+        success: false,
+        error: {
+          code: 1001,
+          message: 'Element not found',
+          recoverable: true,
+          suggestion: 'Use waitForSelector first',
+        },
+      };
     }
 
     try {
@@ -363,10 +435,10 @@ class MockNevofluxChild {
       };
 
       for (let i = 0; i < clickCount; i++) {
-        el.dispatchEvent(new win.MouseEvent("mouseover", eventInit));
-        el.dispatchEvent(new win.MouseEvent("mousedown", eventInit));
-        el.dispatchEvent(new win.MouseEvent("mouseup", eventInit));
-        el.dispatchEvent(new win.MouseEvent("click", eventInit));
+        el.dispatchEvent(new win.MouseEvent('mouseover', eventInit));
+        el.dispatchEvent(new win.MouseEvent('mousedown', eventInit));
+        el.dispatchEvent(new win.MouseEvent('mouseup', eventInit));
+        el.dispatchEvent(new win.MouseEvent('click', eventInit));
 
         if (delay > 0 && i < clickCount - 1) {
           await this.sleep(delay);
@@ -383,17 +455,26 @@ class MockNevofluxChild {
     const doc = this.doc;
     const win = this.document?.defaultView || this.contentWindow;
     if (!doc || !win) {
-      return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No document available', recoverable: false },
+      };
     }
 
     const fromEl = doc.querySelector(fromSelector);
     const toEl = doc.querySelector(toSelector);
 
     if (!fromEl) {
-      return { success: false, error: { code: 1001, message: "Source element not found", recoverable: true } };
+      return {
+        success: false,
+        error: { code: 1001, message: 'Source element not found', recoverable: true },
+      };
     }
     if (!toEl) {
-      return { success: false, error: { code: 1001, message: "Target element not found", recoverable: true } };
+      return {
+        success: false,
+        error: { code: 1001, message: 'Target element not found', recoverable: true },
+      };
     }
 
     try {
@@ -405,28 +486,46 @@ class MockNevofluxChild {
       const toX = toRect.left + toRect.width / 2;
       const toY = toRect.top + toRect.height / 2;
 
-      fromEl.dispatchEvent(new win.MouseEvent("mousedown", {
-        bubbles: true, cancelable: true, view: win,
-        clientX: fromX, clientY: fromY, button: 0
-      }));
+      fromEl.dispatchEvent(
+        new win.MouseEvent('mousedown', {
+          bubbles: true,
+          cancelable: true,
+          view: win,
+          clientX: fromX,
+          clientY: fromY,
+          button: 0,
+        })
+      );
 
       for (let i = 1; i <= steps; i++) {
         const progress = i / steps;
         const x = fromX + (toX - fromX) * progress;
         const y = fromY + (toY - fromY) * progress;
 
-        fromEl.dispatchEvent(new win.MouseEvent("mousemove", {
-          bubbles: true, cancelable: true, view: win,
-          clientX: x, clientY: y, button: 0
-        }));
+        fromEl.dispatchEvent(
+          new win.MouseEvent('mousemove', {
+            bubbles: true,
+            cancelable: true,
+            view: win,
+            clientX: x,
+            clientY: y,
+            button: 0,
+          })
+        );
 
         await this.sleep(10);
       }
 
-      toEl.dispatchEvent(new win.MouseEvent("mouseup", {
-        bubbles: true, cancelable: true, view: win,
-        clientX: toX, clientY: toY, button: 0
-      }));
+      toEl.dispatchEvent(
+        new win.MouseEvent('mouseup', {
+          bubbles: true,
+          cancelable: true,
+          view: win,
+          clientX: toX,
+          clientY: toY,
+          button: 0,
+        })
+      );
 
       return { success: true };
     } catch (e) {
@@ -437,12 +536,18 @@ class MockNevofluxChild {
   focus({ selector }) {
     const doc = this.doc;
     if (!doc) {
-      return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No document available', recoverable: false },
+      };
     }
 
     const el = doc.querySelector(selector);
     if (!el) {
-      return { success: false, error: { code: 1001, message: "Element not found", recoverable: true } };
+      return {
+        success: false,
+        error: { code: 1001, message: 'Element not found', recoverable: true },
+      };
     }
 
     try {
@@ -456,19 +561,25 @@ class MockNevofluxChild {
   clear({ selector }) {
     const doc = this.doc;
     if (!doc) {
-      return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No document available', recoverable: false },
+      };
     }
 
     const el = doc.querySelector(selector);
     if (!el) {
-      return { success: false, error: { code: 1001, message: "Element not found", recoverable: true } };
+      return {
+        success: false,
+        error: { code: 1001, message: 'Element not found', recoverable: true },
+      };
     }
 
     try {
       el.focus();
-      el.value = "";
-      el.dispatchEvent(new this.contentWindow.Event("input", { bubbles: true }));
-      el.dispatchEvent(new this.contentWindow.Event("change", { bubbles: true }));
+      el.value = '';
+      el.dispatchEvent(new this.contentWindow.Event('input', { bubbles: true }));
+      el.dispatchEvent(new this.contentWindow.Event('change', { bubbles: true }));
       return { success: true };
     } catch (e) {
       return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
@@ -479,7 +590,10 @@ class MockNevofluxChild {
   getLocalStorage({ key }) {
     const win = this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
     try {
@@ -513,11 +627,14 @@ class MockNevofluxChild {
   setLocalStorage({ key, value }) {
     const win = this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
     try {
-      const serialized = typeof value === "string" ? value : JSON.stringify(value);
+      const serialized = typeof value === 'string' ? value : JSON.stringify(value);
       win.localStorage.setItem(key, serialized);
       return { success: true };
     } catch (e) {
@@ -528,11 +645,17 @@ class MockNevofluxChild {
   removeLocalStorage({ key }) {
     const win = this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
     if (!key) {
-      return { success: false, error: { code: 7002, message: "Missing required parameter: key", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 7002, message: 'Missing required parameter: key', recoverable: false },
+      };
     }
 
     try {
@@ -546,7 +669,10 @@ class MockNevofluxChild {
   clearLocalStorage() {
     const win = this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
     try {
@@ -560,7 +686,10 @@ class MockNevofluxChild {
   getSessionStorage({ key }) {
     const win = this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
     try {
@@ -594,11 +723,14 @@ class MockNevofluxChild {
   setSessionStorage({ key, value }) {
     const win = this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
     try {
-      const serialized = typeof value === "string" ? value : JSON.stringify(value);
+      const serialized = typeof value === 'string' ? value : JSON.stringify(value);
       win.sessionStorage.setItem(key, serialized);
       return { success: true };
     } catch (e) {
@@ -609,11 +741,17 @@ class MockNevofluxChild {
   removeSessionStorage({ key }) {
     const win = this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
     if (!key) {
-      return { success: false, error: { code: 7002, message: "Missing required parameter: key", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 7002, message: 'Missing required parameter: key', recoverable: false },
+      };
     }
 
     try {
@@ -627,7 +765,10 @@ class MockNevofluxChild {
   clearSessionStorage() {
     const win = this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
     try {
@@ -642,11 +783,21 @@ class MockNevofluxChild {
   evalScript({ script, returnValue = true }) {
     const win = this.contentWindow;
     if (!win) {
-      return { success: false, error: { code: 5001, message: "No window available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No window available', recoverable: false },
+      };
     }
 
-    if (!script || typeof script !== "string") {
-      return { success: false, error: { code: 9002, message: "Missing or invalid required parameter: script", recoverable: false } };
+    if (!script || typeof script !== 'string') {
+      return {
+        success: false,
+        error: {
+          code: 9002,
+          message: 'Missing or invalid required parameter: script',
+          recoverable: false,
+        },
+      };
     }
 
     try {
@@ -662,22 +813,22 @@ class MockNevofluxChild {
       try {
         if (result === undefined) {
           serialized = undefined;
-          type = "undefined";
+          type = 'undefined';
         } else if (result === null) {
           serialized = null;
-          type = "null";
+          type = 'null';
         } else {
           serialized = JSON.parse(JSON.stringify(result));
         }
       } catch {
         serialized = String(result);
-        type = "string";
+        type = 'string';
       }
 
       return {
         success: true,
         value: serialized,
-        type
+        type,
       };
     } catch (e) {
       return {
@@ -685,29 +836,39 @@ class MockNevofluxChild {
         error: {
           code: 9001,
           message: e.message,
-          recoverable: false
-        }
+          recoverable: false,
+        },
       };
     }
   }
 
-  addScript({ script, runAt = "document_idle" }) {
+  addScript({ script, runAt = 'document_idle' }) {
     const doc = this.doc;
     const win = this.contentWindow;
     if (!doc || !win) {
-      return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No document available', recoverable: false },
+      };
     }
 
-    if (!script || typeof script !== "string") {
-      return { success: false, error: { code: 9002, message: "Missing or invalid required parameter: script", recoverable: false } };
+    if (!script || typeof script !== 'string') {
+      return {
+        success: false,
+        error: {
+          code: 9002,
+          message: 'Missing or invalid required parameter: script',
+          recoverable: false,
+        },
+      };
     }
 
     try {
-      const scriptEl = doc.createElement("script");
+      const scriptEl = doc.createElement('script');
       scriptEl.textContent = script;
       scriptEl.id = `nevoflux_script_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-      if (runAt === "document_start") {
+      if (runAt === 'document_start') {
         doc.documentElement.prepend(scriptEl);
       } else {
         doc.body.appendChild(scriptEl);
@@ -722,11 +883,17 @@ class MockNevofluxChild {
   removeScript({ handle }) {
     const doc = this.doc;
     if (!doc) {
-      return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No document available', recoverable: false },
+      };
     }
 
     if (!handle) {
-      return { success: false, error: { code: 9002, message: "Missing required parameter: handle", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 9002, message: 'Missing required parameter: handle', recoverable: false },
+      };
     }
 
     try {
@@ -735,7 +902,10 @@ class MockNevofluxChild {
         scriptEl.remove();
         return { success: true };
       }
-      return { success: false, error: { code: 9003, message: "Script not found", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 9003, message: 'Script not found', recoverable: false },
+      };
     } catch (e) {
       return { success: false, error: { code: 9001, message: String(e), recoverable: false } };
     }
@@ -743,11 +913,11 @@ class MockNevofluxChild {
 
   // ========== Helpers ==========
   sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   snapshot() {
-    return { tree: "", refs: {} };
+    return { tree: '', refs: {} };
   }
 
   // ========== P2: Frame Management ==========
@@ -758,21 +928,23 @@ class MockNevofluxChild {
       return [];
     }
 
-    const iframes = doc.querySelectorAll("iframe");
+    const iframes = doc.querySelectorAll('iframe');
     const frames = [];
 
     for (const iframe of iframes) {
       const rect = iframe.getBoundingClientRect();
       const style = doc.defaultView?.getComputedStyle(iframe);
-      const visible = rect.width > 0 && rect.height > 0 &&
-                      style?.visibility !== "hidden" &&
-                      style?.display !== "none";
+      const visible =
+        rect.width > 0 &&
+        rect.height > 0 &&
+        style?.visibility !== 'hidden' &&
+        style?.display !== 'none';
 
       frames.push({
         selector: this.generateSelector(iframe),
-        url: iframe.src || "",
-        name: iframe.name || "",
-        visible
+        url: iframe.src || '',
+        name: iframe.name || '',
+        visible,
       });
     }
 
@@ -782,7 +954,10 @@ class MockNevofluxChild {
   switchFrame({ selector }) {
     const doc = this.doc;
     if (!doc) {
-      return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No document available', recoverable: false },
+      };
     }
 
     const searchDoc = this._currentFrameSelector
@@ -790,14 +965,20 @@ class MockNevofluxChild {
       : doc;
 
     const iframe = searchDoc.querySelector(selector);
-    if (!iframe || iframe.tagName !== "IFRAME") {
-      return { success: false, error: { code: 10001, message: `Frame not found: ${selector}`, recoverable: true } };
+    if (!iframe || iframe.tagName !== 'IFRAME') {
+      return {
+        success: false,
+        error: { code: 10001, message: `Frame not found: ${selector}`, recoverable: true },
+      };
     }
 
     try {
       const frameDoc = iframe.contentDocument;
       if (!frameDoc) {
-        return { success: false, error: { code: 10002, message: "Frame access denied (cross-origin)", recoverable: false } };
+        return {
+          success: false,
+          error: { code: 10002, message: 'Frame access denied (cross-origin)', recoverable: false },
+        };
       }
 
       if (this._currentFrameSelector) {
@@ -808,7 +989,10 @@ class MockNevofluxChild {
 
       return { success: true };
     } catch (e) {
-      return { success: false, error: { code: 10002, message: `Frame access denied: ${e.message}`, recoverable: false } };
+      return {
+        success: false,
+        error: { code: 10002, message: `Frame access denied: ${e.message}`, recoverable: false },
+      };
     }
   }
 
@@ -827,19 +1011,25 @@ class MockNevofluxChild {
   type({ selector, text }) {
     const doc = this.doc;
     if (!doc) {
-      return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No document available', recoverable: false },
+      };
     }
 
     const el = doc.querySelector(selector);
     if (!el) {
-      return { success: false, error: { code: 1001, message: "Element not found", recoverable: true } };
+      return {
+        success: false,
+        error: { code: 1001, message: 'Element not found', recoverable: true },
+      };
     }
 
     try {
       el.focus();
       for (const char of text) {
         el.value += char;
-        el.dispatchEvent(new this.contentWindow.Event("input", { bubbles: true }));
+        el.dispatchEvent(new this.contentWindow.Event('input', { bubbles: true }));
       }
       return { success: true };
     } catch (e) {
@@ -850,29 +1040,38 @@ class MockNevofluxChild {
   fill({ selector, text }) {
     const doc = this.doc;
     if (!doc) {
-      return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No document available', recoverable: false },
+      };
     }
 
     const el = doc.querySelector(selector);
     if (!el) {
-      return { success: false, error: { code: 1001, message: "Element not found", recoverable: true } };
+      return {
+        success: false,
+        error: { code: 1001, message: 'Element not found', recoverable: true },
+      };
     }
 
     try {
       el.focus();
-      el.value = "";
+      el.value = '';
       el.value = text;
-      el.dispatchEvent(new this.contentWindow.Event("input", { bubbles: true }));
-      el.dispatchEvent(new this.contentWindow.Event("change", { bubbles: true }));
+      el.dispatchEvent(new this.contentWindow.Event('input', { bubbles: true }));
+      el.dispatchEvent(new this.contentWindow.Event('change', { bubbles: true }));
       return { success: true };
     } catch (e) {
       return { success: false, error: { code: 5001, message: e.message, recoverable: false } };
     }
   }
 
-  async waitForSelector({ selector, timeout = 30000, state = "visible" }) {
+  async waitForSelector({ selector, timeout = 30000, state = 'visible' }) {
     if (!this.doc) {
-      return { success: false, error: { code: 5001, message: "No document available", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 5001, message: 'No document available', recoverable: false },
+      };
     }
 
     const startTime = Date.now();
@@ -894,7 +1093,10 @@ class MockNevofluxChild {
       await this.sleep(100);
     }
 
-    return { success: false, error: { code: 4001, message: `Timeout waiting for ${selector}`, recoverable: true } };
+    return {
+      success: false,
+      error: { code: 4001, message: `Timeout waiting for ${selector}`, recoverable: true },
+    };
   }
 }
 
@@ -1388,23 +1590,39 @@ describe('NevofluxChild - WaitForSelector', () => {
   });
 
   it('waitForSelector should succeed for existing element (attached)', async () => {
-    const result = await child.waitForSelector({ selector: '#existing', state: 'attached', timeout: 100 });
+    const result = await child.waitForSelector({
+      selector: '#existing',
+      state: 'attached',
+      timeout: 100,
+    });
     expect(result.success).toBe(true);
   });
 
   it('waitForSelector should succeed for existing visible element', async () => {
-    const result = await child.waitForSelector({ selector: '#existing', state: 'visible', timeout: 100 });
+    const result = await child.waitForSelector({
+      selector: '#existing',
+      state: 'visible',
+      timeout: 100,
+    });
     expect(result.success).toBe(true);
   });
 
   it('waitForSelector should timeout for non-existent element', async () => {
-    const result = await child.waitForSelector({ selector: '#nonexistent', state: 'attached', timeout: 100 });
+    const result = await child.waitForSelector({
+      selector: '#nonexistent',
+      state: 'attached',
+      timeout: 100,
+    });
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(4001);
   });
 
   it('waitForSelector should succeed for detached state on non-existent', async () => {
-    const result = await child.waitForSelector({ selector: '#nonexistent', state: 'detached', timeout: 100 });
+    const result = await child.waitForSelector({
+      selector: '#nonexistent',
+      state: 'detached',
+      timeout: 100,
+    });
     expect(result.success).toBe(true);
   });
 });

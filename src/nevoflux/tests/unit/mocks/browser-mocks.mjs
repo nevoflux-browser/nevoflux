@@ -14,7 +14,9 @@ export function createMockStorage() {
     setItem: (key, value) => storage.set(key, String(value)),
     removeItem: (key) => storage.delete(key),
     clear: () => storage.clear(),
-    get length() { return storage.size; },
+    get length() {
+      return storage.size;
+    },
     key: (index) => {
       const keys = Array.from(storage.keys());
       return keys[index] ?? null;
@@ -95,16 +97,16 @@ export function createMockDocument() {
         }
         return [];
       },
-      appendChild: function(child) {
+      appendChild: function (child) {
         this.children.push(child);
         child.parentElement = this;
         return child;
       },
-      prepend: function(child) {
+      prepend: function (child) {
         this.children.unshift(child);
         child.parentElement = this;
       },
-      remove: function() {
+      remove: function () {
         if (this.parentElement) {
           const idx = this.parentElement.children.indexOf(this);
           if (idx > -1) this.parentElement.children.splice(idx, 1);
@@ -116,13 +118,19 @@ export function createMockDocument() {
       click: () => {},
       scrollIntoView: () => {},
       getBoundingClientRect: () => ({
-        left: 0, top: 0, right: 100, bottom: 100,
-        width: 100, height: 100, x: 0, y: 0,
+        left: 0,
+        top: 0,
+        right: 100,
+        bottom: 100,
+        width: 100,
+        height: 100,
+        x: 0,
+        y: 0,
       }),
-      getAttribute: function(name) {
+      getAttribute: function (name) {
         return this.attributes.get(name) ?? null;
       },
-      setAttribute: function(name, value) {
+      setAttribute: function (name, value) {
         this.attributes.set(name, value);
         if (name === 'id') {
           this.id = value;
@@ -135,15 +143,15 @@ export function createMockDocument() {
           this.name = value;
         }
       },
-      addEventListener: function(event, handler) {
+      addEventListener: function (event, handler) {
         if (!this._eventListeners.has(event)) {
           this._eventListeners.set(event, []);
         }
         this._eventListeners.get(event).push(handler);
       },
-      dispatchEvent: function(event) {
+      dispatchEvent: function (event) {
         const handlers = this._eventListeners.get(event.type) || [];
-        handlers.forEach(h => h(event));
+        handlers.forEach((h) => h(event));
         return true;
       },
     };
@@ -270,7 +278,19 @@ export function createMockServices() {
           }
         },
       },
-      add: (domain, path, name, value, secure, httpOnly, isSession, expiry, origin, sameSite, scheme) => {
+      add: (
+        domain,
+        path,
+        name,
+        value,
+        secure,
+        httpOnly,
+        isSession,
+        expiry,
+        origin,
+        sameSite,
+        scheme
+      ) => {
         cookies.push({
           host: domain,
           path,
@@ -284,7 +304,9 @@ export function createMockServices() {
         });
       },
       remove: (domain, name, path) => {
-        const idx = cookies.findIndex(c => c.host === domain && c.name === name && c.path === path);
+        const idx = cookies.findIndex(
+          (c) => c.host === domain && c.name === name && c.path === path
+        );
         if (idx > -1) cookies.splice(idx, 1);
       },
       removeAll: () => {
@@ -456,21 +478,30 @@ export function createMockDialog(type = 'alert', message = '') {
     ui: {
       loginTextbox: type === 'prompt' ? { value: '' } : null,
       button0: {
-        click: function() { this._clicked = true; },
-        _clicked: false
+        click: function () {
+          this._clicked = true;
+        },
+        _clicked: false,
       },
-      button1: type !== 'alert' ? {
-        click: function() { this._clicked = true; },
-        _clicked: false
-      } : null,
+      button1:
+        type !== 'alert'
+          ? {
+              click: function () {
+                this._clicked = true;
+              },
+              _clicked: false,
+            }
+          : null,
     },
     opener: null,
     args: {
       text: message,
-      GetInt: (idx) => idx === 3 ? { alert: 0, confirm: 1, prompt: 2 }[type] : 0,
+      GetInt: (idx) => (idx === 3 ? { alert: 0, confirm: 1, prompt: 2 }[type] : 0),
     },
     _dismissed: false,
-    close: function() { this._dismissed = true; },
+    close: function () {
+      this._dismissed = true;
+    },
   };
 }
 
@@ -494,7 +525,7 @@ export function createMockObserverService() {
     },
     notifyObservers: (subject, topic, data) => {
       const list = observers.get(topic) || [];
-      list.forEach(obs => {
+      list.forEach((obs) => {
         if (typeof obs.observe === 'function') {
           obs.observe(subject, topic, data);
         } else if (typeof obs === 'function') {

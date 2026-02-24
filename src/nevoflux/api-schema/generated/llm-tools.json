@@ -42,9 +42,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "selector"
-        ]
+        "required": ["selector"]
       }
     },
     {
@@ -61,10 +59,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "selector",
-          "attribute"
-        ]
+        "required": ["selector", "attribute"]
       }
     },
     {
@@ -128,9 +123,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "selector"
-        ]
+        "required": ["selector"]
       }
     },
     {
@@ -144,9 +137,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "selector"
-        ]
+        "required": ["selector"]
       }
     },
     {
@@ -160,9 +151,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "selector"
-        ]
+        "required": ["selector"]
       }
     },
     {
@@ -176,9 +165,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "selector"
-        ]
+        "required": ["selector"]
       }
     },
     {
@@ -196,9 +183,7 @@
             "optional": true
           }
         },
-        "required": [
-          "url"
-        ]
+        "required": ["url"]
       }
     },
     {
@@ -261,9 +246,7 @@
             "optional": true
           }
         },
-        "required": [
-          "selector"
-        ]
+        "required": ["selector"]
       }
     },
     {
@@ -284,10 +267,7 @@
             "optional": true
           }
         },
-        "required": [
-          "selector",
-          "text"
-        ]
+        "required": ["selector", "text"]
       }
     },
     {
@@ -304,10 +284,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "selector",
-          "text"
-        ]
+        "required": ["selector", "text"]
       }
     },
     {
@@ -324,10 +301,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "selector",
-          "value"
-        ]
+        "required": ["selector", "value"]
       }
     },
     {
@@ -341,9 +315,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "selector"
-        ]
+        "required": ["selector"]
       }
     },
     {
@@ -357,9 +329,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "selector"
-        ]
+        "required": ["selector"]
       }
     },
     {
@@ -373,9 +343,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "selector"
-        ]
+        "required": ["selector"]
       }
     },
     {
@@ -387,21 +355,14 @@
         "properties": {
           "direction": {
             "type": "string",
-            "enum": [
-              "up",
-              "down",
-              "left",
-              "right"
-            ]
+            "enum": ["up", "down", "left", "right"]
           },
           "amount": {
             "type": "number",
             "optional": true
           }
         },
-        "required": [
-          "direction"
-        ]
+        "required": ["direction"]
       }
     },
     {
@@ -415,9 +376,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "selector"
-        ]
+        "required": ["selector"]
       }
     },
     {
@@ -435,9 +394,7 @@
             "optional": true
           }
         },
-        "required": [
-          "selector"
-        ]
+        "required": ["selector"]
       }
     },
     {
@@ -455,9 +412,7 @@
             "optional": true
           }
         },
-        "required": [
-          "text"
-        ]
+        "required": ["text"]
       }
     },
     {
@@ -475,9 +430,7 @@
             "optional": true
           }
         },
-        "required": [
-          "pattern"
-        ]
+        "required": ["pattern"]
       }
     },
     {
@@ -491,9 +444,7 @@
             "type": "number"
           }
         },
-        "required": [
-          "ms"
-        ]
+        "required": ["ms"]
       }
     },
     {
@@ -517,9 +468,7 @@
             "$ref": "#/definitions/PrivacyConfig"
           }
         },
-        "required": [
-          "config"
-        ]
+        "required": ["config"]
       }
     },
     {
@@ -537,9 +486,7 @@
             "optional": true
           }
         },
-        "required": [
-          "text"
-        ]
+        "required": ["text"]
       }
     }
   ],

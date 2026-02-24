@@ -61,6 +61,7 @@ Once satisfied, export all modified files as patches:
 ```
 
 This will:
+
 - Scan `src/zen/` for modified files
 - Generate `.patch` files in `src/nevoflux/patches/` with matching directory structure
 
@@ -81,11 +82,11 @@ git commit -m "Add NevoFlux patches for feature X"
 
 ## Helper Scripts
 
-| Script | Purpose |
-|--------|---------|
-| `scripts/export-nevoflux-patches.sh` | Export all `src/zen/` changes as patches |
-| `scripts/revert-zen-changes.sh` | Revert all `src/zen/` changes |
-| `src/nevoflux/apply-patches.sh` | Apply patches during build (called by `npm run import`) |
+| Script                               | Purpose                                                 |
+| ------------------------------------ | ------------------------------------------------------- |
+| `scripts/export-nevoflux-patches.sh` | Export all `src/zen/` changes as patches                |
+| `scripts/revert-zen-changes.sh`      | Revert all `src/zen/` changes                           |
+| `src/nevoflux/apply-patches.sh`      | Apply patches during build (called by `npm run import`) |
 
 ## Branding Configuration
 
@@ -104,7 +105,7 @@ This file overwrites the root `surfer.json` during `npm run import`, avoiding me
 ```bash
 # 1. Sync with upstream
 git fetch upstream
-git rebase upstream/main   # No conflicts in src/zen/
+git rebase upstream/main # No conflicts in src/zen/
 
 # 2. Re-import and apply patches
 npm run import

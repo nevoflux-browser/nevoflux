@@ -2,10 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-"use strict";
+'use strict';
 
 // Immediate debug log to verify script is loading
-console.log("[NevoFlux] Background script starting...");
+console.log('[NevoFlux] Background script starting...');
 
 /**
  * NevoFlux Agent Background Script
@@ -26,8 +26,8 @@ console.log("[NevoFlux] Background script starting...");
 // =============================================================================
 
 const CHANNEL_NAMES = {
-  CHAT: "com.nevoflux.agent",      // Chat channel (bidirectional)
-  MCP: "com.nevoflux.agent.mcp",   // MCP channel (bidirectional)
+  CHAT: 'com.nevoflux.agent', // Chat channel (bidirectional)
+  MCP: 'com.nevoflux.agent.mcp', // MCP channel (bidirectional)
 };
 
 // =============================================================================
@@ -36,29 +36,29 @@ const CHANNEL_NAMES = {
 
 const BackgroundAPI = {
   // Channel management
-  CONNECT: "bg:connect",
-  DISCONNECT: "bg:disconnect",
-  GET_STATUS: "bg:get_status",
+  CONNECT: 'bg:connect',
+  DISCONNECT: 'bg:disconnect',
+  GET_STATUS: 'bg:get_status',
 
   // MCP channel management
-  MCP_ENABLE: "bg:mcp_enable",
-  MCP_DISABLE: "bg:mcp_disable",
+  MCP_ENABLE: 'bg:mcp_enable',
+  MCP_DISABLE: 'bg:mcp_disable',
 
   // Send message to Native Agent
-  SEND_TO_AGENT: "bg:send_to_agent",
+  SEND_TO_AGENT: 'bg:send_to_agent',
 
   // Browser tool execution
-  EXEC_TOOL: "bg:exec_tool",
+  EXEC_TOOL: 'bg:exec_tool',
 
   // Tab context
-  GET_TAB_CONTEXT: "bg:get_tab_context",
+  GET_TAB_CONTEXT: 'bg:get_tab_context',
 
   // Sidebar control
-  SIDEBAR_CLOSE: "bg:sidebar_close",
-  SIDEBAR_OPEN: "bg:sidebar_open",
+  SIDEBAR_CLOSE: 'bg:sidebar_close',
+  SIDEBAR_OPEN: 'bg:sidebar_open',
 
   // Settings (ContentStore)
-  GET_SETTINGS: "bg:get_settings",
+  GET_SETTINGS: 'bg:get_settings',
 };
 
 // =============================================================================
@@ -67,46 +67,46 @@ const BackgroundAPI = {
 
 const MessageTypes = {
   // Sidebar -> Agent
-  CHAT_MESSAGE: "chat_message",
-  SKILL_COMMAND: "skill_command",
-  STOP_GENERATION: "stop_generation",
-  PERMISSION_RESPONSE: "permission_response",
-  PLUGIN_COMMAND: "plugin_command",
-  SYSTEM_COMMAND: "system_command",
-  BROWSER_TOOL_RESPONSE: "browser_tool_response",
+  CHAT_MESSAGE: 'chat_message',
+  SKILL_COMMAND: 'skill_command',
+  STOP_GENERATION: 'stop_generation',
+  PERMISSION_RESPONSE: 'permission_response',
+  PLUGIN_COMMAND: 'plugin_command',
+  SYSTEM_COMMAND: 'system_command',
+  BROWSER_TOOL_RESPONSE: 'browser_tool_response',
 
   // Agent -> Sidebar
-  STREAM_CHUNK: "stream_chunk",
-  STREAM_END: "stream_end",
-  CONTENT_BLOCK: "content_block",
-  PERMISSION_REQUEST: "permission_request",
-  AGENT_STATE: "agent_state",
-  ERROR: "error",
-  ACCOUNT_STATUS: "account_status",
-  SYSTEM_RESPONSE: "system_response",
-  BROWSER_TOOL_REQUEST: "browser_tool_request",
+  STREAM_CHUNK: 'stream_chunk',
+  STREAM_END: 'stream_end',
+  CONTENT_BLOCK: 'content_block',
+  PERMISSION_REQUEST: 'permission_request',
+  AGENT_STATE: 'agent_state',
+  ERROR: 'error',
+  ACCOUNT_STATUS: 'account_status',
+  SYSTEM_RESPONSE: 'system_response',
+  BROWSER_TOOL_REQUEST: 'browser_tool_request',
 
   // MCP Channel
-  MCP_REQUEST: "mcp_request",
-  MCP_RESPONSE: "mcp_response",
+  MCP_REQUEST: 'mcp_request',
+  MCP_RESPONSE: 'mcp_response',
 
   // System messages
-  PING: "ping",
-  PONG: "pong",
-  CONNECTION_STATUS: "connection_status",
+  PING: 'ping',
+  PONG: 'pong',
+  CONNECTION_STATUS: 'connection_status',
 
   // AskUser interaction
-  ASK_USER_REQUEST: "ask_user_request",
-  ASK_USER_RESPONSE: "ask_user_response",
+  ASK_USER_REQUEST: 'ask_user_request',
+  ASK_USER_RESPONSE: 'ask_user_response',
 
   // Artifact streaming (Agent -> Background -> ContentStore -> Sidebar)
-  ARTIFACT_START: "artifact_start",
-  ARTIFACT_DELTA: "artifact_delta",
-  ARTIFACT_COMPLETE: "artifact_complete",
+  ARTIFACT_START: 'artifact_start',
+  ARTIFACT_DELTA: 'artifact_delta',
+  ARTIFACT_COMPLETE: 'artifact_complete',
 
   // Legacy types (backwards compatibility)
-  TAB_CONTEXT_UPDATE: "tab_context_update",
-  REQUEST_TAB_CONTEXT: "request_tab_context",
+  TAB_CONTEXT_UPDATE: 'tab_context_update',
+  REQUEST_TAB_CONTEXT: 'request_tab_context',
 };
 
 // =============================================================================
@@ -136,13 +136,15 @@ const pendingAgentCommands = new Map();
 setInterval(() => {
   const now = Date.now();
   for (const [reqId, bridgeId] of pendingAgentCommands) {
-    const ts = parseInt(reqId.split("_")[1], 10);
+    const ts = parseInt(reqId.split('_')[1], 10);
     if (now - ts > 30000) {
       pendingAgentCommands.delete(reqId);
-      browser.nevoflux.bridgeRespond(bridgeId, {
-        success: false,
-        error: { code: "TIMEOUT", message: "Agent command timed out" },
-      }).catch(() => {});
+      browser.nevoflux
+        .bridgeRespond(bridgeId, {
+          success: false,
+          error: { code: 'TIMEOUT', message: 'Agent command timed out' },
+        })
+        .catch(() => {});
     }
   }
 }, 10000);
@@ -170,7 +172,7 @@ const _streamedArtifacts = new Map();
  */
 function queueArtifactOp(artifactId, operation) {
   const prev = _artifactOpQueues.get(artifactId) || Promise.resolve();
-  const next = prev.then(operation).catch(err => {
+  const next = prev.then(operation).catch((err) => {
     console.error(`[NevoFlux] Artifact op failed for ${artifactId}:`, err);
   });
   _artifactOpQueues.set(artifactId, next);
@@ -234,7 +236,9 @@ function chunkMessage(message) {
     });
   }
 
-  console.log(`[NevoFlux] Chunked message into ${totalChunks} chunks (original: ${json.length} bytes)`);
+  console.log(
+    `[NevoFlux] Chunked message into ${totalChunks} chunks (original: ${json.length} bytes)`
+  );
   return chunks;
 }
 
@@ -253,7 +257,7 @@ class ChunkReassembler {
    * @returns {boolean}
    */
   isChunk(message) {
-    return message && typeof message.__chunk === "object" && message.__chunk !== null;
+    return message && typeof message.__chunk === 'object' && message.__chunk !== null;
   }
 
   /**
@@ -283,7 +287,7 @@ class ChunkReassembler {
     // Check if all chunks received
     if (pending.chunks.size === total) {
       // Reassemble in order
-      let fullBase64 = "";
+      let fullBase64 = '';
       for (let i = 0; i < total; i++) {
         fullBase64 += pending.chunks.get(i);
       }
@@ -350,10 +354,12 @@ function _endCanvasSession(sessionId, status) {
     clearTimeout(_canvasSessionEndTimer);
     _canvasSessionEndTimer = null;
   }
-  browser.nevoflux.bridgePush(sessionId, {
-    type: "session:end",
-    payload: { session_id: sessionId, status },
-  }).catch(() => {});
+  browser.nevoflux
+    .bridgePush(sessionId, {
+      type: 'session:end',
+      payload: { session_id: sessionId, status },
+    })
+    .catch(() => {});
   canvasSessions.delete(sessionId);
   if (_activeCanvasSessionId === sessionId) {
     _activeCanvasSessionId = null;
@@ -407,7 +413,10 @@ class NativeChannel {
           if (chunkReassembler.isChunk(message)) {
             const reassembled = chunkReassembler.processChunk(message);
             if (reassembled) {
-              console.log(`[NevoFlux] ${this.displayName} received (reassembled):`, reassembled.type || reassembled);
+              console.log(
+                `[NevoFlux] ${this.displayName} received (reassembled):`,
+                reassembled.type || reassembled
+              );
               if (this.onMessage) {
                 this.onMessage(reassembled);
               }
@@ -422,7 +431,7 @@ class NativeChannel {
           }
         },
         onDisconnect: (port) => {
-          const errorMsg = port.error ? port.error.message || String(port.error) : "null";
+          const errorMsg = port.error ? port.error.message || String(port.error) : 'null';
           console.error(`[NevoFlux] ${this.displayName} channel disconnected:`, errorMsg);
           this.cleanup();
 
@@ -501,7 +510,9 @@ class NativeChannel {
    */
   scheduleReconnect() {
     if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-      console.error(`[NevoFlux] Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached for ${this.displayName}`);
+      console.error(
+        `[NevoFlux] Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached for ${this.displayName}`
+      );
       this.onStatusChange?.(false);
       return;
     }
@@ -512,11 +523,14 @@ class NativeChannel {
     this.reconnectAttempts++;
 
     const delay = Math.min(
-      RECONNECT_CONFIG.initialDelay * Math.pow(RECONNECT_CONFIG.multiplier, this.reconnectAttempts - 1),
+      RECONNECT_CONFIG.initialDelay *
+        Math.pow(RECONNECT_CONFIG.multiplier, this.reconnectAttempts - 1),
       RECONNECT_CONFIG.maxDelay
     );
 
-    console.log(`[NevoFlux] Scheduling ${this.displayName} reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`);
+    console.log(
+      `[NevoFlux] Scheduling ${this.displayName} reconnect in ${delay}ms (attempt ${this.reconnectAttempts})`
+    );
 
     this.reconnectTimer = setTimeout(() => {
       if (!this.connect()) {
@@ -555,7 +569,11 @@ class NativeChannel {
         for (const chunk of chunks) {
           this.port.postMessage(chunk);
         }
-        console.log(`[NevoFlux] ${this.displayName} sent ${chunks.length} chunks for:`, message.type || message, message);
+        console.log(
+          `[NevoFlux] ${this.displayName} sent ${chunks.length} chunks for:`,
+          message.type || message,
+          message
+        );
         return true;
       }
 
@@ -588,13 +606,13 @@ class NativeChannel {
  */
 async function getWindowSession(windowId) {
   try {
-    const sessionId = await browser.sessions.getWindowValue(windowId, "nevoflux_session_id");
+    const sessionId = await browser.sessions.getWindowValue(windowId, 'nevoflux_session_id');
     if (sessionId) {
       console.log(`[NevoFlux] Window ${windowId} has session: ${sessionId}`);
       return sessionId;
     }
   } catch (e) {
-    console.warn("[NevoFlux] browser.sessions.getWindowValue failed:", e);
+    console.warn('[NevoFlux] browser.sessions.getWindowValue failed:', e);
   }
   const newId = `sess-${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`;
   await setWindowSession(windowId, newId);
@@ -610,10 +628,10 @@ async function getWindowSession(windowId) {
  */
 async function setWindowSession(windowId, sessionId) {
   try {
-    await browser.sessions.setWindowValue(windowId, "nevoflux_session_id", sessionId);
+    await browser.sessions.setWindowValue(windowId, 'nevoflux_session_id', sessionId);
     console.log(`[NevoFlux] Window ${windowId} -> session ${sessionId}`);
   } catch (e) {
-    console.warn("[NevoFlux] browser.sessions.setWindowValue failed:", e);
+    console.warn('[NevoFlux] browser.sessions.setWindowValue failed:', e);
   }
 }
 
@@ -629,7 +647,7 @@ class ChannelManager {
     // Chat channel: Sidebar <-> Agent (bidirectional)
     this.chat = new NativeChannel(
       CHANNEL_NAMES.CHAT,
-      "Chat",
+      'Chat',
       (msg) => this.handleChatMessage(msg),
       (connected, error) => this.handleChatStatusChange(connected, error)
     );
@@ -637,7 +655,7 @@ class ChannelManager {
     // MCP channel: Browser Use MCP (bidirectional)
     this.mcp = new NativeChannel(
       CHANNEL_NAMES.MCP,
-      "MCP",
+      'MCP',
       (msg) => this.handleMcpMessage(msg),
       (connected, error) => this.handleMcpStatusChange(connected, error)
     );
@@ -650,7 +668,7 @@ class ChannelManager {
    * Connect the Chat channel
    */
   connect() {
-    console.log("[NevoFlux] Connecting Chat channel...");
+    console.log('[NevoFlux] Connecting Chat channel...');
     this.chat.connect();
   }
 
@@ -681,7 +699,7 @@ class ChannelManager {
    */
   sendToAgent(message) {
     if (!this.chat.isConnected()) {
-      console.warn("[NevoFlux] Chat channel not connected, attempting to connect...");
+      console.warn('[NevoFlux] Chat channel not connected, attempting to connect...');
       this.chat.connect();
     }
     return this.chat.send(message);
@@ -693,7 +711,7 @@ class ChannelManager {
   sendToMcp(message) {
     if (!this.mcp.isConnected()) {
       if (!this.mcpEnabled) {
-        console.warn("[NevoFlux] MCP channel is disabled");
+        console.warn('[NevoFlux] MCP channel is disabled');
         return false;
       }
       this.mcp.connect();
@@ -707,16 +725,18 @@ class ChannelManager {
    * All messages are also broadcast to Sidebar.
    */
   handleChatMessage(message) {
-    console.log("[NevoFlux] Chat channel received:", message.type);
+    console.log('[NevoFlux] Chat channel received:', message.type);
 
     const msgType = message.type;
 
     // Intercept artifact streaming messages (start/delta/complete protocol)
-    if (msgType === MessageTypes.ARTIFACT_START ||
-        msgType === MessageTypes.ARTIFACT_DELTA ||
-        msgType === MessageTypes.ARTIFACT_COMPLETE) {
+    if (
+      msgType === MessageTypes.ARTIFACT_START ||
+      msgType === MessageTypes.ARTIFACT_DELTA ||
+      msgType === MessageTypes.ARTIFACT_COMPLETE
+    ) {
       handleArtifactMessage(message).catch((err) => {
-        console.error("[NevoFlux] Artifact handling failed:", err);
+        console.error('[NevoFlux] Artifact handling failed:', err);
       });
     }
 
@@ -727,25 +747,33 @@ class ChannelManager {
     if (msgType === MessageTypes.STREAM_CHUNK) {
       const toolCalls = message.payload?.tool_calls;
       if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-        const toolNames = toolCalls.map(tc => tc.name).join(", ");
-        console.log(`[NevoFlux] stream_chunk tool_calls: [${toolNames}] (count=${toolCalls.length})`);
+        const toolNames = toolCalls.map((tc) => tc.name).join(', ');
+        console.log(
+          `[NevoFlux] stream_chunk tool_calls: [${toolNames}] (count=${toolCalls.length})`
+        );
         for (const tc of toolCalls) {
-          if (tc.name === "create_artifact") {
+          if (tc.name === 'create_artifact') {
             console.log(`[NevoFlux] Found create_artifact tool call in stream_chunk: id=${tc.id}`);
             handleCreateArtifactToolCall(tc).catch((err) => {
-              console.error("[NevoFlux] create_artifact tool call failed:", err);
+              console.error('[NevoFlux] create_artifact tool call failed:', err);
             });
           }
         }
         // Replace the message with a lightweight copy for the sidebar.
         // Keep tool name/id for ActivityFeed but strip large arguments.
         message = structuredClone(message);
-        message.payload.tool_calls = toolCalls.map(tc => ({
+        message.payload.tool_calls = toolCalls.map((tc) => ({
           id: tc.id,
           name: tc.name,
-          arguments: typeof tc.arguments === "string"
-            ? (tc.arguments.length > 512 ? tc.arguments.slice(0, 512) : tc.arguments)
-            : JSON.stringify({ title: tc.arguments?.title || "", type: tc.arguments?.type || "" }),
+          arguments:
+            typeof tc.arguments === 'string'
+              ? tc.arguments.length > 512
+                ? tc.arguments.slice(0, 512)
+                : tc.arguments
+              : JSON.stringify({
+                  title: tc.arguments?.title || '',
+                  type: tc.arguments?.type || '',
+                }),
         }));
       }
     }
@@ -757,7 +785,7 @@ class ChannelManager {
       if (bridgeId) {
         pendingAgentCommands.delete(reqId);
         browser.nevoflux.bridgeRespond(bridgeId, message.payload).catch((err) => {
-          console.error("[NevoFlux] agent:command bridgeRespond failed:", err);
+          console.error('[NevoFlux] agent:command bridgeRespond failed:', err);
         });
         // Don't fall through to sidebar broadcast for this response
         return;
@@ -768,39 +796,50 @@ class ChannelManager {
     if (msgType === MessageTypes.SYSTEM_RESPONSE) {
       const payload = message.payload;
       const cmd = payload?.command;
-      if (cmd === "content_store.load" && payload?.success) {
+      if (cmd === 'content_store.load' && payload?.success) {
         const entries = payload.data?.entries || [];
         console.log(`[NevoFlux] Content store load response: ${entries.length} entries`);
         if (entries.length > 0) {
-          browser.nevoflux.contentStoreLoad(entries).then(() => {
-            // Notify sidebar that ContentStore has been hydrated so it can re-fetch settings
-            console.log("[NevoFlux] ContentStore hydrated, notifying sidebar");
-            broadcastToSidebar({
-              type: MessageTypes.SYSTEM_RESPONSE,
-              payload: { command: "content_store.loaded", success: true },
+          browser.nevoflux
+            .contentStoreLoad(entries)
+            .then(() => {
+              // Notify sidebar that ContentStore has been hydrated so it can re-fetch settings
+              console.log('[NevoFlux] ContentStore hydrated, notifying sidebar');
+              broadcastToSidebar({
+                type: MessageTypes.SYSTEM_RESPONSE,
+                payload: { command: 'content_store.loaded', success: true },
+              });
+            })
+            .catch((err) => {
+              console.error('[NevoFlux] Content store load failed:', err);
             });
-          }).catch((err) => {
-            console.error("[NevoFlux] Content store load failed:", err);
-          });
         }
-      } else if (cmd === "artifact.get" && payload?.success) {
+      } else if (cmd === 'artifact.get' && payload?.success) {
         const art = payload.data;
         if (art && art.id) {
           console.log(`[NevoFlux] artifact.get response: hydrating ContentStore for ${art.id}`);
           const artifactObj = {
             id: art.id,
-            type: art.content_type || "text/html",
-            title: art.title || "Untitled",
-            code: art.content || "",
-            state: "complete",
+            type: art.content_type || 'text/html',
+            title: art.title || 'Untitled',
+            code: art.content || '',
+            state: 'complete',
           };
-          if (art.files) { artifactObj.files = art.files; artifactObj.type = "project"; }
-          if (art.entry) { artifactObj.entry = art.entry; }
-          browser.nevoflux.createArtifact(artifactObj).catch(err => {
-            console.error("[NevoFlux] Failed to hydrate artifact:", err);
+          if (art.files) {
+            artifactObj.files = art.files;
+            artifactObj.type = 'project';
+          }
+          if (art.entry) {
+            artifactObj.entry = art.entry;
+          }
+          browser.nevoflux.createArtifact(artifactObj).catch((err) => {
+            console.error('[NevoFlux] Failed to hydrate artifact:', err);
           });
         }
-      } else if ((cmd === "content_store.set" || cmd === "content_store.delete") && !payload?.success) {
+      } else if (
+        (cmd === 'content_store.set' || cmd === 'content_store.delete') &&
+        !payload?.success
+      ) {
         console.warn(`[NevoFlux] Content store persist failed: ${cmd}`, payload?.error);
       }
     }
@@ -821,9 +860,9 @@ class ChannelManager {
 
       // --- Detect session completion ---
       // Primary: explicit agent_state idle/error
-      if (msgType === "agent_state") {
+      if (msgType === 'agent_state') {
         const status = message.payload?.state || message.payload?.status;
-        if (status === "idle" || status === "error") {
+        if (status === 'idle' || status === 'error') {
           _endCanvasSession(canvasSessionId, status);
         }
       }
@@ -833,21 +872,21 @@ class ChannelManager {
       // streaming done marker.  Use a short debounce (2 s) so that back-to-back
       // done:true chunks don't fire prematurely and an arriving agent_state can
       // still take over.
-      if (msgType === "stream_chunk" && message.payload?.done === true) {
+      if (msgType === 'stream_chunk' && message.payload?.done === true) {
         const sid = canvasSessionId; // capture for closure
         if (_canvasSessionEndTimer) clearTimeout(_canvasSessionEndTimer);
         _canvasSessionEndTimer = setTimeout(() => {
           _canvasSessionEndTimer = null;
           if (canvasSessions.has(sid)) {
             console.log(`[NevoFlux] Canvas session ${sid} ended (stream done fallback)`);
-            _endCanvasSession(sid, "idle");
+            _endCanvasSession(sid, 'idle');
           }
         }, 2000);
       }
 
       // If agent starts a new streaming turn (done:false), cancel the debounce
       // timer — the agent isn't done yet (e.g. it called a tool and continues).
-      if (msgType === "stream_chunk" && message.payload?.done === false) {
+      if (msgType === 'stream_chunk' && message.payload?.done === false) {
         if (_canvasSessionEndTimer) {
           clearTimeout(_canvasSessionEndTimer);
           _canvasSessionEndTimer = null;
@@ -860,31 +899,33 @@ class ChannelManager {
     if (msgType === MessageTypes.BROWSER_TOOL_REQUEST) {
       const payload = message.payload;
       const action = payload?.action;
-      const DIRECT_ACTIONS = new Set(["read_artifact", "edit_artifact"]);
+      const DIRECT_ACTIONS = new Set(['read_artifact', 'edit_artifact']);
       if (DIRECT_ACTIONS.has(action)) {
         console.log(`[NevoFlux] Handling ${action} directly (bypassing sidebar)`);
-        executeBrowserTool(payload, "direct").then((toolResult) => {
-          channelManager.sendToAgent({
-            type: MessageTypes.BROWSER_TOOL_RESPONSE,
-            payload: {
-              request_id: payload.request_id,
-              session_id: payload.session_id,
-              success: toolResult.success,
-              result: toolResult.success ? toolResult.result : undefined,
-              error: toolResult.error || undefined,
-            },
+        executeBrowserTool(payload, 'direct')
+          .then((toolResult) => {
+            channelManager.sendToAgent({
+              type: MessageTypes.BROWSER_TOOL_RESPONSE,
+              payload: {
+                request_id: payload.request_id,
+                session_id: payload.session_id,
+                success: toolResult.success,
+                result: toolResult.success ? toolResult.result : undefined,
+                error: toolResult.error || undefined,
+              },
+            });
+          })
+          .catch((err) => {
+            channelManager.sendToAgent({
+              type: MessageTypes.BROWSER_TOOL_RESPONSE,
+              payload: {
+                request_id: payload.request_id,
+                session_id: payload.session_id,
+                success: false,
+                error: { code: -1, message: err.message || String(err), recoverable: true },
+              },
+            });
           });
-        }).catch((err) => {
-          channelManager.sendToAgent({
-            type: MessageTypes.BROWSER_TOOL_RESPONSE,
-            payload: {
-              request_id: payload.request_id,
-              session_id: payload.session_id,
-              success: false,
-              error: { code: -1, message: err.message || String(err), recoverable: true },
-            },
-          });
-        });
         // Don't broadcast to sidebar — it would trigger a duplicate bg:exec_tool
         // round-trip and send a second browser_tool_response to the native agent.
         return;
@@ -915,16 +956,16 @@ class ChannelManager {
   handleChatStatusChange(connected, error) {
     this.connectionStatus.chat = connected;
     if (connected) {
-      console.log("[NevoFlux] Chat channel connected (bidirectional communication ready)");
+      console.log('[NevoFlux] Chat channel connected (bidirectional communication ready)');
 
       // Load persisted ContentStore entries from Rust agent
-      console.log("[NevoFlux] Loading content store from agent...");
+      console.log('[NevoFlux] Loading content store from agent...');
       this.sendToAgent({
         type: MessageTypes.SYSTEM_COMMAND,
         payload: {
-          command: "content_store.load",
+          command: 'content_store.load',
           request_id: `cs_load_${Date.now()}`,
-          params: { prefix: "" },
+          params: { prefix: '' },
         },
       });
     }
@@ -979,7 +1020,7 @@ const channelManager = new ChannelManager();
 function broadcastToSidebar(message) {
   browser.runtime.sendMessage(message).catch((err) => {
     // Sidebar might not be open - this is normal
-    console.debug("[NevoFlux] Sidebar not available:", err.message);
+    console.debug('[NevoFlux] Sidebar not available:', err.message);
   });
 }
 
@@ -994,7 +1035,10 @@ function broadcastToSidebar(message) {
 browser.nevoflux.onContentStoreChanged.addListener((operation, key, value) => {
   // Skip if agent not connected
   if (!channelManager.connectionStatus.chat) {
-    console.debug("[NevoFlux] ContentStore changed but agent not connected, skipping persist:", key);
+    console.debug(
+      '[NevoFlux] ContentStore changed but agent not connected, skipping persist:',
+      key
+    );
     return;
   }
 
@@ -1009,15 +1053,17 @@ browser.nevoflux.onContentStoreChanged.addListener((operation, key, value) => {
 
     // Re-check connection after debounce delay
     if (!channelManager.connectionStatus.chat) {
-      console.debug("[NevoFlux] Agent disconnected during debounce, skipping persist:", key);
+      console.debug('[NevoFlux] Agent disconnected during debounce, skipping persist:', key);
       return;
     }
 
-    if (operation === "set") {
+    if (operation === 'set') {
       // Guard: skip oversized values
       const serialized = JSON.stringify(value);
       if (serialized && serialized.length > CONTENT_STORE_MAX_VALUE_SIZE) {
-        console.warn(`[NevoFlux] ContentStore value too large (${serialized.length}), skipping persist: ${key}`);
+        console.warn(
+          `[NevoFlux] ContentStore value too large (${serialized.length}), skipping persist: ${key}`
+        );
         return;
       }
 
@@ -1025,17 +1071,17 @@ browser.nevoflux.onContentStoreChanged.addListener((operation, key, value) => {
       channelManager.sendToAgent({
         type: MessageTypes.SYSTEM_COMMAND,
         payload: {
-          command: "content_store.set",
+          command: 'content_store.set',
           request_id: `cs_set_${Date.now()}`,
           params: { key, value },
         },
       });
-    } else if (operation === "delete") {
+    } else if (operation === 'delete') {
       console.log(`[NevoFlux] Persisting: content_store.delete ${key}`);
       channelManager.sendToAgent({
         type: MessageTypes.SYSTEM_COMMAND,
         payload: {
-          command: "content_store.delete",
+          command: 'content_store.delete',
           request_id: `cs_del_${Date.now()}`,
           params: { key },
         },
@@ -1055,22 +1101,22 @@ browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
   let result;
   try {
     switch (type) {
-      case "exec_tool":
-        result = await executeBrowserTool(payload, "bridge");
+      case 'exec_tool':
+        result = await executeBrowserTool(payload, 'bridge');
         break;
 
-      case "send_to_agent": {
+      case 'send_to_agent': {
         const sent = channelManager.sendToAgent(payload);
         result = { success: sent };
         break;
       }
 
-      case "sidebar_send":
+      case 'sidebar_send':
         broadcastToSidebar(payload);
         result = { success: true };
         break;
 
-      case "sidebar:open":
+      case 'sidebar:open':
         try {
           await browser.sidebarAction.open();
           result = { success: true };
@@ -1079,13 +1125,13 @@ browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
         }
         break;
 
-      case "sidebar:sendMessage": {
+      case 'sidebar:sendMessage': {
         try {
           const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
           const injectMsg = {
-            type: "canvas_chat_inject",
+            type: 'canvas_chat_inject',
             payload: {
-              session_id: "",
+              session_id: '',
               message_id: messageId,
               content: payload.message,
             },
@@ -1094,19 +1140,19 @@ browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
           // Broadcast to sidebar — sidebar adds user message + sends to agent
           try {
             await browser.runtime.sendMessage(injectMsg);
-            console.log("[NevoFlux] canvas_chat_inject sent to sidebar");
+            console.log('[NevoFlux] canvas_chat_inject sent to sidebar');
           } catch (e) {
             // Sidebar not open — send directly to agent as fallback
-            console.warn("[NevoFlux] Sidebar not available, sending directly to agent:", e.message);
+            console.warn('[NevoFlux] Sidebar not available, sending directly to agent:', e.message);
             const canvasHint = await getActiveCanvasHint();
-            const msgContent = canvasHint ? canvasHint + "\n\n" + payload.message : payload.message;
+            const msgContent = canvasHint ? canvasHint + '\n\n' + payload.message : payload.message;
             channelManager.sendToAgent({
-              type: "chat_message",
+              type: 'chat_message',
               payload: {
                 session_id: `canvas_${Date.now()}`,
                 message_id: messageId,
                 content: msgContent,
-                mode: "chat",
+                mode: 'chat',
                 attachments: [],
                 local_files: [],
                 tab_id: null,
@@ -1122,9 +1168,10 @@ browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
         break;
       }
 
-      case "agent:chat": {
+      case 'agent:chat': {
         try {
-          const sessionId = payload.sessionId || `cs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          const sessionId =
+            payload.sessionId || `cs_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
           const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
           // Track this canvas session
@@ -1135,14 +1182,16 @@ browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
           // This ensures streaming responses carry the canvas sessionId so
           // handleChatMessage can route them back via bridgePush.
           const agentChatHint = await getActiveCanvasHint();
-          const agentChatContent = agentChatHint ? agentChatHint + "\n\n" + payload.message : payload.message;
+          const agentChatContent = agentChatHint
+            ? agentChatHint + '\n\n' + payload.message
+            : payload.message;
           channelManager.sendToAgent({
-            type: "chat_message",
+            type: 'chat_message',
             payload: {
               session_id: sessionId,
               message_id: messageId,
               content: agentChatContent,
-              mode: "agent",
+              mode: 'agent',
               attachments: [],
               local_files: [],
               tab_id: null,
@@ -1154,12 +1203,12 @@ browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
           // Sidebar will show the user message but NOT re-send to agent.
           try {
             await browser.runtime.sendMessage({
-              type: "canvas_chat_inject",
+              type: 'canvas_chat_inject',
               payload: {
                 session_id: sessionId,
                 message_id: messageId,
                 content: payload.message,
-                source: "canvas",
+                source: 'canvas',
               },
             });
           } catch (_e) {
@@ -1173,18 +1222,18 @@ browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
         break;
       }
 
-      case "agent:cancel": {
+      case 'agent:cancel': {
         const sessionId = payload.sessionId;
         canvasSessions.delete(sessionId);
         result = { success: true };
         break;
       }
 
-      case "sidebar:restoreSession": {
+      case 'sidebar:restoreSession': {
         try {
           // Store pending session restore for the sidebar to pick up on init
           await browser.storage.local.set({
-            "pending:restoreSession": {
+            'pending:restoreSession': {
               sessionId: payload.sessionId,
               timestamp: Date.now(),
             },
@@ -1198,7 +1247,7 @@ browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
         break;
       }
 
-      case "agent:command": {
+      case 'agent:command': {
         // Forward a system_command to the native agent and wait for matching system_response.
         // The response comes back asynchronously via handleChatMessage → system_response interception.
         const { command, params: cmdParams } = payload;
@@ -1238,19 +1287,19 @@ browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
  */
 async function handleMcpRequest(payload) {
   const { request_id, source, payload: jsonRpcRequest } = payload;
-  console.log(`[NevoFlux] MCP request from ${source?.agent || "unknown"}:`, jsonRpcRequest.method);
+  console.log(`[NevoFlux] MCP request from ${source?.agent || 'unknown'}:`, jsonRpcRequest.method);
 
   try {
     // Get active tab to execute Browser Use API
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (!tabs[0]) {
-      throw new Error("No active tab");
+      throw new Error('No active tab');
     }
 
     // Send to content script which will communicate with JSWindowActor
     const result = await browser.tabs.sendMessage(tabs[0].id, {
-      target: "browser-use-api",
-      type: "mcp_execute",
+      target: 'browser-use-api',
+      type: 'mcp_execute',
       payload: jsonRpcRequest,
     });
 
@@ -1260,14 +1309,14 @@ async function handleMcpRequest(payload) {
       payload: {
         request_id,
         payload: {
-          jsonrpc: "2.0",
+          jsonrpc: '2.0',
           id: jsonRpcRequest.id,
           result,
         },
       },
     });
   } catch (error) {
-    console.error("[NevoFlux] MCP request failed:", error);
+    console.error('[NevoFlux] MCP request failed:', error);
 
     // Send error response
     channelManager.sendToMcp({
@@ -1275,7 +1324,7 @@ async function handleMcpRequest(payload) {
       payload: {
         request_id,
         payload: {
-          jsonrpc: "2.0",
+          jsonrpc: '2.0',
           id: jsonRpcRequest.id,
           error: {
             code: -32603,
@@ -1312,22 +1361,22 @@ async function handleMcpRequest(payload) {
  * Daemon sends "text/html", canvas.js expects "html".
  */
 function normalizeArtifactType(rawType) {
-  if (!rawType) return "html";
+  if (!rawType) return 'html';
   const MIME_MAP = {
-    "text/html": "html",
-    "text/markdown": "markdown",
-    "text/svg+xml": "svg",
-    "image/svg+xml": "svg",
-    "application/javascript": "react",
-    "text/jsx": "react",
-    "application/project": "project",
-    "application/project+json": "project",
+    'text/html': 'html',
+    'text/markdown': 'markdown',
+    'text/svg+xml': 'svg',
+    'image/svg+xml': 'svg',
+    'application/javascript': 'react',
+    'text/jsx': 'react',
+    'application/project': 'project',
+    'application/project+json': 'project',
   };
   if (MIME_MAP[rawType]) return MIME_MAP[rawType];
   // Already a short type
-  if (["html", "react", "markdown", "svg", "mermaid", "project"].includes(rawType)) return rawType;
+  if (['html', 'react', 'markdown', 'svg', 'mermaid', 'project'].includes(rawType)) return rawType;
   // Fallback: try to extract subtype from MIME
-  const parts = rawType.split("/");
+  const parts = rawType.split('/');
   if (parts.length === 2) return parts[1];
   return rawType;
 }
@@ -1342,15 +1391,19 @@ function normalizeArtifactType(rawType) {
  */
 async function handleArtifactMessage(message) {
   const { type, payload } = message;
-  console.log(`[NevoFlux] handleArtifactMessage: type=${type}, payloadKeys=${payload ? Object.keys(payload).join(",") : "null"}`);
+  console.log(
+    `[NevoFlux] handleArtifactMessage: type=${type}, payloadKeys=${payload ? Object.keys(payload).join(',') : 'null'}`
+  );
 
   switch (type) {
     case MessageTypes.ARTIFACT_START: {
       const { id, content_type, title, source, permissions, files, entry, options } = payload;
-      console.log(`[NevoFlux] ARTIFACT_START: id=${id}, content_type=${content_type}, files=${!!files}, filesCount=${files ? Object.keys(files).length : 0}`);
+      console.log(
+        `[NevoFlux] ARTIFACT_START: id=${id}, content_type=${content_type}, files=${!!files}, filesCount=${files ? Object.keys(files).length : 0}`
+      );
 
       // Initialize delta buffer for this artifact
-      _artifactDeltaBuffers.set(id, "");
+      _artifactDeltaBuffers.set(id, '');
 
       // Normalize MIME type to short canvas type
       // Daemon sends "text/html", canvas.js expects "html"
@@ -1360,10 +1413,10 @@ async function handleArtifactMessage(message) {
       const createOptions = {
         id,
         type: normalizedType,
-        title: title || "Untitled",
-        code: "",
-        state: "streaming",
-        source: source || "agent",
+        title: title || 'Untitled',
+        code: '',
+        state: 'streaming',
+        source: source || 'agent',
         permissions: permissions || [],
       };
 
@@ -1384,7 +1437,7 @@ async function handleArtifactMessage(message) {
           console.log(`[NevoFlux] Artifact ${id} created in ContentStore (type=${normalizedType})`);
 
           // Track this streamed artifact for dedup against create_artifact tool calls
-          const artTitle = (title || "Untitled").toLowerCase().trim();
+          const artTitle = (title || 'Untitled').toLowerCase().trim();
           _streamedArtifacts.set(artTitle, { id, timestamp: Date.now() });
           // Auto-cleanup after 60s
           setTimeout(() => _streamedArtifacts.delete(artTitle), 60000);
@@ -1409,10 +1462,10 @@ async function handleArtifactMessage(message) {
         if (result?.success) {
           if (result.tabId) _canvasTabId = result.tabId;
         } else {
-          console.error("[NevoFlux] openCanvasTab failed:", result?.error);
+          console.error('[NevoFlux] openCanvasTab failed:', result?.error);
         }
       } catch (e) {
-        console.error("[NevoFlux] Failed to open canvas tab:", e);
+        console.error('[NevoFlux] Failed to open canvas tab:', e);
       }
       break;
     }
@@ -1422,24 +1475,24 @@ async function handleArtifactMessage(message) {
       // Accumulate deltas synchronously in a local buffer to avoid
       // read-modify-write race conditions when multiple deltas arrive rapidly.
       if (!_artifactDeltaBuffers.has(id)) {
-        _artifactDeltaBuffers.set(id, "");
+        _artifactDeltaBuffers.set(id, '');
       }
-      _artifactDeltaBuffers.set(id, _artifactDeltaBuffers.get(id) + (delta || ""));
+      _artifactDeltaBuffers.set(id, _artifactDeltaBuffers.get(id) + (delta || ''));
       // Queue the update to wait for createArtifact to finish first
       const buffered = _artifactDeltaBuffers.get(id);
-      await queueArtifactOp(id, () =>
-        browser.nevoflux.updateArtifact(id, { code: buffered })
-      );
+      await queueArtifactOp(id, () => browser.nevoflux.updateArtifact(id, { code: buffered }));
       break;
     }
 
     case MessageTypes.ARTIFACT_COMPLETE: {
       const { id, final_code, title, files, entry } = payload;
       const bufferedLen = _artifactDeltaBuffers.get(id)?.length || 0;
-      console.log(`[NevoFlux] ARTIFACT_COMPLETE: id=${id}, bufferedContentLen=${bufferedLen}, hasFiles=${files !== undefined}`);
+      console.log(
+        `[NevoFlux] ARTIFACT_COMPLETE: id=${id}, bufferedContentLen=${bufferedLen}, hasFiles=${files !== undefined}`
+      );
       // Clean up delta buffer
       _artifactDeltaBuffers.delete(id);
-      const updates = { state: "complete" };
+      const updates = { state: 'complete' };
       if (final_code !== undefined) updates.code = final_code;
       if (title !== undefined) updates.title = title;
       // Multi-file project support
@@ -1449,7 +1502,9 @@ async function handleArtifactMessage(message) {
       await queueArtifactOp(id, async () => {
         const result = await browser.nevoflux.updateArtifact(id, updates);
         if (!result?.success) {
-          console.warn(`[NevoFlux] ARTIFACT_COMPLETE: updateArtifact failed for ${id} (artifact not found), will rely on tool call handler`);
+          console.warn(
+            `[NevoFlux] ARTIFACT_COMPLETE: updateArtifact failed for ${id} (artifact not found), will rely on tool call handler`
+          );
         }
       });
       break;
@@ -1467,33 +1522,44 @@ async function handleArtifactMessage(message) {
 async function handleCreateArtifactToolCall(toolCall) {
   let args = toolCall.arguments;
   const argsType = typeof args;
-  const rawArgsLen = typeof args === "string" ? args.length : JSON.stringify(args).length;
+  const rawArgsLen = typeof args === 'string' ? args.length : JSON.stringify(args).length;
   console.log(`[NevoFlux] create_artifact: argsType=${argsType}, rawArgsLen=${rawArgsLen}`);
 
-  if (typeof args === "string") {
-    try { args = JSON.parse(args); } catch (e) {
+  if (typeof args === 'string') {
+    try {
+      args = JSON.parse(args);
+    } catch (e) {
       // Arguments may be truncated by the model - try to salvage partial data
-      console.warn("[NevoFlux] create_artifact arguments truncated, attempting partial parse:", e.message);
-      console.warn("[NevoFlux] create_artifact raw args (first 500):", args.substring(0, 500));
+      console.warn(
+        '[NevoFlux] create_artifact arguments truncated, attempting partial parse:',
+        e.message
+      );
+      console.warn('[NevoFlux] create_artifact raw args (first 500):', args.substring(0, 500));
       args = extractPartialArtifactArgs(args);
       if (!args) {
-        console.error("[NevoFlux] Failed to extract any data from truncated create_artifact arguments");
+        console.error(
+          '[NevoFlux] Failed to extract any data from truncated create_artifact arguments'
+        );
         return;
       }
-      console.log("[NevoFlux] create_artifact partial parse result: contentLen=" + (args.content?.length || 0));
+      console.log(
+        '[NevoFlux] create_artifact partial parse result: contentLen=' + (args.content?.length || 0)
+      );
     }
   }
 
   const id = args.id || `art-${toolCall.id || Date.now()}`;
-  const content = args.content || "";
-  const title = args.title || "Untitled";
-  const rawType = args.type || args.content_type || "html";
+  const content = args.content || '';
+  const title = args.title || 'Untitled';
+  const rawType = args.type || args.content_type || 'html';
   const normalizedType = normalizeArtifactType(rawType);
   const files = args.files || null;
   const entry = args.entry || null;
-  const isProject = normalizedType === "project" || !!files;
+  const isProject = normalizedType === 'project' || !!files;
 
-  console.log(`[NevoFlux] create_artifact tool call: id=${id}, type=${normalizedType}, contentLen=${content.length}, isProject=${isProject}, filesCount=${files ? Object.keys(files).length : 0}`);
+  console.log(
+    `[NevoFlux] create_artifact tool call: id=${id}, type=${normalizedType}, contentLen=${content.length}, isProject=${isProject}, filesCount=${files ? Object.keys(files).length : 0}`
+  );
 
   // The daemon sends BOTH the streaming protocol (artifact_start/delta/complete)
   // AND the create_artifact tool call for the same artifact. The tool call has
@@ -1505,13 +1571,18 @@ async function handleCreateArtifactToolCall(toolCall) {
       // Artifact exists from streaming protocol — update with full content from tool call
       // which is more reliable than accumulated deltas.
       const existingLen = existing.data?.content?.length || 0;
-      const existingType = existing.data?.type || "unknown";
-      console.log(`[NevoFlux] create_artifact: artifact ${id} exists (type=${existingType}, streamedLen=${existingLen}), updating with tool call data`);
-      const updates = { state: "complete" };
+      const existingType = existing.data?.type || 'unknown';
+      console.log(
+        `[NevoFlux] create_artifact: artifact ${id} exists (type=${existingType}, streamedLen=${existingLen}), updating with tool call data`
+      );
+      const updates = { state: 'complete' };
       // For project-type: always set type, files, entry from tool call (authoritative)
       if (isProject) {
-        updates.type = "project";
-        if (files) { updates.files = files; updates.entry = entry; }
+        updates.type = 'project';
+        if (files) {
+          updates.files = files;
+          updates.entry = entry;
+        }
       }
       if (content.length > 0) updates.code = content;
       await browser.nevoflux.updateArtifact(id, updates);
@@ -1519,15 +1590,20 @@ async function handleCreateArtifactToolCall(toolCall) {
     }
 
     // Check if the streaming protocol already created this artifact (different ID, same title)
-    const normalizedTitle = (title || "Untitled").toLowerCase().trim();
+    const normalizedTitle = (title || 'Untitled').toLowerCase().trim();
     const streamedEntry = _streamedArtifacts.get(normalizedTitle);
     if (streamedEntry) {
       // Streaming protocol already created this artifact — update it with full content
-      console.log(`[NevoFlux] create_artifact: dedup hit — streamed artifact "${normalizedTitle}" exists as ${streamedEntry.id}, updating instead of creating ${id}`);
-      const updates = { state: "complete" };
+      console.log(
+        `[NevoFlux] create_artifact: dedup hit — streamed artifact "${normalizedTitle}" exists as ${streamedEntry.id}, updating instead of creating ${id}`
+      );
+      const updates = { state: 'complete' };
       if (isProject) {
-        updates.type = "project";
-        if (files) { updates.files = files; updates.entry = entry; }
+        updates.type = 'project';
+        if (files) {
+          updates.files = files;
+          updates.entry = entry;
+        }
       }
       if (content.length > 0) updates.code = content;
       await browser.nevoflux.updateArtifact(streamedEntry.id, updates);
@@ -1536,14 +1612,16 @@ async function handleCreateArtifactToolCall(toolCall) {
     }
 
     // Artifact doesn't exist yet — create it with full content, mark as complete
-    console.log(`[NevoFlux] create_artifact: creating new artifact ${id} (type=${isProject ? "project" : normalizedType})`);
+    console.log(
+      `[NevoFlux] create_artifact: creating new artifact ${id} (type=${isProject ? 'project' : normalizedType})`
+    );
     const createOpts = {
       id,
-      type: isProject ? "project" : normalizedType,
+      type: isProject ? 'project' : normalizedType,
       title,
       code: content,
-      state: "complete",
-      source: "agent",
+      state: 'complete',
+      source: 'agent',
       permissions: [],
     };
     if (files) {
@@ -1555,22 +1633,27 @@ async function handleCreateArtifactToolCall(toolCall) {
     // Open canvas tab only if streaming protocol hasn't already
     try {
       if (_canvasTabId != null) {
-        try { await browser.tabs.remove(_canvasTabId); } catch {}
+        try {
+          await browser.tabs.remove(_canvasTabId);
+        } catch {}
         _canvasTabId = null;
       }
       const result = await browser.nevoflux.openCanvasTab(id);
       if (result?.success) {
         if (result.tabId) _canvasTabId = result.tabId;
       } else {
-        console.error("[NevoFlux] openCanvasTab failed:", result?.error);
+        console.error('[NevoFlux] openCanvasTab failed:', result?.error);
       }
     } catch (e) {
-      console.error("[NevoFlux] Failed to open canvas tab:", e);
+      console.error('[NevoFlux] Failed to open canvas tab:', e);
     }
 
     // Broadcast artifact_start + artifact_complete to sidebar for ArtifactCard
-    const startPayload = { id, content_type: isProject ? "project" : normalizedType, title };
-    if (files) { startPayload.files = files; startPayload.entry = entry; }
+    const startPayload = { id, content_type: isProject ? 'project' : normalizedType, title };
+    if (files) {
+      startPayload.files = files;
+      startPayload.entry = entry;
+    }
     broadcastToSidebar({
       type: MessageTypes.ARTIFACT_START,
       payload: startPayload,
@@ -1607,21 +1690,27 @@ function extractPartialArtifactArgs(truncatedJson) {
   if (contentMatch) {
     let content = contentMatch[1];
     // Remove trailing incomplete escape/quote if present
-    if (content.endsWith("\\")) content = content.slice(0, -1);
+    if (content.endsWith('\\')) content = content.slice(0, -1);
     if (content.endsWith('"')) content = content.slice(0, -1);
     // Unescape JSON string escapes
     try {
       content = JSON.parse('"' + content + '"');
     } catch {
       // If unescape fails, use raw content with basic unescaping
-      content = content.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+      content = content
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
     }
     result.content = content;
   }
 
   // Must have at least some content to be useful
   if (result.content || result.title) {
-    console.log(`[NevoFlux] Extracted partial artifact: title=${result.title}, type=${result.type}, contentLen=${result.content?.length || 0}`);
+    console.log(
+      `[NevoFlux] Extracted partial artifact: title=${result.title}, type=${result.type}, contentLen=${result.content?.length || 0}`
+    );
     return result;
   }
   return null;
@@ -1640,14 +1729,18 @@ async function getActiveTabId() {
   if (!tab) return null;
 
   // If the active tab is an internal page, find the best web tab instead
-  const url = tab.url || "";
-  if (url.startsWith("nevoflux://") || url.startsWith("chrome://nevoflux/") ||
-      url.startsWith("about:") || url.startsWith("chrome://")) {
+  const url = tab.url || '';
+  if (
+    url.startsWith('nevoflux://') ||
+    url.startsWith('chrome://nevoflux/') ||
+    url.startsWith('about:') ||
+    url.startsWith('chrome://')
+  ) {
     // Find the most recently accessed non-internal tab in the current window
     const allTabs = await browser.tabs.query({ currentWindow: true });
-    const webTabs = allTabs.filter(t => {
-      const u = t.url || "";
-      return (u.startsWith("http://") || u.startsWith("https://")) && !t.discarded;
+    const webTabs = allTabs.filter((t) => {
+      const u = t.url || '';
+      return (u.startsWith('http://') || u.startsWith('https://')) && !t.discarded;
     });
     if (webTabs.length > 0) {
       // Sort by lastAccessed descending, pick most recent
@@ -1655,9 +1748,9 @@ async function getActiveTabId() {
       return webTabs[0].id;
     }
     // Fallback: try discarded web tabs (will trigger auto-restore)
-    const discardedWebTabs = allTabs.filter(t => {
-      const u = t.url || "";
-      return (u.startsWith("http://") || u.startsWith("https://")) && t.discarded;
+    const discardedWebTabs = allTabs.filter((t) => {
+      const u = t.url || '';
+      return (u.startsWith('http://') || u.startsWith('https://')) && t.discarded;
     });
     if (discardedWebTabs.length > 0) {
       discardedWebTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
@@ -1682,7 +1775,7 @@ async function getTabContext(tabId = null) {
     try {
       tab = await browser.tabs.get(tabId);
     } catch (e) {
-      console.warn("[NevoFlux] Failed to get tab by ID:", tabId, e);
+      console.warn('[NevoFlux] Failed to get tab by ID:', tabId, e);
       tab = null;
     }
   } else {
@@ -1695,10 +1788,10 @@ async function getTabContext(tabId = null) {
     return {
       tab_id: 0,
       zen_sync_id: null,
-      url: "",
-      title: "",
+      url: '',
+      title: '',
       favicon_url: null,
-      status: "complete",
+      status: 'complete',
     };
   }
 
@@ -1708,16 +1801,16 @@ async function getTabContext(tabId = null) {
     const tabInfo = await browser.nevoflux.getTab(tab.id);
     zenSyncId = tabInfo?.zenSyncId || null;
   } catch (e) {
-    console.warn("[NevoFlux] Failed to get zenSyncId:", e);
+    console.warn('[NevoFlux] Failed to get zenSyncId:', e);
   }
 
   return {
     tab_id: tab.id,
     zen_sync_id: zenSyncId,
-    url: tab.url || "",
-    title: tab.title || "",
+    url: tab.url || '',
+    title: tab.title || '',
     favicon_url: tab.favIconUrl || null,
-    status: tab.status || "complete",
+    status: tab.status || 'complete',
   };
 }
 
@@ -1733,19 +1826,19 @@ async function getActiveTabContext() {
 async function getActiveCanvasHint() {
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-    const canvasTab = tabs.find(t => t.url?.startsWith("nevoflux://canvas/"));
+    const canvasTab = tabs.find((t) => t.url?.startsWith('nevoflux://canvas/'));
     if (!canvasTab) return null;
 
-    const id = canvasTab.url.split("nevoflux://canvas/")[1];
+    const id = canvasTab.url.split('nevoflux://canvas/')[1];
     if (!id) return null;
 
     const result = await browser.nevoflux.getArtifact(id);
-    if (!result?.success || result.data?.state === "streaming") return null;
+    if (!result?.success || result.data?.state === 'streaming') return null;
 
-    const lines = result.data.content?.split("\n").length || 0;
-    return `[Active Canvas: id="${id}", title="${result.data.title || "Untitled"}", type="${result.data.type || "html"}", lines=${lines}]\nYou can use browser_read_artifact and browser_edit_artifact to view or modify this artifact.`;
+    const lines = result.data.content?.split('\n').length || 0;
+    return `[Active Canvas: id="${id}", title="${result.data.title || 'Untitled'}", type="${result.data.type || 'html'}", lines=${lines}]\nYou can use browser_read_artifact and browser_edit_artifact to view or modify this artifact.`;
   } catch (e) {
-    console.warn("[NevoFlux] Failed to get canvas hint:", e);
+    console.warn('[NevoFlux] Failed to get canvas hint:', e);
     return null;
   }
 }
@@ -1762,13 +1855,20 @@ async function getActiveCanvasHint() {
  * @param {string} caller - Caller identifier ("sidebar" or "mcp")
  * @returns {Promise<{success: boolean, result?: any, error?: object}>}
  */
-async function executeBrowserTool(request, caller = "unknown") {
+async function executeBrowserTool(request, caller = 'unknown') {
   const { action, params, tab_id, timeout_ms = 30000 } = request;
 
   // Actions that don't require an active tab
   const TAB_INDEPENDENT_ACTIONS = new Set([
-    "ask_user", "list_tabs", "query_tabs", "web_fetch", "web_search", "cache_file",
-    "read_artifact", "edit_artifact", "canvas_render",
+    'ask_user',
+    'list_tabs',
+    'query_tabs',
+    'web_fetch',
+    'web_search',
+    'cache_file',
+    'read_artifact',
+    'edit_artifact',
+    'canvas_render',
   ]);
 
   // Get target tab (skip for tab-independent actions)
@@ -1777,136 +1877,148 @@ async function executeBrowserTool(request, caller = "unknown") {
     targetTabId = await getActiveTabId();
     if (!targetTabId) {
       // For navigate, create a new tab if no web tab exists
-      if (action === "navigate" && params?.url) {
+      if (action === 'navigate' && params?.url) {
         const newTab = await browser.tabs.create({ url: params.url });
         return { success: true, result: { url: params.url, tab_id: newTab.id } };
       }
-      return { success: false, error: { code: -1, message: "No active web tab found. Open a web page first.", recoverable: true } };
+      return {
+        success: false,
+        error: {
+          code: -1,
+          message: 'No active web tab found. Open a web page first.',
+          recoverable: true,
+        },
+      };
     }
   }
 
   // Check if browser.nevoflux API is available
   const useNevofluxApi = isNevofluxApiAvailable();
-  console.log(`[NevoFlux] [${caller}] Executing browser tool: ${action} on tab ${targetTabId} (nevoflux API: ${useNevofluxApi})`);
+  console.log(
+    `[NevoFlux] [${caller}] Executing browser tool: ${action} on tab ${targetTabId} (nevoflux API: ${useNevofluxApi})`
+  );
 
   try {
     switch (action) {
       // Navigation
-      case "navigate":
+      case 'navigate':
         return await executeNavigateViaApi(targetTabId, params);
 
-      case "go_back":
+      case 'go_back':
         return await executeGoBackViaApi(targetTabId);
 
-      case "go_forward":
+      case 'go_forward':
         return await executeGoForwardViaApi(targetTabId);
 
       // Selector-based interactions (uses trusted events via windowUtils)
-      case "click":
+      case 'click':
         return await executeClickViaApi(targetTabId, params);
 
-      case "type":
+      case 'type':
         return await executeTypeViaApi(targetTabId, params);
 
-      case "fill":
+      case 'fill':
         return await executeFillViaApi(targetTabId, params);
 
       // Data extraction
-      case "get_content":
+      case 'get_content':
         return await executeGetContentViaApi(targetTabId, params);
 
-      case "screenshot":
+      case 'screenshot':
         return await executeScreenshotViaApi(targetTabId, params);
 
       // JavaScript execution
-      case "eval_js":
+      case 'eval_js':
         return await executeEvalJsViaApi(targetTabId, params);
 
       // Waiting
-      case "wait_for":
+      case 'wait_for':
         return await executeWaitForViaApi(targetTabId, params, timeout_ms);
 
       // Scrolling
-      case "scroll":
+      case 'scroll':
         return await executeScrollViaApi(targetTabId, params);
 
       // Page stability
-      case "wait_for_stable":
+      case 'wait_for_stable':
         return await executeWaitForStableViaApi(targetTabId, params);
 
       // Element queries
-      case "get_element":
+      case 'get_element':
         return await executeGetElementViaApi(targetTabId, params);
 
-      case "query_all":
+      case 'query_all':
         return await executeQueryAllViaApi(targetTabId, params);
 
       // Snapshot-based tools (element ID approach)
-      case "snapshot":
+      case 'snapshot':
         return await executeSnapshotViaApi(targetTabId, params);
 
-      case "click_by_id":
+      case 'click_by_id':
         return await executeClickByIdViaApi(targetTabId, params, timeout_ms);
 
-      case "fill_by_id":
+      case 'fill_by_id':
         return await executeFillByIdViaApi(targetTabId, params, timeout_ms);
 
-      case "type_by_id":
+      case 'type_by_id':
         return await executeTypeByIdViaApi(targetTabId, params, timeout_ms);
 
       // Keyboard control
-      case "key_press":
+      case 'key_press':
         return await executeKeyPressViaApi(targetTabId, params);
 
       // Content extraction
-      case "get_markdown":
+      case 'get_markdown':
         return await executeGetMarkdownViaApi(targetTabId, params);
 
       // Web fetch (URL to markdown, saved to cache)
-      case "web_fetch":
+      case 'web_fetch':
         return await executeWebFetch(params);
 
       // Cache tab markdown (tab content to markdown, saved to cache)
-      case "cache_tab_markdown":
+      case 'cache_tab_markdown':
         return await executeCacheTabMarkdown(targetTabId, params);
 
       // Web search
-      case "web_search":
+      case 'web_search':
         return await executeWebSearch(params);
 
       // Ask user a question
-      case "ask_user":
+      case 'ask_user':
         return await executeAskUser(params);
 
       // Cache uploaded file (save to disk, return absolute path)
-      case "cache_file":
+      case 'cache_file':
         return await executeCacheFile(params);
 
       // Tab management
-      case "list_tabs":
+      case 'list_tabs':
         return await executeListTabs();
 
-      case "query_tabs":
+      case 'query_tabs':
         return await executeQueryTabs(params);
 
       // Alias: get_elements → snapshot
-      case "get_elements":
+      case 'get_elements':
         return await executeSnapshotViaApi(targetTabId, params);
 
       // Artifact reading (uses existing getArtifact API)
-      case "read_artifact":
+      case 'read_artifact':
         return await executeReadArtifact(params);
 
       // Artifact editing (uses existing getArtifact + updateArtifact APIs)
-      case "edit_artifact":
+      case 'edit_artifact':
         return await executeEditArtifact(params);
 
       // Canvas rendering (from Code Mode via canvas_render tool)
-      case "canvas_render":
+      case 'canvas_render':
         return await executeCanvasRender(params);
 
       default:
-        return { success: false, error: { code: -1, message: `Unknown action: ${action}`, recoverable: false } };
+        return {
+          success: false,
+          error: { code: -1, message: `Unknown action: ${action}`, recoverable: false },
+        };
     }
   } catch (error) {
     console.error(`[NevoFlux] Browser tool error:`, error);
@@ -1930,7 +2042,10 @@ const ARTIFACT_MAX_LINES = 500;
 async function executeReadArtifact(params) {
   const id = params.id;
   if (!id) {
-    return { success: false, error: { code: -1, message: "Missing artifact id", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'Missing artifact id', recoverable: false },
+    };
   }
 
   const entry = await browser.nevoflux.getArtifact(id);
@@ -1938,8 +2053,8 @@ async function executeReadArtifact(params) {
     return entry; // { success: false, error: ... }
   }
 
-  const content = entry.data?.content || "";
-  const allLines = content.split("\n");
+  const content = entry.data?.content || '';
+  const allLines = content.split('\n');
   const totalLines = allLines.length;
 
   // grep mode: find matching lines with context
@@ -1953,11 +2068,25 @@ async function executeReadArtifact(params) {
       }
     }
     if (matchIndices.length === 0) {
-      return { success: true, result: { content: "", totalLines, matches: 0, truncated: false, title: entry.data?.title, type: entry.data?.type } };
+      return {
+        success: true,
+        result: {
+          content: '',
+          totalLines,
+          matches: 0,
+          truncated: false,
+          title: entry.data?.title,
+          type: entry.data?.type,
+        },
+      };
     }
     const lineSet = new Set();
     for (const idx of matchIndices) {
-      for (let j = Math.max(0, idx - ctxLines); j <= Math.min(allLines.length - 1, idx + ctxLines); j++) {
+      for (
+        let j = Math.max(0, idx - ctxLines);
+        j <= Math.min(allLines.length - 1, idx + ctxLines);
+        j++
+      ) {
         lineSet.add(j);
       }
     }
@@ -1966,7 +2095,7 @@ async function executeReadArtifact(params) {
     let prev = -2;
     for (const ln of sortedLines) {
       if (ln !== prev + 1 && sections.length > 0) {
-        sections.push("...");
+        sections.push('...');
       }
       sections.push(`${ln + 1}\t${allLines[ln]}`);
       prev = ln;
@@ -1974,7 +2103,7 @@ async function executeReadArtifact(params) {
     return {
       success: true,
       result: {
-        content: sections.join("\n"),
+        content: sections.join('\n'),
         totalLines,
         matches: matchIndices.length,
         truncated: false,
@@ -1993,7 +2122,7 @@ async function executeReadArtifact(params) {
     return {
       success: true,
       result: {
-        content: numbered.join("\n"),
+        content: numbered.join('\n'),
         totalLines,
         truncated: offset + limit < totalLines,
         title: entry.data?.title,
@@ -2008,7 +2137,9 @@ async function executeReadArtifact(params) {
     return {
       success: true,
       result: {
-        content: numbered.join("\n") + `\n\n[Truncated at line ${ARTIFACT_MAX_LINES} of ${totalLines}. Use offset/limit or grep to read more.]`,
+        content:
+          numbered.join('\n') +
+          `\n\n[Truncated at line ${ARTIFACT_MAX_LINES} of ${totalLines}. Use offset/limit or grep to read more.]`,
         totalLines,
         truncated: true,
         title: entry.data?.title,
@@ -2035,10 +2166,13 @@ async function executeReadArtifact(params) {
 async function executeEditArtifact(params) {
   const { id, old_str, new_str } = params;
   if (!id) {
-    return { success: false, error: { code: -1, message: "Missing artifact id", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'Missing artifact id', recoverable: false },
+    };
   }
   if (!old_str) {
-    return { success: false, error: { code: -1, message: "Missing old_str", recoverable: false } };
+    return { success: false, error: { code: -1, message: 'Missing old_str', recoverable: false } };
   }
 
   const entry = await browser.nevoflux.getArtifact(id);
@@ -2046,18 +2180,40 @@ async function executeEditArtifact(params) {
     return entry;
   }
 
-  if (entry.data?.state === "streaming") {
-    return { success: false, error: { code: 12004, message: "Artifact is still generating. Wait for completion.", recoverable: true } };
+  if (entry.data?.state === 'streaming') {
+    return {
+      success: false,
+      error: {
+        code: 12004,
+        message: 'Artifact is still generating. Wait for completion.',
+        recoverable: true,
+      },
+    };
   }
 
-  const content = entry.data?.content || "";
+  const content = entry.data?.content || '';
   const count = content.split(old_str).length - 1;
 
   if (count === 0) {
-    return { success: false, error: { code: 12005, message: "old_str not found in artifact. Use browser_read_artifact to verify the current content.", recoverable: true } };
+    return {
+      success: false,
+      error: {
+        code: 12005,
+        message:
+          'old_str not found in artifact. Use browser_read_artifact to verify the current content.',
+        recoverable: true,
+      },
+    };
   }
   if (count > 1) {
-    return { success: false, error: { code: 12006, message: `old_str matches ${count} locations. Provide more surrounding context to make it unique.`, recoverable: true } };
+    return {
+      success: false,
+      error: {
+        code: 12006,
+        message: `old_str matches ${count} locations. Provide more surrounding context to make it unique.`,
+        recoverable: true,
+      },
+    };
   }
 
   const newContent = content.replace(old_str, new_str);
@@ -2066,7 +2222,7 @@ async function executeEditArtifact(params) {
     return result;
   }
 
-  return { success: true, result: { lines: newContent.split("\n").length } };
+  return { success: true, result: { lines: newContent.split('\n').length } };
 }
 
 /**
@@ -2084,52 +2240,70 @@ async function executeEditArtifact(params) {
  */
 async function executeCanvasRender(params) {
   const files = params?.files;
-  if (!files || typeof files !== "object" || Array.isArray(files)) {
-    return { success: false, error: { code: -1, message: "Missing or invalid 'files' parameter: must be an object mapping file paths to content", recoverable: false } };
+  if (!files || typeof files !== 'object' || Array.isArray(files)) {
+    return {
+      success: false,
+      error: {
+        code: -1,
+        message:
+          "Missing or invalid 'files' parameter: must be an object mapping file paths to content",
+        recoverable: false,
+      },
+    };
   }
 
-  const title = params?.title || "Generated App";
+  const title = params?.title || 'Generated App';
   const entry = params?.entry || undefined;
-  const id = params?.artifact_id || `code-mode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const id =
+    params?.artifact_id || `code-mode-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   // Create artifact in ContentStore
   try {
     await browser.nevoflux.createArtifact({
       id,
-      type: "project",
+      type: 'project',
       title,
       files,
       entry,
-      code: "",
-      state: "complete",
-      source: "agent",
+      code: '',
+      state: 'complete',
+      source: 'agent',
       permissions: [],
     });
   } catch (e) {
-    console.error("[NevoFlux] canvas_render: Failed to create artifact:", e);
-    return { success: false, error: { code: -1, message: `Failed to create artifact: ${e.message || e}`, recoverable: true } };
+    console.error('[NevoFlux] canvas_render: Failed to create artifact:', e);
+    return {
+      success: false,
+      error: {
+        code: -1,
+        message: `Failed to create artifact: ${e.message || e}`,
+        recoverable: true,
+      },
+    };
   }
 
   // Open canvas tab
   try {
     if (_canvasTabId != null) {
-      try { await browser.tabs.remove(_canvasTabId); } catch {}
+      try {
+        await browser.tabs.remove(_canvasTabId);
+      } catch {}
       _canvasTabId = null;
     }
     const result = await browser.nevoflux.openCanvasTab(id);
     if (result?.success) {
       if (result.tabId) _canvasTabId = result.tabId;
     } else {
-      console.error("[NevoFlux] canvas_render: openCanvasTab failed:", result?.error);
+      console.error('[NevoFlux] canvas_render: openCanvasTab failed:', result?.error);
     }
   } catch (e) {
-    console.error("[NevoFlux] canvas_render: Failed to open canvas tab:", e);
+    console.error('[NevoFlux] canvas_render: Failed to open canvas tab:', e);
   }
 
   // Broadcast to sidebar for ArtifactCard
   broadcastToSidebar({
     type: MessageTypes.ARTIFACT_START,
-    payload: { id, content_type: "project", title },
+    payload: { id, content_type: 'project', title },
   });
   broadcastToSidebar({
     type: MessageTypes.ARTIFACT_COMPLETE,
@@ -2149,11 +2323,13 @@ async function executeCanvasRender(params) {
  * @returns {boolean}
  */
 function isNevofluxApiAvailable() {
-  const hasBrowser = typeof browser !== "undefined";
-  const hasNevoflux = hasBrowser && typeof browser.nevoflux !== "undefined";
-  const hasClick = hasNevoflux && typeof browser.nevoflux.click === "function";
+  const hasBrowser = typeof browser !== 'undefined';
+  const hasNevoflux = hasBrowser && typeof browser.nevoflux !== 'undefined';
+  const hasClick = hasNevoflux && typeof browser.nevoflux.click === 'function';
 
-  console.log(`[NevoFlux] API check: browser=${hasBrowser}, nevoflux=${hasNevoflux}, click=${hasClick}`);
+  console.log(
+    `[NevoFlux] API check: browser=${hasBrowser}, nevoflux=${hasNevoflux}, click=${hasClick}`
+  );
 
   return hasClick;
 }
@@ -2164,7 +2340,7 @@ function isNevofluxApiAvailable() {
 async function executeNavigateViaApi(tabId, params) {
   const { url } = params;
   if (!url) {
-    return { success: false, error: { code: -1, message: "URL required", recoverable: false } };
+    return { success: false, error: { code: -1, message: 'URL required', recoverable: false } };
   }
 
   try {
@@ -2176,7 +2352,7 @@ async function executeNavigateViaApi(tabId, params) {
     // Wait for page load
     return new Promise((resolve) => {
       const listener = (updatedTabId, changeInfo) => {
-        if (updatedTabId === tabId && changeInfo.status === "complete") {
+        if (updatedTabId === tabId && changeInfo.status === 'complete') {
           browser.tabs.onUpdated.removeListener(listener);
           resolve({ success: true, result: { url } });
         }
@@ -2186,7 +2362,10 @@ async function executeNavigateViaApi(tabId, params) {
       // Timeout after 30 seconds
       setTimeout(() => {
         browser.tabs.onUpdated.removeListener(listener);
-        resolve({ success: true, result: { url, note: "Navigation started but completion not confirmed" } });
+        resolve({
+          success: true,
+          result: { url, note: 'Navigation started but completion not confirmed' },
+        });
       }, 30000);
     });
   } catch (error) {
@@ -2223,15 +2402,18 @@ async function executeGoForwardViaApi(tabId) {
  * Falls back to content script if API is not available
  */
 async function executeClickViaApi(tabId, params) {
-  const { selector, button = "left", click_count = 1 } = params;
+  const { selector, button = 'left', click_count = 1 } = params;
   if (!selector) {
-    return { success: false, error: { code: -1, message: "selector required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'selector required', recoverable: false },
+    };
   }
 
   // Fallback to content script if API not available
   if (!isNevofluxApiAvailable()) {
-    console.log("[NevoFlux] browser.nevoflux not available, using content script");
-    return await executeInContentScript(tabId, "click", params, 30000);
+    console.log('[NevoFlux] browser.nevoflux not available, using content script');
+    return await executeInContentScript(tabId, 'click', params, 30000);
   }
 
   try {
@@ -2241,8 +2423,11 @@ async function executeClickViaApi(tabId, params) {
     });
     return result.success !== undefined ? result : { success: true, result };
   } catch (error) {
-    console.error("[NevoFlux] nevoflux.click failed, falling back to content script:", error.message);
-    return await executeInContentScript(tabId, "click", params, 30000);
+    console.error(
+      '[NevoFlux] nevoflux.click failed, falling back to content script:',
+      error.message
+    );
+    return await executeInContentScript(tabId, 'click', params, 30000);
   }
 }
 
@@ -2253,19 +2438,25 @@ async function executeClickViaApi(tabId, params) {
 async function executeTypeViaApi(tabId, params) {
   const { selector, text } = params;
   if (!selector || text === undefined) {
-    return { success: false, error: { code: -1, message: "selector and text required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'selector and text required', recoverable: false },
+    };
   }
 
   if (!isNevofluxApiAvailable()) {
-    return await executeInContentScript(tabId, "type", params, 30000);
+    return await executeInContentScript(tabId, 'type', params, 30000);
   }
 
   try {
     const result = await browser.nevoflux.type(tabId, selector, text);
     return result.success !== undefined ? result : { success: true, result };
   } catch (error) {
-    console.error("[NevoFlux] nevoflux.type failed, falling back to content script:", error.message);
-    return await executeInContentScript(tabId, "type", params, 30000);
+    console.error(
+      '[NevoFlux] nevoflux.type failed, falling back to content script:',
+      error.message
+    );
+    return await executeInContentScript(tabId, 'type', params, 30000);
   }
 }
 
@@ -2276,19 +2467,25 @@ async function executeTypeViaApi(tabId, params) {
 async function executeFillViaApi(tabId, params) {
   const { selector, value } = params;
   if (!selector || value === undefined) {
-    return { success: false, error: { code: -1, message: "selector and value required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'selector and value required', recoverable: false },
+    };
   }
 
   if (!isNevofluxApiAvailable()) {
-    return await executeInContentScript(tabId, "fill", params, 30000);
+    return await executeInContentScript(tabId, 'fill', params, 30000);
   }
 
   try {
     const result = await browser.nevoflux.fill(tabId, selector, value);
     return result.success !== undefined ? result : { success: true, result };
   } catch (error) {
-    console.error("[NevoFlux] nevoflux.fill failed, falling back to content script:", error.message);
-    return await executeInContentScript(tabId, "fill", params, 30000);
+    console.error(
+      '[NevoFlux] nevoflux.fill failed, falling back to content script:',
+      error.message
+    );
+    return await executeInContentScript(tabId, 'fill', params, 30000);
   }
 }
 
@@ -2343,7 +2540,7 @@ async function executeScreenshotViaApi(tabId, params) {
 async function executeEvalJsViaApi(tabId, params) {
   const { script } = params;
   if (!script) {
-    return { success: false, error: { code: -1, message: "Script required", recoverable: false } };
+    return { success: false, error: { code: -1, message: 'Script required', recoverable: false } };
   }
 
   try {
@@ -2358,9 +2555,12 @@ async function executeEvalJsViaApi(tabId, params) {
  * Wait for selector via browser.nevoflux.waitForSelector()
  */
 async function executeWaitForViaApi(tabId, params, timeout_ms) {
-  const { selector, state = "visible" } = params;
+  const { selector, state = 'visible' } = params;
   if (!selector) {
-    return { success: false, error: { code: -1, message: "selector required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'selector required', recoverable: false },
+    };
   }
 
   try {
@@ -2378,7 +2578,7 @@ async function executeWaitForViaApi(tabId, params, timeout_ms) {
  * Scroll via browser.nevoflux.wheel()
  */
 async function executeScrollViaApi(tabId, params) {
-  const { direction = "down", amount = "page" } = params;
+  const { direction = 'down', amount = 'page' } = params;
 
   try {
     const result = await browser.nevoflux.scroll(tabId, { direction, amount: String(amount) });
@@ -2389,7 +2589,7 @@ async function executeScrollViaApi(tabId, params) {
 }
 
 async function executeWaitForStableViaApi(tabId, params) {
-  const { strategy = "interaction", maxWait = 3000 } = params;
+  const { strategy = 'interaction', maxWait = 3000 } = params;
 
   try {
     const result = await browser.nevoflux.waitForStable(tabId, { strategy, maxWait });
@@ -2405,7 +2605,10 @@ async function executeWaitForStableViaApi(tabId, params) {
 async function executeGetElementViaApi(tabId, params) {
   const { selector } = params;
   if (!selector) {
-    return { success: false, error: { code: -1, message: "selector required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'selector required', recoverable: false },
+    };
   }
 
   try {
@@ -2433,7 +2636,10 @@ async function executeGetElementViaApi(tabId, params) {
 async function executeQueryAllViaApi(tabId, params) {
   const { selector, limit = 50 } = params;
   if (!selector) {
-    return { success: false, error: { code: -1, message: "selector required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'selector required', recoverable: false },
+    };
   }
 
   const script = `(function() {
@@ -2481,14 +2687,19 @@ function cleanupOldSnapshots() {
  */
 async function executeSnapshotViaApi(tabId, params) {
   if (!isNevofluxApiAvailable()) {
-    console.log("[NevoFlux] browser.nevoflux not available for snapshot");
-    return { success: false, error: { code: -1, message: "browser.nevoflux API not available", recoverable: false } };
+    console.log('[NevoFlux] browser.nevoflux not available for snapshot');
+    return {
+      success: false,
+      error: { code: -1, message: 'browser.nevoflux API not available', recoverable: false },
+    };
   }
 
   try {
     // Remove tab_id from params as it's passed separately
     const { tab_id, ...options } = params || {};
-    console.log(`[NevoFlux] Calling browser.nevoflux.snapshot(${tabId}, ${JSON.stringify(options)})`);
+    console.log(
+      `[NevoFlux] Calling browser.nevoflux.snapshot(${tabId}, ${JSON.stringify(options)})`
+    );
     const result = await browser.nevoflux.snapshot(tabId, options);
     console.log(`[NevoFlux] Snapshot result:`, result);
 
@@ -2502,7 +2713,7 @@ async function executeSnapshotViaApi(tabId, params) {
     if (result.refs) {
       for (const [key, value] of Object.entries(result.refs)) {
         // Convert "e1" -> 1, "e2" -> 2, etc.
-        const numericId = parseInt(key.replace(/^e/, ""), 10);
+        const numericId = parseInt(key.replace(/^e/, ''), 10);
         if (!isNaN(numericId)) {
           numericRefs[numericId] = value;
         }
@@ -2517,11 +2728,19 @@ async function executeSnapshotViaApi(tabId, params) {
     // Cleanup old snapshots periodically
     cleanupOldSnapshots();
 
-    console.log(`[NevoFlux] Stored ${Object.keys(numericRefs).length} element refs for tab ${tabId}`);
-    console.log(`[NevoFlux] First 5 elements:`, Object.entries(numericRefs).slice(0, 5).map(([k, v]) => {
-      const sel = v.selectors?.[0]?.value || v.selector || "no-selector";
-      return `${k}: ${sel.substring(0, 50)}`;
-    }).join("; "));
+    console.log(
+      `[NevoFlux] Stored ${Object.keys(numericRefs).length} element refs for tab ${tabId}`
+    );
+    console.log(
+      `[NevoFlux] First 5 elements:`,
+      Object.entries(numericRefs)
+        .slice(0, 5)
+        .map(([k, v]) => {
+          const sel = v.selectors?.[0]?.value || v.selector || 'no-selector';
+          return `${k}: ${sel.substring(0, 50)}`;
+        })
+        .join('; ')
+    );
 
     return {
       success: true,
@@ -2529,13 +2748,19 @@ async function executeSnapshotViaApi(tabId, params) {
         tree: result.tree,
         refs: result.refs,
         element_count: Object.keys(result.refs || {}).length,
-        stats: result.stats || { total: Object.keys(result.refs || {}).length, a11y: 0, inferred: 0, occluded: 0, truncated: 0 },
-        url: result.url || "",
-        title: result.title || "",
+        stats: result.stats || {
+          total: Object.keys(result.refs || {}).length,
+          a11y: 0,
+          inferred: 0,
+          occluded: 0,
+          truncated: 0,
+        },
+        url: result.url || '',
+        title: result.title || '',
       },
     };
   } catch (error) {
-    console.error("[NevoFlux] browser.nevoflux.snapshot failed:", error.message);
+    console.error('[NevoFlux] browser.nevoflux.snapshot failed:', error.message);
     return { success: false, error: { code: -1, message: error.message, recoverable: true } };
   }
 }
@@ -2553,13 +2778,15 @@ async function getElementSelector(tabId, elementId, getChildren = false) {
 
   // Normalize elementId: strip "e" prefix if present (e.g., "e34" -> 34)
   let normalizedId = elementId;
-  if (typeof elementId === "string" && elementId.startsWith("e")) {
+  if (typeof elementId === 'string' && elementId.startsWith('e')) {
     normalizedId = parseInt(elementId.substring(1), 10);
-  } else if (typeof elementId === "string") {
+  } else if (typeof elementId === 'string') {
     normalizedId = parseInt(elementId, 10);
   }
 
-  console.log(`[NevoFlux] getElementSelector called: tabId=${tabId}, elementId=${elementId} (normalized: ${normalizedId}), getChildren=${getChildren}`);
+  console.log(
+    `[NevoFlux] getElementSelector called: tabId=${tabId}, elementId=${elementId} (normalized: ${normalizedId}), getChildren=${getChildren}`
+  );
   console.log(`[NevoFlux] snapshotRefs has keys:`, Array.from(snapshotRefs.keys()));
 
   if (!tabData) {
@@ -2567,22 +2794,36 @@ async function getElementSelector(tabId, elementId, getChildren = false) {
     return null;
   }
 
-  console.log(`[NevoFlux] tabData.timestamp:`, tabData.timestamp, `(${(Date.now() - tabData.timestamp) / 1000}s ago)`);
+  console.log(
+    `[NevoFlux] tabData.timestamp:`,
+    tabData.timestamp,
+    `(${(Date.now() - tabData.timestamp) / 1000}s ago)`
+  );
   console.log(`[NevoFlux] tabData.refs has ${Object.keys(tabData.refs).length} elements`);
-  console.log(`[NevoFlux] Available element IDs (first 20):`, Object.keys(tabData.refs).slice(0, 20).join(", "));
+  console.log(
+    `[NevoFlux] Available element IDs (first 20):`,
+    Object.keys(tabData.refs).slice(0, 20).join(', ')
+  );
 
   const elementRef = tabData.refs[normalizedId];
 
   if (!elementRef) {
-    console.warn(`[NevoFlux] Element ID ${elementId} (normalized: ${normalizedId}) not found in snapshot refs.`);
+    console.warn(
+      `[NevoFlux] Element ID ${elementId} (normalized: ${normalizedId}) not found in snapshot refs.`
+    );
     // Log nearby IDs to help debug
-    const allIds = Object.keys(tabData.refs).map(Number).sort((a, b) => a - b);
-    const nearbyIds = allIds.filter(id => Math.abs(id - normalizedId) <= 5);
-    console.warn(`[NevoFlux] Nearby IDs: ${nearbyIds.join(", ")}`);
+    const allIds = Object.keys(tabData.refs)
+      .map(Number)
+      .sort((a, b) => a - b);
+    const nearbyIds = allIds.filter((id) => Math.abs(id - normalizedId) <= 5);
+    console.warn(`[NevoFlux] Nearby IDs: ${nearbyIds.join(', ')}`);
     return null;
   }
 
-  console.log(`[NevoFlux] Found element ${elementId} (normalized: ${normalizedId}):`, JSON.stringify(elementRef).substring(0, 300));
+  console.log(
+    `[NevoFlux] Found element ${elementId} (normalized: ${normalizedId}):`,
+    JSON.stringify(elementRef).substring(0, 300)
+  );
 
   // Extract best CSS selector from the selectors array (new format)
   // Also supports legacy single-selector format for backward compatibility
@@ -2591,7 +2832,7 @@ async function getElementSelector(tabId, elementId, getChildren = false) {
     if (ref.selectors && Array.isArray(ref.selectors)) {
       // Prefer CSS selectors in priority order (skip a11y: locators for CSS-based operations)
       for (const s of ref.selectors) {
-        if (s.type === "css") return s.value;
+        if (s.type === 'css') return s.value;
       }
       // Fallback: return first selector value regardless of type
       return ref.selectors[0]?.value || null;
@@ -2611,7 +2852,7 @@ async function getElementSelector(tabId, elementId, getChildren = false) {
       if (!sel || sel === parentSelector) return false;
       if (!sel.startsWith(parentSelector)) return false;
       const afterParent = sel.substring(parentSelector.length);
-      return afterParent.startsWith(">") && !afterParent.substring(1).includes(">");
+      return afterParent.startsWith('>') && !afterParent.substring(1).includes('>');
     });
 
     childRefs.sort((a, b) => Number(a[0]) - Number(b[0]));
@@ -2622,7 +2863,9 @@ async function getElementSelector(tabId, elementId, getChildren = false) {
     }
     selectors.push(parentSelector);
 
-    console.log(`[NevoFlux] Returning ${selectors.length} selectors (${childRefs.length} children + 1 parent)`);
+    console.log(
+      `[NevoFlux] Returning ${selectors.length} selectors (${childRefs.length} children + 1 parent)`
+    );
     return selectors;
   }
 
@@ -2637,13 +2880,16 @@ async function executeClickByIdViaApi(tabId, params, timeout_ms) {
   const { element_id } = params;
 
   if (!element_id) {
-    return { success: false, error: { code: -1, message: "element_id required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'element_id required', recoverable: false },
+    };
   }
 
   // Fallback to content script if API not available
   if (!isNevofluxApiAvailable()) {
-    console.log("[NevoFlux] browser.nevoflux not available, using content script for click_by_id");
-    return await executeInContentScript(tabId, "click_by_id", params, timeout_ms);
+    console.log('[NevoFlux] browser.nevoflux not available, using content script for click_by_id');
+    return await executeInContentScript(tabId, 'click_by_id', params, timeout_ms);
   }
 
   try {
@@ -2653,40 +2899,57 @@ async function executeClickByIdViaApi(tabId, params, timeout_ms) {
     if (!selectors || selectors.length === 0) {
       return {
         success: false,
-        error: { code: -1, message: `Element ID ${element_id} not found. Take a new snapshot first.`, recoverable: true },
+        error: {
+          code: -1,
+          message: `Element ID ${element_id} not found. Take a new snapshot first.`,
+          recoverable: true,
+        },
       };
     }
 
     // Handle both single selector (string) and multiple selectors (array)
     const selectorList = Array.isArray(selectors) ? selectors : [selectors];
 
-    console.log(`[NevoFlux] Trying to click element ${element_id}, ${selectorList.length} candidate(s)`);
+    console.log(
+      `[NevoFlux] Trying to click element ${element_id}, ${selectorList.length} candidate(s)`
+    );
 
     // Try each selector until one has detectable effect
     let lastError = null;
     let lastResult = null;
     for (let i = 0; i < selectorList.length; i++) {
       const selector = selectorList[i];
-      console.log(`[NevoFlux] Attempt ${i + 1}/${selectorList.length}: clicking '${selector.substring(0, 100)}...'`);
+      console.log(
+        `[NevoFlux] Attempt ${i + 1}/${selectorList.length}: clicking '${selector.substring(0, 100)}...'`
+      );
 
       try {
         const result = await browser.nevoflux.click(tabId, selector);
 
         if (result.success === false) {
-          lastError = result.error || { message: "Click returned success=false" };
+          lastError = result.error || { message: 'Click returned success=false' };
           console.log(`[NevoFlux] Attempt ${i + 1} failed:`, lastError.message || lastError);
           continue;
         }
 
         // Check if click had detectable effect (DOM change, network request, or element removed)
         const effective = result.effective === true;
-        console.log(`[NevoFlux] Attempt ${i + 1} - effective: ${effective}, domChanged: ${result.domChanged}, networkRequest: ${result.networkRequestMade}, elementRemoved: ${result.elementRemoved}`);
+        console.log(
+          `[NevoFlux] Attempt ${i + 1} - effective: ${effective}, domChanged: ${result.domChanged}, networkRequest: ${result.networkRequestMade}, elementRemoved: ${result.elementRemoved}`
+        );
 
         if (effective) {
           console.log(`[NevoFlux] Click effective on attempt ${i + 1}`);
           return {
             success: true,
-            result: { element_id, selector, clicked: true, method: "nevoflux_api", attempt: i + 1, ...result },
+            result: {
+              element_id,
+              selector,
+              clicked: true,
+              method: 'nevoflux_api',
+              attempt: i + 1,
+              ...result,
+            },
           };
         }
 
@@ -2702,10 +2965,19 @@ async function executeClickByIdViaApi(tabId, params, timeout_ms) {
     // All attempts had no detectable effect
     // Return last result if any click was executed (might still have worked, just not detected)
     if (lastResult) {
-      console.log(`[NevoFlux] All ${selectorList.length} attempts had no detectable effect, returning last result`);
+      console.log(
+        `[NevoFlux] All ${selectorList.length} attempts had no detectable effect, returning last result`
+      );
       return {
         success: true,
-        result: { element_id, selector: selectorList[selectorList.length - 1], clicked: true, method: "nevoflux_api", effective: false, ...lastResult },
+        result: {
+          element_id,
+          selector: selectorList[selectorList.length - 1],
+          clicked: true,
+          method: 'nevoflux_api',
+          effective: false,
+          ...lastResult,
+        },
       };
     }
 
@@ -2713,12 +2985,16 @@ async function executeClickByIdViaApi(tabId, params, timeout_ms) {
     console.error(`[NevoFlux] All ${selectorList.length} click attempts failed`);
     return {
       success: false,
-      error: { code: -1, message: `All click attempts failed. Last error: ${lastError?.message || "unknown"}`, recoverable: true },
+      error: {
+        code: -1,
+        message: `All click attempts failed. Last error: ${lastError?.message || 'unknown'}`,
+        recoverable: true,
+      },
     };
   } catch (error) {
-    console.error("[NevoFlux] nevoflux.click failed:", error.message);
+    console.error('[NevoFlux] nevoflux.click failed:', error.message);
     // Fallback to content script
-    return await executeInContentScript(tabId, "click_by_id", params, timeout_ms);
+    return await executeInContentScript(tabId, 'click_by_id', params, timeout_ms);
   }
 }
 
@@ -2729,16 +3005,21 @@ async function executeClickByIdViaApi(tabId, params, timeout_ms) {
 async function executeFillByIdViaApi(tabId, params, timeout_ms) {
   const { element_id, value, press_enter = false } = params;
 
-  console.log(`[NevoFlux] executeFillByIdViaApi: element_id=${element_id}, value=${value?.substring(0, 20)}, press_enter=${press_enter}`);
+  console.log(
+    `[NevoFlux] executeFillByIdViaApi: element_id=${element_id}, value=${value?.substring(0, 20)}, press_enter=${press_enter}`
+  );
 
   if (!element_id || value === undefined) {
-    return { success: false, error: { code: -1, message: "element_id and value required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'element_id and value required', recoverable: false },
+    };
   }
 
   // Fallback to content script if API not available
   if (!isNevofluxApiAvailable()) {
-    console.log("[NevoFlux] browser.nevoflux not available, using content script for fill_by_id");
-    return await executeInContentScript(tabId, "fill_by_id", params, timeout_ms);
+    console.log('[NevoFlux] browser.nevoflux not available, using content script for fill_by_id');
+    return await executeInContentScript(tabId, 'fill_by_id', params, timeout_ms);
   }
 
   try {
@@ -2750,17 +3031,23 @@ async function executeFillByIdViaApi(tabId, params, timeout_ms) {
     if (!selector) {
       return {
         success: false,
-        error: { code: -1, message: `Element ID ${element_id} not found. Take a new snapshot first.`, recoverable: true },
+        error: {
+          code: -1,
+          message: `Element ID ${element_id} not found. Take a new snapshot first.`,
+          recoverable: true,
+        },
       };
     }
 
-    console.log(`[NevoFlux] Filling element ${element_id} via browser.nevoflux.fill('${selector}', '${value.substring(0, 20)}...')`);
+    console.log(
+      `[NevoFlux] Filling element ${element_id} via browser.nevoflux.fill('${selector}', '${value.substring(0, 20)}...')`
+    );
 
     // Click to focus first
     console.log(`[NevoFlux] Step 1: Clicking to focus...`);
     const clickResult = await browser.nevoflux.click(tabId, selector);
     console.log(`[NevoFlux] Click result:`, clickResult);
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 100));
 
     // Clear and fill
     console.log(`[NevoFlux] Step 2: Clearing...`);
@@ -2777,26 +3064,32 @@ async function executeFillByIdViaApi(tabId, params, timeout_ms) {
 
     // Press Enter if requested - uses trusted keyboard events
     if (press_enter) {
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 100));
       // Focus again in case it was lost
       console.log(`[NevoFlux] Step 4: Re-focusing...`);
       const focusResult = await browser.nevoflux.focus(tabId, selector);
       console.log(`[NevoFlux] Focus result:`, focusResult);
-      await new Promise(r => setTimeout(r, 50));
+      await new Promise((r) => setTimeout(r, 50));
 
       console.log(`[NevoFlux] Step 5: Pressing Enter...`);
-      const enterResult = await browser.nevoflux.keyPress(tabId, "Enter");
+      const enterResult = await browser.nevoflux.keyPress(tabId, 'Enter');
       console.log(`[NevoFlux] Enter result:`, enterResult);
     }
 
     return {
       success: true,
-      result: { element_id, selector, filled: value, enter_pressed: press_enter, method: "nevoflux_api" },
+      result: {
+        element_id,
+        selector,
+        filled: value,
+        enter_pressed: press_enter,
+        method: 'nevoflux_api',
+      },
     };
   } catch (error) {
-    console.error("[NevoFlux] nevoflux.fill failed at some step:", error.message, error.stack);
+    console.error('[NevoFlux] nevoflux.fill failed at some step:', error.message, error.stack);
     // Fallback to content script
-    return await executeInContentScript(tabId, "fill_by_id", params, timeout_ms);
+    return await executeInContentScript(tabId, 'fill_by_id', params, timeout_ms);
   }
 }
 
@@ -2808,13 +3101,16 @@ async function executeTypeByIdViaApi(tabId, params, timeout_ms) {
   const { element_id, text, press_enter = false } = params;
 
   if (!element_id || text === undefined) {
-    return { success: false, error: { code: -1, message: "element_id and text required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'element_id and text required', recoverable: false },
+    };
   }
 
   // Fallback to content script if API not available
   if (!isNevofluxApiAvailable()) {
-    console.log("[NevoFlux] browser.nevoflux not available, using content script for type_by_id");
-    return await executeInContentScript(tabId, "type_by_id", params, timeout_ms);
+    console.log('[NevoFlux] browser.nevoflux not available, using content script for type_by_id');
+    return await executeInContentScript(tabId, 'type_by_id', params, timeout_ms);
   }
 
   try {
@@ -2824,15 +3120,21 @@ async function executeTypeByIdViaApi(tabId, params, timeout_ms) {
     if (!selector) {
       return {
         success: false,
-        error: { code: -1, message: `Element ID ${element_id} not found. Take a new snapshot first.`, recoverable: true },
+        error: {
+          code: -1,
+          message: `Element ID ${element_id} not found. Take a new snapshot first.`,
+          recoverable: true,
+        },
       };
     }
 
-    console.log(`[NevoFlux] Typing into element ${element_id} via browser.nevoflux.type('${selector}', '${text.substring(0, 20)}...')`);
+    console.log(
+      `[NevoFlux] Typing into element ${element_id} via browser.nevoflux.type('${selector}', '${text.substring(0, 20)}...')`
+    );
 
     // Click to focus first
     await browser.nevoflux.click(tabId, selector);
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 100));
 
     // Type text character by character - uses trusted keyboard events
     const result = await browser.nevoflux.type(tabId, selector, text);
@@ -2843,21 +3145,27 @@ async function executeTypeByIdViaApi(tabId, params, timeout_ms) {
 
     // Press Enter if requested
     if (press_enter) {
-      await new Promise(r => setTimeout(r, 100));
+      await new Promise((r) => setTimeout(r, 100));
       // Focus again in case it was lost
       await browser.nevoflux.focus(tabId, selector);
-      await new Promise(r => setTimeout(r, 50));
-      await browser.nevoflux.keyPress(tabId, "Enter");
+      await new Promise((r) => setTimeout(r, 50));
+      await browser.nevoflux.keyPress(tabId, 'Enter');
     }
 
     return {
       success: true,
-      result: { element_id, selector, typed: text, enter_pressed: press_enter, method: "nevoflux_api" },
+      result: {
+        element_id,
+        selector,
+        typed: text,
+        enter_pressed: press_enter,
+        method: 'nevoflux_api',
+      },
     };
   } catch (error) {
-    console.error("[NevoFlux] nevoflux.type failed:", error.message);
+    console.error('[NevoFlux] nevoflux.type failed:', error.message);
     // Fallback to content script
-    return await executeInContentScript(tabId, "type_by_id", params, timeout_ms);
+    return await executeInContentScript(tabId, 'type_by_id', params, timeout_ms);
   }
 }
 
@@ -2867,7 +3175,7 @@ async function executeTypeByIdViaApi(tabId, params, timeout_ms) {
 async function executeKeyPressViaApi(tabId, params) {
   const { key, modifiers = [] } = params;
   if (!key) {
-    return { success: false, error: { code: -1, message: "key required", recoverable: false } };
+    return { success: false, error: { code: -1, message: 'key required', recoverable: false } };
   }
 
   try {
@@ -2876,8 +3184,10 @@ async function executeKeyPressViaApi(tabId, params) {
   } catch (error) {
     // If the error is "Actor destroyed", it means the page navigated after the key press
     // This is expected for Enter key on forms, so treat it as success
-    if (error.message && error.message.includes("destroyed")) {
-      console.log(`[NevoFlux] keyPress '${key}' triggered navigation (Actor destroyed) - treating as success`);
+    if (error.message && error.message.includes('destroyed')) {
+      console.log(
+        `[NevoFlux] keyPress '${key}' triggered navigation (Actor destroyed) - treating as success`
+      );
       return { success: true, result: { key, navigated: true } };
     }
     return { success: false, error: { code: -1, message: error.message, recoverable: true } };
@@ -2912,17 +3222,17 @@ async function executeGetMarkdownViaApi(tabId, params) {
 async function executeCacheTabMarkdown(tabId, params) {
   const { max_length = 100000 } = params;
 
-  console.log("[NevoFlux] CacheTabMarkdown: Getting markdown for tab", tabId);
+  console.log('[NevoFlux] CacheTabMarkdown: Getting markdown for tab', tabId);
 
   // Get tab info for URL
-  let tabUrl = "";
-  let tabTitle = "";
+  let tabUrl = '';
+  let tabTitle = '';
   try {
     const tab = await browser.tabs.get(tabId);
-    tabUrl = tab.url || "";
-    tabTitle = tab.title || "";
+    tabUrl = tab.url || '';
+    tabTitle = tab.title || '';
   } catch (e) {
-    console.warn("[NevoFlux] CacheTabMarkdown: Failed to get tab info:", e.message);
+    console.warn('[NevoFlux] CacheTabMarkdown: Failed to get tab info:', e.message);
   }
 
   // Get markdown from tab via browser.nevoflux.getMarkdown()
@@ -2933,16 +3243,16 @@ async function executeCacheTabMarkdown(tabId, params) {
     if (result.success === false) {
       return {
         success: false,
-        error: result.error || { code: -1, message: "getMarkdown failed", recoverable: true },
+        error: result.error || { code: -1, message: 'getMarkdown failed', recoverable: true },
       };
     }
 
     // Extract markdown from result
-    if (typeof result === "string") {
+    if (typeof result === 'string') {
       markdown = result;
     } else if (result.markdown) {
       markdown = result.markdown;
-    } else if (result.result && typeof result.result === "string") {
+    } else if (result.result && typeof result.result === 'string') {
       markdown = result.result;
     } else if (result.result && result.result.markdown) {
       markdown = result.result.markdown;
@@ -2963,13 +3273,13 @@ async function executeCacheTabMarkdown(tabId, params) {
   if (!markdown) {
     return {
       success: false,
-      error: { code: -1, message: "No markdown content extracted", recoverable: true },
+      error: { code: -1, message: 'No markdown content extracted', recoverable: true },
     };
   }
 
   // Truncate if needed
   if (markdown.length > max_length) {
-    markdown = markdown.substring(0, max_length) + "\n\n[Content truncated...]";
+    markdown = markdown.substring(0, max_length) + '\n\n[Content truncated...]';
   }
 
   // Generate cache file path using tab URL or ID
@@ -2978,7 +3288,12 @@ async function executeCacheTabMarkdown(tabId, params) {
   const cacheDir = await getCacheDirectory();
   const cacheFilePath = `${cacheDir}/${urlHash}.md`;
 
-  console.log("[NevoFlux] CacheTabMarkdown: Success, markdown length:", markdown.length, "path:", cacheFilePath);
+  console.log(
+    '[NevoFlux] CacheTabMarkdown: Success, markdown length:',
+    markdown.length,
+    'path:',
+    cacheFilePath
+  );
 
   return {
     success: true,
@@ -3009,15 +3324,15 @@ async function executeCacheFile(params) {
   if (!name || !content) {
     return {
       success: false,
-      error: { code: -1, message: "Missing required params: name and content", recoverable: false },
+      error: { code: -1, message: 'Missing required params: name and content', recoverable: false },
     };
   }
 
-  console.log("[NevoFlux] CacheFile: Caching file", name, "mime:", mime_type);
+  console.log('[NevoFlux] CacheFile: Caching file', name, 'mime:', mime_type);
 
   // Generate cache file path
   const timestamp = Date.now();
-  const safeFileName = name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const safeFileName = name.replace(/[^a-zA-Z0-9._-]/g, '_');
   const cacheDir = await getCacheDirectory();
   const cacheFilePath = `${cacheDir}/upload_${timestamp}_${safeFileName}`;
 
@@ -3025,7 +3340,7 @@ async function executeCacheFile(params) {
   let decodedContent;
   try {
     // For text files, decode base64 to string
-    if (mime_type && mime_type.startsWith("text/")) {
+    if (mime_type && mime_type.startsWith('text/')) {
       decodedContent = atob(content);
     } else {
       // For binary files, keep as base64 - agent will handle decoding
@@ -3038,7 +3353,12 @@ async function executeCacheFile(params) {
     };
   }
 
-  console.log("[NevoFlux] CacheFile: Success, path:", cacheFilePath, "size:", decodedContent.length);
+  console.log(
+    '[NevoFlux] CacheFile: Success, path:',
+    cacheFilePath,
+    'size:',
+    decodedContent.length
+  );
 
   return {
     success: true,
@@ -3049,7 +3369,7 @@ async function executeCacheFile(params) {
       mime_type: mime_type,
       // Include content for agent to save to disk
       _content: decodedContent,
-      _is_base64: !mime_type || !mime_type.startsWith("text/"),
+      _is_base64: !mime_type || !mime_type.startsWith('text/'),
     },
   };
 }
@@ -3072,18 +3392,21 @@ async function executeListTabs() {
     }
     // Fallback to standard WebExtension tabs API
     const allTabs = await browser.tabs.query({});
-    const tabs = allTabs.map(t => ({
+    const tabs = allTabs.map((t) => ({
       id: t.id,
-      url: t.url || "",
-      title: t.title || "",
+      url: t.url || '',
+      title: t.title || '',
       active: t.active,
       index: t.index,
       windowId: t.windowId,
-      status: t.status || "complete",
+      status: t.status || 'complete',
     }));
     return { success: true, result: { tabs } };
   } catch (error) {
-    return { success: false, error: { code: -1, message: error.message || String(error), recoverable: true } };
+    return {
+      success: false,
+      error: { code: -1, message: error.message || String(error), recoverable: true },
+    };
   }
 }
 
@@ -3106,18 +3429,21 @@ async function executeQueryTabs(params) {
     if (params?.url) query.url = params.url;
     if (params?.title) query.title = params.title;
     const allTabs = await browser.tabs.query(query);
-    const tabs = allTabs.map(t => ({
+    const tabs = allTabs.map((t) => ({
       id: t.id,
-      url: t.url || "",
-      title: t.title || "",
+      url: t.url || '',
+      title: t.title || '',
       active: t.active,
       index: t.index,
       windowId: t.windowId,
-      status: t.status || "complete",
+      status: t.status || 'complete',
     }));
     return { success: true, result: { tabs } };
   } catch (error) {
-    return { success: false, error: { code: -1, message: error.message || String(error), recoverable: true } };
+    return {
+      success: false,
+      error: { code: -1, message: error.message || String(error), recoverable: true },
+    };
   }
 }
 
@@ -3130,22 +3456,18 @@ async function executeQueryTabs(params) {
  * Returns search results without requiring an API key
  */
 async function executeWebSearch(params) {
-  const {
-    query,
-    max_results = 10,
-    timeout_ms = 30000,
-  } = params;
+  const { query, max_results = 10, timeout_ms = 30000 } = params;
 
   // Validate query
-  if (!query || typeof query !== "string" || query.trim().length === 0) {
+  if (!query || typeof query !== 'string' || query.trim().length === 0) {
     return {
       success: false,
-      error: { code: 7001, message: "Search query is required", recoverable: false },
+      error: { code: 7001, message: 'Search query is required', recoverable: false },
     };
   }
 
   const searchQuery = query.trim();
-  console.log("[NevoFlux] WebSearch: Searching for:", searchQuery);
+  console.log('[NevoFlux] WebSearch: Searching for:', searchQuery);
 
   // Use DuckDuckGo HTML search
   const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
@@ -3158,15 +3480,16 @@ async function executeWebSearch(params) {
     response = await fetch(searchUrl, {
       signal: controller.signal,
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
       },
     });
 
     clearTimeout(timeoutId);
   } catch (e) {
-    const message = e.name === "AbortError" ? "Search timed out" : e.message;
+    const message = e.name === 'AbortError' ? 'Search timed out' : e.message;
     return {
       success: false,
       error: { code: 7002, message: `Search failed: ${message}`, recoverable: true },
@@ -3176,7 +3499,11 @@ async function executeWebSearch(params) {
   if (!response.ok) {
     return {
       success: false,
-      error: { code: 7002, message: `HTTP ${response.status}: ${response.statusText}`, recoverable: true },
+      error: {
+        code: 7002,
+        message: `HTTP ${response.status}: ${response.statusText}`,
+        recoverable: true,
+      },
     };
   }
 
@@ -3194,7 +3521,7 @@ async function executeWebSearch(params) {
   // Parse search results from DuckDuckGo HTML
   const results = parseDuckDuckGoResults(html, max_results);
 
-  console.log("[NevoFlux] WebSearch: Found", results.length, "results");
+  console.log('[NevoFlux] WebSearch: Found', results.length, 'results');
 
   return {
     success: true,
@@ -3217,28 +3544,28 @@ function parseDuckDuckGoResults(html, maxResults) {
 
   try {
     const parser = new DOMParser();
-    const doc = parser.parseFromString(html, "text/html");
+    const doc = parser.parseFromString(html, 'text/html');
 
     // DuckDuckGo HTML results are in div.result elements
-    const resultElements = doc.querySelectorAll(".result");
+    const resultElements = doc.querySelectorAll('.result');
 
     for (const el of resultElements) {
       if (results.length >= maxResults) break;
 
       // Skip ads and non-result elements
-      if (el.classList.contains("result--ad")) continue;
+      if (el.classList.contains('result--ad')) continue;
 
       // Extract title and URL from the result__a link
-      const titleLink = el.querySelector(".result__a");
+      const titleLink = el.querySelector('.result__a');
       if (!titleLink) continue;
 
-      const title = titleLink.textContent?.trim() || "";
-      let url = titleLink.getAttribute("href") || "";
+      const title = titleLink.textContent?.trim() || '';
+      let url = titleLink.getAttribute('href') || '';
 
       // DuckDuckGo wraps URLs in a redirect, extract the actual URL
-      if (url.startsWith("//duckduckgo.com/l/?")) {
-        const urlParams = new URLSearchParams(url.split("?")[1] || "");
-        url = urlParams.get("uddg") || url;
+      if (url.startsWith('//duckduckgo.com/l/?')) {
+        const urlParams = new URLSearchParams(url.split('?')[1] || '');
+        url = urlParams.get('uddg') || url;
       }
 
       // Decode URL if needed
@@ -3249,11 +3576,11 @@ function parseDuckDuckGoResults(html, maxResults) {
       }
 
       // Skip if no valid URL
-      if (!url || url.startsWith("//duckduckgo.com")) continue;
+      if (!url || url.startsWith('//duckduckgo.com')) continue;
 
       // Extract snippet from result__snippet
-      const snippetEl = el.querySelector(".result__snippet");
-      const snippet = snippetEl?.textContent?.trim() || "";
+      const snippetEl = el.querySelector('.result__snippet');
+      const snippet = snippetEl?.textContent?.trim() || '';
 
       results.push({
         title,
@@ -3262,7 +3589,7 @@ function parseDuckDuckGoResults(html, maxResults) {
       });
     }
   } catch (e) {
-    console.error("[NevoFlux] WebSearch: Failed to parse results:", e.message);
+    console.error('[NevoFlux] WebSearch: Failed to parse results:', e.message);
   }
 
   return results;
@@ -3279,24 +3606,19 @@ const pendingAskUserRequests = new Map();
  * Execute ask user: Show question to user and wait for response
  */
 async function executeAskUser(params) {
-  const {
-    question,
-    options = [],
-    allow_custom = true,
-    timeout_ms = 60000,
-  } = params;
+  const { question, options = [], allow_custom = true, timeout_ms = 60000 } = params;
 
   // Validate question
-  if (!question || typeof question !== "string" || question.trim().length === 0) {
+  if (!question || typeof question !== 'string' || question.trim().length === 0) {
     return {
       success: false,
-      error: { code: 8001, message: "Question is required", recoverable: false },
+      error: { code: 8001, message: 'Question is required', recoverable: false },
     };
   }
 
   const requestId = `ask_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-  console.log("[NevoFlux] AskUser: Sending question to sidebar:", question);
+  console.log('[NevoFlux] AskUser: Sending question to sidebar:', question);
 
   // Create promise that will be resolved when user responds
   return new Promise((resolve) => {
@@ -3304,10 +3626,10 @@ async function executeAskUser(params) {
     const timeoutId = setTimeout(() => {
       if (pendingAskUserRequests.has(requestId)) {
         pendingAskUserRequests.delete(requestId);
-        console.log("[NevoFlux] AskUser: Timed out waiting for user response");
+        console.log('[NevoFlux] AskUser: Timed out waiting for user response');
         resolve({
           success: false,
-          error: { code: 8001, message: "User interaction timed out", recoverable: true },
+          error: { code: 8001, message: 'User interaction timed out', recoverable: true },
         });
       }
     }, timeout_ms);
@@ -3340,7 +3662,7 @@ function handleAskUserResponse(payload) {
 
   const pending = pendingAskUserRequests.get(request_id);
   if (!pending) {
-    console.warn("[NevoFlux] AskUser: No pending request found for", request_id);
+    console.warn('[NevoFlux] AskUser: No pending request found for', request_id);
     return;
   }
 
@@ -3349,15 +3671,15 @@ function handleAskUserResponse(payload) {
   pendingAskUserRequests.delete(request_id);
 
   if (cancelled) {
-    console.log("[NevoFlux] AskUser: User cancelled");
+    console.log('[NevoFlux] AskUser: User cancelled');
     pending.resolve({
       success: false,
-      error: { code: 8001, message: "User cancelled the interaction", recoverable: true },
+      error: { code: 8001, message: 'User cancelled the interaction', recoverable: true },
     });
     return;
   }
 
-  console.log("[NevoFlux] AskUser: Received response:", answer);
+  console.log('[NevoFlux] AskUser: Received response:', answer);
   pending.resolve({
     success: true,
     result: {
@@ -3379,7 +3701,7 @@ async function executeInContentScript(tabId, action, params, timeout_ms) {
   // Helper function to send message to content script
   const sendActionMessage = () => {
     return browser.tabs.sendMessage(tabId, {
-      type: "browser_tool_action",
+      type: 'browser_tool_action',
       action,
       params,
     });
@@ -3387,10 +3709,10 @@ async function executeInContentScript(tabId, action, params, timeout_ms) {
 
   // Helper function to inject content script
   const injectContentScript = async () => {
-    console.log("[NevoFlux] Injecting content script into tab", tabId);
+    console.log('[NevoFlux] Injecting content script into tab', tabId);
     await browser.scripting.executeScript({
       target: { tabId },
-      files: ["content/content.js"],
+      files: ['content/content.js'],
     });
     // Small delay to let the script initialize
     await new Promise((r) => setTimeout(r, 100));
@@ -3404,8 +3726,12 @@ async function executeInContentScript(tabId, action, params, timeout_ms) {
     // First try: send message to existing content script
     const response = await Promise.race([
       sendActionMessage(),
-      new Promise((_, reject) =>
-        (timeoutId = setTimeout(() => reject(new Error(`Action timed out after ${timeout_ms}ms`)), timeout_ms))
+      new Promise(
+        (_, reject) =>
+          (timeoutId = setTimeout(
+            () => reject(new Error(`Action timed out after ${timeout_ms}ms`)),
+            timeout_ms
+          ))
       ),
     ]);
 
@@ -3418,7 +3744,7 @@ async function executeInContentScript(tabId, action, params, timeout_ms) {
     }
   } catch (error) {
     // Content script not loaded, try injecting it
-    console.warn("[NevoFlux] Content script not responding, injecting:", error.message);
+    console.warn('[NevoFlux] Content script not responding, injecting:', error.message);
 
     try {
       // Calculate remaining time after first attempt
@@ -3429,8 +3755,12 @@ async function executeInContentScript(tabId, action, params, timeout_ms) {
       // Retry the action after injection with remaining time
       const response = await Promise.race([
         sendActionMessage(),
-        new Promise((_, reject) =>
-          (timeoutId = setTimeout(() => reject(new Error(`Action timed out after ${timeout_ms}ms`)), remainingMs))
+        new Promise(
+          (_, reject) =>
+            (timeoutId = setTimeout(
+              () => reject(new Error(`Action timed out after ${timeout_ms}ms`)),
+              remainingMs
+            ))
         ),
       ]);
 
@@ -3443,10 +3773,14 @@ async function executeInContentScript(tabId, action, params, timeout_ms) {
       }
     } catch (injectError) {
       if (timeoutId) clearTimeout(timeoutId);
-      console.error("[NevoFlux] Failed to execute in content script:", injectError.message);
+      console.error('[NevoFlux] Failed to execute in content script:', injectError.message);
       return {
         success: false,
-        error: { code: -1, message: `Content script error: ${injectError.message}`, recoverable: true },
+        error: {
+          code: -1,
+          message: `Content script error: ${injectError.message}`,
+          recoverable: true,
+        },
       };
     }
   }
@@ -3473,15 +3807,15 @@ async function executeWebFetch(params) {
   if (!url) {
     return {
       success: false,
-      error: { code: 6002, message: "URL is required", recoverable: false },
+      error: { code: 6002, message: 'URL is required', recoverable: false },
     };
   }
 
   let parsedUrl;
   try {
     parsedUrl = new URL(url);
-    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
-      throw new Error("Only HTTP/HTTPS URLs are supported");
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      throw new Error('Only HTTP/HTTPS URLs are supported');
     }
   } catch (e) {
     return {
@@ -3501,25 +3835,25 @@ async function executeWebFetch(params) {
     try {
       const cached = await checkCache(cacheFilePath, metaFilePath);
       if (cached) {
-        console.log("[NevoFlux] WebFetch: Using cached content for", url);
+        console.log('[NevoFlux] WebFetch: Using cached content for', url);
         return {
           success: true,
           result: {
             file_path: cacheFilePath,
             url: url,
-            title: cached.title || "",
+            title: cached.title || '',
             content_length: cached.content_length || 0,
             cached: true,
           },
         };
       }
     } catch (e) {
-      console.log("[NevoFlux] WebFetch: Cache check failed, will fetch fresh:", e.message);
+      console.log('[NevoFlux] WebFetch: Cache check failed, will fetch fresh:', e.message);
     }
   }
 
   // Fetch the URL
-  console.log("[NevoFlux] WebFetch: Fetching", url);
+  console.log('[NevoFlux] WebFetch: Fetching', url);
   let response;
   try {
     const controller = new AbortController();
@@ -3528,14 +3862,14 @@ async function executeWebFetch(params) {
     response = await fetch(url, {
       signal: controller.signal,
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; NevoFlux/1.0; +https://nevoflux.com)",
-        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        'User-Agent': 'Mozilla/5.0 (compatible; NevoFlux/1.0; +https://nevoflux.com)',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       },
     });
 
     clearTimeout(timeoutId);
   } catch (e) {
-    const message = e.name === "AbortError" ? "Request timed out" : e.message;
+    const message = e.name === 'AbortError' ? 'Request timed out' : e.message;
     return {
       success: false,
       error: { code: 6001, message: `Fetch failed: ${message}`, recoverable: true },
@@ -3545,16 +3879,24 @@ async function executeWebFetch(params) {
   if (!response.ok) {
     return {
       success: false,
-      error: { code: 6001, message: `HTTP ${response.status}: ${response.statusText}`, recoverable: true },
+      error: {
+        code: 6001,
+        message: `HTTP ${response.status}: ${response.statusText}`,
+        recoverable: true,
+      },
     };
   }
 
   // Check content type
-  const contentType = response.headers.get("content-type") || "";
-  if (!contentType.includes("text/html") && !contentType.includes("application/xhtml")) {
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
     return {
       success: false,
-      error: { code: 6003, message: `Content type not supported: ${contentType}`, recoverable: false },
+      error: {
+        code: 6003,
+        message: `Content type not supported: ${contentType}`,
+        recoverable: false,
+      },
     };
   }
 
@@ -3587,31 +3929,39 @@ async function executeWebFetch(params) {
   } catch (e) {
     return {
       success: false,
-      error: { code: 6001, message: `Markdown conversion failed: ${e.message}`, recoverable: false },
+      error: {
+        code: 6001,
+        message: `Markdown conversion failed: ${e.message}`,
+        recoverable: false,
+      },
     };
   }
 
   // Truncate if needed
   if (markdown.length > max_length) {
-    markdown = markdown.substring(0, max_length) + "\n\n[Content truncated...]";
+    markdown = markdown.substring(0, max_length) + '\n\n[Content truncated...]';
   }
 
   // Save to cache via native messaging (agent will write the file)
   try {
-    await saveToCacheViaAgent(cacheFilePath, metaFilePath, markdown, { url, title, content_length: markdown.length });
+    await saveToCacheViaAgent(cacheFilePath, metaFilePath, markdown, {
+      url,
+      title,
+      content_length: markdown.length,
+    });
   } catch (e) {
-    console.error("[NevoFlux] WebFetch: Failed to save cache:", e.message);
+    console.error('[NevoFlux] WebFetch: Failed to save cache:', e.message);
     // Continue anyway, just won't be cached
   }
 
-  console.log("[NevoFlux] WebFetch: Success, markdown length:", markdown.length);
+  console.log('[NevoFlux] WebFetch: Success, markdown length:', markdown.length);
 
   return {
     success: true,
     result: {
       file_path: cacheFilePath,
       url: url,
-      title: title || "",
+      title: title || '',
       content_length: markdown.length,
       cached: false,
       // Include markdown directly for agent to save
@@ -3626,9 +3976,9 @@ async function executeWebFetch(params) {
 async function hashString(str) {
   const encoder = new TextEncoder();
   const data = encoder.encode(str);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
@@ -3646,10 +3996,10 @@ async function getCacheDirectory() {
 async function getHomeDirectory() {
   // This will be determined by the agent side
   // For now, return a placeholder that agent will resolve
-  if (navigator.platform.startsWith("Win")) {
-    return "%USERPROFILE%";
+  if (navigator.platform.startsWith('Win')) {
+    return '%USERPROFILE%';
   }
-  return "~";
+  return '~';
 }
 
 /**
@@ -3680,10 +4030,10 @@ function htmlToMarkdown(html, options = {}) {
 
   // Parse HTML
   const parser = new DOMParser();
-  const doc = parser.parseFromString(html, "text/html");
+  const doc = parser.parseFromString(html, 'text/html');
 
   // Get title
-  const title = doc.title || "";
+  const title = doc.title || '';
 
   // Find main content
   const mainContent = findMainContent(doc);
@@ -3699,19 +4049,19 @@ function htmlToMarkdown(html, options = {}) {
  */
 function findMainContent(doc) {
   const selectors = [
-    "article",
-    "main",
+    'article',
+    'main',
     "[role='main']",
-    "#content",
-    ".content",
-    "#main",
-    ".main",
-    ".post",
-    ".entry-content",
-    ".post-content",
-    ".article-content",
-    ".markdown-body", // GitHub
-    ".documentation", // Docs sites
+    '#content',
+    '.content',
+    '#main',
+    '.main',
+    '.post',
+    '.entry-content',
+    '.post-content',
+    '.article-content',
+    '.markdown-body', // GitHub
+    '.documentation', // Docs sites
   ];
 
   for (const selector of selectors) {
@@ -3728,11 +4078,11 @@ function findMainContent(doc) {
  * Convert DOM element to markdown
  */
 function convertElementToMarkdown(el, options, depth = 0) {
-  if (!el) return "";
+  if (!el) return '';
 
   const lines = [];
   processElement(el, options, lines, depth);
-  return lines.join("\n");
+  return lines.join('\n');
 }
 
 /**
@@ -3754,51 +4104,74 @@ function processElement(el, options, lines, depth) {
   const tagName = el.tagName.toUpperCase();
 
   // Skip unwanted elements
-  const skipTags = ["SCRIPT", "STYLE", "NOSCRIPT", "SVG", "IFRAME", "NAV", "HEADER", "FOOTER", "ASIDE"];
+  const skipTags = [
+    'SCRIPT',
+    'STYLE',
+    'NOSCRIPT',
+    'SVG',
+    'IFRAME',
+    'NAV',
+    'HEADER',
+    'FOOTER',
+    'ASIDE',
+  ];
   if (skipTags.includes(tagName)) return;
 
   // Skip by class/id patterns
-  const className = (el.className?.toString() || "").toLowerCase();
-  const id = (el.id || "").toLowerCase();
-  const skipPatterns = ["nav", "menu", "sidebar", "ad", "advertisement", "banner", "social", "comment", "related"];
+  const className = (el.className?.toString() || '').toLowerCase();
+  const id = (el.id || '').toLowerCase();
+  const skipPatterns = [
+    'nav',
+    'menu',
+    'sidebar',
+    'ad',
+    'advertisement',
+    'banner',
+    'social',
+    'comment',
+    'related',
+  ];
   for (const pattern of skipPatterns) {
-    if ((className.includes(pattern) || id.includes(pattern)) && el.textContent?.trim().length < 500) {
+    if (
+      (className.includes(pattern) || id.includes(pattern)) &&
+      el.textContent?.trim().length < 500
+    ) {
       return;
     }
   }
 
   // Handle specific tags
   switch (tagName) {
-    case "H1":
-    case "H2":
-    case "H3":
-    case "H4":
-    case "H5":
-    case "H6": {
+    case 'H1':
+    case 'H2':
+    case 'H3':
+    case 'H4':
+    case 'H5':
+    case 'H6': {
       const level = parseInt(tagName.charAt(1), 10);
       const text = el.textContent?.trim();
       if (text) {
-        lines.push("");
-        lines.push("#".repeat(level) + " " + text);
-        lines.push("");
+        lines.push('');
+        lines.push('#'.repeat(level) + ' ' + text);
+        lines.push('');
       }
       return;
     }
 
-    case "P": {
+    case 'P': {
       const text = getInlineText(el, options);
       if (text.trim()) {
-        lines.push("");
+        lines.push('');
         lines.push(text);
-        lines.push("");
+        lines.push('');
       }
       return;
     }
 
-    case "A": {
+    case 'A': {
       const text = el.textContent?.trim();
       const href = el.href;
-      if (text && href && !href.startsWith("javascript:")) {
+      if (text && href && !href.startsWith('javascript:')) {
         lines.push(`[${text}](${href})`);
       } else if (text) {
         lines.push(text);
@@ -3806,83 +4179,83 @@ function processElement(el, options, lines, depth) {
       return;
     }
 
-    case "IMG": {
+    case 'IMG': {
       if (options.includeImages) {
-        const alt = el.alt || el.title || "image";
+        const alt = el.alt || el.title || 'image';
         const src = el.src;
         if (src) lines.push(`![${alt}](${src})`);
       }
       return;
     }
 
-    case "UL":
-    case "OL": {
-      lines.push("");
-      processList(el, options, lines, tagName === "OL", depth);
-      lines.push("");
+    case 'UL':
+    case 'OL': {
+      lines.push('');
+      processList(el, options, lines, tagName === 'OL', depth);
+      lines.push('');
       return;
     }
 
-    case "PRE": {
-      const codeEl = el.querySelector("code");
+    case 'PRE': {
+      const codeEl = el.querySelector('code');
       const code = codeEl ? codeEl.textContent : el.textContent;
-      const lang = codeEl?.className.match(/language-(\w+)/)?.[1] || "";
-      lines.push("");
-      lines.push("```" + lang);
-      lines.push(code?.trim() || "");
-      lines.push("```");
-      lines.push("");
+      const lang = codeEl?.className.match(/language-(\w+)/)?.[1] || '';
+      lines.push('');
+      lines.push('```' + lang);
+      lines.push(code?.trim() || '');
+      lines.push('```');
+      lines.push('');
       return;
     }
 
-    case "CODE": {
-      if (el.parentElement?.tagName !== "PRE") {
+    case 'CODE': {
+      if (el.parentElement?.tagName !== 'PRE') {
         const text = el.textContent?.trim();
-        if (text) lines.push("`" + text + "`");
+        if (text) lines.push('`' + text + '`');
       }
       return;
     }
 
-    case "BLOCKQUOTE": {
-      lines.push("");
+    case 'BLOCKQUOTE': {
+      lines.push('');
       const quoteLines = [];
       for (const child of el.childNodes) {
         processElement(child, options, quoteLines, depth);
       }
       for (const line of quoteLines) {
-        if (line.trim()) lines.push("> " + line);
+        if (line.trim()) lines.push('> ' + line);
       }
-      lines.push("");
+      lines.push('');
       return;
     }
 
-    case "HR": {
-      lines.push("");
-      lines.push("---");
-      lines.push("");
+    case 'HR': {
+      lines.push('');
+      lines.push('---');
+      lines.push('');
       return;
     }
 
-    case "STRONG":
-    case "B": {
+    case 'STRONG':
+    case 'B': {
       const text = el.textContent?.trim();
-      if (text) lines.push("**" + text + "**");
+      if (text) lines.push('**' + text + '**');
       return;
     }
 
-    case "EM":
-    case "I": {
+    case 'EM':
+    case 'I': {
       const text = el.textContent?.trim();
-      if (text) lines.push("*" + text + "*");
+      if (text) lines.push('*' + text + '*');
       return;
     }
 
-    case "TABLE": {
+    case 'TABLE': {
       const tableMarkdown = convertTable(el);
       if (tableMarkdown) {
-        lines.push("");
+        lines.push('');
         lines.push(tableMarkdown);
-        lines.push("");
+        lines.push('');
       }
       return;
     }
@@ -3900,28 +4273,28 @@ function processElement(el, options, lines, depth) {
  * Get inline text content
  */
 function getInlineText(el, options) {
-  let text = "";
+  let text = '';
   for (const child of el.childNodes) {
     if (child.nodeType === 3) {
       text += child.textContent;
     } else if (child.nodeType === 1) {
       const tag = child.tagName.toUpperCase();
-      if (tag === "A") {
+      if (tag === 'A') {
         const href = child.href;
         const linkText = child.textContent?.trim();
-        if (linkText && href && !href.startsWith("javascript:")) {
+        if (linkText && href && !href.startsWith('javascript:')) {
           text += `[${linkText}](${href})`;
         } else {
-          text += linkText || "";
+          text += linkText || '';
         }
-      } else if (tag === "STRONG" || tag === "B") {
-        text += "**" + child.textContent + "**";
-      } else if (tag === "EM" || tag === "I") {
-        text += "*" + child.textContent + "*";
-      } else if (tag === "CODE") {
-        text += "`" + child.textContent + "`";
-      } else if (tag === "BR") {
-        text += "  \n";
+      } else if (tag === 'STRONG' || tag === 'B') {
+        text += '**' + child.textContent + '**';
+      } else if (tag === 'EM' || tag === 'I') {
+        text += '*' + child.textContent + '*';
+      } else if (tag === 'CODE') {
+        text += '`' + child.textContent + '`';
+      } else if (tag === 'BR') {
+        text += '  \n';
       } else {
         text += child.textContent;
       }
@@ -3934,13 +4307,13 @@ function getInlineText(el, options) {
  * Process list elements
  */
 function processList(listEl, options, lines, isOrdered, depth) {
-  const indent = "  ".repeat(depth);
+  const indent = '  '.repeat(depth);
   let counter = 1;
 
   for (const li of listEl.children) {
-    if (li.tagName !== "LI") continue;
+    if (li.tagName !== 'LI') continue;
 
-    const prefix = isOrdered ? `${counter}. ` : "- ";
+    const prefix = isOrdered ? `${counter}. ` : '- ';
     const content = getInlineText(li, options);
 
     if (content.trim()) {
@@ -3949,8 +4322,8 @@ function processList(listEl, options, lines, isOrdered, depth) {
 
     // Handle nested lists
     for (const child of li.children) {
-      if (child.tagName === "UL" || child.tagName === "OL") {
-        processList(child, options, lines, child.tagName === "OL", depth + 1);
+      if (child.tagName === 'UL' || child.tagName === 'OL') {
+        processList(child, options, lines, child.tagName === 'OL', depth + 1);
       }
     }
 
@@ -3966,18 +4339,18 @@ function convertTable(tableEl) {
   let headerRow = [];
   let hasHeader = false;
 
-  for (const tr of tableEl.querySelectorAll("tr")) {
-    const cells = tr.querySelectorAll("th, td");
+  for (const tr of tableEl.querySelectorAll('tr')) {
+    const cells = tr.querySelectorAll('th, td');
     const rowData = [];
 
     for (const cell of cells) {
-      rowData.push(cell.textContent?.trim().replace(/\|/g, "\\|") || "");
+      rowData.push(cell.textContent?.trim().replace(/\|/g, '\\|') || '');
     }
 
     if (rowData.length === 0) continue;
 
     // First row with TH is header
-    if (!hasHeader && tr.querySelector("th")) {
+    if (!hasHeader && tr.querySelector('th')) {
       headerRow = rowData;
       hasHeader = true;
       continue;
@@ -3991,22 +4364,22 @@ function convertTable(tableEl) {
     headerRow = rows.shift();
   }
 
-  if (headerRow.length === 0) return "";
+  if (headerRow.length === 0) return '';
 
   const colCount = headerRow.length;
   const lines = [];
 
   // Header
-  lines.push("| " + headerRow.join(" | ") + " |");
-  lines.push("| " + headerRow.map(() => "---").join(" | ") + " |");
+  lines.push('| ' + headerRow.join(' | ') + ' |');
+  lines.push('| ' + headerRow.map(() => '---').join(' | ') + ' |');
 
   // Rows
   for (const row of rows) {
-    while (row.length < colCount) row.push("");
-    lines.push("| " + row.slice(0, colCount).join(" | ") + " |");
+    while (row.length < colCount) row.push('');
+    lines.push('| ' + row.slice(0, colCount).join(' | ') + ' |');
   }
 
-  return lines.join("\n");
+  return lines.join('\n');
 }
 
 /**
@@ -4014,8 +4387,8 @@ function convertTable(tableEl) {
  */
 function cleanMarkdown(markdown) {
   return markdown
-    .replace(/\n{3,}/g, "\n\n") // Remove excessive blank lines
-    .replace(/[ \t]+$/gm, "") // Remove trailing whitespace
+    .replace(/\n{3,}/g, '\n\n') // Remove excessive blank lines
+    .replace(/[ \t]+$/gm, '') // Remove trailing whitespace
     .trim();
 }
 
@@ -4026,10 +4399,10 @@ function cleanMarkdown(markdown) {
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const msgType = message.type;
 
-  console.log("[NevoFlux] Background received:", msgType);
+  console.log('[NevoFlux] Background received:', msgType);
 
   // Handle Background API calls ("bg:" prefix)
-  if (msgType && msgType.startsWith("bg:")) {
+  if (msgType && msgType.startsWith('bg:')) {
     return handleBackgroundAPI(msgType, message, sendResponse);
   }
 
@@ -4097,107 +4470,122 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
         try {
           const payload = message.payload;
           // Inject canvas context hint for chat messages
-          if (payload?.type === "chat_message" && payload?.payload?.content) {
+          if (payload?.type === 'chat_message' && payload?.payload?.content) {
             const hint = await getActiveCanvasHint();
             if (hint) {
-              payload.payload.content = hint + "\n\n" + payload.payload.content;
+              payload.payload.content = hint + '\n\n' + payload.payload.content;
             }
           }
           const sent = channelManager.sendToAgent(payload);
           sendResponse({ success: sent });
         } catch (e) {
-          console.error("[NevoFlux] SEND_TO_AGENT error:", e);
+          console.error('[NevoFlux] SEND_TO_AGENT error:', e);
           sendResponse({ success: false });
         }
       })();
       return true; // Keep sendResponse valid for async
 
     case BackgroundAPI.EXEC_TOOL:
-      executeBrowserTool(message.payload, "sidebar")
+      executeBrowserTool(message.payload, 'sidebar')
         .then((result) => sendResponse(result))
-        .catch((err) => sendResponse({
-          success: false,
-          error: { code: -1, message: err.message, recoverable: true },
-        }));
+        .catch((err) =>
+          sendResponse({
+            success: false,
+            error: { code: -1, message: err.message, recoverable: true },
+          })
+        );
       return true; // Keep sendResponse valid for async
 
     case BackgroundAPI.GET_TAB_CONTEXT:
       // Support optional tab_id parameter to get specific tab context
       const requestedTabId = message.tab_id ?? null;
-      console.log("[NevoFlux] GET_TAB_CONTEXT requested, tab_id:", requestedTabId, "full message:", message);
+      console.log(
+        '[NevoFlux] GET_TAB_CONTEXT requested, tab_id:',
+        requestedTabId,
+        'full message:',
+        message
+      );
       getTabContext(requestedTabId)
         .then((ctx) => {
-          console.log("[NevoFlux] GET_TAB_CONTEXT returning:", ctx);
+          console.log('[NevoFlux] GET_TAB_CONTEXT returning:', ctx);
           sendResponse(ctx);
         })
         .catch(() => sendResponse(null));
       return true; // Keep sendResponse valid for async
 
     case BackgroundAPI.SIDEBAR_CLOSE:
-      browser.sidebarAction.close()
+      browser.sidebarAction
+        .close()
         .then(() => sendResponse({ success: true }))
         .catch((err) => {
-          console.warn("[NevoFlux] Failed to close sidebar:", err);
+          console.warn('[NevoFlux] Failed to close sidebar:', err);
           sendResponse({ success: false, error: err.message });
         });
       return true; // Keep sendResponse valid for async
 
     case BackgroundAPI.SIDEBAR_OPEN:
-      browser.sidebarAction.open()
+      browser.sidebarAction
+        .open()
         .then(() => sendResponse({ success: true }))
         .catch((err) => {
-          console.warn("[NevoFlux] Failed to open sidebar:", err);
+          console.warn('[NevoFlux] Failed to open sidebar:', err);
           sendResponse({ success: false, error: err.message });
         });
       return true; // Keep sendResponse valid for async
 
-    case "bg:get_window_session": {
+    case 'bg:get_window_session': {
       const windowId = message.windowId;
       if (!windowId) {
-        sendResponse({ success: false, error: "windowId required" });
+        sendResponse({ success: false, error: 'windowId required' });
         return true;
       }
-      getWindowSession(windowId).then(sessionId => {
-        sendResponse({ success: true, sessionId });
-      }).catch(e => {
-        sendResponse({ success: false, error: e.message });
-      });
+      getWindowSession(windowId)
+        .then((sessionId) => {
+          sendResponse({ success: true, sessionId });
+        })
+        .catch((e) => {
+          sendResponse({ success: false, error: e.message });
+        });
       return true;
     }
 
-    case "bg:set_window_session": {
+    case 'bg:set_window_session': {
       const { windowId: wId, sessionId: sId } = message;
       if (!wId || !sId) {
-        sendResponse({ success: false, error: "windowId and sessionId required" });
+        sendResponse({ success: false, error: 'windowId and sessionId required' });
         return true;
       }
-      setWindowSession(wId, sId).then(() => {
-        sendResponse({ success: true });
-      }).catch(e => {
-        sendResponse({ success: false, error: e.message });
-      });
+      setWindowSession(wId, sId)
+        .then(() => {
+          sendResponse({ success: true });
+        })
+        .catch((e) => {
+          sendResponse({ success: false, error: e.message });
+        });
       return true;
     }
 
-    case "bg:new_session": {
+    case 'bg:new_session': {
       const winId = message.windowId;
       if (!winId) {
-        sendResponse({ success: false, error: "windowId required" });
+        sendResponse({ success: false, error: 'windowId required' });
         return true;
       }
       const newSessionId = `sess-${Date.now().toString(16)}-${Math.random().toString(16).slice(2, 10)}`;
-      setWindowSession(winId, newSessionId).then(() => {
-        sendResponse({ success: true, sessionId: newSessionId });
-      }).catch(e => {
-        sendResponse({ success: false, error: e.message });
-      });
+      setWindowSession(winId, newSessionId)
+        .then(() => {
+          sendResponse({ success: true, sessionId: newSessionId });
+        })
+        .catch((e) => {
+          sendResponse({ success: false, error: e.message });
+        });
       return true;
     }
 
-    case "bg:open_artifact": {
+    case 'bg:open_artifact': {
       const artifactId = message.id;
       if (!artifactId) {
-        sendResponse({ success: false, error: "id required" });
+        sendResponse({ success: false, error: 'id required' });
         return true;
       }
 
@@ -4208,21 +4596,21 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
           if (!existing || !existing.success) {
             // Not in ContentStore — request from backend
             channelManager.sendToAgent({
-              type: "system_command",
+              type: 'system_command',
               payload: {
                 request_id: `art-get-${Date.now()}`,
-                command: "artifact.get",
+                command: 'artifact.get',
                 params: { artifact_id: artifactId },
               },
             });
           }
         } catch (e) {
-          console.warn("[NevoFlux] getArtifact check failed, requesting from backend:", e);
+          console.warn('[NevoFlux] getArtifact check failed, requesting from backend:', e);
           channelManager.sendToAgent({
-            type: "system_command",
+            type: 'system_command',
             payload: {
               request_id: `art-get-${Date.now()}`,
-              command: "artifact.get",
+              command: 'artifact.get',
               params: { artifact_id: artifactId },
             },
           });
@@ -4262,11 +4650,11 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
     case BackgroundAPI.GET_SETTINGS: {
       (async () => {
         try {
-          const key = message.key || "settings";
+          const key = message.key || 'settings';
           const result = await browser.nevoflux.getSettings(key);
           sendResponse({ success: true, data: result?.data || null });
         } catch (e) {
-          console.error("[NevoFlux] GET_SETTINGS error:", e);
+          console.error('[NevoFlux] GET_SETTINGS error:', e);
           sendResponse({ success: false, error: e.message });
         }
       })();
@@ -4274,8 +4662,8 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
     }
 
     default:
-      console.warn("[NevoFlux] Unknown Background API:", apiType);
-      sendResponse({ success: false, error: "Unknown API" });
+      console.warn('[NevoFlux] Unknown Background API:', apiType);
+      sendResponse({ success: false, error: 'Unknown API' });
   }
 }
 
@@ -4301,7 +4689,7 @@ browser.tabs.onActivated.addListener(tabEventListeners.onActivated);
 
 // Update tab context when tab URL changes
 tabEventListeners.onUpdated = async (tabId, changeInfo, tab) => {
-  if (changeInfo.status === "complete" || changeInfo.url) {
+  if (changeInfo.status === 'complete' || changeInfo.url) {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (tabs[0]?.id === tabId) {
       const context = await getActiveTabContext();
@@ -4331,7 +4719,7 @@ function cleanupTabEventListeners() {
     browser.tabs.onUpdated.removeListener(tabEventListeners.onUpdated);
     tabEventListeners.onUpdated = null;
   }
-  console.log("[NevoFlux] Tab event listeners cleaned up");
+  console.log('[NevoFlux] Tab event listeners cleaned up');
 }
 
 // =============================================================================
@@ -4340,9 +4728,9 @@ function cleanupTabEventListeners() {
 
 browser.tabs.onCreated.addListener((tab) => {
   // New tabs start as about:newtab or about:blank before loading
-  if (!tab.url || tab.url === "about:newtab" || tab.url === "about:home") {
-    browser.tabs.update(tab.id, { url: "nevoflux://home" }).catch((err) => {
-      console.debug("[NevoFlux] Failed to redirect new tab:", err.message);
+  if (!tab.url || tab.url === 'about:newtab' || tab.url === 'about:home') {
+    browser.tabs.update(tab.id, { url: 'nevoflux://home' }).catch((err) => {
+      console.debug('[NevoFlux] Failed to redirect new tab:', err.message);
     });
   }
 });
@@ -4351,6 +4739,6 @@ browser.tabs.onCreated.addListener((tab) => {
 // Initialization
 // =============================================================================
 
-console.log("[NevoFlux] Background script initialized (Protocol v5.0 - 2-channel architecture)");
-console.log("[NevoFlux] Channels: Chat (com.nevoflux.agent), MCP (com.nevoflux.agent.mcp)");
-console.log("[NevoFlux] API namespace: bg:*");
+console.log('[NevoFlux] Background script initialized (Protocol v5.0 - 2-channel architecture)');
+console.log('[NevoFlux] Channels: Chat (com.nevoflux.agent), MCP (com.nevoflux.agent.mcp)');
+console.log('[NevoFlux] API namespace: bg:*');

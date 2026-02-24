@@ -13,7 +13,7 @@
 
 // ========== Test Utilities ==========
 
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const log = (msg, success = null) => {
   const icon = success === true ? '✅' : success === false ? '❌' : '📝';
@@ -306,7 +306,7 @@ const testCookies = async () => {
   const setResult = await api.setCookie({
     url: url,
     name: 'nevoflux_test',
-    value: 'cookie_value'
+    value: 'cookie_value',
   });
   log(`setCookie: ${JSON.stringify(setResult)}`);
 
@@ -398,7 +398,9 @@ const testWaitForSelector = async () => {
 // Snapshot Test
 const testSnapshot = async () => {
   const result = await api.snapshot(null, { compact: true });
-  log(`snapshot: tree length = ${result.tree?.length || 0}, refs count = ${Object.keys(result.refs || {}).length}`);
+  log(
+    `snapshot: tree length = ${result.tree?.length || 0}, refs count = ${Object.keys(result.refs || {}).length}`
+  );
 };
 
 // Privacy Test
@@ -423,7 +425,7 @@ const runAllTests = async () => {
 
   console.clear();
   console.log('🚀 Starting NevoFlux P1 E2E Tests\n');
-  console.log('=' .repeat(50));
+  console.log('='.repeat(50));
 
   testResults.passed = 0;
   testResults.failed = 0;
@@ -456,13 +458,17 @@ const runAllTests = async () => {
 
   console.log('\n' + '='.repeat(50));
   console.log(`📊 Test Results: ${testResults.passed} passed, ${testResults.failed} failed`);
-  console.log(`Pass Rate: ${((testResults.passed / (testResults.passed + testResults.failed)) * 100).toFixed(1)}%`);
+  console.log(
+    `Pass Rate: ${((testResults.passed / (testResults.passed + testResults.failed)) * 100).toFixed(1)}%`
+  );
 
   if (testResults.failed > 0) {
     console.log('\n❌ Failed tests:');
-    testResults.tests.filter(t => !t.passed).forEach(t => {
-      console.log(`  - ${t.name}: ${t.error}`);
-    });
+    testResults.tests
+      .filter((t) => !t.passed)
+      .forEach((t) => {
+        console.log(`  - ${t.name}: ${t.error}`);
+      });
   }
 
   return testResults;

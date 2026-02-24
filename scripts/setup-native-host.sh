@@ -32,95 +32,101 @@ echo ""
 
 # Function to download from GitHub releases
 download_from_github() {
-    local target_path="$1"
-    local os_type=""
-    local arch=""
+  local target_path="$1"
+  local os_type=""
+  local arch=""
 
-    # Detect OS
-    case "$(uname -s)" in
-        Linux*)  os_type="linux";;
-        Darwin*) os_type="macos";;
-        *)       echo "Error: Unsupported OS"; exit 1;;
-    esac
+  # Detect OS
+  case "$(uname -s)" in
+    Linux*) os_type="linux" ;;
+    Darwin*) os_type="macos" ;;
+    *)
+      echo "Error: Unsupported OS"
+      exit 1
+      ;;
+  esac
 
-    # Detect architecture
-    case "$(uname -m)" in
-        x86_64)  arch="x86_64";;
-        aarch64) arch="aarch64";;
-        arm64)   arch="aarch64";;
-        *)       echo "Error: Unsupported architecture"; exit 1;;
-    esac
+  # Detect architecture
+  case "$(uname -m)" in
+    x86_64) arch="x86_64" ;;
+    aarch64) arch="aarch64" ;;
+    arm64) arch="aarch64" ;;
+    *)
+      echo "Error: Unsupported architecture"
+      exit 1
+      ;;
+  esac
 
-    local asset_name="${AGENT_BIN_NAME}-${os_type}-${arch}"
-    local download_url="https://github.com/${GITHUB_REPO}/releases/${GITHUB_RELEASE_TAG}/download/${asset_name}"
+  local asset_name="${AGENT_BIN_NAME}-${os_type}-${arch}"
+  local download_url="https://github.com/${GITHUB_REPO}/releases/${GITHUB_RELEASE_TAG}/download/${asset_name}"
 
-    echo "Downloading from: $download_url"
+  echo "Downloading from: $download_url"
 
-    mkdir -p "$(dirname "$target_path")"
+  mkdir -p "$(dirname "$target_path")"
 
-    if command -v curl &> /dev/null; then
-        curl -fsSL -o "$target_path" "$download_url"
-    elif command -v wget &> /dev/null; then
-        wget -q -O "$target_path" "$download_url"
-    else
-        echo "Error: Neither curl nor wget is available"
-        exit 1
-    fi
+  if command -v curl &> /dev/null; then
+    curl -fsSL -o "$target_path" "$download_url"
+  elif command -v wget &> /dev/null; then
+    wget -q -O "$target_path" "$download_url"
+  else
+    echo "Error: Neither curl nor wget is available"
+    exit 1
+  fi
 
-    chmod +x "$target_path"
-    echo "Downloaded to: $target_path"
+  chmod +x "$target_path"
+  echo "Downloaded to: $target_path"
 }
 
 # Resolve binary path
 resolve_binary() {
-    # Priority 1: Command line argument
-    if [ -n "$1" ] && [ -f "$1" ]; then
-        echo "$1"
-        return 0
-    fi
+  # Priority 1: Command line argument
+  if [ -n "$1" ] && [ -f "$1" ]; then
+    echo "$1"
+    return 0
+  fi
 
-    # Priority 2: Environment variable
-    if [ -n "$NEVOFLUX_AGENT_BIN" ] && [ -f "$NEVOFLUX_AGENT_BIN" ]; then
-        echo "$NEVOFLUX_AGENT_BIN"
-        return 0
-    fi
+  # Priority 2: Environment variable
+  if [ -n "$NEVOFLUX_AGENT_BIN" ] && [ -f "$NEVOFLUX_AGENT_BIN" ]; then
+    echo "$NEVOFLUX_AGENT_BIN"
+    return 0
+  fi
 
-    # Priority 3: Local development build (pre-built in separate project)
-    local dev_binary="$AGENT_PROJECT/target/release/$AGENT_BIN_NAME"
-    if [ -f "$dev_binary" ]; then
-        echo "$dev_binary"
-        return 0
-    fi
+  # Priority 3: Local development build (pre-built in separate project)
+  local dev_binary="$AGENT_PROJECT/target/release/$AGENT_BIN_NAME"
+  if [ -f "$dev_binary" ]; then
+    echo "$dev_binary"
+    return 0
+  fi
 
-    # Priority 4: Download from GitHub (for release builds)
-    # Uncomment when GitHub releases are available
-    # local download_path="$PROJECT_ROOT/build/nevoflux-agent/$AGENT_BIN_NAME"
-    # echo "Binary not found locally. Downloading from GitHub releases..."
-    # download_from_github "$download_path"
-    # echo "$download_path"
-    # return 0
+  # Priority 4: Download from GitHub (for release builds)
+  # Uncomment when GitHub releases are available
+  # local download_path="$PROJECT_ROOT/build/nevoflux-agent/$AGENT_BIN_NAME"
+  # echo "Binary not found locally. Downloading from GitHub releases..."
+  # download_from_github "$download_path"
+  # echo "$download_path"
+  # return 0
 
-    return 1
+  return 1
 }
 
 # Get binary path
 AGENT_BIN=$(resolve_binary "$1")
 
 if [ -z "$AGENT_BIN" ] || [ ! -f "$AGENT_BIN" ]; then
-    echo "Error: Native agent binary not found"
-    echo ""
-    echo "Expected location: $AGENT_PROJECT/target/release/$AGENT_BIN_NAME"
-    echo ""
-    echo "Options:"
-    echo "  1. Build agent first:  cd $AGENT_PROJECT && cargo build --release"
-    echo "  2. Specify path:       ./setup-native-host.sh /path/to/nevoflux-agent"
-    echo "  3. Set env var:        NEVOFLUX_AGENT_BIN=/path/to/binary ./setup-native-host.sh"
-    exit 1
+  echo "Error: Native agent binary not found"
+  echo ""
+  echo "Expected location: $AGENT_PROJECT/target/release/$AGENT_BIN_NAME"
+  echo ""
+  echo "Options:"
+  echo "  1. Build agent first:  cd $AGENT_PROJECT && cargo build --release"
+  echo "  2. Specify path:       ./setup-native-host.sh /path/to/nevoflux-agent"
+  echo "  3. Set env var:        NEVOFLUX_AGENT_BIN=/path/to/binary ./setup-native-host.sh"
+  exit 1
 fi
 
 # Convert to absolute path
 if [[ "$AGENT_BIN" != /* ]]; then
-    AGENT_BIN="$(cd "$(dirname "$AGENT_BIN")" && pwd)/$(basename "$AGENT_BIN")"
+  AGENT_BIN="$(cd "$(dirname "$AGENT_BIN")" && pwd)/$(basename "$AGENT_BIN")"
 fi
 
 echo "Using binary: $AGENT_BIN"
@@ -137,7 +143,7 @@ case "$PLATFORM" in
   Darwin*)
     MANIFEST_DIR="$HOME/Library/Application Support/Mozilla/NativeMessagingHosts"
     ;;
-  MINGW*|MSYS*|CYGWIN*)
+  MINGW* | MSYS* | CYGWIN*)
     # Windows: manifest goes to a local directory, registered via Registry
     MANIFEST_DIR="$APPDATA/Mozilla/NativeMessagingHosts"
     ;;
@@ -151,7 +157,7 @@ mkdir -p "$MANIFEST_DIR"
 
 # Write manifest JSON (same format on all platforms)
 MANIFEST_FILE="$MANIFEST_DIR/${MANIFEST_NAME}.json"
-cat > "$MANIFEST_FILE" <<EOF
+cat > "$MANIFEST_FILE" << EOF
 {
   "name": "$MANIFEST_NAME",
   "description": "NevoFlux AI Agent Native Messaging Host",
@@ -165,13 +171,13 @@ echo "Manifest created: $MANIFEST_FILE"
 
 # Windows: also register in the Registry
 case "$PLATFORM" in
-  MINGW*|MSYS*|CYGWIN*)
+  MINGW* | MSYS* | CYGWIN*)
     # Convert to Windows path for registry
-    WIN_MANIFEST="$(cygpath -w "$MANIFEST_FILE" 2>/dev/null || echo "$MANIFEST_FILE")"
+    WIN_MANIFEST="$(cygpath -w "$MANIFEST_FILE" 2> /dev/null || echo "$MANIFEST_FILE")"
     REG_KEY="HKCU\\Software\\Mozilla\\NativeMessagingHosts\\${MANIFEST_NAME}"
-    reg add "$REG_KEY" /ve /t REG_SZ /d "$WIN_MANIFEST" /f > /dev/null 2>&1 && \
-      echo "Registry key created: $REG_KEY" || \
-      echo "Warning: Failed to create registry key. You may need to run as administrator."
+    reg add "$REG_KEY" /ve /t REG_SZ /d "$WIN_MANIFEST" /f > /dev/null 2>&1 \
+      && echo "Registry key created: $REG_KEY" \
+      || echo "Warning: Failed to create registry key. You may need to run as administrator."
     ;;
 esac
 
@@ -185,10 +191,10 @@ echo ""
 
 # Test agent executable
 if "$AGENT_BIN" --help > /dev/null 2>&1; then
-    echo "Agent is executable"
+  echo "Agent is executable"
 else
-    echo "Warning: Could not execute agent. You may need to set execute permissions:"
-    echo "  chmod +x $AGENT_BIN"
+  echo "Warning: Could not execute agent. You may need to set execute permissions:"
+  echo "  chmod +x $AGENT_BIN"
 fi
 
 echo ""
@@ -201,7 +207,7 @@ echo "  3. Check the browser console (F12) for extension messages"
 echo ""
 echo "Note: AI functionality requires API keys. Configure them in:"
 case "$PLATFORM" in
-  MINGW*|MSYS*|CYGWIN*)
+  MINGW* | MSYS* | CYGWIN*)
     echo "  %APPDATA%\\nevoflux\\config.toml"
     ;;
   *)

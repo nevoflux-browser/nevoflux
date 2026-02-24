@@ -8,6 +8,13 @@ import { defineConfig, globalIgnores } from 'eslint/config';
 import zenGlobals from './src/zen/zen.globals.js';
 
 export default defineConfig([
+  globalIgnores([
+    '**/mochitests/**',
+    '**/dioxus-ui/target/**',
+    '**/dioxus-ui/dist/**',
+    '**/wasm/chat-sidebar/**',
+    '**/vendor/**',
+  ]),
   {
     files: ['**/*.{js,mjs,cjs}'],
     plugins: { js },
@@ -19,9 +26,54 @@ export default defineConfig([
           acc[global] = 'readable';
           return acc;
         }, {}),
+        // WebExtension API global
+        browser: 'readable',
+        // Firefox preference function
+        pref: 'readable',
+        // Firefox/Gecko internals
+        Components: 'readable',
+        Cr: 'readable',
+        InspectorUtils: 'readable',
+        WebExtensionPolicy: 'readable',
+        // WebExtension toolkit globals
+        ExtensionAPI: 'readable',
+        ExtensionParent: 'readable',
+        EventManager: 'readable',
+        tabTracker: 'readable',
+        // NevoFlux page globals
+        NevofluxPage: 'readable',
+        VirtualFS: 'readable',
+        Bundler: 'readable',
+        CanvasRuntime: 'readable',
+        Babel: 'readable',
+        // Zen sidebar globals
+        gSidebarRevampEnabled: 'readable',
+        gAllowTransparentBrowser: 'readable',
       },
     },
-    ignores: ['**/vendor/**', '**/tests/**'],
+    rules: {
+      'no-empty': ['error', { allowEmptyCatch: true }],
+      'no-unused-vars': [
+        'warn',
+        {
+          caughtErrors: 'none',
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+        },
+      ],
+      'no-prototype-builtins': 'warn',
+      'no-useless-escape': 'warn',
+      'no-case-declarations': 'warn',
+    },
+    ignores: ['**/tests/**'],
   },
-  globalIgnores(['**/mochitests/**']),
+  {
+    files: ['**/scripts/**/*.{js,mjs,cjs}', '**/api-schema/**/*.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
+    },
+  },
 ]);

@@ -441,17 +441,7 @@ jobs:
     if: ${{ inputs.create_release }}
     permissions: write-all
     name: Release
-    needs:
-      [
-        build-data,
-        linux,
-        windows-step-3,
-        check-release,
-        mac-uni,
-        appimage,
-        source,
-        lint,
-      ]
+    needs: [build-data, linux, windows-step-3, check-release, mac-uni, appimage, source, lint]
     runs-on: ubuntu-latest
     environment:
       name: Deploy-Release

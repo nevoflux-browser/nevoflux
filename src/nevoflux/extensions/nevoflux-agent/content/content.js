@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-"use strict";
+'use strict';
 
 /**
  * NevoFlux Agent Content Script
@@ -78,7 +78,7 @@ function getElementInfo(element) {
     tag: element.tagName.toLowerCase(),
     id: element.id || null,
     classes: Array.from(element.classList),
-    text: element.textContent?.substring(0, 200) || "",
+    text: element.textContent?.substring(0, 200) || '',
     value: element.value || null,
     href: element.href || null,
     src: element.src || null,
@@ -89,9 +89,7 @@ function getElementInfo(element) {
       height: rect.height,
     },
     visible: rect.width > 0 && rect.height > 0,
-    attributes: Object.fromEntries(
-      Array.from(element.attributes).map((a) => [a.name, a.value])
-    ),
+    attributes: Object.fromEntries(Array.from(element.attributes).map((a) => [a.name, a.value])),
   };
 }
 
@@ -106,16 +104,22 @@ function getElementInfo(element) {
 function actionClick(params) {
   const { selector } = params;
   if (!selector) {
-    return { success: false, error: { code: -1, message: "Selector required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'Selector required', recoverable: false },
+    };
   }
 
   const element = findElement(selector);
   if (!element) {
-    return { success: false, error: { code: -1, message: `Element not found: ${selector}`, recoverable: true } };
+    return {
+      success: false,
+      error: { code: -1, message: `Element not found: ${selector}`, recoverable: true },
+    };
   }
 
   // Scroll into view if needed
-  element.scrollIntoView({ behavior: "smooth", block: "center" });
+  element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
   // Get element center for realistic click coordinates
   const rect = element.getBoundingClientRect();
@@ -135,13 +139,13 @@ function actionClick(params) {
   };
 
   // Simulate complete mouse event sequence for better compatibility
-  element.dispatchEvent(new MouseEvent("mouseenter", { ...eventOptions, bubbles: false }));
-  element.dispatchEvent(new MouseEvent("mouseover", eventOptions));
-  element.dispatchEvent(new MouseEvent("mousemove", eventOptions));
-  element.dispatchEvent(new MouseEvent("mousedown", eventOptions));
+  element.dispatchEvent(new MouseEvent('mouseenter', { ...eventOptions, bubbles: false }));
+  element.dispatchEvent(new MouseEvent('mouseover', eventOptions));
+  element.dispatchEvent(new MouseEvent('mousemove', eventOptions));
+  element.dispatchEvent(new MouseEvent('mousedown', eventOptions));
   element.focus?.();
-  element.dispatchEvent(new MouseEvent("mouseup", eventOptions));
-  element.dispatchEvent(new MouseEvent("click", eventOptions));
+  element.dispatchEvent(new MouseEvent('mouseup', eventOptions));
+  element.dispatchEvent(new MouseEvent('click', eventOptions));
 
   // Also try native click as fallback
   element.click();
@@ -156,38 +160,47 @@ function actionClick(params) {
 function actionType(params) {
   const { selector, text } = params;
   if (!selector || text === undefined) {
-    return { success: false, error: { code: -1, message: "Selector and text required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'Selector and text required', recoverable: false },
+    };
   }
 
   const element = findElement(selector);
   if (!element) {
-    return { success: false, error: { code: -1, message: `Element not found: ${selector}`, recoverable: true } };
+    return {
+      success: false,
+      error: { code: -1, message: `Element not found: ${selector}`, recoverable: true },
+    };
   }
 
   // Scroll into view and focus
-  element.scrollIntoView({ behavior: "instant", block: "center" });
+  element.scrollIntoView({ behavior: 'instant', block: 'center' });
   element.focus();
-  element.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+  element.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
 
   // Get native value setter
   const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
     window.HTMLInputElement.prototype,
-    "value"
+    'value'
   )?.set;
   const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
     window.HTMLTextAreaElement.prototype,
-    "value"
+    'value'
   )?.set;
-  const nativeSetter = element.tagName === "TEXTAREA" ? nativeTextAreaValueSetter : nativeInputValueSetter;
+  const nativeSetter =
+    element.tagName === 'TEXTAREA' ? nativeTextAreaValueSetter : nativeInputValueSetter;
 
   // Type each character with events
   for (const char of text) {
     // Simulate keydown
-    element.dispatchEvent(new KeyboardEvent("keydown", {
-      key: char,
-      code: `Key${char.toUpperCase()}`,
-      bubbles: true,
-    }));
+    element.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: char,
+        code: `Key${char.toUpperCase()}`,
+        bubbles: true,
+      })
+    );
 
     // Update value
     const newValue = element.value + char;
@@ -198,21 +211,25 @@ function actionType(params) {
     }
 
     // Dispatch input event
-    element.dispatchEvent(new InputEvent("input", {
-      bubbles: true,
-      inputType: "insertText",
-      data: char,
-    }));
+    element.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: char,
+      })
+    );
 
     // Simulate keyup
-    element.dispatchEvent(new KeyboardEvent("keyup", {
-      key: char,
-      code: `Key${char.toUpperCase()}`,
-      bubbles: true,
-    }));
+    element.dispatchEvent(
+      new KeyboardEvent('keyup', {
+        key: char,
+        code: `Key${char.toUpperCase()}`,
+        bubbles: true,
+      })
+    );
   }
 
-  element.dispatchEvent(new Event("change", { bubbles: true }));
+  element.dispatchEvent(new Event('change', { bubbles: true }));
 
   return { success: true, result: { selector, typed: text } };
 }
@@ -225,36 +242,44 @@ function actionType(params) {
 function actionFill(params) {
   const { selector, value } = params;
   if (!selector || value === undefined) {
-    return { success: false, error: { code: -1, message: "Selector and value required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'Selector and value required', recoverable: false },
+    };
   }
 
   const element = findElement(selector);
   if (!element) {
-    return { success: false, error: { code: -1, message: `Element not found: ${selector}`, recoverable: true } };
+    return {
+      success: false,
+      error: { code: -1, message: `Element not found: ${selector}`, recoverable: true },
+    };
   }
 
   // Scroll into view
-  element.scrollIntoView({ behavior: "instant", block: "center" });
+  element.scrollIntoView({ behavior: 'instant', block: 'center' });
 
   // Focus the element
   element.focus();
-  element.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+  element.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
 
   // Clear existing value
-  element.value = "";
-  element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
+  element.value = '';
+  element.dispatchEvent(
+    new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' })
+  );
 
   // Set value using native setter to bypass React/Vue's property override
   const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
     window.HTMLInputElement.prototype,
-    "value"
+    'value'
   )?.set;
   const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
     window.HTMLTextAreaElement.prototype,
-    "value"
+    'value'
   )?.set;
 
-  if (element.tagName === "TEXTAREA" && nativeTextAreaValueSetter) {
+  if (element.tagName === 'TEXTAREA' && nativeTextAreaValueSetter) {
     nativeTextAreaValueSetter.call(element, value);
   } else if (nativeInputValueSetter) {
     nativeInputValueSetter.call(element, value);
@@ -263,20 +288,24 @@ function actionFill(params) {
   }
 
   // Dispatch comprehensive events for framework compatibility
-  element.dispatchEvent(new InputEvent("input", {
-    bubbles: true,
-    cancelable: true,
-    inputType: "insertText",
-    data: value,
-  }));
+  element.dispatchEvent(
+    new InputEvent('input', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'insertText',
+      data: value,
+    })
+  );
 
-  element.dispatchEvent(new Event("change", { bubbles: true }));
+  element.dispatchEvent(new Event('change', { bubbles: true }));
 
   // Trigger compositionend for some frameworks
-  element.dispatchEvent(new CompositionEvent("compositionend", {
-    bubbles: true,
-    data: value,
-  }));
+  element.dispatchEvent(
+    new CompositionEvent('compositionend', {
+      bubbles: true,
+      data: value,
+    })
+  );
 
   return { success: true, result: { selector, filled: value } };
 }
@@ -291,7 +320,10 @@ function actionGetContent(params) {
   if (selector) {
     const element = findElement(selector);
     if (!element) {
-      return { success: false, error: { code: -1, message: `Element not found: ${selector}`, recoverable: true } };
+      return {
+        success: false,
+        error: { code: -1, message: `Element not found: ${selector}`, recoverable: true },
+      };
     }
     return {
       success: true,
@@ -323,7 +355,10 @@ function actionGetContent(params) {
 async function actionWaitFor(params) {
   const { selector, timeout_ms = 10000 } = params;
   if (!selector) {
-    return { success: false, error: { code: -1, message: "Selector required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'Selector required', recoverable: false },
+    };
   }
 
   try {
@@ -343,34 +378,37 @@ function actionScroll(params) {
 
   const target = selector ? findElement(selector) : window;
   if (selector && !target) {
-    return { success: false, error: { code: -1, message: `Element not found: ${selector}`, recoverable: true } };
+    return {
+      success: false,
+      error: { code: -1, message: `Element not found: ${selector}`, recoverable: true },
+    };
   }
 
-  const scrollOptions = { behavior: "smooth" };
+  const scrollOptions = { behavior: 'smooth' };
 
   switch (direction) {
-    case "up":
+    case 'up':
       if (target === window) {
         window.scrollBy({ top: -amount, ...scrollOptions });
       } else {
         target.scrollTop -= amount;
       }
       break;
-    case "down":
+    case 'down':
       if (target === window) {
         window.scrollBy({ top: amount, ...scrollOptions });
       } else {
         target.scrollTop += amount;
       }
       break;
-    case "left":
+    case 'left':
       if (target === window) {
         window.scrollBy({ left: -amount, ...scrollOptions });
       } else {
         target.scrollLeft -= amount;
       }
       break;
-    case "right":
+    case 'right':
       if (target === window) {
         window.scrollBy({ left: amount, ...scrollOptions });
       } else {
@@ -378,7 +416,10 @@ function actionScroll(params) {
       }
       break;
     default:
-      return { success: false, error: { code: -1, message: `Unknown direction: ${direction}`, recoverable: false } };
+      return {
+        success: false,
+        error: { code: -1, message: `Unknown direction: ${direction}`, recoverable: false },
+      };
   }
 
   return { success: true, result: { direction, amount } };
@@ -391,12 +432,18 @@ function actionScroll(params) {
 function actionGetElement(params) {
   const { selector } = params;
   if (!selector) {
-    return { success: false, error: { code: -1, message: "Selector required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'Selector required', recoverable: false },
+    };
   }
 
   const element = findElement(selector);
   if (!element) {
-    return { success: false, error: { code: -1, message: `Element not found: ${selector}`, recoverable: true } };
+    return {
+      success: false,
+      error: { code: -1, message: `Element not found: ${selector}`, recoverable: true },
+    };
   }
 
   return { success: true, result: getElementInfo(element) };
@@ -409,7 +456,10 @@ function actionGetElement(params) {
 function actionQueryAll(params) {
   const { selector, limit = 50 } = params;
   if (!selector) {
-    return { success: false, error: { code: -1, message: "Selector required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'Selector required', recoverable: false },
+    };
   }
 
   const elements = findAllElements(selector, limit);
@@ -428,21 +478,21 @@ function actionQueryAll(params) {
  */
 function pressEnterKey(element) {
   const enterEventOptions = {
-    key: "Enter",
-    code: "Enter",
+    key: 'Enter',
+    code: 'Enter',
     keyCode: 13,
     which: 13,
     charCode: 13,
     bubbles: true,
     cancelable: true,
     view: window,
-    composed: true,  // Allows event to cross shadow DOM boundary
+    composed: true, // Allows event to cross shadow DOM boundary
   };
 
   // Dispatch full keyboard event sequence on the element
-  element.dispatchEvent(new KeyboardEvent("keydown", enterEventOptions));
-  element.dispatchEvent(new KeyboardEvent("keypress", enterEventOptions));
-  element.dispatchEvent(new KeyboardEvent("keyup", enterEventOptions));
+  element.dispatchEvent(new KeyboardEvent('keydown', enterEventOptions));
+  element.dispatchEvent(new KeyboardEvent('keypress', enterEventOptions));
+  element.dispatchEvent(new KeyboardEvent('keyup', enterEventOptions));
 
   // For Vue/React UI frameworks: also dispatch on parent wrappers
   // These frameworks often have event listeners on wrapper components
@@ -450,51 +500,51 @@ function pressEnterKey(element) {
   let depth = 0;
   while (parent && depth < 5) {
     const classList = parent.classList;
-    const className = parent.className || "";
+    const className = parent.className || '';
 
     // Check for common UI framework component wrapper classes
     const isFrameworkWrapper =
       // Vue - Element UI
-      classList.contains("el-input") ||
-      classList.contains("el-select") ||
-      classList.contains("el-autocomplete") ||
-      classList.contains("el-input-group") ||
+      classList.contains('el-input') ||
+      classList.contains('el-select') ||
+      classList.contains('el-autocomplete') ||
+      classList.contains('el-input-group') ||
       // Vue - Vuetify
-      classList.contains("v-input") ||
-      classList.contains("v-text-field") ||
+      classList.contains('v-input') ||
+      classList.contains('v-text-field') ||
       // Vue data attribute
-      Array.from(parent.attributes).some(attr => attr.name.startsWith("data-v-")) ||
+      Array.from(parent.attributes).some((attr) => attr.name.startsWith('data-v-')) ||
       // React - Material-UI (MUI)
-      className.includes("MuiInput") ||
-      className.includes("MuiTextField") ||
-      className.includes("MuiAutocomplete") ||
-      className.includes("MuiOutlinedInput") ||
+      className.includes('MuiInput') ||
+      className.includes('MuiTextField') ||
+      className.includes('MuiAutocomplete') ||
+      className.includes('MuiOutlinedInput') ||
       // React - Ant Design
-      classList.contains("ant-input") ||
-      classList.contains("ant-input-affix-wrapper") ||
-      classList.contains("ant-select") ||
-      classList.contains("ant-input-search") ||
-      classList.contains("ant-input-group") ||
+      classList.contains('ant-input') ||
+      classList.contains('ant-input-affix-wrapper') ||
+      classList.contains('ant-select') ||
+      classList.contains('ant-input-search') ||
+      classList.contains('ant-input-group') ||
       // React - Chakra UI
-      parent.hasAttribute("data-chakra-component") ||
+      parent.hasAttribute('data-chakra-component') ||
       // React - Semantic UI
-      (classList.contains("ui") && classList.contains("input")) ||
-      (classList.contains("ui") && classList.contains("search")) ||
+      (classList.contains('ui') && classList.contains('input')) ||
+      (classList.contains('ui') && classList.contains('search')) ||
       // React - React Bootstrap / general Bootstrap
-      classList.contains("form-group") ||
-      classList.contains("input-group") ||
+      classList.contains('form-group') ||
+      classList.contains('input-group') ||
       // Generic patterns
-      className.includes("input-wrapper") ||
-      className.includes("search-box") ||
-      className.includes("search-input") ||
-      className.includes("InputBase") ||
-      className.includes("TextInput");
+      className.includes('input-wrapper') ||
+      className.includes('search-box') ||
+      className.includes('search-input') ||
+      className.includes('InputBase') ||
+      className.includes('TextInput');
 
     if (isFrameworkWrapper) {
-      console.log("[NevoFlux] Also dispatching Enter on parent:", className);
-      parent.dispatchEvent(new KeyboardEvent("keydown", enterEventOptions));
-      parent.dispatchEvent(new KeyboardEvent("keypress", enterEventOptions));
-      parent.dispatchEvent(new KeyboardEvent("keyup", enterEventOptions));
+      console.log('[NevoFlux] Also dispatching Enter on parent:', className);
+      parent.dispatchEvent(new KeyboardEvent('keydown', enterEventOptions));
+      parent.dispatchEvent(new KeyboardEvent('keypress', enterEventOptions));
+      parent.dispatchEvent(new KeyboardEvent('keyup', enterEventOptions));
     }
     parent = parent.parentElement;
     depth++;
@@ -504,35 +554,40 @@ function pressEnterKey(element) {
   // UI frameworks often have suffix icons or adjacent buttons
   const inputWrapper = element.closest(
     // Vue - Element UI
-    ".el-input, .el-select, .el-input-group, " +
-    // Vue - Vuetify
-    ".v-input, .v-text-field, " +
-    // React - Material-UI
-    "[class*='MuiInput'], [class*='MuiTextField'], [class*='MuiAutocomplete'], " +
-    // React - Ant Design
-    ".ant-input-affix-wrapper, .ant-input-search, .ant-input-group, .ant-select, " +
-    // Generic
-    ".search-box, .search-input, [class*='search-'], .input-group, .form-group"
+    '.el-input, .el-select, .el-input-group, ' +
+      // Vue - Vuetify
+      '.v-input, .v-text-field, ' +
+      // React - Material-UI
+      "[class*='MuiInput'], [class*='MuiTextField'], [class*='MuiAutocomplete'], " +
+      // React - Ant Design
+      '.ant-input-affix-wrapper, .ant-input-search, .ant-input-group, .ant-select, ' +
+      // Generic
+      ".search-box, .search-input, [class*='search-'], .input-group, .form-group"
   );
 
   if (inputWrapper) {
     // Look for search icon/button within the wrapper or next to it
-    const searchBtn = inputWrapper.querySelector(
-      // Vue - Element UI
-      ".el-input__suffix, .el-icon-search, .el-button, " +
-      // React - Ant Design
-      ".ant-input-search-button, .ant-btn, .anticon-search, " +
-      // React - Material-UI
-      "[class*='MuiIconButton'], [class*='MuiButton'], " +
-      // Generic
-      "button, [class*='search-btn'], [class*='search-icon'], [class*='SearchIcon'], " +
-      "[role='button'], .btn"
-    ) ||
-    inputWrapper.nextElementSibling?.querySelector("button, .el-button, .ant-btn, [class*='MuiButton'], [class*='search']") ||
-    inputWrapper.parentElement?.querySelector("button:not(:disabled), .el-button, .ant-btn, [class*='search']:not(input)");
+    const searchBtn =
+      inputWrapper.querySelector(
+        // Vue - Element UI
+        '.el-input__suffix, .el-icon-search, .el-button, ' +
+          // React - Ant Design
+          '.ant-input-search-button, .ant-btn, .anticon-search, ' +
+          // React - Material-UI
+          "[class*='MuiIconButton'], [class*='MuiButton'], " +
+          // Generic
+          "button, [class*='search-btn'], [class*='search-icon'], [class*='SearchIcon'], " +
+          "[role='button'], .btn"
+      ) ||
+      inputWrapper.nextElementSibling?.querySelector(
+        "button, .el-button, .ant-btn, [class*='MuiButton'], [class*='search']"
+      ) ||
+      inputWrapper.parentElement?.querySelector(
+        "button:not(:disabled), .el-button, .ant-btn, [class*='search']:not(input)"
+      );
 
     if (searchBtn && !searchBtn.disabled) {
-      console.log("[NevoFlux] Found search button, clicking:", searchBtn.className);
+      console.log('[NevoFlux] Found search button, clicking:', searchBtn.className);
       searchBtn.click();
     }
   }
@@ -540,12 +595,14 @@ function pressEnterKey(element) {
   // For form elements, also try submitting the form
   if (element.form) {
     // Check if form has submit button or should auto-submit
-    const submitBtn = element.form.querySelector('input[type="submit"], button[type="submit"], button:not([type])');
+    const submitBtn = element.form.querySelector(
+      'input[type="submit"], button[type="submit"], button:not([type])'
+    );
     if (submitBtn) {
       submitBtn.click();
     } else {
       // Try form submit event
-      element.form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      element.form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     }
   }
 }
@@ -575,13 +632,15 @@ function isInteractable(element) {
   if (rect.width === 0 || rect.height === 0) return false;
 
   // Must be visible
-  if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
+  if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0')
+    return false;
 
   // Must be in viewport (with some margin)
-  const inViewport = rect.top < window.innerHeight + 100 &&
-                     rect.bottom > -100 &&
-                     rect.left < window.innerWidth + 100 &&
-                     rect.right > -100;
+  const inViewport =
+    rect.top < window.innerHeight + 100 &&
+    rect.bottom > -100 &&
+    rect.left < window.innerWidth + 100 &&
+    rect.right > -100;
 
   return inViewport;
 }
@@ -593,14 +652,14 @@ function isInteractable(element) {
  */
 function getAccessibleText(element) {
   // Priority: aria-label > aria-labelledby > title > alt > placeholder > text content
-  if (element.getAttribute("aria-label")) {
-    return element.getAttribute("aria-label");
+  if (element.getAttribute('aria-label')) {
+    return element.getAttribute('aria-label');
   }
 
-  const labelledBy = element.getAttribute("aria-labelledby");
+  const labelledBy = element.getAttribute('aria-labelledby');
   if (labelledBy) {
     const labelEl = document.getElementById(labelledBy);
-    if (labelEl) return labelEl.textContent?.trim() || "";
+    if (labelEl) return labelEl.textContent?.trim() || '';
   }
 
   if (element.title) return element.title;
@@ -608,7 +667,7 @@ function getAccessibleText(element) {
   if (element.placeholder) return element.placeholder;
 
   // Get direct text content (not nested)
-  const text = element.textContent?.trim() || "";
+  const text = element.textContent?.trim() || '';
   return text.substring(0, 100); // Limit length
 }
 
@@ -624,10 +683,10 @@ function generateSelector(element) {
   }
 
   // Try unique class combination
-  if (element.className && typeof element.className === "string") {
-    const classes = element.className.split(/\s+/).filter(c => c.length > 0);
+  if (element.className && typeof element.className === 'string') {
+    const classes = element.className.split(/\s+/).filter((c) => c.length > 0);
     if (classes.length > 0) {
-      const selector = `${element.tagName.toLowerCase()}.${classes.map(c => CSS.escape(c)).join(".")}`;
+      const selector = `${element.tagName.toLowerCase()}.${classes.map((c) => CSS.escape(c)).join('.')}`;
       if (document.querySelectorAll(selector).length === 1) {
         return selector;
       }
@@ -643,7 +702,7 @@ function generateSelector(element) {
   }
 
   // Try data-testid or other test attributes
-  for (const attr of ["data-testid", "data-test-id", "data-cy", "data-test"]) {
+  for (const attr of ['data-testid', 'data-test-id', 'data-cy', 'data-test']) {
     const value = element.getAttribute(attr);
     if (value) {
       return `[${attr}="${CSS.escape(value)}"]`;
@@ -657,9 +716,7 @@ function generateSelector(element) {
     const parent = current.parentElement;
     if (!parent) break;
 
-    const siblings = Array.from(parent.children).filter(
-      c => c.tagName === current.tagName
-    );
+    const siblings = Array.from(parent.children).filter((c) => c.tagName === current.tagName);
     const index = siblings.indexOf(current) + 1;
 
     if (siblings.length > 1) {
@@ -672,7 +729,7 @@ function generateSelector(element) {
     if (path.length > 5) break; // Limit depth
   }
 
-  return path.join(" > ");
+  return path.join(' > ');
 }
 
 /**
@@ -683,7 +740,7 @@ function generateSelector(element) {
 function hasClickableCursor(element) {
   try {
     const style = window.getComputedStyle(element);
-    return style.cursor === "pointer";
+    return style.cursor === 'pointer';
   } catch (e) {
     return false;
   }
@@ -698,24 +755,31 @@ function hasClickableCursor(element) {
 function findClickableAncestor(element, maxDepth = 8) {
   let current = element.parentElement;
   let depth = 0;
-  let listItemAncestor = null;  // Track li/tr in case no other clickable found
+  let listItemAncestor = null; // Track li/tr in case no other clickable found
 
   while (current && depth < maxDepth && current !== document.body) {
     const tagName = current.tagName.toLowerCase();
 
     // Check if ancestor is natively clickable
-    if (tagName === "a" || tagName === "button") {
+    if (tagName === 'a' || tagName === 'button') {
       return current;
     }
 
     // Check for onclick attribute
-    if (current.hasAttribute("onclick")) {
+    if (current.hasAttribute('onclick')) {
       return current;
     }
 
     // Check for interactive role
-    const role = current.getAttribute("role");
-    if (role === "button" || role === "link" || role === "menuitem" || role === "tab" || role === "option" || role === "listitem") {
+    const role = current.getAttribute('role');
+    if (
+      role === 'button' ||
+      role === 'link' ||
+      role === 'menuitem' ||
+      role === 'tab' ||
+      role === 'option' ||
+      role === 'listitem'
+    ) {
       return current;
     }
 
@@ -726,16 +790,18 @@ function findClickableAncestor(element, maxDepth = 8) {
 
     // Track list items - often have event handlers via addEventListener
     // These are common click targets in menus/lists
-    if ((tagName === "li" || tagName === "tr" || tagName === "label") && !listItemAncestor) {
+    if ((tagName === 'li' || tagName === 'tr' || tagName === 'label') && !listItemAncestor) {
       listItemAncestor = current;
     }
 
     // Check for data attributes commonly used for click handling
-    if (current.hasAttribute("data-action") ||
-        current.hasAttribute("data-click") ||
-        current.hasAttribute("data-handler") ||
-        current.hasAttribute("data-id") ||
-        current.hasAttribute("data-value")) {
+    if (
+      current.hasAttribute('data-action') ||
+      current.hasAttribute('data-click') ||
+      current.hasAttribute('data-handler') ||
+      current.hasAttribute('data-id') ||
+      current.hasAttribute('data-value')
+    ) {
       return current;
     }
 
@@ -762,14 +828,14 @@ function actionSnapshot(params = {}) {
 
   const interactiveSelectors = [
     // Clickable elements
-    "a[href]",
-    "button",
+    'a[href]',
+    'button',
     "[role='button']",
-    "[onclick]",
+    '[onclick]',
     // Form inputs
     "input:not([type='hidden'])",
-    "textarea",
-    "select",
+    'textarea',
+    'select',
     "[contenteditable='true']",
     // Interactive widgets
     "[role='link']",
@@ -785,14 +851,14 @@ function actionSnapshot(params = {}) {
     "[role='textbox']",
     // Clickable by common patterns
     "[tabindex]:not([tabindex='-1'])",
-    "summary",
-    "details",
+    'summary',
+    'details',
   ];
 
   // Additional: Find elements with cursor:pointer that have text (likely clickable)
   // Check common text elements that might be styled as clickable
   const cursorPointerElements = [];
-  const textTags = ["span", "div", "li", "p", "label", "td", "th"];
+  const textTags = ['span', 'div', 'li', 'p', 'label', 'td', 'th'];
   for (const tag of textTags) {
     try {
       const tagElements = document.querySelectorAll(tag);
@@ -800,7 +866,7 @@ function actionSnapshot(params = {}) {
         // Only include if has cursor:pointer and some text
         if (hasClickableCursor(el) && el.textContent?.trim()) {
           // Avoid duplicates with elements that have onclick or role
-          if (!el.hasAttribute("onclick") && !el.getAttribute("role")) {
+          if (!el.hasAttribute('onclick') && !el.getAttribute('role')) {
             cursorPointerElements.push(el);
           }
         }
@@ -821,7 +887,7 @@ function actionSnapshot(params = {}) {
 
     const elementId = ++snapshotCounter;
     snapshotElements.set(elementId, el);
-    el.setAttribute("data-nevoflux-id", elementId);
+    el.setAttribute('data-nevoflux-id', elementId);
 
     const rect = el.getBoundingClientRect();
     const text = getAccessibleText(el);
@@ -867,19 +933,19 @@ function actionSnapshot(params = {}) {
         snapshotElements.set(elementId, el);
 
         // Mark element with data attribute for visual debugging
-        el.setAttribute("data-nevoflux-id", elementId);
+        el.setAttribute('data-nevoflux-id', elementId);
 
         const rect = el.getBoundingClientRect();
         const text = getAccessibleText(el);
-        const inputType = el.getAttribute("type") || "";
+        const inputType = el.getAttribute('type') || '';
         const tagName = el.tagName.toLowerCase();
 
         // Determine element type for LLM
         let elementType = tagName;
-        if (tagName === "input") {
-          elementType = `input[${inputType || "text"}]`;
-        } else if (el.getAttribute("role")) {
-          elementType = `[role=${el.getAttribute("role")}]`;
+        if (tagName === 'input') {
+          elementType = `input[${inputType || 'text'}]`;
+        } else if (el.getAttribute('role')) {
+          elementType = `[role=${el.getAttribute('role')}]`;
         }
 
         elements.push({
@@ -919,14 +985,16 @@ function actionSnapshot(params = {}) {
   });
 
   // Format for LLM
-  const formatted = elements.map(el => {
-    let desc = `[${el.id}] <${el.type}>`;
-    if (el.text) desc += ` "${el.text}"`;
-    if (el.attributes.placeholder) desc += ` (placeholder: ${el.attributes.placeholder})`;
-    if (el.attributes.name) desc += ` name="${el.attributes.name}"`;
-    if (el.attributes.disabled) desc += " [disabled]";
-    return desc;
-  }).join("\n");
+  const formatted = elements
+    .map((el) => {
+      let desc = `[${el.id}] <${el.type}>`;
+      if (el.text) desc += ` "${el.text}"`;
+      if (el.attributes.placeholder) desc += ` (placeholder: ${el.attributes.placeholder})`;
+      if (el.attributes.name) desc += ` name="${el.attributes.name}"`;
+      if (el.attributes.disabled) desc += ' [disabled]';
+      return desc;
+    })
+    .join('\n');
 
   return {
     success: true,
@@ -959,13 +1027,13 @@ function dispatchClickEvents(element, centerX, centerY) {
     buttons: 1,
   };
 
-  element.dispatchEvent(new MouseEvent("mouseenter", { ...eventOptions, bubbles: false }));
-  element.dispatchEvent(new MouseEvent("mouseover", eventOptions));
-  element.dispatchEvent(new MouseEvent("mousemove", eventOptions));
-  element.dispatchEvent(new MouseEvent("mousedown", eventOptions));
+  element.dispatchEvent(new MouseEvent('mouseenter', { ...eventOptions, bubbles: false }));
+  element.dispatchEvent(new MouseEvent('mouseover', eventOptions));
+  element.dispatchEvent(new MouseEvent('mousemove', eventOptions));
+  element.dispatchEvent(new MouseEvent('mousedown', eventOptions));
   element.focus?.();
-  element.dispatchEvent(new MouseEvent("mouseup", eventOptions));
-  element.dispatchEvent(new MouseEvent("click", eventOptions));
+  element.dispatchEvent(new MouseEvent('mouseup', eventOptions));
+  element.dispatchEvent(new MouseEvent('click', eventOptions));
   element.click();
 }
 
@@ -976,22 +1044,39 @@ function dispatchClickEvents(element, centerX, centerY) {
 function actionClickById(params) {
   const { element_id } = params;
   if (!element_id) {
-    return { success: false, error: { code: -1, message: "element_id required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'element_id required', recoverable: false },
+    };
   }
 
   const element = snapshotElements.get(element_id);
   if (!element) {
-    return { success: false, error: { code: -1, message: `Element ID ${element_id} not found. Take a new snapshot first.`, recoverable: true } };
+    return {
+      success: false,
+      error: {
+        code: -1,
+        message: `Element ID ${element_id} not found. Take a new snapshot first.`,
+        recoverable: true,
+      },
+    };
   }
 
   // Check if still in DOM
   if (!document.contains(element)) {
     snapshotElements.delete(element_id);
-    return { success: false, error: { code: -1, message: `Element ID ${element_id} no longer exists. Take a new snapshot.`, recoverable: true } };
+    return {
+      success: false,
+      error: {
+        code: -1,
+        message: `Element ID ${element_id} no longer exists. Take a new snapshot.`,
+        recoverable: true,
+      },
+    };
   }
 
   // Scroll into view
-  element.scrollIntoView({ behavior: "smooth", block: "center" });
+  element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
   // Get element center for realistic click coordinates
   const rect = element.getBoundingClientRect();
@@ -1004,28 +1089,50 @@ function actionClickById(params) {
   // For text elements (span, div, p, etc.), also try clicking parent elements
   // because many frameworks use event delegation on parent containers
   const tagName = element.tagName.toLowerCase();
-  const textTags = ["span", "div", "p", "label", "td", "th", "em", "strong", "i", "b"];
+  const textTags = ['span', 'div', 'p', 'label', 'td', 'th', 'em', 'strong', 'i', 'b'];
 
   if (textTags.includes(tagName)) {
     // Find and click the nearest clickable ancestor
     const clickableAncestor = findClickableAncestor(element);
     if (clickableAncestor) {
-      console.log("[NevoFlux] Also clicking parent element:", clickableAncestor.tagName, clickableAncestor.className);
+      console.log(
+        '[NevoFlux] Also clicking parent element:',
+        clickableAncestor.tagName,
+        clickableAncestor.className
+      );
       const ancestorRect = clickableAncestor.getBoundingClientRect();
       const ancestorCenterX = ancestorRect.left + ancestorRect.width / 2;
       const ancestorCenterY = ancestorRect.top + ancestorRect.height / 2;
       dispatchClickEvents(clickableAncestor, ancestorCenterX, ancestorCenterY);
-      return { success: true, result: { element_id, clicked: true, also_clicked_parent: clickableAncestor.tagName.toLowerCase() } };
+      return {
+        success: true,
+        result: {
+          element_id,
+          clicked: true,
+          also_clicked_parent: clickableAncestor.tagName.toLowerCase(),
+        },
+      };
     }
 
     // Last resort: try clicking at the element's coordinates using document.elementFromPoint
     // This simulates a real click at that position
-    console.log("[NevoFlux] Trying elementFromPoint click at", centerX, centerY);
+    console.log('[NevoFlux] Trying elementFromPoint click at', centerX, centerY);
     const elementAtPoint = document.elementFromPoint(centerX, centerY);
     if (elementAtPoint && elementAtPoint !== element) {
-      console.log("[NevoFlux] elementFromPoint found different element:", elementAtPoint.tagName, elementAtPoint.className);
+      console.log(
+        '[NevoFlux] elementFromPoint found different element:',
+        elementAtPoint.tagName,
+        elementAtPoint.className
+      );
       dispatchClickEvents(elementAtPoint, centerX, centerY);
-      return { success: true, result: { element_id, clicked: true, clicked_element_at_point: elementAtPoint.tagName.toLowerCase() } };
+      return {
+        success: true,
+        result: {
+          element_id,
+          clicked: true,
+          clicked_element_at_point: elementAtPoint.tagName.toLowerCase(),
+        },
+      };
     }
   }
 
@@ -1039,33 +1146,52 @@ function actionClickById(params) {
 async function actionFillById(params) {
   const { element_id, value, press_enter = false } = params;
   if (!element_id || value === undefined) {
-    return { success: false, error: { code: -1, message: "element_id and value required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'element_id and value required', recoverable: false },
+    };
   }
 
   const element = snapshotElements.get(element_id);
   if (!element) {
-    return { success: false, error: { code: -1, message: `Element ID ${element_id} not found. Take a new snapshot first.`, recoverable: true } };
+    return {
+      success: false,
+      error: {
+        code: -1,
+        message: `Element ID ${element_id} not found. Take a new snapshot first.`,
+        recoverable: true,
+      },
+    };
   }
 
   if (!document.contains(element)) {
     snapshotElements.delete(element_id);
-    return { success: false, error: { code: -1, message: `Element ID ${element_id} no longer exists. Take a new snapshot.`, recoverable: true } };
+    return {
+      success: false,
+      error: {
+        code: -1,
+        message: `Element ID ${element_id} no longer exists. Take a new snapshot.`,
+        recoverable: true,
+      },
+    };
   }
 
   // Focus and fill
-  element.scrollIntoView({ behavior: "instant", block: "center" });
+  element.scrollIntoView({ behavior: 'instant', block: 'center' });
   element.focus();
-  element.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+  element.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
 
   // Clear and set value
   const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-    window.HTMLInputElement.prototype, "value"
+    window.HTMLInputElement.prototype,
+    'value'
   )?.set;
   const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(
-    window.HTMLTextAreaElement.prototype, "value"
+    window.HTMLTextAreaElement.prototype,
+    'value'
   )?.set;
 
-  if (element.tagName === "TEXTAREA" && nativeTextAreaValueSetter) {
+  if (element.tagName === 'TEXTAREA' && nativeTextAreaValueSetter) {
     nativeTextAreaValueSetter.call(element, value);
   } else if (nativeInputValueSetter) {
     nativeInputValueSetter.call(element, value);
@@ -1074,18 +1200,23 @@ async function actionFillById(params) {
   }
 
   // Dispatch events
-  element.dispatchEvent(new InputEvent("input", {
-    bubbles: true, cancelable: true, inputType: "insertText", data: value,
-  }));
-  element.dispatchEvent(new Event("change", { bubbles: true }));
+  element.dispatchEvent(
+    new InputEvent('input', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'insertText',
+      data: value,
+    })
+  );
+  element.dispatchEvent(new Event('change', { bubbles: true }));
 
   // Press Enter if requested
   if (press_enter) {
     // Re-focus element before pressing Enter (some pages lose focus after input events)
     element.focus();
-    element.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+    element.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
     // Small delay to ensure focus is established
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
     pressEnterKey(element);
   }
 
@@ -1099,28 +1230,46 @@ async function actionFillById(params) {
 async function actionTypeById(params) {
   const { element_id, text, press_enter = false } = params;
   if (!element_id || text === undefined) {
-    return { success: false, error: { code: -1, message: "element_id and text required", recoverable: false } };
+    return {
+      success: false,
+      error: { code: -1, message: 'element_id and text required', recoverable: false },
+    };
   }
 
   const element = snapshotElements.get(element_id);
   if (!element) {
-    return { success: false, error: { code: -1, message: `Element ID ${element_id} not found. Take a new snapshot first.`, recoverable: true } };
+    return {
+      success: false,
+      error: {
+        code: -1,
+        message: `Element ID ${element_id} not found. Take a new snapshot first.`,
+        recoverable: true,
+      },
+    };
   }
 
   if (!document.contains(element)) {
     snapshotElements.delete(element_id);
-    return { success: false, error: { code: -1, message: `Element ID ${element_id} no longer exists. Take a new snapshot.`, recoverable: true } };
+    return {
+      success: false,
+      error: {
+        code: -1,
+        message: `Element ID ${element_id} no longer exists. Take a new snapshot.`,
+        recoverable: true,
+      },
+    };
   }
 
-  element.scrollIntoView({ behavior: "instant", block: "center" });
+  element.scrollIntoView({ behavior: 'instant', block: 'center' });
   element.focus();
 
-  const nativeSetter = element.tagName === "TEXTAREA"
-    ? Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set
-    : Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
+  const nativeSetter =
+    element.tagName === 'TEXTAREA'
+      ? Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
+      : Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
 
   for (const char of text) {
-    element.dispatchEvent(new KeyboardEvent("keydown", { key: char, bubbles: true }));
+    element.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
 
     const newValue = element.value + char;
     if (nativeSetter) {
@@ -1129,21 +1278,25 @@ async function actionTypeById(params) {
       element.value = newValue;
     }
 
-    element.dispatchEvent(new InputEvent("input", {
-      bubbles: true, inputType: "insertText", data: char,
-    }));
-    element.dispatchEvent(new KeyboardEvent("keyup", { key: char, bubbles: true }));
+    element.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: char,
+      })
+    );
+    element.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
   }
 
-  element.dispatchEvent(new Event("change", { bubbles: true }));
+  element.dispatchEvent(new Event('change', { bubbles: true }));
 
   // Press Enter if requested
   if (press_enter) {
     // Re-focus element before pressing Enter (some pages lose focus after input events)
     element.focus();
-    element.dispatchEvent(new FocusEvent("focus", { bubbles: true }));
+    element.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
     // Small delay to ensure focus is established
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
     pressEnterKey(element);
   }
 
@@ -1158,47 +1311,50 @@ async function actionTypeById(params) {
  * Handle browser tool action from background script
  */
 async function handleBrowserToolAction(action, params) {
-  console.log("[NevoFlux] Content script handling action:", action, params);
+  console.log('[NevoFlux] Content script handling action:', action, params);
 
   switch (action) {
-    case "click":
+    case 'click':
       return actionClick(params);
 
-    case "type":
+    case 'type':
       return actionType(params);
 
-    case "fill":
+    case 'fill':
       return actionFill(params);
 
-    case "get_content":
+    case 'get_content':
       return actionGetContent(params);
 
-    case "wait_for":
+    case 'wait_for':
       return await actionWaitFor(params);
 
-    case "scroll":
+    case 'scroll':
       return actionScroll(params);
 
-    case "get_element":
+    case 'get_element':
       return actionGetElement(params);
 
-    case "query_all":
+    case 'query_all':
       return actionQueryAll(params);
 
-    case "snapshot":
+    case 'snapshot':
       return actionSnapshot(params);
 
-    case "click_by_id":
+    case 'click_by_id':
       return actionClickById(params);
 
-    case "fill_by_id":
+    case 'fill_by_id':
       return actionFillById(params);
 
-    case "type_by_id":
+    case 'type_by_id':
       return actionTypeById(params);
 
     default:
-      return { success: false, error: { code: -1, message: `Unknown action: ${action}`, recoverable: false } };
+      return {
+        success: false,
+        error: { code: -1, message: `Unknown action: ${action}`, recoverable: false },
+      };
   }
 }
 
@@ -1206,10 +1362,10 @@ async function handleBrowserToolAction(action, params) {
  * Listen for messages from background script
  */
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log("[NevoFlux] Content script received:", message);
+  console.log('[NevoFlux] Content script received:', message);
 
   // Handle browser tool actions
-  if (message.type === "browser_tool_action") {
+  if (message.type === 'browser_tool_action') {
     const result = handleBrowserToolAction(message.action, message.params);
 
     // Handle async actions
@@ -1224,15 +1380,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Legacy message types for backwards compatibility
   switch (message.type) {
-    case "extract_content":
+    case 'extract_content':
       sendResponse(actionGetContent({}));
       break;
 
-    case "click_element":
+    case 'click_element':
       sendResponse(actionClick({ selector: message.selector }));
       break;
 
-    case "fill_form":
+    case 'fill_form':
       // Convert legacy format
       const results = [];
       for (const field of message.fields || []) {
@@ -1242,9 +1398,12 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       break;
 
     default:
-      console.warn("[NevoFlux] Unknown message type:", message.type);
-      sendResponse({ success: false, error: { code: -1, message: "Unknown message type", recoverable: false } });
+      console.warn('[NevoFlux] Unknown message type:', message.type);
+      sendResponse({
+        success: false,
+        error: { code: -1, message: 'Unknown message type', recoverable: false },
+      });
   }
 });
 
-console.log("[NevoFlux] Agent content script loaded");
+console.log('[NevoFlux] Agent content script loaded');

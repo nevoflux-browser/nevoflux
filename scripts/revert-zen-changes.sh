@@ -40,10 +40,10 @@ if [ -d "$OVERLAYS_DIR" ]; then
 fi
 
 # 2. Find modified tracked files in src/zen/
-MODIFIED_FILES=$(git diff --name-only src/zen/ 2>/dev/null || true)
+MODIFIED_FILES=$(git diff --name-only src/zen/ 2> /dev/null || true)
 
 # 3. Find staged files in src/zen/
-STAGED_FILES=$(git diff --cached --name-only src/zen/ 2>/dev/null || true)
+STAGED_FILES=$(git diff --cached --name-only src/zen/ 2> /dev/null || true)
 
 # Check if there's anything to do
 if [ ${#OVERLAY_FILES[@]} -eq 0 ] && [ -z "$MODIFIED_FILES" ] && [ -z "$STAGED_FILES" ]; then
@@ -104,13 +104,13 @@ done
 
 # 2. Unstage any staged files in src/zen/
 if [ -n "$STAGED_FILES" ]; then
-  git restore --staged src/zen/ 2>/dev/null || true
+  git restore --staged src/zen/ 2> /dev/null || true
   echo "Unstaged files in src/zen/"
 fi
 
 # 3. Revert modified files
 if [ -n "$MODIFIED_FILES" ] || [ -n "$STAGED_FILES" ]; then
-  git checkout src/zen/ 2>/dev/null || {
+  git checkout src/zen/ 2> /dev/null || {
     echo "WARN: Some files could not be reverted via git checkout"
     ERRORS=1
   }

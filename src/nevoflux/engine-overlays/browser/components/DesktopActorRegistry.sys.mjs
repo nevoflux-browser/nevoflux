@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { ActorManagerParent } from "resource://gre/modules/ActorManagerParent.sys.mjs";
+import { ActorManagerParent } from 'resource://gre/modules/ActorManagerParent.sys.mjs';
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
+  BrowserWindowTracker: 'resource:///modules/BrowserWindowTracker.sys.mjs',
 });
 
 /**
@@ -20,15 +20,15 @@ let JSPROCESSACTORS = {
   // Miscellaneous stuff that needs to be initialized per process.
   BrowserProcess: {
     child: {
-      esModuleURI: "resource:///actors/BrowserProcessChild.sys.mjs",
+      esModuleURI: 'resource:///actors/BrowserProcessChild.sys.mjs',
       observers: [
         // WebRTC related notifications. They are here to avoid loading WebRTC
         // components when not needed.
-        "getUserMedia:request",
-        "recording-device-stopped",
-        "PeerConnection:request",
-        "recording-device-events",
-        "recording-window-ended",
+        'getUserMedia:request',
+        'recording-device-stopped',
+        'PeerConnection:request',
+        'recording-device-events',
+        'recording-window-ended',
       ],
     },
   },
@@ -36,33 +36,28 @@ let JSPROCESSACTORS = {
   MozCachedOHTTP: {
     parent: {
       esModuleURI:
-        "moz-src:///browser/components/mozcachedohttp/actors/MozCachedOHTTPParent.sys.mjs",
+        'moz-src:///browser/components/mozcachedohttp/actors/MozCachedOHTTPParent.sys.mjs',
     },
     includeParent: true,
   },
 
   RefreshBlockerObserver: {
     child: {
-      esModuleURI: "resource:///actors/RefreshBlockerChild.sys.mjs",
+      esModuleURI: 'resource:///actors/RefreshBlockerChild.sys.mjs',
       observers: [
-        "webnavigation-create",
-        "chrome-webnavigation-create",
-        "webnavigation-destroy",
-        "chrome-webnavigation-destroy",
+        'webnavigation-create',
+        'chrome-webnavigation-create',
+        'webnavigation-destroy',
+        'chrome-webnavigation-destroy',
       ],
     },
 
-    enablePreference: "accessibility.blockautorefresh",
-    onPreferenceChanged: isEnabled => {
-      lazy.BrowserWindowTracker.orderedWindows.forEach(win => {
+    enablePreference: 'accessibility.blockautorefresh',
+    onPreferenceChanged: (isEnabled) => {
+      lazy.BrowserWindowTracker.orderedWindows.forEach((win) => {
         for (let browser of win.gBrowser.browsers) {
           try {
-            browser.sendMessageToActor(
-              "PreferenceChanged",
-              { isEnabled },
-              "RefreshBlocker",
-              "all"
-            );
+            browser.sendMessageToActor('PreferenceChanged', { isEnabled }, 'RefreshBlocker', 'all');
           } catch (ex) {}
         }
       });
@@ -78,26 +73,26 @@ let JSPROCESSACTORS = {
 let JSWINDOWACTORS = {
   Megalist: {
     parent: {
-      esModuleURI: "resource://gre/actors/MegalistParent.sys.mjs",
+      esModuleURI: 'resource://gre/actors/MegalistParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource://gre/actors/MegalistChild.sys.mjs",
+      esModuleURI: 'resource://gre/actors/MegalistChild.sys.mjs',
       events: {
         DOMContentLoaded: {},
       },
     },
     includeChrome: true,
-    matches: ["chrome://global/content/megalist/megalist.html"],
+    matches: ['chrome://global/content/megalist/megalist.html'],
     allFrames: true,
-    enablePreference: "browser.contextual-password-manager.enabled",
+    enablePreference: 'browser.contextual-password-manager.enabled',
   },
 
   AboutLogins: {
     parent: {
-      esModuleURI: "resource:///actors/AboutLoginsParent.sys.mjs",
+      esModuleURI: 'resource:///actors/AboutLoginsParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/AboutLoginsChild.sys.mjs",
+      esModuleURI: 'resource:///actors/AboutLoginsChild.sys.mjs',
       events: {
         AboutLoginsCopyLoginDetail: { wantUntrusted: true },
         AboutLoginsCreateLogin: { wantUntrusted: true },
@@ -119,60 +114,60 @@ let JSWINDOWACTORS = {
         AboutLoginsExportPasswords: { wantUntrusted: true },
       },
     },
-    matches: ["about:logins", "about:logins?*", "about:loginsimportreport"],
+    matches: ['about:logins', 'about:logins?*', 'about:loginsimportreport'],
     allFrames: true,
-    remoteTypes: ["privilegedabout"],
+    remoteTypes: ['privilegedabout'],
   },
 
   AboutMessagePreview: {
     parent: {
-      esModuleURI: "resource:///actors/AboutMessagePreviewParent.sys.mjs",
+      esModuleURI: 'resource:///actors/AboutMessagePreviewParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/AboutMessagePreviewChild.sys.mjs",
+      esModuleURI: 'resource:///actors/AboutMessagePreviewChild.sys.mjs',
       events: {
         DOMDocElementInserted: { capture: true },
       },
     },
-    matches: ["about:messagepreview", "about:messagepreview?*"],
+    matches: ['about:messagepreview', 'about:messagepreview?*'],
   },
 
   AboutPrivateBrowsing: {
     parent: {
-      esModuleURI: "resource:///actors/AboutPrivateBrowsingParent.sys.mjs",
+      esModuleURI: 'resource:///actors/AboutPrivateBrowsingParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/AboutPrivateBrowsingChild.sys.mjs",
+      esModuleURI: 'resource:///actors/AboutPrivateBrowsingChild.sys.mjs',
 
       events: {
         DOMDocElementInserted: { capture: true },
       },
     },
 
-    matches: ["about:privatebrowsing*"],
+    matches: ['about:privatebrowsing*'],
   },
 
   AboutProtections: {
     parent: {
-      esModuleURI: "resource:///actors/AboutProtectionsParent.sys.mjs",
+      esModuleURI: 'resource:///actors/AboutProtectionsParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/AboutProtectionsChild.sys.mjs",
+      esModuleURI: 'resource:///actors/AboutProtectionsChild.sys.mjs',
 
       events: {
         DOMDocElementInserted: { capture: true },
       },
     },
 
-    matches: ["about:protections", "about:protections?*"],
+    matches: ['about:protections', 'about:protections?*'],
   },
 
   AboutReader: {
     parent: {
-      esModuleURI: "resource:///actors/AboutReaderParent.sys.mjs",
+      esModuleURI: 'resource:///actors/AboutReaderParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/AboutReaderChild.sys.mjs",
+      esModuleURI: 'resource:///actors/AboutReaderChild.sys.mjs',
       events: {
         DOMContentLoaded: {},
         pageshow: { mozSystemGroup: true },
@@ -181,80 +176,80 @@ let JSWINDOWACTORS = {
         pagehide: { mozSystemGroup: true, createActor: false },
       },
     },
-    messageManagerGroups: ["browsers"],
+    messageManagerGroups: ['browsers'],
   },
 
   Nevoflux: {
     parent: {
-      esModuleURI: "resource:///actors/NevofluxParent.sys.mjs",
+      esModuleURI: 'resource:///actors/NevofluxParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/NevofluxChild.sys.mjs",
+      esModuleURI: 'resource:///actors/NevofluxChild.sys.mjs',
       events: {
         DOMDocElementInserted: {},
       },
     },
     includeChrome: true,
     allFrames: true,
-    messageManagerGroups: ["browsers"],
+    messageManagerGroups: ['browsers'],
   },
 
   AboutTabCrashed: {
     parent: {
-      esModuleURI: "resource:///actors/AboutTabCrashedParent.sys.mjs",
+      esModuleURI: 'resource:///actors/AboutTabCrashedParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/AboutTabCrashedChild.sys.mjs",
+      esModuleURI: 'resource:///actors/AboutTabCrashedChild.sys.mjs',
       events: {
         DOMDocElementInserted: { capture: true },
       },
     },
 
-    matches: ["about:tabcrashed*"],
+    matches: ['about:tabcrashed*'],
   },
 
   AboutWelcome: {
     parent: {
-      esModuleURI: "resource:///actors/AboutWelcomeParent.sys.mjs",
+      esModuleURI: 'resource:///actors/AboutWelcomeParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/AboutWelcomeChild.sys.mjs",
+      esModuleURI: 'resource:///actors/AboutWelcomeChild.sys.mjs',
       events: {
         // This is added so the actor instantiates immediately and makes
         // methods available to the page js on load.
         DOMDocElementInserted: {},
       },
     },
-    matches: ["about:welcome"],
-    remoteTypes: ["privilegedabout"],
+    matches: ['about:welcome'],
+    remoteTypes: ['privilegedabout'],
 
     // See Bug 1618306
     // Remove this preference check when we turn on separate about:welcome for all users.
-    enablePreference: "browser.aboutwelcome.enabled",
+    enablePreference: 'browser.aboutwelcome.enabled',
   },
 
   BackupUI: {
     parent: {
-      esModuleURI: "resource:///actors/BackupUIParent.sys.mjs",
+      esModuleURI: 'resource:///actors/BackupUIParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/BackupUIChild.sys.mjs",
+      esModuleURI: 'resource:///actors/BackupUIChild.sys.mjs',
       events: {
-        "BackupUI:InitWidget": { wantUntrusted: true },
-        "BackupUI:TriggerCreateBackup": { wantUntrusted: true },
-        "BackupUI:EnableScheduledBackups": { wantUntrusted: true },
-        "BackupUI:DisableScheduledBackups": { wantUntrusted: true },
-        "BackupUI:ShowFilepicker": { wantUntrusted: true },
-        "BackupUI:GetBackupFileInfo": { wantUntrusted: true },
-        "BackupUI:RestoreFromBackupFile": { wantUntrusted: true },
-        "BackupUI:RestoreFromBackupChooseFile": { wantUntrusted: true },
-        "BackupUI:EnableEncryption": { wantUntrusted: true },
-        "BackupUI:DisableEncryption": { wantUntrusted: true },
-        "BackupUI:RerunEncryption": { wantUntrusted: true },
-        "BackupUI:ShowBackupLocation": { wantUntrusted: true },
-        "BackupUI:EditBackupLocation": { wantUntrusted: true },
-        "BackupUI:SetEmbeddedComponentPersistentData": { wantUntrusted: true },
-        "BackupUI:FlushEmbeddedComponentPersistentData": {
+        'BackupUI:InitWidget': { wantUntrusted: true },
+        'BackupUI:TriggerCreateBackup': { wantUntrusted: true },
+        'BackupUI:EnableScheduledBackups': { wantUntrusted: true },
+        'BackupUI:DisableScheduledBackups': { wantUntrusted: true },
+        'BackupUI:ShowFilepicker': { wantUntrusted: true },
+        'BackupUI:GetBackupFileInfo': { wantUntrusted: true },
+        'BackupUI:RestoreFromBackupFile': { wantUntrusted: true },
+        'BackupUI:RestoreFromBackupChooseFile': { wantUntrusted: true },
+        'BackupUI:EnableEncryption': { wantUntrusted: true },
+        'BackupUI:DisableEncryption': { wantUntrusted: true },
+        'BackupUI:RerunEncryption': { wantUntrusted: true },
+        'BackupUI:ShowBackupLocation': { wantUntrusted: true },
+        'BackupUI:EditBackupLocation': { wantUntrusted: true },
+        'BackupUI:SetEmbeddedComponentPersistentData': { wantUntrusted: true },
+        'BackupUI:FlushEmbeddedComponentPersistentData': {
           wantUntrusted: true,
         },
       },
@@ -262,42 +257,42 @@ let JSWINDOWACTORS = {
     includeChrome: true,
     allFrames: true,
     matches: [
-      "about:preferences*",
-      "about:settings*",
-      "about:welcome*",
-      "chrome://browser/content/spotlight.html",
+      'about:preferences*',
+      'about:settings*',
+      'about:welcome*',
+      'chrome://browser/content/spotlight.html',
     ],
   },
 
   BlockedSite: {
     parent: {
-      esModuleURI: "resource:///actors/BlockedSiteParent.sys.mjs",
+      esModuleURI: 'resource:///actors/BlockedSiteParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/BlockedSiteChild.sys.mjs",
+      esModuleURI: 'resource:///actors/BlockedSiteChild.sys.mjs',
       events: {
         AboutBlockedLoaded: { wantUntrusted: true },
         click: {},
       },
     },
-    matches: ["about:blocked?*"],
+    matches: ['about:blocked?*'],
     allFrames: true,
   },
 
   BrowserTab: {
     child: {
-      esModuleURI: "resource:///actors/BrowserTabChild.sys.mjs",
+      esModuleURI: 'resource:///actors/BrowserTabChild.sys.mjs',
     },
 
-    messageManagerGroups: ["browsers"],
+    messageManagerGroups: ['browsers'],
   },
 
   ClickHandler: {
     parent: {
-      esModuleURI: "resource:///actors/ClickHandlerParent.sys.mjs",
+      esModuleURI: 'resource:///actors/ClickHandlerParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/ClickHandlerChild.sys.mjs",
+      esModuleURI: 'resource:///actors/ClickHandlerChild.sys.mjs',
       events: {
         chromelinkclick: { capture: true, mozSystemGroup: true },
       },
@@ -314,46 +309,46 @@ let JSWINDOWACTORS = {
    */
   MiddleMousePasteHandler: {
     parent: {
-      esModuleURI: "resource:///actors/ClickHandlerParent.sys.mjs",
+      esModuleURI: 'resource:///actors/ClickHandlerParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/ClickHandlerChild.sys.mjs",
+      esModuleURI: 'resource:///actors/ClickHandlerChild.sys.mjs',
       events: {
         auxclick: { capture: true, mozSystemGroup: true },
       },
     },
-    enablePreference: "middlemouse.contentLoadURL",
+    enablePreference: 'middlemouse.contentLoadURL',
 
     allFrames: true,
   },
 
   ContentSearch: {
     parent: {
-      esModuleURI: "resource:///actors/ContentSearchParent.sys.mjs",
+      esModuleURI: 'resource:///actors/ContentSearchParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/ContentSearchChild.sys.mjs",
+      esModuleURI: 'resource:///actors/ContentSearchChild.sys.mjs',
       events: {
         ContentSearchClient: { capture: true, wantUntrusted: true },
       },
     },
     matches: [
-      "about:home",
-      "about:welcome",
-      "about:newtab",
-      "about:privatebrowsing",
-      "about:test-about-content-search-ui",
+      'about:home',
+      'about:welcome',
+      'about:newtab',
+      'about:privatebrowsing',
+      'about:test-about-content-search-ui',
     ],
-    remoteTypes: ["privilegedabout"],
+    remoteTypes: ['privilegedabout'],
   },
 
   ContextMenu: {
     parent: {
-      esModuleURI: "resource:///actors/ContextMenuParent.sys.mjs",
+      esModuleURI: 'resource:///actors/ContextMenuParent.sys.mjs',
     },
 
     child: {
-      esModuleURI: "resource:///actors/ContextMenuChild.sys.mjs",
+      esModuleURI: 'resource:///actors/ContextMenuChild.sys.mjs',
       events: {
         contextmenu: { mozSystemGroup: true },
       },
@@ -364,59 +359,59 @@ let JSWINDOWACTORS = {
 
   DecoderDoctor: {
     parent: {
-      esModuleURI: "resource:///actors/DecoderDoctorParent.sys.mjs",
+      esModuleURI: 'resource:///actors/DecoderDoctorParent.sys.mjs',
     },
 
     child: {
-      esModuleURI: "resource:///actors/DecoderDoctorChild.sys.mjs",
-      observers: ["decoder-doctor-notification"],
+      esModuleURI: 'resource:///actors/DecoderDoctorChild.sys.mjs',
+      observers: ['decoder-doctor-notification'],
     },
 
-    messageManagerGroups: ["browsers"],
+    messageManagerGroups: ['browsers'],
     allFrames: true,
   },
 
   DOMFullscreen: {
     parent: {
-      esModuleURI: "resource:///actors/DOMFullscreenParent.sys.mjs",
+      esModuleURI: 'resource:///actors/DOMFullscreenParent.sys.mjs',
     },
 
     child: {
-      esModuleURI: "resource:///actors/DOMFullscreenChild.sys.mjs",
+      esModuleURI: 'resource:///actors/DOMFullscreenChild.sys.mjs',
       events: {
-        "MozDOMFullscreen:Request": {},
-        "MozDOMFullscreen:Entered": {},
-        "MozDOMFullscreen:NewOrigin": {},
-        "MozDOMFullscreen:Exit": {},
-        "MozDOMFullscreen:Exited": {},
+        'MozDOMFullscreen:Request': {},
+        'MozDOMFullscreen:Entered': {},
+        'MozDOMFullscreen:NewOrigin': {},
+        'MozDOMFullscreen:Exit': {},
+        'MozDOMFullscreen:Exited': {},
       },
     },
 
-    messageManagerGroups: ["browsers"],
+    messageManagerGroups: ['browsers'],
     allFrames: true,
   },
 
   EncryptedMedia: {
     parent: {
-      esModuleURI: "resource:///actors/EncryptedMediaParent.sys.mjs",
+      esModuleURI: 'resource:///actors/EncryptedMediaParent.sys.mjs',
     },
 
     child: {
-      esModuleURI: "resource:///actors/EncryptedMediaChild.sys.mjs",
-      observers: ["mediakeys-request"],
+      esModuleURI: 'resource:///actors/EncryptedMediaChild.sys.mjs',
+      observers: ['mediakeys-request'],
     },
 
-    messageManagerGroups: ["browsers"],
+    messageManagerGroups: ['browsers'],
     allFrames: true,
   },
 
   FormValidation: {
     parent: {
-      esModuleURI: "resource:///actors/FormValidationParent.sys.mjs",
+      esModuleURI: 'resource:///actors/FormValidationParent.sys.mjs',
     },
 
     child: {
-      esModuleURI: "resource:///actors/FormValidationChild.sys.mjs",
+      esModuleURI: 'resource:///actors/FormValidationChild.sys.mjs',
       events: {
         MozInvalidForm: {},
         // Listening to ‘pageshow’ event is only relevant if an invalid form
@@ -430,10 +425,10 @@ let JSWINDOWACTORS = {
 
   GenAI: {
     parent: {
-      esModuleURI: "resource:///actors/GenAIParent.sys.mjs",
+      esModuleURI: 'resource:///actors/GenAIParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/GenAIChild.sys.mjs",
+      esModuleURI: 'resource:///actors/GenAIChild.sys.mjs',
       events: {
         mousedown: {},
         mouseup: {},
@@ -446,8 +441,8 @@ let JSWINDOWACTORS = {
       // Register the actor if we have a provider or support provider-less
       const maybeRegister = () => {
         if (
-          Services.prefs.getCharPref("browser.ml.chat.provider", "") ||
-          Services.prefs.getBoolPref("browser.ml.chat.page")
+          Services.prefs.getCharPref('browser.ml.chat.provider', '') ||
+          Services.prefs.getBoolPref('browser.ml.chat.page')
         ) {
           if (!isRegistered) {
             register();
@@ -459,15 +454,15 @@ let JSWINDOWACTORS = {
         }
       };
 
-      Services.prefs.addObserver("browser.ml.chat.page", maybeRegister);
-      Services.prefs.addObserver("browser.ml.chat.provider", maybeRegister);
+      Services.prefs.addObserver('browser.ml.chat.page', maybeRegister);
+      Services.prefs.addObserver('browser.ml.chat.provider', maybeRegister);
       maybeRegister();
     },
   },
 
   LightweightTheme: {
     child: {
-      esModuleURI: "resource:///actors/LightweightThemeChild.sys.mjs",
+      esModuleURI: 'resource:///actors/LightweightThemeChild.sys.mjs',
       events: {
         pageshow: { mozSystemGroup: true },
         DOMContentLoaded: {},
@@ -476,30 +471,30 @@ let JSWINDOWACTORS = {
     includeChrome: true,
     allFrames: true,
     matches: [
-      "about:asrouter",
-      "about:home",
-      "about:newtab",
-      "about:welcome",
-      "chrome://browser/content/syncedtabs/sidebar.xhtml",
-      "chrome://browser/content/places/historySidebar.xhtml",
-      "chrome://browser/content/places/bookmarksSidebar.xhtml",
-      "chrome://browser/content/sidebar/sidebar-history.html",
-      "chrome://browser/content/sidebar/sidebar-customize.html",
-      "chrome://browser/content/sidebar/sidebar-syncedtabs.html",
-      "chrome://browser/content/genai/chat.html",
-      "about:firefoxview",
-      "about:editprofile",
-      "about:deleteprofile",
-      "about:newprofile",
+      'about:asrouter',
+      'about:home',
+      'about:newtab',
+      'about:welcome',
+      'chrome://browser/content/syncedtabs/sidebar.xhtml',
+      'chrome://browser/content/places/historySidebar.xhtml',
+      'chrome://browser/content/places/bookmarksSidebar.xhtml',
+      'chrome://browser/content/sidebar/sidebar-history.html',
+      'chrome://browser/content/sidebar/sidebar-customize.html',
+      'chrome://browser/content/sidebar/sidebar-syncedtabs.html',
+      'chrome://browser/content/genai/chat.html',
+      'about:firefoxview',
+      'about:editprofile',
+      'about:deleteprofile',
+      'about:newprofile',
     ],
   },
 
   LinkHandler: {
     parent: {
-      esModuleURI: "resource:///actors/LinkHandlerParent.sys.mjs",
+      esModuleURI: 'resource:///actors/LinkHandlerParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/LinkHandlerChild.sys.mjs",
+      esModuleURI: 'resource:///actors/LinkHandlerChild.sys.mjs',
       events: {
         DOMHeadElementParsed: {},
         DOMLinkAdded: {},
@@ -511,34 +506,34 @@ let JSWINDOWACTORS = {
       },
     },
 
-    messageManagerGroups: ["browsers"],
+    messageManagerGroups: ['browsers'],
   },
 
   LinkPreview: {
     parent: {
-      esModuleURI: "resource:///actors/LinkPreviewParent.sys.mjs",
+      esModuleURI: 'resource:///actors/LinkPreviewParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/LinkPreviewChild.sys.mjs",
+      esModuleURI: 'resource:///actors/LinkPreviewChild.sys.mjs',
     },
     includeChrome: true,
-    enablePreference: "browser.ml.linkPreview.enabled",
+    enablePreference: 'browser.ml.linkPreview.enabled',
   },
 
   PageAssist: {
     parent: {
-      esModuleURI: "resource:///actors/PageAssistParent.sys.mjs",
+      esModuleURI: 'resource:///actors/PageAssistParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/PageAssistChild.sys.mjs",
+      esModuleURI: 'resource:///actors/PageAssistChild.sys.mjs',
     },
     includeChrome: true,
-    enablePreference: "browser.ml.pageAssist.enabled",
+    enablePreference: 'browser.ml.pageAssist.enabled',
   },
 
   PageInfo: {
     child: {
-      esModuleURI: "resource:///actors/PageInfoChild.sys.mjs",
+      esModuleURI: 'resource:///actors/PageInfoChild.sys.mjs',
     },
 
     allFrames: true,
@@ -546,31 +541,31 @@ let JSWINDOWACTORS = {
 
   PageInfoPreview: {
     child: {
-      esModuleURI: "resource:///actors/PageInfoPreviewChild.sys.mjs",
+      esModuleURI: 'resource:///actors/PageInfoPreviewChild.sys.mjs',
     },
   },
 
   PageStyle: {
     parent: {
-      esModuleURI: "resource:///actors/PageStyleParent.sys.mjs",
+      esModuleURI: 'resource:///actors/PageStyleParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/PageStyleChild.sys.mjs",
+      esModuleURI: 'resource:///actors/PageStyleChild.sys.mjs',
       events: {
         pageshow: { createActor: false },
       },
     },
 
-    messageManagerGroups: ["browsers"],
+    messageManagerGroups: ['browsers'],
     allFrames: true,
   },
 
   Pdfjs: {
     parent: {
-      esModuleURI: "resource://pdf.js/PdfjsParent.sys.mjs",
+      esModuleURI: 'resource://pdf.js/PdfjsParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource://pdf.js/PdfjsChild.sys.mjs",
+      esModuleURI: 'resource://pdf.js/PdfjsChild.sys.mjs',
     },
     allFrames: true,
   },
@@ -578,10 +573,10 @@ let JSWINDOWACTORS = {
   // GMP crash reporting
   Plugin: {
     parent: {
-      esModuleURI: "resource:///actors/PluginParent.sys.mjs",
+      esModuleURI: 'resource:///actors/PluginParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/PluginChild.sys.mjs",
+      esModuleURI: 'resource:///actors/PluginChild.sys.mjs',
       events: {
         PluginCrashed: { capture: true },
       },
@@ -592,37 +587,37 @@ let JSWINDOWACTORS = {
 
   PointerLock: {
     parent: {
-      esModuleURI: "resource:///actors/PointerLockParent.sys.mjs",
+      esModuleURI: 'resource:///actors/PointerLockParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/PointerLockChild.sys.mjs",
+      esModuleURI: 'resource:///actors/PointerLockChild.sys.mjs',
       events: {
-        "MozDOMPointerLock:Entered": {},
-        "MozDOMPointerLock:Exited": {},
+        'MozDOMPointerLock:Entered': {},
+        'MozDOMPointerLock:Exited': {},
       },
     },
 
-    messageManagerGroups: ["browsers"],
+    messageManagerGroups: ['browsers'],
     allFrames: true,
   },
 
   Profiles: {
     parent: {
-      esModuleURI: "resource:///actors/ProfilesParent.sys.mjs",
+      esModuleURI: 'resource:///actors/ProfilesParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/ProfilesChild.sys.mjs",
+      esModuleURI: 'resource:///actors/ProfilesChild.sys.mjs',
       events: {
         DOMDocElementInserted: { wantUntrusted: true },
       },
     },
-    matches: ["about:editprofile", "about:deleteprofile", "about:newprofile"],
-    remoteTypes: ["privilegedabout"],
+    matches: ['about:editprofile', 'about:deleteprofile', 'about:newprofile'],
+    remoteTypes: ['privilegedabout'],
   },
 
   Prompt: {
     parent: {
-      esModuleURI: "resource:///actors/PromptParent.sys.mjs",
+      esModuleURI: 'resource:///actors/PromptParent.sys.mjs',
     },
     includeChrome: true,
     allFrames: true,
@@ -630,53 +625,53 @@ let JSWINDOWACTORS = {
 
   RefreshBlocker: {
     parent: {
-      esModuleURI: "resource:///actors/RefreshBlockerParent.sys.mjs",
+      esModuleURI: 'resource:///actors/RefreshBlockerParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/RefreshBlockerChild.sys.mjs",
+      esModuleURI: 'resource:///actors/RefreshBlockerChild.sys.mjs',
     },
 
-    messageManagerGroups: ["browsers"],
-    enablePreference: "accessibility.blockautorefresh",
+    messageManagerGroups: ['browsers'],
+    enablePreference: 'accessibility.blockautorefresh',
   },
 
   ScreenshotsComponent: {
     parent: {
-      esModuleURI: "resource:///modules/ScreenshotsUtils.sys.mjs",
+      esModuleURI: 'resource:///modules/ScreenshotsUtils.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/ScreenshotsComponentChild.sys.mjs",
+      esModuleURI: 'resource:///actors/ScreenshotsComponentChild.sys.mjs',
       events: {
-        "Screenshots:Close": {},
-        "Screenshots:Copy": {},
-        "Screenshots:Download": {},
-        "Screenshots:HidePanel": {},
-        "Screenshots:OverlaySelection": {},
-        "Screenshots:RecordEvent": {},
-        "Screenshots:ShowPanel": {},
-        "Screenshots:FocusPanel": {},
+        'Screenshots:Close': {},
+        'Screenshots:Copy': {},
+        'Screenshots:Download': {},
+        'Screenshots:HidePanel': {},
+        'Screenshots:OverlaySelection': {},
+        'Screenshots:RecordEvent': {},
+        'Screenshots:ShowPanel': {},
+        'Screenshots:FocusPanel': {},
       },
     },
-    enablePreference: "screenshots.browser.component.enabled",
+    enablePreference: 'screenshots.browser.component.enabled',
   },
 
   ScreenshotsHelper: {
     parent: {
-      esModuleURI: "resource:///modules/ScreenshotsUtils.sys.mjs",
+      esModuleURI: 'resource:///modules/ScreenshotsUtils.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///modules/ScreenshotsHelperChild.sys.mjs",
+      esModuleURI: 'resource:///modules/ScreenshotsHelperChild.sys.mjs',
     },
     allFrames: true,
-    enablePreference: "screenshots.browser.component.enabled",
+    enablePreference: 'screenshots.browser.component.enabled',
   },
 
   SearchSERPTelemetry: {
     parent: {
-      esModuleURI: "resource:///actors/SearchSERPTelemetryParent.sys.mjs",
+      esModuleURI: 'resource:///actors/SearchSERPTelemetryParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/SearchSERPTelemetryChild.sys.mjs",
+      esModuleURI: 'resource:///actors/SearchSERPTelemetryChild.sys.mjs',
       events: {
         DOMContentLoaded: {},
         pageshow: { mozSystemGroup: true },
@@ -686,57 +681,57 @@ let JSWINDOWACTORS = {
         load: { mozSystemGroup: true, capture: true },
       },
     },
-    matches: ["https://*/*"],
+    matches: ['https://*/*'],
   },
 
   ShieldFrame: {
     parent: {
-      esModuleURI: "resource://normandy-content/ShieldFrameParent.sys.mjs",
+      esModuleURI: 'resource://normandy-content/ShieldFrameParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource://normandy-content/ShieldFrameChild.sys.mjs",
+      esModuleURI: 'resource://normandy-content/ShieldFrameChild.sys.mjs',
       events: {
         pageshow: {},
         pagehide: {},
         ShieldPageEvent: { wantUntrusted: true },
       },
     },
-    matches: ["about:studies*"],
+    matches: ['about:studies*'],
   },
 
   SpeechDispatcher: {
     parent: {
-      esModuleURI: "resource:///actors/SpeechDispatcherParent.sys.mjs",
+      esModuleURI: 'resource:///actors/SpeechDispatcherParent.sys.mjs',
     },
 
     child: {
-      esModuleURI: "resource:///actors/SpeechDispatcherChild.sys.mjs",
-      observers: ["chrome-synth-voices-error"],
+      esModuleURI: 'resource:///actors/SpeechDispatcherChild.sys.mjs',
+      observers: ['chrome-synth-voices-error'],
     },
 
-    messageManagerGroups: ["browsers"],
+    messageManagerGroups: ['browsers'],
     allFrames: true,
   },
 
   ASRouter: {
     parent: {
-      esModuleURI: "resource:///actors/ASRouterParent.sys.mjs",
+      esModuleURI: 'resource:///actors/ASRouterParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/ASRouterChild.sys.mjs",
+      esModuleURI: 'resource:///actors/ASRouterChild.sys.mjs',
       events: {
         // This is added so the actor instantiates immediately and makes
         // methods available to the page js on load.
         DOMDocElementInserted: {},
       },
     },
-    matches: ["about:asrouter*", "about:welcome*", "about:privatebrowsing*"],
-    remoteTypes: ["privilegedabout"],
+    matches: ['about:asrouter*', 'about:welcome*', 'about:privatebrowsing*'],
+    remoteTypes: ['privilegedabout'],
   },
 
   SwitchDocumentDirection: {
     child: {
-      esModuleURI: "resource:///actors/SwitchDocumentDirectionChild.sys.mjs",
+      esModuleURI: 'resource:///actors/SwitchDocumentDirectionChild.sys.mjs',
     },
 
     allFrames: true,
@@ -744,25 +739,25 @@ let JSWINDOWACTORS = {
 
   UITour: {
     parent: {
-      esModuleURI: "moz-src:///browser/components/uitour/UITourParent.sys.mjs",
+      esModuleURI: 'moz-src:///browser/components/uitour/UITourParent.sys.mjs',
     },
     child: {
-      esModuleURI: "moz-src:///browser/components/uitour/UITourChild.sys.mjs",
+      esModuleURI: 'moz-src:///browser/components/uitour/UITourChild.sys.mjs',
       events: {
         mozUITour: { wantUntrusted: true },
       },
     },
 
-    enablePreference: "browser.uitour.enabled",
-    messageManagerGroups: ["browsers"],
+    enablePreference: 'browser.uitour.enabled',
+    messageManagerGroups: ['browsers'],
   },
 
   WebRTC: {
     parent: {
-      esModuleURI: "resource:///actors/WebRTCParent.sys.mjs",
+      esModuleURI: 'resource:///actors/WebRTCParent.sys.mjs',
     },
     child: {
-      esModuleURI: "resource:///actors/WebRTCChild.sys.mjs",
+      esModuleURI: 'resource:///actors/WebRTCChild.sys.mjs',
     },
 
     allFrames: true,

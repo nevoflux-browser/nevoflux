@@ -16,7 +16,7 @@ cp "$MANIFEST" "$MANIFEST.backup"
 
 # Update manifest to use minimal sidebar
 # Cross-platform sed -i
-if sed --version >/dev/null 2>&1; then
+if sed --version > /dev/null 2>&1; then
   sed -i 's/"default_panel": "sidebar\/sidebar.html"/"default_panel": "sidebar\/sidebar-minimal.html"/' "$MANIFEST"
 else
   sed -i '' 's/"default_panel": "sidebar\/sidebar.html"/"default_panel": "sidebar\/sidebar-minimal.html"/' "$MANIFEST"

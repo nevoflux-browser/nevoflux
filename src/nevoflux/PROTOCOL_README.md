@@ -174,21 +174,21 @@ import { protocolClient } from './utils/protocol-client.js';
 protocolClient.connect();
 
 // Send chat
-protocolClient.sendChat("Check current page links");
+protocolClient.sendChat('Check current page links');
 
 // Send UI event
 protocolClient.sendUiEvent(viewId, actionId, formData);
 
 // Handle streams
 protocolClient.onStream('main', (data) => {
-    console.log('Stream delta:', data.delta);
+  console.log('Stream delta:', data.delta);
 });
 
 // Handle UI render
 protocolClient.onUi('main', (data) => {
-    if (data.action === 'render') {
-        // Render UI component
-    }
+  if (data.action === 'render') {
+    // Render UI component
+  }
 });
 ```
 
@@ -206,8 +206,8 @@ renderer.viewId = 'view_1';
 
 // Listen for actions
 renderer.addEventListener('action-triggered', (e) => {
-    const { viewId, actionId, formData } = e.detail;
-    protocolClient.sendUiEvent(viewId, actionId, formData);
+  const { viewId, actionId, formData } = e.detail;
+  protocolClient.sendUiEvent(viewId, actionId, formData);
 });
 
 // Update component
@@ -219,6 +219,7 @@ renderer.updateComponent('btn_1', { loading: true, label: 'Processing...' });
 The protocol defines JSON-based UI components:
 
 #### Container
+
 ```javascript
 {
   "component": "Container",
@@ -228,6 +229,7 @@ The protocol defines JSON-based UI components:
 ```
 
 #### Text
+
 ```javascript
 {
   "component": "Text",
@@ -236,6 +238,7 @@ The protocol defines JSON-based UI components:
 ```
 
 #### Button
+
 ```javascript
 {
   "component": "Button",
@@ -248,6 +251,7 @@ The protocol defines JSON-based UI components:
 ```
 
 #### Input
+
 ```javascript
 {
   "component": "Input",
@@ -256,6 +260,7 @@ The protocol defines JSON-based UI components:
 ```
 
 #### Table
+
 ```javascript
 {
   "component": "Table",
@@ -267,6 +272,7 @@ The protocol defines JSON-based UI components:
 ```
 
 #### Spinner
+
 ```javascript
 {
   "component": "Spinner",
@@ -296,6 +302,7 @@ cargo run --example link_checker_scenario
 ### Example Output
 
 The example demonstrates:
+
 - Creating and sending protocol envelopes
 - Streaming text responses
 - Building A2UI component trees
@@ -312,6 +319,7 @@ cargo test
 ```
 
 Tests cover:
+
 - Protocol envelope creation and serialization
 - A2UI component builders
 - Component ID assignment

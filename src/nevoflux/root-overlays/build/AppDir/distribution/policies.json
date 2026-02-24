@@ -1,20 +1,20 @@
 {
-    "policies": {
-        "DisableAppUpdate": true,
-        "AppAutoUpdate": false,
-        "ManualAppUpdateOnly": true,
-        "BackgroundAppUpdate": false,
-        "Preferences": {
-            "xpinstall.signatures.required": {
-                "Value": false,
-                "Status": "locked"
-            }
-        },
-        "ExtensionSettings": {
-            "agent@nevoflux.com": {
-                "installation_mode": "force_installed",
-                "install_url": "__EXTENSION_INSTALL_URL__"
-            }
-        }
+  "policies": {
+    "DisableAppUpdate": true,
+    "AppAutoUpdate": false,
+    "ManualAppUpdateOnly": true,
+    "BackgroundAppUpdate": false,
+    "Preferences": {
+      "xpinstall.signatures.required": {
+        "Value": false,
+        "Status": "locked"
+      }
+    },
+    "ExtensionSettings": {
+      "agent@nevoflux.com": {
+        "installation_mode": "force_installed",
+        "install_url": "__EXTENSION_INSTALL_URL__"
+      }
     }
+  }
 }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-"use strict";
+'use strict';
 
 /**
  * Canvas micro-app runtime.
@@ -12,7 +12,7 @@
  */
 const Canvas = {
   _artifactId: null,
-  _mode: "preview",
+  _mode: 'preview',
   _debounceTimer: null,
   _iframe: null,
   _artifact: null,
@@ -182,16 +182,16 @@ const Canvas = {
     // loads via chrome:// protocol handler rewrite.  The ID lives in the path:
     //   nevoflux://canvas/{id}  →  hostname="canvas", pathname="/{id}"
     const url = new URL(window.location.href);
-    this._artifactId = NevofluxPage.getParam("id")
-      || url.pathname.replace(/^\//, "")
-      || null;
-    this._mode = NevofluxPage.getParam("mode", "preview");
+    this._artifactId = NevofluxPage.getParam('id') || url.pathname.replace(/^\//, '') || null;
+    this._mode = NevofluxPage.getParam('mode', 'preview');
 
-    console.error(`[Canvas] init: id=${this._artifactId}, mode=${this._mode}, url=${window.location.href}`);
+    console.error(
+      `[Canvas] init: id=${this._artifactId}, mode=${this._mode}, url=${window.location.href}`
+    );
 
     if (!this._artifactId) {
       console.error(`[Canvas] ERROR: No artifact ID. location.search=${window.location.search}`);
-      this._showEmpty("No artifact ID specified");
+      this._showEmpty('No artifact ID specified');
       return;
     }
 
@@ -203,25 +203,25 @@ const Canvas = {
   // ── Toolbar ─────────────────────────────────────────────
 
   _setupToolbar() {
-    document.getElementById("btn-preview").addEventListener("click", () => {
-      this._switchMode("preview");
+    document.getElementById('btn-preview').addEventListener('click', () => {
+      this._switchMode('preview');
     });
-    document.getElementById("btn-edit").addEventListener("click", () => {
-      this._switchMode("edit");
+    document.getElementById('btn-edit').addEventListener('click', () => {
+      this._switchMode('edit');
     });
-    document.getElementById("btn-fullscreen").addEventListener("click", () => {
-      this._switchMode("fullscreen");
+    document.getElementById('btn-fullscreen').addEventListener('click', () => {
+      this._switchMode('fullscreen');
     });
-    document.getElementById("btn-copy").addEventListener("click", () => {
+    document.getElementById('btn-copy').addEventListener('click', () => {
       this._copyCode();
     });
-    document.getElementById("btn-export-html").addEventListener("click", () => {
+    document.getElementById('btn-export-html').addEventListener('click', () => {
       this._exportHtml();
     });
-    document.getElementById("btn-export-source").addEventListener("click", () => {
+    document.getElementById('btn-export-source').addEventListener('click', () => {
       this._exportSource();
     });
-    document.getElementById("btn-share").addEventListener("click", () => {
+    document.getElementById('btn-share').addEventListener('click', () => {
       this._shareLink();
     });
 
@@ -229,13 +229,13 @@ const Canvas = {
   },
 
   _highlightModeButton(mode) {
-    for (const btn of document.querySelectorAll(".toolbar-btn")) {
-      btn.classList.remove("active");
+    for (const btn of document.querySelectorAll('.toolbar-btn')) {
+      btn.classList.remove('active');
     }
     const btnId = `btn-${mode}`;
     const btn = document.getElementById(btnId);
     if (btn) {
-      btn.classList.add("active");
+      btn.classList.add('active');
     }
   },
 
@@ -246,18 +246,18 @@ const Canvas = {
     // Update URL without reload (skip for nevoflux:// — replaceState is blocked)
     try {
       const url = new URL(window.location.href);
-      url.searchParams.set("mode", mode);
-      history.replaceState(null, "", url.toString());
+      url.searchParams.set('mode', mode);
+      history.replaceState(null, '', url.toString());
     } catch (e) {
       // nevoflux:// protocol doesn't support history.replaceState
     }
 
     // Handle fullscreen body class
-    document.body.classList.toggle("fullscreen", mode === "fullscreen");
+    document.body.classList.toggle('fullscreen', mode === 'fullscreen');
 
     // Re-render with current artifact
     if (this._artifact) {
-      if (mode === "edit") {
+      if (mode === 'edit') {
         this._enterEditMode();
       } else {
         this._exitEditMode();
@@ -271,19 +271,21 @@ const Canvas = {
     try {
       // In chrome:// context, use the clipboard API
       await navigator.clipboard.writeText(this._artifact.content);
-      const btn = document.getElementById("btn-copy");
+      const btn = document.getElementById('btn-copy');
       const original = btn.textContent;
-      btn.textContent = "Copied!";
-      setTimeout(() => { btn.textContent = original; }, 1500);
+      btn.textContent = 'Copied!';
+      setTimeout(() => {
+        btn.textContent = original;
+      }, 1500);
     } catch (e) {
-      console.error("Failed to copy:", e);
+      console.error('Failed to copy:', e);
     }
   },
 
   // ── PostMessage Bridge ─────────────────────────────────
 
   _setupBridge() {
-    window.addEventListener("message", async (event) => {
+    window.addEventListener('message', async (event) => {
       const msg = event.data;
       if (!msg || !msg._nevoflux || msg._reqId == null) return;
 
@@ -294,115 +296,136 @@ const Canvas = {
       try {
         result = await this._handleBridgeCall(msg.method, msg.args);
       } catch (e) {
-        console.error("[Canvas] Bridge call error:", msg.method, e);
+        console.error('[Canvas] Bridge call error:', msg.method, e);
         error = e.message || String(e);
       }
 
       // Send response back to iframe
       if (this._iframe && this._iframe.contentWindow) {
-        this._iframe.contentWindow.postMessage({
-          _nevoflux: true,
-          _reqId: msg._reqId,
-          result,
-          error,
-        }, "*");
+        this._iframe.contentWindow.postMessage(
+          {
+            _nevoflux: true,
+            _reqId: msg._reqId,
+            result,
+            error,
+          },
+          '*'
+        );
       }
     });
   },
 
   async _handleBridgeCall(method, args) {
-    console.info("[Canvas] _handleBridgeCall:", method, JSON.stringify(args).substring(0, 200));
+    console.info('[Canvas] _handleBridgeCall:', method, JSON.stringify(args).substring(0, 200));
 
     // Wait briefly for NevofluxBridge if not yet injected (race with DOMDocElementInserted)
     let bridge = window.NevofluxBridge;
     if (!bridge) {
-      console.info("[Canvas] NevofluxBridge not found, waiting...");
+      console.info('[Canvas] NevofluxBridge not found, waiting...');
       for (let i = 0; i < 10; i++) {
-        await new Promise(r => setTimeout(r, 100));
+        await new Promise((r) => setTimeout(r, 100));
         bridge = window.NevofluxBridge;
         if (bridge) break;
       }
     }
-    if (!bridge) throw new Error("NevofluxBridge not available");
+    if (!bridge) throw new Error('NevofluxBridge not available');
 
     // Diagnostic: log available bridge methods
-    console.info("[Canvas] Bridge available. Keys:", Object.keys(bridge),
-      "callTool:", typeof bridge.callTool,
-      "agent:", typeof bridge.agent,
-      "sidebar:", typeof bridge.sidebar,
-      "storage:", typeof bridge.storage,
-      "system:", typeof bridge.system);
+    console.info(
+      '[Canvas] Bridge available. Keys:',
+      Object.keys(bridge),
+      'callTool:',
+      typeof bridge.callTool,
+      'agent:',
+      typeof bridge.agent,
+      'sidebar:',
+      typeof bridge.sidebar,
+      'storage:',
+      typeof bridge.storage,
+      'system:',
+      typeof bridge.system
+    );
 
     switch (method) {
-      case "callTool":
-        console.info("[Canvas] Calling bridge.callTool:", args.action);
+      case 'callTool':
+        console.info('[Canvas] Calling bridge.callTool:', args.action);
         return bridge.callTool(args.action, args.params);
-      case "agent.chat": {
+      case 'agent.chat': {
         const chatMsg = args.message || args;
-        const msgStr = typeof chatMsg === "string" ? chatMsg : JSON.stringify(chatMsg);
+        const msgStr = typeof chatMsg === 'string' ? chatMsg : JSON.stringify(chatMsg);
         const sessionId = args.sessionId || `cs_${crypto.randomUUID()}`;
 
-        console.info("[Canvas] Sending agent:chat via bridge, sessionId:", sessionId, "msg:", msgStr.substring(0, 100));
+        console.info(
+          '[Canvas] Sending agent:chat via bridge, sessionId:',
+          sessionId,
+          'msg:',
+          msgStr.substring(0, 100)
+        );
 
         // Step 1: Subscribe FIRST — prevents race where agent responds before subscription exists
-        await NevofluxPage.sendQuery("agent:subscribe", { sessionId });
+        await NevofluxPage.sendQuery('agent:subscribe', { sessionId });
 
         // Step 2: THEN send to background.js which forwards to agent
-        await NevofluxPage.sendQuery("bridge:request", {
-          type: "agent:chat",
-          payload: { message: msgStr, sessionId }
+        await NevofluxPage.sendQuery('bridge:request', {
+          type: 'agent:chat',
+          payload: { message: msgStr, sessionId },
         });
 
         return { sessionId };
       }
-      case "agent.cancel": {
+      case 'agent.cancel': {
         const { sessionId } = args;
         if (sessionId) {
-          NevofluxPage.sendMessage("agent:unsubscribe", { sessionId });
-          await NevofluxPage.sendQuery("bridge:request", {
-            type: "agent:cancel",
-            payload: { sessionId }
+          NevofluxPage.sendMessage('agent:unsubscribe', { sessionId });
+          await NevofluxPage.sendQuery('bridge:request', {
+            type: 'agent:cancel',
+            payload: { sessionId },
           });
         }
         return { success: true };
       }
-      case "sidebar.send": {
+      case 'sidebar.send': {
         const chatMsg = args.message || args;
-        const msgStr = typeof chatMsg === "string" ? chatMsg : JSON.stringify(chatMsg);
-        console.info("[Canvas] Sending sidebar:sendMessage via bridge, msg:", msgStr.substring(0, 100));
-        const res = await NevofluxPage.sendQuery("bridge:request", {
-          type: "sidebar:sendMessage", payload: { message: msgStr }
+        const msgStr = typeof chatMsg === 'string' ? chatMsg : JSON.stringify(chatMsg);
+        console.info(
+          '[Canvas] Sending sidebar:sendMessage via bridge, msg:',
+          msgStr.substring(0, 100)
+        );
+        const res = await NevofluxPage.sendQuery('bridge:request', {
+          type: 'sidebar:sendMessage',
+          payload: { message: msgStr },
         });
         return res;
       }
-      case "agent.sendCommand":
+      case 'agent.sendCommand':
         return bridge.agent.sendCommand(args.command, args.params);
-      case "sidebar.open":
-        return NevofluxPage.sendQuery("bridge:request", {
-          type: "sidebar:open", payload: {}
+      case 'sidebar.open':
+        return NevofluxPage.sendQuery('bridge:request', {
+          type: 'sidebar:open',
+          payload: {},
         });
-      case "sidebar.notify":
+      case 'sidebar.notify':
         return bridge.sidebar.notify(args.type, args.data);
-      case "storage.get": {
+      case 'storage.get': {
         const res = await bridge.storage.get(args.key);
         return res?.value ?? null;
       }
-      case "storage.set": {
+      case 'storage.set': {
         await bridge.storage.set(args.key, args.value);
         return true;
       }
-      case "storage.delete": {
+      case 'storage.delete': {
         const res = await bridge.storage.delete(args.key);
         return res?.success ?? false;
       }
-      case "storage.query": {
+      case 'storage.query': {
         const res = await bridge.storage.query(args.prefix);
         return res?.results ?? [];
       }
-      case "system.getInfo":
+      case 'system.getInfo':
         return bridge.system.getInfo();
       default:
-        throw new Error("Unknown method: " + method);
+        throw new Error('Unknown method: ' + method);
     }
   },
 
@@ -410,30 +433,38 @@ const Canvas = {
 
   async _exportHtml() {
     if (!this._artifact?.content) return;
-    const type = this._artifact.type || "html";
+    const type = this._artifact.type || 'html';
     let html;
 
-    if (type === "html" || type === "svg") {
-      html = this._artifact.content.trim().startsWith("<!DOCTYPE")
+    if (type === 'html' || type === 'svg') {
+      html = this._artifact.content.trim().startsWith('<!DOCTYPE')
         ? this._artifact.content
-        : `<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>${this._escapeHtml(this._artifact.title || "Artifact")}</title></head>\n<body>\n${this._artifact.content}\n</body>\n</html>`;
-    } else if (type === "react") {
+        : `<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>${this._escapeHtml(this._artifact.title || 'Artifact')}</title></head>\n<body>\n${this._artifact.content}\n</body>\n</html>`;
+    } else if (type === 'react') {
       html = await this._buildReactStandaloneHtml(this._artifact);
-    } else if (type === "markdown") {
+    } else if (type === 'markdown') {
       html = await this._buildMarkdownStandaloneHtml(this._artifact);
     } else {
-      html = `<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>${this._escapeHtml(this._artifact.title || "Artifact")}</title></head>\n<body><pre>${this._escapeHtml(this._artifact.content)}</pre></body>\n</html>`;
+      html = `<!DOCTYPE html>\n<html>\n<head><meta charset="utf-8"><title>${this._escapeHtml(this._artifact.title || 'Artifact')}</title></head>\n<body><pre>${this._escapeHtml(this._artifact.content)}</pre></body>\n</html>`;
     }
 
-    this._downloadFile(html, `${this._artifact.title || "artifact"}.html`, "text/html");
+    this._downloadFile(html, `${this._artifact.title || 'artifact'}.html`, 'text/html');
   },
 
   _exportSource() {
     if (!this._artifact?.content) return;
-    const extMap = { html: "html", react: "jsx", markdown: "md", svg: "svg", mermaid: "mmd", css: "css", js: "js" };
-    const ext = extMap[this._artifact.type] || "txt";
-    const filename = `${this._artifact.title || "artifact"}.${ext}`;
-    const mime = ext === "html" ? "text/html" : ext === "md" ? "text/markdown" : "text/plain";
+    const extMap = {
+      html: 'html',
+      react: 'jsx',
+      markdown: 'md',
+      svg: 'svg',
+      mermaid: 'mmd',
+      css: 'css',
+      js: 'js',
+    };
+    const ext = extMap[this._artifact.type] || 'txt';
+    const filename = `${this._artifact.title || 'artifact'}.${ext}`;
+    const mime = ext === 'html' ? 'text/html' : ext === 'md' ? 'text/markdown' : 'text/plain';
     this._downloadFile(this._artifact.content, filename, mime);
   },
 
@@ -441,19 +472,21 @@ const Canvas = {
     const url = `nevoflux://canvas/${this._artifactId}`;
     try {
       await navigator.clipboard.writeText(url);
-      const btn = document.getElementById("btn-share");
+      const btn = document.getElementById('btn-share');
       const original = btn.textContent;
-      btn.textContent = "Copied!";
-      setTimeout(() => { btn.textContent = original; }, 1500);
+      btn.textContent = 'Copied!';
+      setTimeout(() => {
+        btn.textContent = original;
+      }, 1500);
     } catch (e) {
-      console.error("Failed to copy link:", e);
+      console.error('Failed to copy link:', e);
     }
   },
 
   _downloadFile(content, filename, mimeType) {
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
+    const a = document.createElement('a');
     a.href = url;
     a.download = filename;
     document.body.appendChild(a);
@@ -464,12 +497,12 @@ const Canvas = {
 
   async _buildReactStandaloneHtml(artifact) {
     const [react, reactDom, babel] = await Promise.all([
-      this._fetchVendor("chrome://nevoflux/content/vendor/react.production.min.js"),
-      this._fetchVendor("chrome://nevoflux/content/vendor/react-dom.production.min.js"),
-      this._fetchVendor("chrome://nevoflux/content/vendor/babel.min.js"),
+      this._fetchVendor('chrome://nevoflux/content/vendor/react.production.min.js'),
+      this._fetchVendor('chrome://nevoflux/content/vendor/react-dom.production.min.js'),
+      this._fetchVendor('chrome://nevoflux/content/vendor/babel.min.js'),
     ]);
 
-    const title = this._escapeHtml(artifact.title || "Artifact");
+    const title = this._escapeHtml(artifact.title || 'Artifact');
     return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${title}</title>
 <style>body{margin:0;font-family:system-ui,sans-serif;}</style>
@@ -488,11 +521,11 @@ root.render(React.createElement(typeof App !== 'undefined' ? App : () => React.c
 
   async _buildMarkdownStandaloneHtml(artifact) {
     const [markdownIt, highlightJs] = await Promise.all([
-      this._fetchVendor("chrome://nevoflux/content/vendor/markdown-it.min.js"),
-      this._fetchVendor("chrome://nevoflux/content/vendor/highlight.min.js"),
+      this._fetchVendor('chrome://nevoflux/content/vendor/markdown-it.min.js'),
+      this._fetchVendor('chrome://nevoflux/content/vendor/highlight.min.js'),
     ]);
 
-    const title = this._escapeHtml(artifact.title || "Artifact");
+    const title = this._escapeHtml(artifact.title || 'Artifact');
     return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${title}</title>
 <style>
@@ -528,7 +561,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
 
   async _loadArtifact() {
     try {
-      const result = await NevofluxPage.sendQuery("contentStore:get", {
+      const result = await NevofluxPage.sendQuery('contentStore:get', {
         key: `canvas:${this._artifactId}`,
       });
 
@@ -537,36 +570,36 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
         this._onArtifactUpdate(result.value);
       } else {
         // Not in ContentStore — request hydration from backend
-        this._showEmpty("Loading artifact...");
-        this._updateStatus("Loading");
+        this._showEmpty('Loading artifact...');
+        this._updateStatus('Loading');
 
-        NevofluxPage.sendQuery("bridge:request", {
-          type: "send_to_agent",
+        NevofluxPage.sendQuery('bridge:request', {
+          type: 'send_to_agent',
           payload: {
-            type: "system_command",
+            type: 'system_command',
             payload: {
               request_id: `art-get-${Date.now()}`,
-              command: "artifact.get",
+              command: 'artifact.get',
               params: { artifact_id: this._artifactId },
             },
           },
-        }).catch(e => console.warn("[Canvas] artifact.get request failed:", e));
+        }).catch((e) => console.warn('[Canvas] artifact.get request failed:', e));
 
         this._loadTimeout = setTimeout(() => {
           if (!this._artifact) {
-            this._showEmpty("Artifact not found");
-            this._updateStatus("Not found");
+            this._showEmpty('Artifact not found');
+            this._updateStatus('Not found');
           }
         }, 5000);
       }
 
       // Subscribe to future updates (clears loading state when data arrives)
-      NevofluxPage.sendMessage("contentStore:subscribe", {
+      NevofluxPage.sendMessage('contentStore:subscribe', {
         key: `canvas:${this._artifactId}`,
       });
     } catch (e) {
-      console.error("[Canvas] Failed to load artifact:", e);
-      this._showEmpty("Failed to load artifact");
+      console.error('[Canvas] Failed to load artifact:', e);
+      this._showEmpty('Failed to load artifact');
     }
   },
 
@@ -577,20 +610,19 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
     }
 
     if (!artifact) {
-      this._showEmpty("Artifact deleted");
+      this._showEmpty('Artifact deleted');
       return;
     }
 
     this._artifact = artifact;
 
     // Update toolbar
-    document.getElementById("artifact-title").textContent =
-      artifact.title || "Untitled";
+    document.getElementById('artifact-title').textContent = artifact.title || 'Untitled';
 
     const stateLabels = {
-      streaming: "Generating...",
-      complete: "Ready",
-      error: "Error",
+      streaming: 'Generating...',
+      complete: 'Ready',
+      error: 'Error',
     };
     this._updateStatus(stateLabels[artifact.state] || artifact.state);
 
@@ -599,7 +631,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
       clearTimeout(this._debounceTimer);
     }
 
-    if (artifact.state === "complete") {
+    if (artifact.state === 'complete') {
       this._render(artifact);
     } else {
       this._debounceTimer = setTimeout(() => {
@@ -611,55 +643,57 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
   // ── Rendering ───────────────────────────────────────────
 
   _render(artifact) {
-    console.error(`[Canvas] _render: type=${artifact.type}, contentLen=${artifact.content?.length}, state=${artifact.state}, mode=${this._mode}`);
+    console.error(
+      `[Canvas] _render: type=${artifact.type}, contentLen=${artifact.content?.length}, state=${artifact.state}, mode=${this._mode}`
+    );
 
-    if (this._mode === "edit") {
+    if (this._mode === 'edit') {
       this._updateEditPreview(artifact);
       return;
     }
 
-    const viewport = document.getElementById("viewport");
-    const emptyState = document.getElementById("empty-state");
+    const viewport = document.getElementById('viewport');
+    const emptyState = document.getElementById('empty-state');
 
     if (!artifact.content && !artifact.files) {
       console.error(`[Canvas] _render: content and files are both empty/falsy`);
-      this._showEmpty("Empty artifact");
+      this._showEmpty('Empty artifact');
       return;
     }
 
     // Hide empty state
     if (emptyState) {
-      emptyState.style.display = "none";
+      emptyState.style.display = 'none';
     }
 
     // Normalize type (handle both short types and MIME types)
     const type = this._normalizeType(artifact.type);
     console.error(`[Canvas] _render: normalizedType=${type}`);
     switch (type) {
-      case "html":
+      case 'html':
         // Auto-detect React HTML: if HTML contains React CDN scripts or <script type="text/babel">,
         // extract JSX code and render via _renderReact which inlines vendor scripts.
         if (this._isReactHtml(artifact.content)) {
-          console.info("[Canvas] Auto-detected React in HTML content, using _renderReact");
+          console.info('[Canvas] Auto-detected React in HTML content, using _renderReact');
           const jsx = this._extractReactCode(artifact.content);
           this._renderReact(viewport, jsx);
         } else {
           this._renderSrcdoc(viewport, artifact.content);
         }
         break;
-      case "react":
+      case 'react':
         this._renderReact(viewport, artifact.content);
         break;
-      case "markdown":
+      case 'markdown':
         this._renderMarkdown(viewport, artifact.content);
         break;
-      case "svg":
+      case 'svg':
         this._renderSrcdoc(viewport, artifact.content);
         break;
-      case "mermaid":
+      case 'mermaid':
         this._renderMermaid(viewport, artifact.content);
         break;
-      case "project":
+      case 'project':
         this._renderProject(viewport, artifact);
         break;
       default:
@@ -675,18 +709,18 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
     if (this._iframe) {
       this._iframe.remove();
     }
-    this._iframe = document.createElement("iframe");
-    this._iframe.setAttribute("sandbox", "allow-scripts allow-forms allow-same-origin");
+    this._iframe = document.createElement('iframe');
+    this._iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin');
 
     // Inject NevofluxSDK into srcdoc using indexOf+slice (avoid String.replace
     // which can interpret $-patterns in the replacement string).
     let injected = htmlContent;
     const sdk = this._SDK_SCRIPT;
-    let idx = injected.indexOf("</head>");
+    let idx = injected.indexOf('</head>');
     if (idx !== -1) {
       injected = injected.slice(0, idx) + sdk + injected.slice(idx);
     } else {
-      idx = injected.indexOf("<body");
+      idx = injected.indexOf('<body');
       if (idx !== -1) {
         injected = injected.slice(0, idx) + sdk + injected.slice(idx);
       } else {
@@ -694,7 +728,9 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
       }
     }
 
-    console.error(`[Canvas] _renderSrcdoc: inputLen=${htmlContent.length}, injectedLen=${injected.length}, sdkLen=${sdk.length}`);
+    console.error(
+      `[Canvas] _renderSrcdoc: inputLen=${htmlContent.length}, injectedLen=${injected.length}, sdkLen=${sdk.length}`
+    );
     this._iframe.srcdoc = injected;
     viewport.appendChild(this._iframe);
   },
@@ -705,9 +741,9 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
    */
   async _renderReact(viewport, code) {
     const [react, reactDom, babel] = await Promise.all([
-      this._fetchVendor("chrome://nevoflux/content/vendor/react.production.min.js"),
-      this._fetchVendor("chrome://nevoflux/content/vendor/react-dom.production.min.js"),
-      this._fetchVendor("chrome://nevoflux/content/vendor/babel.min.js"),
+      this._fetchVendor('chrome://nevoflux/content/vendor/react.production.min.js'),
+      this._fetchVendor('chrome://nevoflux/content/vendor/react-dom.production.min.js'),
+      this._fetchVendor('chrome://nevoflux/content/vendor/babel.min.js'),
     ]);
 
     const srcdoc = `<!DOCTYPE html>
@@ -733,10 +769,10 @@ root.render(React.createElement(typeof App !== 'undefined' ? App : () => React.c
    */
   async _renderMarkdown(viewport, markdown) {
     const markdownIt = await this._fetchVendor(
-      "chrome://nevoflux/content/vendor/markdown-it.min.js"
+      'chrome://nevoflux/content/vendor/markdown-it.min.js'
     );
     const highlightJs = await this._fetchVendor(
-      "chrome://nevoflux/content/vendor/highlight.min.js"
+      'chrome://nevoflux/content/vendor/highlight.min.js'
     );
 
     const srcdoc = `<!DOCTYPE html>
@@ -776,9 +812,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
    * Render Mermaid diagrams.
    */
   async _renderMermaid(viewport, code) {
-    const mermaid = await this._fetchVendor(
-      "chrome://nevoflux/content/vendor/mermaid.min.js"
-    );
+    const mermaid = await this._fetchVendor('chrome://nevoflux/content/vendor/mermaid.min.js');
 
     const srcdoc = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
@@ -799,11 +833,11 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
    */
   async _renderProject(viewport, artifact) {
     if (!artifact.files || Object.keys(artifact.files).length === 0) {
-      this._showEmpty("No files in project");
+      this._showEmpty('No files in project');
       return;
     }
 
-    this._updateStatus("Bundling...");
+    this._updateStatus('Bundling...');
 
     const result = await CanvasRuntime.render(
       viewport,
@@ -817,10 +851,10 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
 
     if (result.success) {
       this._iframe = CanvasRuntime._iframe;
-      this._updateStatus("Ready");
+      this._updateStatus('Ready');
     } else {
       this._showEmpty(`Build error: ${result.error}`);
-      this._updateStatus("Error");
+      this._updateStatus('Error');
     }
   },
 
@@ -844,10 +878,10 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
 
   _escapeHtml(str) {
     return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   },
 
   // ── Edit Mode ───────────────────────────────────────────
@@ -859,9 +893,9 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
       return;
     }
 
-    const viewport = document.getElementById("viewport");
-    const emptyState = document.getElementById("empty-state");
-    if (emptyState) emptyState.style.display = "none";
+    const viewport = document.getElementById('viewport');
+    const emptyState = document.getElementById('empty-state');
+    if (emptyState) emptyState.style.display = 'none';
     if (this._iframe) {
       this._iframe.remove();
       this._iframe = null;
@@ -874,25 +908,25 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
     }
 
     // Create split view
-    viewport.innerHTML = "";
-    const split = document.createElement("div");
-    split.className = "canvas-split";
-    split.id = "edit-split";
+    viewport.innerHTML = '';
+    const split = document.createElement('div');
+    split.className = 'canvas-split';
+    split.id = 'edit-split';
 
-    const editorPane = document.createElement("div");
-    editorPane.className = "editor-pane";
-    editorPane.id = "code-editor-pane";
+    const editorPane = document.createElement('div');
+    editorPane.className = 'editor-pane';
+    editorPane.id = 'code-editor-pane';
 
-    const previewPane = document.createElement("div");
-    previewPane.className = "preview-pane";
-    previewPane.id = "edit-preview";
+    const previewPane = document.createElement('div');
+    previewPane.className = 'preview-pane';
+    previewPane.id = 'edit-preview';
 
     split.appendChild(editorPane);
     split.appendChild(previewPane);
     viewport.appendChild(split);
 
     // Detect dark theme
-    const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 
     // Live preview debounce
     let editDebounce = null;
@@ -900,8 +934,8 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
     // Create CodeMirror editor (falls back to textarea if bundle not loaded)
     if (window.CodeMirrorFactory) {
       this._cmView = window.CodeMirrorFactory.create(editorPane, {
-        value: this._artifact?.content || "",
-        language: this._artifact?.type || "html",
+        value: this._artifact?.content || '',
+        language: this._artifact?.type || 'html',
         dark: isDark,
         onChange: (value) => {
           if (editDebounce) clearTimeout(editDebounce);
@@ -912,21 +946,21 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
       });
     } else {
       // Fallback: plain textarea
-      const textarea = document.createElement("textarea");
-      textarea.id = "code-editor";
-      textarea.value = this._artifact?.content || "";
+      const textarea = document.createElement('textarea');
+      textarea.id = 'code-editor';
+      textarea.value = this._artifact?.content || '';
       textarea.spellcheck = false;
-      textarea.addEventListener("keydown", (e) => {
-        if (e.key === "Tab") {
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab') {
           e.preventDefault();
           const start = textarea.selectionStart;
           const end = textarea.selectionEnd;
           textarea.value =
-            textarea.value.substring(0, start) + "  " + textarea.value.substring(end);
+            textarea.value.substring(0, start) + '  ' + textarea.value.substring(end);
           textarea.selectionStart = textarea.selectionEnd = start + 2;
         }
       });
-      textarea.addEventListener("input", () => {
+      textarea.addEventListener('input', () => {
         if (editDebounce) clearTimeout(editDebounce);
         editDebounce = setTimeout(() => {
           this._updateEditPreviewFromCode(textarea.value);
@@ -942,29 +976,31 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
   },
 
   _enterProjectEditMode() {
-    const viewport = document.getElementById("viewport");
-    viewport.innerHTML = "";
+    const viewport = document.getElementById('viewport');
+    viewport.innerHTML = '';
 
     // Create split layout
-    const container = document.createElement("div");
-    container.className = "canvas-split";
-    container.id = "edit-split";
+    const container = document.createElement('div');
+    container.className = 'canvas-split';
+    container.id = 'edit-split';
 
     // File selector bar
-    const selectorBar = document.createElement("div");
-    selectorBar.style.cssText = "padding:8px;border-bottom:1px solid var(--zen-colors-border, #333);display:flex;align-items:center;gap:8px;";
+    const selectorBar = document.createElement('div');
+    selectorBar.style.cssText =
+      'padding:8px;border-bottom:1px solid var(--zen-colors-border, #333);display:flex;align-items:center;gap:8px;';
 
-    const label = document.createElement("span");
-    label.textContent = "File:";
-    label.style.cssText = "font-size:12px;color:var(--zen-colors-secondary, #999);";
+    const label = document.createElement('span');
+    label.textContent = 'File:';
+    label.style.cssText = 'font-size:12px;color:var(--zen-colors-secondary, #999);';
     selectorBar.appendChild(label);
 
-    const select = document.createElement("select");
-    select.id = "project-file-select";
-    select.style.cssText = "flex:1;padding:4px 8px;background:var(--zen-colors-input-bg, #1a1a1a);color:inherit;border:1px solid var(--zen-colors-border, #333);border-radius:4px;font-size:12px;font-family:monospace;";
+    const select = document.createElement('select');
+    select.id = 'project-file-select';
+    select.style.cssText =
+      'flex:1;padding:4px 8px;background:var(--zen-colors-input-bg, #1a1a1a);color:inherit;border:1px solid var(--zen-colors-border, #333);border-radius:4px;font-size:12px;font-family:monospace;';
     const files = Object.keys(this._artifact.files).sort();
     for (const path of files) {
-      const opt = document.createElement("option");
+      const opt = document.createElement('option');
       opt.value = path;
       opt.textContent = path;
       select.appendChild(opt);
@@ -972,14 +1008,14 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
     selectorBar.appendChild(select);
 
     // Editor pane
-    const editorPane = document.createElement("div");
-    editorPane.className = "editor-pane";
-    editorPane.id = "code-editor-pane";
+    const editorPane = document.createElement('div');
+    editorPane.className = 'editor-pane';
+    editorPane.id = 'code-editor-pane';
 
     // Preview pane
-    const previewPane = document.createElement("div");
-    previewPane.className = "preview-pane";
-    previewPane.id = "edit-preview";
+    const previewPane = document.createElement('div');
+    previewPane.className = 'preview-pane';
+    previewPane.id = 'edit-preview';
 
     container.appendChild(editorPane);
     container.appendChild(previewPane);
@@ -989,8 +1025,8 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
     let currentPath = files[0];
 
     // Initialize editor
-    const isDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const initialContent = this._artifact.files[currentPath] || "";
+    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const initialContent = this._artifact.files[currentPath] || '';
 
     let debounceTimer = null;
     const onEdit = (value) => {
@@ -1011,35 +1047,39 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
         this._artifact.files[currentPath] = window.CodeMirrorFactory.getValue(this._cmView);
       }
       currentPath = path;
-      const content = this._artifact.files[path] || "";
+      const content = this._artifact.files[path] || '';
       if (this._cmView && window.CodeMirrorFactory) {
         window.CodeMirrorFactory.setValue(this._cmView, content);
       } else {
-        const ta = document.getElementById("code-editor");
+        const ta = document.getElementById('code-editor');
         if (ta) ta.value = content;
       }
     };
 
-    select.addEventListener("change", () => loadFile(select.value));
+    select.addEventListener('change', () => loadFile(select.value));
 
     if (window.CodeMirrorFactory) {
       this._cmView = window.CodeMirrorFactory.create(editorPane, {
         value: initialContent,
-        language: currentPath.split(".").pop() || "html",
+        language: currentPath.split('.').pop() || 'html',
         dark: isDark,
         onChange: onEdit,
       });
     } else {
-      const textarea = document.createElement("textarea");
-      textarea.id = "code-editor";
+      const textarea = document.createElement('textarea');
+      textarea.id = 'code-editor';
       textarea.value = initialContent;
-      textarea.style.cssText = "width:100%;height:100%;resize:none;background:#1a1a1a;color:#d4d4d4;border:none;padding:12px;font-family:monospace;font-size:13px;tab-size:2;";
-      textarea.addEventListener("input", () => onEdit(textarea.value));
-      textarea.addEventListener("keydown", (e) => {
-        if (e.key === "Tab") {
+      textarea.style.cssText =
+        'width:100%;height:100%;resize:none;background:#1a1a1a;color:#d4d4d4;border:none;padding:12px;font-family:monospace;font-size:13px;tab-size:2;';
+      textarea.addEventListener('input', () => onEdit(textarea.value));
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab') {
           e.preventDefault();
           const start = textarea.selectionStart;
-          textarea.value = textarea.value.substring(0, start) + "  " + textarea.value.substring(textarea.selectionEnd);
+          textarea.value =
+            textarea.value.substring(0, start) +
+            '  ' +
+            textarea.value.substring(textarea.selectionEnd);
           textarea.selectionStart = textarea.selectionEnd = start + 2;
           onEdit(textarea.value);
         }
@@ -1058,37 +1098,37 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
   _exitEditMode() {
     // Save project files if in project edit mode
     if (this._artifact?.files) {
-      const select = document.getElementById("project-file-select");
+      const select = document.getElementById('project-file-select');
       if (select) {
         // Save current file content
         if (this._cmView && window.CodeMirrorFactory) {
           this._artifact.files[select.value] = window.CodeMirrorFactory.getValue(this._cmView);
         } else {
-          const ta = document.getElementById("code-editor");
+          const ta = document.getElementById('code-editor');
           if (ta) this._artifact.files[select.value] = ta.value;
         }
         // Persist to ContentStore
-        NevofluxPage.sendMessage("contentStore:set", {
+        NevofluxPage.sendMessage('contentStore:set', {
           key: `canvas:${this._artifactId}`,
           value: this._artifact,
         });
       }
     }
 
-    const split = document.getElementById("edit-split");
+    const split = document.getElementById('edit-split');
     if (split) {
       // Save edits back to ContentStore
       let newContent = null;
       if (this._cmView) {
         newContent = window.CodeMirrorFactory.getValue(this._cmView);
       } else {
-        const editor = document.getElementById("code-editor");
+        const editor = document.getElementById('code-editor');
         if (editor) newContent = editor.value;
       }
 
       if (newContent != null && this._artifact && newContent !== this._artifact.content) {
         this._artifact.content = newContent;
-        NevofluxPage.sendMessage("contentStore:set", {
+        NevofluxPage.sendMessage('contentStore:set', {
           key: `canvas:${this._artifactId}`,
           value: this._artifact,
         });
@@ -1111,22 +1151,22 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
   },
 
   _updateEditPreviewFromCode(code) {
-    const previewPane = document.getElementById("edit-preview");
+    const previewPane = document.getElementById('edit-preview');
     if (!previewPane || !this._artifact) return;
 
     // Create a temporary artifact for rendering
     const tempArtifact = { ...this._artifact, content: code };
 
     // Remove old iframe in preview pane
-    const oldIframe = previewPane.querySelector("iframe");
+    const oldIframe = previewPane.querySelector('iframe');
     if (oldIframe) oldIframe.remove();
 
     // Render into preview pane
     switch (tempArtifact.type) {
-      case "html":
-      case "svg": {
-        const iframe = document.createElement("iframe");
-        iframe.setAttribute("sandbox", "allow-scripts allow-forms allow-same-origin");
+      case 'html':
+      case 'svg': {
+        const iframe = document.createElement('iframe');
+        iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin');
         iframe.srcdoc = code;
         previewPane.appendChild(iframe);
         break;
@@ -1139,8 +1179,8 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
 
   async _renderInContainer(container, artifact) {
     // Simple fallback: create iframe with srcdoc
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("sandbox", "allow-scripts allow-forms allow-same-origin");
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin');
     iframe.srcdoc = artifact.content;
     container.appendChild(iframe);
   },
@@ -1148,10 +1188,10 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
   // ── Empty State ─────────────────────────────────────────
 
   _showEmpty(message) {
-    const emptyState = document.getElementById("empty-state");
+    const emptyState = document.getElementById('empty-state');
     if (emptyState) {
       emptyState.textContent = message;
-      emptyState.style.display = "flex";
+      emptyState.style.display = 'flex';
     }
     if (this._iframe) {
       this._iframe.remove();
@@ -1160,21 +1200,21 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
   },
 
   _updateStatus(text) {
-    document.getElementById("artifact-status").textContent = text;
+    document.getElementById('artifact-status').textContent = text;
   },
 
   /**
    * Normalize MIME type to short canvas renderer type.
    */
   _normalizeType(rawType) {
-    if (!rawType) return "html";
+    if (!rawType) return 'html';
     const MIME_MAP = {
-      "text/html": "html",
-      "text/markdown": "markdown",
-      "text/svg+xml": "svg",
-      "image/svg+xml": "svg",
-      "application/javascript": "react",
-      "text/jsx": "react",
+      'text/html': 'html',
+      'text/markdown': 'markdown',
+      'text/svg+xml': 'svg',
+      'image/svg+xml': 'svg',
+      'application/javascript': 'react',
+      'text/jsx': 'react',
     };
     return MIME_MAP[rawType] || rawType;
   },
@@ -1184,8 +1224,10 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
    * These won't work in sandboxed iframes, so we need to use _renderReact instead.
    */
   _isReactHtml(html) {
-    return /text\/babel/i.test(html) ||
-      (/react/i.test(html) && /ReactDOM/i.test(html) && /createRoot|render/i.test(html));
+    return (
+      /text\/babel/i.test(html) ||
+      (/react/i.test(html) && /ReactDOM/i.test(html) && /createRoot|render/i.test(html))
+    );
   },
 
   /**
@@ -1194,7 +1236,9 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
    */
   _extractReactCode(html) {
     // Extract content from <script type="text/babel"> blocks
-    const babelMatch = html.match(/<script[^>]*type\s*=\s*["']text\/babel["'][^>]*>([\s\S]*?)<\/script>/i);
+    const babelMatch = html.match(
+      /<script[^>]*type\s*=\s*["']text\/babel["'][^>]*>([\s\S]*?)<\/script>/i
+    );
     if (babelMatch) {
       return babelMatch[1].trim();
     }
@@ -1212,29 +1256,31 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
 };
 
 // Handle actor messages for ContentStore subscription updates and agent push
-window.addEventListener("NevofluxMessage", (event) => {
+window.addEventListener('NevofluxMessage', (event) => {
   const detail = event.detail;
   const { type, key, value } = detail;
 
   // ContentStore updates (existing)
-  if (
-    type === "contentStore:update" &&
-    key === `canvas:${Canvas._artifactId}`
-  ) {
-    console.error(`[Canvas] ContentStore update received: contentLen=${value?.content?.length}, state=${value?.state}`);
+  if (type === 'contentStore:update' && key === `canvas:${Canvas._artifactId}`) {
+    console.error(
+      `[Canvas] ContentStore update received: contentLen=${value?.content?.length}, state=${value?.state}`
+    );
     Canvas._onArtifactUpdate(value);
     return;
   }
 
   // Agent push messages → forward to artifact iframe
   if (detail.sessionId && detail.message && Canvas._iframe?.contentWindow) {
-    Canvas._iframe.contentWindow.postMessage({
-      _nevoflux: true,
-      _agentPush: true,
-      sessionId: detail.sessionId,
-      message: detail.message,
-    }, "*");
+    Canvas._iframe.contentWindow.postMessage(
+      {
+        _nevoflux: true,
+        _agentPush: true,
+        sessionId: detail.sessionId,
+        message: detail.message,
+      },
+      '*'
+    );
   }
 });
 
-document.addEventListener("DOMContentLoaded", () => Canvas.init());
+document.addEventListener('DOMContentLoaded', () => Canvas.init());

@@ -10,7 +10,7 @@ ENGINE_DIR="${ROOT_DIR}/engine"
 
 # Cross-platform sed -i (GNU vs BSD)
 sedi() {
-  if sed --version >/dev/null 2>&1; then
+  if sed --version > /dev/null 2>&1; then
     sed -i "$@"
   else
     sed -i '' "$@"
@@ -20,10 +20,10 @@ sedi() {
 echo "Applying nevoflux patches to src/zen..."
 
 # 1. Apply all .nfpatch files (using .nfpatch extension to avoid surfer scanning)
-find "${NEVOFLUX_DIR}/patches" -type f -name "*.nfpatch" 2>/dev/null | while read -r patch_file; do
+find "${NEVOFLUX_DIR}/patches" -type f -name "*.nfpatch" 2> /dev/null | while read -r patch_file; do
   echo "Applying: $patch_file"
   # Check if patch is already applied (idempotent)
-  if (cd "${ZEN_DIR}" && git apply --check --reverse --ignore-whitespace "$patch_file") 2>/dev/null; then
+  if (cd "${ZEN_DIR}" && git apply --check --reverse --ignore-whitespace "$patch_file") 2> /dev/null; then
     echo "  Already applied, skipping."
     continue
   fi
@@ -38,7 +38,7 @@ done
 #    Then create symlinks in engine/zen/ for new files added by overlays.
 #    surfer import creates symlinks engine/zen/ -> src/zen/ but only for files
 #    that existed at import time. Overlay files added afterwards need manual symlinks.
-if [ -d "${NEVOFLUX_DIR}/overlays" ] && [ "$(ls -A "${NEVOFLUX_DIR}/overlays" 2>/dev/null)" ]; then
+if [ -d "${NEVOFLUX_DIR}/overlays" ] && [ "$(ls -A "${NEVOFLUX_DIR}/overlays" 2> /dev/null)" ]; then
   echo "Copying overlay files to src/zen/..."
   cp -r "${NEVOFLUX_DIR}/overlays/"* "${ZEN_DIR}/"
 
@@ -79,7 +79,7 @@ fi
 # 4. Copy engine-overlays to engine/ directory
 if [ -d "${NEVOFLUX_DIR}/engine-overlays" ]; then
   echo "Copying engine-overlays to engine/..."
-  cp -r "${NEVOFLUX_DIR}/engine-overlays/"* "${ENGINE_DIR}/" 2>/dev/null || true
+  cp -r "${NEVOFLUX_DIR}/engine-overlays/"* "${ENGINE_DIR}/" 2> /dev/null || true
 fi
 
 # 5. Append NevoFlux pref overrides to firefox.js (loaded via preprocessor #include chain)

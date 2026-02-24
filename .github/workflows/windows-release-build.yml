@@ -356,4 +356,3 @@ jobs:
           retention-days: 5
           name: windows${{ matrix.arch == 'aarch64' && '-arm64' || '' }}.mar
           path: ./windows${{ matrix.arch == 'aarch64' && '-arm64' || '' }}.mar
-

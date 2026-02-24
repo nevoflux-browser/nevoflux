@@ -39,3 +39,15 @@ src/zen/split-view/zen-decks.css
 src/zen/workspaces/zen-workspaces.css
 
 *.inc
+
+# Generated Dioxus/WASM files
+**/dioxus-ui/target/
+**/dioxus-ui/dist/
+**/wasm/chat-sidebar/
+
+# Vendored packages
+package/
+**/vendor/**
+
+# Template files (Handlebars syntax not supported by Prettier's Glimmer parser)
+**/*.hbs

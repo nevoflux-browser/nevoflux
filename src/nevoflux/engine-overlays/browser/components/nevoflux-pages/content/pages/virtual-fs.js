@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-"use strict";
+'use strict';
 
 /**
  * VirtualFS -- in-memory file system backed by Map<string, string>.
@@ -32,21 +32,21 @@ const VirtualFS = {
    * @type {string[]}
    */
   _EXTENSIONS: [
-    "",
-    ".ts",
-    ".tsx",
-    ".js",
-    ".jsx",
-    ".mjs",
-    ".vue",
-    ".svelte",
-    "/index.ts",
-    "/index.tsx",
-    "/index.js",
-    "/index.jsx",
-    "/index.mjs",
-    "/index.vue",
-    "/index.svelte",
+    '',
+    '.ts',
+    '.tsx',
+    '.js',
+    '.jsx',
+    '.mjs',
+    '.vue',
+    '.svelte',
+    '/index.ts',
+    '/index.tsx',
+    '/index.js',
+    '/index.jsx',
+    '/index.mjs',
+    '/index.vue',
+    '/index.svelte',
   ],
 
   // ── Path Normalization ──────────────────────────────────
@@ -66,35 +66,35 @@ const VirtualFS = {
    */
   normalize(path) {
     if (!path) {
-      return "/";
+      return '/';
     }
 
     // Expand @/ alias to /src/
-    if (path.startsWith("@/")) {
-      path = "/src/" + path.slice(2);
+    if (path.startsWith('@/')) {
+      path = '/src/' + path.slice(2);
     }
 
     // Ensure leading slash
-    if (!path.startsWith("/")) {
-      path = "/" + path;
+    if (!path.startsWith('/')) {
+      path = '/' + path;
     }
 
     // Split on slashes, resolve . and ..
-    const parts = path.split("/");
+    const parts = path.split('/');
     const resolved = [];
 
     for (const part of parts) {
-      if (part === "" || part === ".") {
+      if (part === '' || part === '.') {
         continue;
       }
-      if (part === "..") {
+      if (part === '..') {
         resolved.pop();
       } else {
         resolved.push(part);
       }
     }
 
-    return "/" + resolved.join("/");
+    return '/' + resolved.join('/');
   },
 
   // ── Path Resolution ─────────────────────────────────────
@@ -120,14 +120,14 @@ const VirtualFS = {
    */
   resolve(from, to) {
     // Absolute paths and @/ aliases resolve directly
-    if (to.startsWith("/") || to.startsWith("@/")) {
+    if (to.startsWith('/') || to.startsWith('@/')) {
       return this.normalize(to);
     }
 
     // Relative paths resolve from the directory of the importer
-    if (to.startsWith("./") || to.startsWith("../")) {
-      const dir = from.substring(0, from.lastIndexOf("/")) || "/";
-      return this.normalize(dir + "/" + to);
+    if (to.startsWith('./') || to.startsWith('../')) {
+      const dir = from.substring(0, from.lastIndexOf('/')) || '/';
+      return this.normalize(dir + '/' + to);
     }
 
     // Bare specifiers pass through normalization (though callers should
@@ -182,10 +182,10 @@ const VirtualFS = {
    */
   isBareSpecifier(specifier) {
     if (
-      specifier.startsWith("/") ||
-      specifier.startsWith("./") ||
-      specifier.startsWith("../") ||
-      specifier.startsWith("@/")
+      specifier.startsWith('/') ||
+      specifier.startsWith('./') ||
+      specifier.startsWith('../') ||
+      specifier.startsWith('@/')
     ) {
       return false;
     }
@@ -294,8 +294,8 @@ const VirtualFS = {
 
       request.onupgradeneeded = (event) => {
         const db = event.target.result;
-        if (!db.objectStoreNames.contains("files")) {
-          db.createObjectStore("files", { keyPath: "path" });
+        if (!db.objectStoreNames.contains('files')) {
+          db.createObjectStore('files', { keyPath: 'path' });
         }
       };
 
@@ -305,7 +305,7 @@ const VirtualFS = {
       };
 
       request.onerror = (event) => {
-        console.error("[VirtualFS] IndexedDB open error:", event.target.error);
+        console.error('[VirtualFS] IndexedDB open error:', event.target.error);
         reject(event.target.error);
       };
     });
@@ -322,12 +322,12 @@ const VirtualFS = {
    */
   async persist() {
     if (!this._db) {
-      throw new Error("VirtualFS: persistence not initialized. Call initPersistence() first.");
+      throw new Error('VirtualFS: persistence not initialized. Call initPersistence() first.');
     }
 
     return new Promise((resolve, reject) => {
-      const tx = this._db.transaction("files", "readwrite");
-      const store = tx.objectStore("files");
+      const tx = this._db.transaction('files', 'readwrite');
+      const store = tx.objectStore('files');
 
       // Clear existing entries and write current state
       store.clear();
@@ -338,7 +338,7 @@ const VirtualFS = {
 
       tx.oncomplete = () => resolve();
       tx.onerror = (event) => {
-        console.error("[VirtualFS] Persist error:", event.target.error);
+        console.error('[VirtualFS] Persist error:', event.target.error);
         reject(event.target.error);
       };
     });
@@ -355,12 +355,12 @@ const VirtualFS = {
    */
   async load() {
     if (!this._db) {
-      throw new Error("VirtualFS: persistence not initialized. Call initPersistence() first.");
+      throw new Error('VirtualFS: persistence not initialized. Call initPersistence() first.');
     }
 
     return new Promise((resolve, reject) => {
-      const tx = this._db.transaction("files", "readonly");
-      const store = tx.objectStore("files");
+      const tx = this._db.transaction('files', 'readonly');
+      const store = tx.objectStore('files');
       const request = store.getAll();
 
       request.onsuccess = () => {
@@ -372,7 +372,7 @@ const VirtualFS = {
       };
 
       request.onerror = (event) => {
-        console.error("[VirtualFS] Load error:", event.target.error);
+        console.error('[VirtualFS] Load error:', event.target.error);
         reject(event.target.error);
       };
     });

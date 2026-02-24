@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 const { setTimeout, clearTimeout } = ChromeUtils.importESModule(
-  "resource://gre/modules/Timer.sys.mjs"
+  'resource://gre/modules/Timer.sys.mjs'
 );
 
 /**
@@ -42,9 +42,7 @@ export const NevofluxBridgeRouter = {
    */
   request(type, payload) {
     if (!this._handler) {
-      return Promise.reject(
-        new Error("NevofluxBridgeRouter: no handler registered")
-      );
+      return Promise.reject(new Error('NevofluxBridgeRouter: no handler registered'));
     }
     const id = `br_${++this._counter}_${Date.now()}`;
     return new Promise((resolve, reject) => {

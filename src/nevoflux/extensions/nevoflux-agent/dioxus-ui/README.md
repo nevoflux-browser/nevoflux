@@ -9,6 +9,7 @@ The UI is split into two main components:
 ### Chat Sidebar (`chat-sidebar/`)
 
 The main chat interface displayed in the browser's sidebar panel. Features:
+
 - Message input with markdown support
 - Streaming response display
 - Tab context awareness
@@ -17,6 +18,7 @@ The main chat interface displayed in the browser's sidebar panel. Features:
 ### Content Sidebar (`content-sidebar/`)
 
 An overlay UI injected into web pages via Shadow DOM. Features:
+
 - Default state: Displays current page URL
 - Active state: Displays content from Chat Sidebar
 - Style isolation via Shadow DOM
@@ -25,6 +27,7 @@ An overlay UI injected into web pages via Shadow DOM. Features:
 ### Shared Protocol (`shared-protocol/`)
 
 Common types and message definitions used for communication between:
+
 - Chat Sidebar ↔ Background Script
 - Background Script ↔ Content Sidebar
 - Both components ↔ Native Rust Agent
@@ -32,11 +35,13 @@ Common types and message definitions used for communication between:
 ## Prerequisites
 
 1. **Rust with WASM target**:
+
    ```bash
    rustup target add wasm32-unknown-unknown
    ```
 
 2. **Trunk** (WASM bundler):
+
    ```bash
    cargo install trunk
    ```
@@ -141,12 +146,14 @@ dioxus-ui/
 See `shared-protocol/src/lib.rs` for the complete message definitions.
 
 ### Downstream (Chat → Content):
+
 - `DisplayContent` - Send content to display
 - `ClearContent` - Clear displayed content
 - `HighlightElement` - Highlight page element
 - `ClearHighlight` - Remove highlights
 
 ### Upstream (Content → Chat):
+
 - `ContentUrlReport` - Report current URL
 - `ContentElementClick` - Report element click
 - `ContentSidebarReady` - Notify ready status
@@ -154,6 +161,7 @@ See `shared-protocol/src/lib.rs` for the complete message definitions.
 ## Styling
 
 Both components use a shared Zen theme with CSS variables:
+
 - `--zen-primary` - Primary accent color
 - `--zen-background` - Background color
 - `--zen-surface` - Surface color

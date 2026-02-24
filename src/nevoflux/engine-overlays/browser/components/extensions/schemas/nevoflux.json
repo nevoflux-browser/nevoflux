@@ -88,7 +88,11 @@
         "type": "object",
         "properties": {
           "timeout": { "type": "integer", "optional": true },
-          "state": { "type": "string", "enum": ["visible", "hidden", "attached", "detached"], "optional": true }
+          "state": {
+            "type": "string",
+            "enum": ["visible", "hidden", "attached", "detached"],
+            "optional": true
+          }
         }
       },
       {
@@ -96,7 +100,11 @@
         "type": "object",
         "properties": {
           "timeout": { "type": "integer", "optional": true },
-          "waitUntil": { "type": "string", "enum": ["load", "domcontentloaded", "networkidle"], "optional": true }
+          "waitUntil": {
+            "type": "string",
+            "enum": ["load", "domcontentloaded", "networkidle"],
+            "optional": true
+          }
         }
       },
       {
@@ -381,9 +389,21 @@
           "selector": { "type": "string", "optional": true },
           "autoRestore": { "type": "boolean", "optional": true },
           "timeout": { "type": "integer", "optional": true },
-          "includeImages": { "type": "boolean", "optional": true, "description": "Include images in markdown output (default: false)" },
-          "includeLinks": { "type": "boolean", "optional": true, "description": "Preserve links in markdown output (default: true)" },
-          "removeNavigation": { "type": "boolean", "optional": true, "description": "Remove nav/header/footer elements (default: true)" }
+          "includeImages": {
+            "type": "boolean",
+            "optional": true,
+            "description": "Include images in markdown output (default: false)"
+          },
+          "includeLinks": {
+            "type": "boolean",
+            "optional": true,
+            "description": "Preserve links in markdown output (default: true)"
+          },
+          "removeNavigation": {
+            "type": "boolean",
+            "optional": true,
+            "description": "Remove nav/header/footer elements (default: true)"
+          }
         }
       },
       {
@@ -391,10 +411,26 @@
         "type": "object",
         "description": "Options for getMarkdown",
         "properties": {
-          "selector": { "type": "string", "optional": true, "description": "CSS selector to extract from" },
-          "includeImages": { "type": "boolean", "optional": true, "description": "Include images in output (default: false)" },
-          "includeLinks": { "type": "boolean", "optional": true, "description": "Preserve links in output (default: true)" },
-          "removeNavigation": { "type": "boolean", "optional": true, "description": "Remove nav/header/footer elements (default: true)" }
+          "selector": {
+            "type": "string",
+            "optional": true,
+            "description": "CSS selector to extract from"
+          },
+          "includeImages": {
+            "type": "boolean",
+            "optional": true,
+            "description": "Include images in output (default: false)"
+          },
+          "includeLinks": {
+            "type": "boolean",
+            "optional": true,
+            "description": "Preserve links in output (default: true)"
+          },
+          "removeNavigation": {
+            "type": "boolean",
+            "optional": true,
+            "description": "Remove nav/header/footer elements (default: true)"
+          }
         }
       },
       {
@@ -403,7 +439,11 @@
         "description": "Options for pickElement",
         "properties": {
           "hint": { "type": "string", "optional": true },
-          "filter": { "type": "string", "enum": ["any", "button", "input", "link", "image", "clickable"], "optional": true },
+          "filter": {
+            "type": "string",
+            "enum": ["any", "button", "input", "link", "image", "clickable"],
+            "optional": true
+          },
           "timeout": { "type": "integer", "optional": true },
           "highlightColor": { "type": "string", "optional": true }
         }
@@ -422,14 +462,22 @@
         "type": "object",
         "properties": {
           "direction": { "type": "string", "enum": ["up", "down"], "optional": true },
-          "amount": { "type": "string", "optional": true, "description": "page, half, or pixel amount" }
+          "amount": {
+            "type": "string",
+            "optional": true,
+            "description": "page, half, or pixel amount"
+          }
         }
       },
       {
         "id": "StabilityOptions",
         "type": "object",
         "properties": {
-          "strategy": { "type": "string", "enum": ["navigation", "interaction", "scroll"], "optional": true },
+          "strategy": {
+            "type": "string",
+            "enum": ["navigation", "interaction", "scroll"],
+            "optional": true
+          },
           "maxWait": { "type": "integer", "optional": true }
         }
       },
@@ -439,15 +487,50 @@
         "description": "Options for creating an artifact",
         "properties": {
           "id": { "type": "string" },
-          "type": { "type": "string", "optional": true, "description": "Artifact type (e.g. html, css, js). Defaults to html" },
-          "title": { "type": "string", "optional": true, "description": "Artifact title. Defaults to Untitled" },
+          "type": {
+            "type": "string",
+            "optional": true,
+            "description": "Artifact type (e.g. html, css, js). Defaults to html"
+          },
+          "title": {
+            "type": "string",
+            "optional": true,
+            "description": "Artifact title. Defaults to Untitled"
+          },
           "code": { "type": "string", "optional": true, "description": "Artifact content/code" },
-          "state": { "type": "string", "optional": true, "description": "Artifact state (e.g. streaming, complete). Defaults to streaming" },
-          "source": { "type": "string", "optional": true, "description": "Artifact source (e.g. agent). Defaults to agent" },
-          "permissions": { "type": "array", "items": { "type": "string" }, "optional": true, "description": "Artifact permissions" },
-          "files": { "type": "object", "optional": true, "additionalProperties": { "type": "string" }, "description": "Multi-file project: path to content map" },
-          "entry": { "type": "string", "optional": true, "description": "Entry point for multi-file projects" },
-          "options": { "type": "object", "optional": true, "additionalProperties": true, "description": "Build options for multi-file projects" }
+          "state": {
+            "type": "string",
+            "optional": true,
+            "description": "Artifact state (e.g. streaming, complete). Defaults to streaming"
+          },
+          "source": {
+            "type": "string",
+            "optional": true,
+            "description": "Artifact source (e.g. agent). Defaults to agent"
+          },
+          "permissions": {
+            "type": "array",
+            "items": { "type": "string" },
+            "optional": true,
+            "description": "Artifact permissions"
+          },
+          "files": {
+            "type": "object",
+            "optional": true,
+            "additionalProperties": { "type": "string" },
+            "description": "Multi-file project: path to content map"
+          },
+          "entry": {
+            "type": "string",
+            "optional": true,
+            "description": "Entry point for multi-file projects"
+          },
+          "options": {
+            "type": "object",
+            "optional": true,
+            "additionalProperties": true,
+            "description": "Build options for multi-file projects"
+          }
         }
       },
       {
@@ -459,7 +542,12 @@
           "state": { "type": "string", "optional": true, "description": "Updated state" },
           "title": { "type": "string", "optional": true, "description": "Updated title" },
           "type": { "type": "string", "optional": true, "description": "Updated artifact type" },
-          "files": { "type": "object", "optional": true, "additionalProperties": { "type": "string" }, "description": "Updated multi-file project content" },
+          "files": {
+            "type": "object",
+            "optional": true,
+            "additionalProperties": { "type": "string" },
+            "description": "Updated multi-file project content"
+          },
           "entry": { "type": "string", "optional": true, "description": "Updated entry point" }
         }
       },
@@ -477,7 +565,11 @@
           "permissions": { "type": "array", "items": { "type": "string" } },
           "createdAt": { "type": "number" },
           "updatedAt": { "type": "number" },
-          "files": { "type": "object", "optional": true, "additionalProperties": { "type": "string" } },
+          "files": {
+            "type": "object",
+            "optional": true,
+            "additionalProperties": { "type": "string" }
+          },
           "entry": { "type": "string", "optional": true },
           "options": { "type": "object", "optional": true, "additionalProperties": true }
         }
@@ -550,9 +642,7 @@
         "type": "function",
         "async": "promise",
         "description": "Get current page URL",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "type": "string" }
       },
       {
@@ -560,9 +650,7 @@
         "type": "function",
         "async": "promise",
         "description": "Get page title",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "type": "string" }
       },
       {
@@ -685,9 +773,7 @@
         "type": "function",
         "async": "promise",
         "description": "Go back in history",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -695,9 +781,7 @@
         "type": "function",
         "async": "promise",
         "description": "Go forward in history",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -717,9 +801,7 @@
         "type": "function",
         "async": "promise",
         "description": "Wait for specified time",
-        "parameters": [
-          { "name": "ms", "type": "integer" }
-        ],
+        "parameters": [{ "name": "ms", "type": "integer" }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -746,9 +828,7 @@
         "type": "function",
         "async": "promise",
         "description": "Update privacy configuration",
-        "parameters": [
-          { "name": "config", "$ref": "PrivacyConfig" }
-        ],
+        "parameters": [{ "name": "config", "$ref": "PrivacyConfig" }],
         "returns": { "$ref": "PrivacyConfig" }
       },
       {
@@ -756,9 +836,7 @@
         "type": "function",
         "async": "promise",
         "description": "Create a new browser tab",
-        "parameters": [
-          { "name": "options", "$ref": "TabCreateOptions", "optional": true }
-        ],
+        "parameters": [{ "name": "options", "$ref": "TabCreateOptions", "optional": true }],
         "returns": { "$ref": "TabInfo" }
       },
       {
@@ -766,9 +844,7 @@
         "type": "function",
         "async": "promise",
         "description": "Close a browser tab",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -776,9 +852,7 @@
         "type": "function",
         "async": "promise",
         "description": "Get information about a tab",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "$ref": "TabInfo" }
       },
       {
@@ -786,9 +860,7 @@
         "type": "function",
         "async": "promise",
         "description": "Query tabs matching filter criteria",
-        "parameters": [
-          { "name": "filter", "$ref": "TabQueryFilter", "optional": true }
-        ],
+        "parameters": [{ "name": "filter", "$ref": "TabQueryFilter", "optional": true }],
         "returns": { "type": "array", "items": { "$ref": "TabInfo" } }
       },
       {
@@ -796,9 +868,7 @@
         "type": "function",
         "async": "promise",
         "description": "Activate (focus) a browser tab",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -814,9 +884,7 @@
         "type": "function",
         "async": "promise",
         "description": "Create a new browser window",
-        "parameters": [
-          { "name": "options", "$ref": "WindowCreateOptions", "optional": true }
-        ],
+        "parameters": [{ "name": "options", "$ref": "WindowCreateOptions", "optional": true }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -824,9 +892,7 @@
         "type": "function",
         "async": "promise",
         "description": "Close a browser window",
-        "parameters": [
-          { "name": "windowId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "windowId", "type": "integer", "optional": true }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -961,9 +1027,7 @@
         "type": "function",
         "async": "promise",
         "description": "Get cookies matching filter criteria",
-        "parameters": [
-          { "name": "filter", "$ref": "CookieFilter", "optional": true }
-        ],
+        "parameters": [{ "name": "filter", "$ref": "CookieFilter", "optional": true }],
         "returns": { "type": "array", "items": { "$ref": "Cookie" } }
       },
       {
@@ -971,9 +1035,7 @@
         "type": "function",
         "async": "promise",
         "description": "Set a cookie",
-        "parameters": [
-          { "name": "cookie", "$ref": "CookieSetOptions" }
-        ],
+        "parameters": [{ "name": "cookie", "$ref": "CookieSetOptions" }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -981,9 +1043,7 @@
         "type": "function",
         "async": "promise",
         "description": "Delete cookies matching filter criteria",
-        "parameters": [
-          { "name": "filter", "$ref": "CookieFilter", "optional": true }
-        ],
+        "parameters": [{ "name": "filter", "$ref": "CookieFilter", "optional": true }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -991,9 +1051,7 @@
         "type": "function",
         "async": "promise",
         "description": "Clear all cookies for a domain",
-        "parameters": [
-          { "name": "domain", "type": "string", "optional": true }
-        ],
+        "parameters": [{ "name": "domain", "type": "string", "optional": true }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -1035,9 +1093,7 @@
         "type": "function",
         "async": "promise",
         "description": "Clear all localStorage",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -1079,9 +1135,7 @@
         "type": "function",
         "async": "promise",
         "description": "Clear all sessionStorage",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -1089,9 +1143,7 @@
         "type": "function",
         "async": "promise",
         "description": "Start capturing network requests",
-        "parameters": [
-          { "name": "options", "$ref": "CaptureOptions", "optional": true }
-        ],
+        "parameters": [{ "name": "options", "$ref": "CaptureOptions", "optional": true }],
         "returns": { "type": "string" }
       },
       {
@@ -1099,9 +1151,7 @@
         "type": "function",
         "async": "promise",
         "description": "Stop capturing network requests and return captured data",
-        "parameters": [
-          { "name": "handle", "type": "string" }
-        ],
+        "parameters": [{ "name": "handle", "type": "string" }],
         "returns": { "type": "array", "items": { "$ref": "CapturedRequest" } }
       },
       {
@@ -1109,9 +1159,7 @@
         "type": "function",
         "async": "promise",
         "description": "Get captured network requests without stopping",
-        "parameters": [
-          { "name": "handle", "type": "string" }
-        ],
+        "parameters": [{ "name": "handle", "type": "string" }],
         "returns": { "type": "array", "items": { "$ref": "CapturedRequest" } }
       },
       {
@@ -1119,9 +1167,7 @@
         "type": "function",
         "async": "promise",
         "description": "Set up request interception",
-        "parameters": [
-          { "name": "options", "$ref": "InterceptOptions" }
-        ],
+        "parameters": [{ "name": "options", "$ref": "InterceptOptions" }],
         "returns": { "type": "string" }
       },
       {
@@ -1129,9 +1175,7 @@
         "type": "function",
         "async": "promise",
         "description": "Remove a request interception rule",
-        "parameters": [
-          { "name": "handle", "type": "string" }
-        ],
+        "parameters": [{ "name": "handle", "type": "string" }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -1192,9 +1236,7 @@
         "type": "function",
         "async": "promise",
         "description": "Remove a previously added script",
-        "parameters": [
-          { "name": "handle", "type": "string" }
-        ],
+        "parameters": [{ "name": "handle", "type": "string" }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -1202,9 +1244,7 @@
         "type": "function",
         "async": "promise",
         "description": "List all iframes in current document",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "type": "array", "items": { "$ref": "FrameInfo" } }
       },
       {
@@ -1223,9 +1263,7 @@
         "type": "function",
         "async": "promise",
         "description": "Return to top-level main document",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -1233,9 +1271,7 @@
         "type": "function",
         "async": "promise",
         "description": "Accept current native dialog (alert/confirm/prompt)",
-        "parameters": [
-          { "name": "text", "type": "string", "optional": true }
-        ],
+        "parameters": [{ "name": "text", "type": "string", "optional": true }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -1251,9 +1287,7 @@
         "type": "function",
         "async": "promise",
         "description": "Wait for a download to start",
-        "parameters": [
-          { "name": "options", "$ref": "DownloadOptions", "optional": true }
-        ],
+        "parameters": [{ "name": "options", "$ref": "DownloadOptions", "optional": true }],
         "returns": { "$ref": "DownloadResult" }
       },
       {
@@ -1272,9 +1306,7 @@
         "type": "function",
         "async": "promise",
         "description": "Get tab state (discarded, loading, complete)",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "$ref": "TabState" }
       },
       {
@@ -1293,9 +1325,7 @@
         "type": "function",
         "async": "promise",
         "description": "Cancel active element picker",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -1303,9 +1333,7 @@
         "type": "function",
         "async": "promise",
         "description": "Get current text selection from a tab",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "$ref": "SelectionData" }
       },
       {
@@ -1324,9 +1352,7 @@
         "type": "function",
         "async": "promise",
         "description": "Unlock page after agent operations",
-        "parameters": [
-          { "name": "tabId", "type": "integer", "optional": true }
-        ],
+        "parameters": [{ "name": "tabId", "type": "integer", "optional": true }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -1356,9 +1382,7 @@
         "type": "function",
         "async": "promise",
         "description": "Create a new artifact and open it in a background canvas tab",
-        "parameters": [
-          { "name": "options", "$ref": "ArtifactCreateOptions" }
-        ],
+        "parameters": [{ "name": "options", "$ref": "ArtifactCreateOptions" }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -1400,9 +1424,7 @@
         "type": "function",
         "async": "promise",
         "description": "Get an artifact by ID",
-        "parameters": [
-          { "name": "id", "type": "string" }
-        ],
+        "parameters": [{ "name": "id", "type": "string" }],
         "returns": { "type": "object" }
       },
       {
@@ -1410,9 +1432,7 @@
         "type": "function",
         "async": "promise",
         "description": "Delete an artifact by ID",
-        "parameters": [
-          { "name": "id", "type": "string" }
-        ],
+        "parameters": [{ "name": "id", "type": "string" }],
         "returns": { "$ref": "ApiResult" }
       },
       {
@@ -1430,9 +1450,14 @@
         "description": "Open a nevoflux://canvas/ tab using privileged browser API (foreground)",
         "parameters": [
           { "name": "id", "type": "string" },
-          { "name": "options", "type": "object", "optional": true, "properties": {
-            "inBackground": { "type": "boolean", "optional": true }
-          }}
+          {
+            "name": "options",
+            "type": "object",
+            "optional": true,
+            "properties": {
+              "inBackground": { "type": "boolean", "optional": true }
+            }
+          }
         ],
         "returns": { "$ref": "ApiResult" }
       },
@@ -1441,9 +1466,7 @@
         "type": "function",
         "async": "promise",
         "description": "Get a settings value by key",
-        "parameters": [
-          { "name": "key", "type": "string" }
-        ],
+        "parameters": [{ "name": "key", "type": "string" }],
         "returns": { "type": "object" }
       },
       {

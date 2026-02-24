@@ -285,7 +285,11 @@
       "type": "object",
       "properties": {
         "timeout": { "type": "number", "default": 30000 },
-        "waitUntil": { "type": "string", "enum": ["load", "domcontentloaded", "networkidle"], "default": "load" }
+        "waitUntil": {
+          "type": "string",
+          "enum": ["load", "domcontentloaded", "networkidle"],
+          "default": "load"
+        }
       }
     },
     "NavigationResult": {
@@ -369,7 +373,11 @@
       "type": "object",
       "properties": {
         "timeout": { "type": "number", "default": 30000 },
-        "state": { "type": "string", "enum": ["visible", "hidden", "attached", "detached"], "default": "visible" }
+        "state": {
+          "type": "string",
+          "enum": ["visible", "hidden", "attached", "detached"],
+          "default": "visible"
+        }
       }
     },
     "PrivacyConfig": {

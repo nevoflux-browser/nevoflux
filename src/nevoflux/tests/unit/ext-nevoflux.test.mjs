@@ -19,7 +19,7 @@ import {
 
 // Helper to escape regex special characters (mirrors the real implementation)
 function escapeRegExp(str) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // Create a mock ext-nevoflux API class
@@ -52,7 +52,10 @@ class MockExtNevofluxAPI {
     const { url, active = true, windowId, index } = options;
 
     if (!this.tabTracker) {
-      return { success: false, error: { code: 6004, message: "Tab tracker unavailable", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 6004, message: 'Tab tracker unavailable', recoverable: false },
+      };
     }
 
     try {
@@ -60,30 +63,36 @@ class MockExtNevofluxAPI {
       if (windowId !== undefined) {
         const wrapper = this.extension.windowManager.get(windowId, this.extension.context);
         if (!wrapper) {
-          return { success: false, error: { code: 5002, message: "No browser window found", recoverable: false } };
+          return {
+            success: false,
+            error: { code: 5002, message: 'No browser window found', recoverable: false },
+          };
         }
         win = wrapper;
       } else {
         win = this.extension.windowManager.getWrapper(this.extension.windowManager.topWindow);
       }
 
-      const tab = this.extension.tabManager.add(url || "about:newtab");
+      const tab = this.extension.tabManager.add(url || 'about:newtab');
       const tabId = tab.id;
 
       return {
         success: true,
         tab: {
           id: tabId,
-          url: url || "about:newtab",
-          title: "",
+          url: url || 'about:newtab',
+          title: '',
           active,
           index: index ?? 0,
           windowId: win?.id || 1,
-          status: "loading",
+          status: 'loading',
         },
       };
     } catch (e) {
-      return { success: false, error: { code: 6000, message: `Unexpected error in createTab: ${e}`, recoverable: false } };
+      return {
+        success: false,
+        error: { code: 6000, message: `Unexpected error in createTab: ${e}`, recoverable: false },
+      };
     }
   }
 
@@ -92,7 +101,10 @@ class MockExtNevofluxAPI {
     const tab = this.extension.tabManager.get(resolvedTabId);
 
     if (!tab) {
-      return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 3001, message: 'Tab not found', recoverable: false },
+      };
     }
 
     try {
@@ -108,7 +120,10 @@ class MockExtNevofluxAPI {
     const tab = this.extension.tabManager.get(resolvedTabId);
 
     if (!tab) {
-      return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 3001, message: 'Tab not found', recoverable: false },
+      };
     }
 
     return this._getTabInfo(tab, resolvedTabId);
@@ -117,12 +132,12 @@ class MockExtNevofluxAPI {
   _getTabInfo(tab, tabId) {
     return {
       id: tabId,
-      url: tab.browser?.currentURI?.spec || "",
-      title: tab.browser?.contentTitle || "",
+      url: tab.browser?.currentURI?.spec || '',
+      title: tab.browser?.contentTitle || '',
       active: false,
       index: tab.nativeTab?._tPos || 0,
       windowId: 1,
-      status: "complete"
+      status: 'complete',
     };
   }
 
@@ -134,19 +149,19 @@ class MockExtNevofluxAPI {
   async queryTabs(filter = {}) {
     const allTabs = await this.listTabs();
 
-    return allTabs.filter(tab => {
+    return allTabs.filter((tab) => {
       if (filter.active !== undefined && tab.active !== filter.active) return false;
       if (filter.windowId !== undefined && tab.windowId !== filter.windowId) return false;
       if (filter.url) {
         const escaped = escapeRegExp(filter.url);
-        const pattern = escaped.replace(/\\\*/g, ".*");
+        const pattern = escaped.replace(/\\\*/g, '.*');
         const regex = new RegExp(`^${pattern}$`);
         if (!regex.test(tab.url)) return false;
       }
       if (filter.title) {
         const escaped = escapeRegExp(filter.title);
-        const pattern = escaped.replace(/\\\*/g, ".*");
-        const regex = new RegExp(`^${pattern}$`, "i");
+        const pattern = escaped.replace(/\\\*/g, '.*');
+        const regex = new RegExp(`^${pattern}$`, 'i');
         if (!regex.test(tab.title)) return false;
       }
       return true;
@@ -158,7 +173,10 @@ class MockExtNevofluxAPI {
     const tab = this.extension.tabManager.get(resolvedTabId);
 
     if (!tab) {
-      return { success: false, error: { code: 3001, message: "Tab not found", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 3001, message: 'Tab not found', recoverable: false },
+      };
     }
 
     return { success: true };
@@ -179,7 +197,10 @@ class MockExtNevofluxAPI {
     if (windowId !== undefined) {
       const wrapper = this.extension.windowManager.get(windowId);
       if (!wrapper) {
-        return { success: false, error: { code: 6003, message: "Window not found", recoverable: false } };
+        return {
+          success: false,
+          error: { code: 6003, message: 'Window not found', recoverable: false },
+        };
       }
     }
 
@@ -196,7 +217,14 @@ class MockExtNevofluxAPI {
           const parsedUrl = new URL(filter.url);
           filterHostname = parsedUrl.hostname;
         } catch {
-          return { success: false, error: { code: 7002, message: `Invalid URL in filter: ${filter.url}`, recoverable: false } };
+          return {
+            success: false,
+            error: {
+              code: 7002,
+              message: `Invalid URL in filter: ${filter.url}`,
+              recoverable: false,
+            },
+          };
         }
       }
 
@@ -213,9 +241,9 @@ class MockExtNevofluxAPI {
           path: cookie.path,
           secure: cookie.isSecure,
           httpOnly: cookie.isHttpOnly,
-          sameSite: ["none", "lax", "strict"][cookie.sameSite] || "none",
+          sameSite: ['none', 'lax', 'strict'][cookie.sameSite] || 'none',
           expirationDate: cookie.expiry,
-          session: cookie.isSession
+          session: cookie.isSession,
         });
       }
 
@@ -226,16 +254,35 @@ class MockExtNevofluxAPI {
   }
 
   async setCookie(cookie) {
-    const { url, name, value, domain, path = "/", secure = false, httpOnly = false, sameSite = "lax", expirationDate } = cookie;
+    const {
+      url,
+      name,
+      value,
+      domain,
+      path = '/',
+      secure = false,
+      httpOnly = false,
+      sameSite = 'lax',
+      expirationDate,
+    } = cookie;
 
     if (!url) {
-      return { success: false, error: { code: 7002, message: "Missing required parameter: url", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 7002, message: 'Missing required parameter: url', recoverable: false },
+      };
     }
     if (!name) {
-      return { success: false, error: { code: 7002, message: "Missing required parameter: name", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 7002, message: 'Missing required parameter: name', recoverable: false },
+      };
     }
     if (value === undefined || value === null) {
-      return { success: false, error: { code: 7002, message: "Missing required parameter: value", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 7002, message: 'Missing required parameter: value', recoverable: false },
+      };
     }
 
     try {
@@ -243,11 +290,14 @@ class MockExtNevofluxAPI {
       try {
         parsedUrl = new URL(url);
       } catch {
-        return { success: false, error: { code: 7002, message: `Invalid URL: ${url}`, recoverable: false } };
+        return {
+          success: false,
+          error: { code: 7002, message: `Invalid URL: ${url}`, recoverable: false },
+        };
       }
 
       const cookieDomain = domain || parsedUrl.hostname;
-      const sameSiteMap = { "none": 0, "lax": 1, "strict": 2 };
+      const sameSiteMap = { none: 0, lax: 1, strict: 2 };
 
       this.Services.cookies.add(
         cookieDomain,
@@ -305,42 +355,42 @@ class MockExtNevofluxAPI {
 
   async getLocalStorage(tabId, key) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "getLocalStorage", { key });
+    return this.executeInTab(resolvedTabId, 'getLocalStorage', { key });
   }
 
   async setLocalStorage(tabId, key, value) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "setLocalStorage", { key, value });
+    return this.executeInTab(resolvedTabId, 'setLocalStorage', { key, value });
   }
 
   async removeLocalStorage(tabId, key) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "removeLocalStorage", { key });
+    return this.executeInTab(resolvedTabId, 'removeLocalStorage', { key });
   }
 
   async clearLocalStorage(tabId) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "clearLocalStorage", {});
+    return this.executeInTab(resolvedTabId, 'clearLocalStorage', {});
   }
 
   async getSessionStorage(tabId, key) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "getSessionStorage", { key });
+    return this.executeInTab(resolvedTabId, 'getSessionStorage', { key });
   }
 
   async setSessionStorage(tabId, key, value) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "setSessionStorage", { key, value });
+    return this.executeInTab(resolvedTabId, 'setSessionStorage', { key, value });
   }
 
   async removeSessionStorage(tabId, key) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "removeSessionStorage", { key });
+    return this.executeInTab(resolvedTabId, 'removeSessionStorage', { key });
   }
 
   async clearSessionStorage(tabId) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "clearSessionStorage", {});
+    return this.executeInTab(resolvedTabId, 'clearSessionStorage', {});
   }
 
   // ========== Network ==========
@@ -351,7 +401,7 @@ class MockExtNevofluxAPI {
       options,
       requests: [],
       listener: null,
-      createdAt: Date.now()
+      createdAt: Date.now(),
     };
 
     this.networkCaptures.set(handle, captureData);
@@ -368,7 +418,10 @@ class MockExtNevofluxAPI {
 
     const captureData = this.networkCaptures.get(handle);
     if (!captureData) {
-      return { success: false, error: { code: 8001, message: "Capture not found", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 8001, message: 'Capture not found', recoverable: false },
+      };
     }
 
     const requests = [...captureData.requests];
@@ -386,7 +439,10 @@ class MockExtNevofluxAPI {
 
     const captureData = this.networkCaptures.get(handle);
     if (!captureData) {
-      return { success: false, error: { code: 8001, message: "Capture not found", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 8001, message: 'Capture not found', recoverable: false },
+      };
     }
     return [...captureData.requests];
   }
@@ -395,7 +451,7 @@ class MockExtNevofluxAPI {
     const handle = `intercept_${++this.interceptCounter}`;
     const interceptData = {
       options,
-      active: true
+      active: true,
     };
 
     this.networkIntercepts.set(handle, interceptData);
@@ -404,7 +460,10 @@ class MockExtNevofluxAPI {
 
   async removeIntercept(handle) {
     if (!this.networkIntercepts.has(handle)) {
-      return { success: false, error: { code: 8002, message: "Intercept not found", recoverable: false } };
+      return {
+        success: false,
+        error: { code: 8002, message: 'Intercept not found', recoverable: false },
+      };
     }
 
     this.networkIntercepts.delete(handle);
@@ -419,95 +478,102 @@ class MockExtNevofluxAPI {
   // ========== Execute ==========
 
   async eval(tabId, script, options = {}) {
-    if (!script || typeof script !== "string") {
-      return { success: false, error: { code: 9002, message: "Missing or invalid required parameter: script", recoverable: false } };
+    if (!script || typeof script !== 'string') {
+      return {
+        success: false,
+        error: {
+          code: 9002,
+          message: 'Missing or invalid required parameter: script',
+          recoverable: false,
+        },
+      };
     }
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "eval", { script, ...options });
+    return this.executeInTab(resolvedTabId, 'eval', { script, ...options });
   }
 
   async addScript(tabId, script, options = {}) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "addScript", { script, ...options });
+    return this.executeInTab(resolvedTabId, 'addScript', { script, ...options });
   }
 
   async removeScript(tabId, handle) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "removeScript", { handle });
+    return this.executeInTab(resolvedTabId, 'removeScript', { handle });
   }
 
   // ========== Keyboard/Mouse (proxies to child) ==========
 
   async keyPress(tabId, key, options = {}) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "keyPress", { key, ...options });
+    return this.executeInTab(resolvedTabId, 'keyPress', { key, ...options });
   }
 
   async keyDown(tabId, key, options = {}) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "keyDown", { key, ...options });
+    return this.executeInTab(resolvedTabId, 'keyDown', { key, ...options });
   }
 
   async keyUp(tabId, key) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "keyUp", { key });
+    return this.executeInTab(resolvedTabId, 'keyUp', { key });
   }
 
   async mouseMove(tabId, x, y, options = {}) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "mouseMove", { x, y, ...options });
+    return this.executeInTab(resolvedTabId, 'mouseMove', { x, y, ...options });
   }
 
   async mouseDown(tabId, options = {}) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "mouseDown", options);
+    return this.executeInTab(resolvedTabId, 'mouseDown', options);
   }
 
   async mouseUp(tabId, options = {}) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "mouseUp", options);
+    return this.executeInTab(resolvedTabId, 'mouseUp', options);
   }
 
   async wheel(tabId, options = {}) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "wheel", options);
+    return this.executeInTab(resolvedTabId, 'wheel', options);
   }
 
   async dblclick(tabId, selector, options = {}) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "dblclick", { selector, ...options });
+    return this.executeInTab(resolvedTabId, 'dblclick', { selector, ...options });
   }
 
   async drag(tabId, fromSelector, toSelector, options = {}) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "drag", { fromSelector, toSelector, ...options });
+    return this.executeInTab(resolvedTabId, 'drag', { fromSelector, toSelector, ...options });
   }
 
   async focus(tabId, selector) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "focus", { selector });
+    return this.executeInTab(resolvedTabId, 'focus', { selector });
   }
 
   async clear(tabId, selector) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "clear", { selector });
+    return this.executeInTab(resolvedTabId, 'clear', { selector });
   }
 
   // ========== P2: Frame Management ==========
 
   async listFrames(tabId) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "listFrames", {});
+    return this.executeInTab(resolvedTabId, 'listFrames', {});
   }
 
   async switchFrame(tabId, selector) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "switchFrame", { selector });
+    return this.executeInTab(resolvedTabId, 'switchFrame', { selector });
   }
 
   async frameMain(tabId) {
     const resolvedTabId = tabId ?? (await this.getActiveTabId());
-    return this.executeInTab(resolvedTabId, "frameMain", {});
+    return this.executeInTab(resolvedTabId, 'frameMain', {});
   }
 
   // ========== P3: Dialog Handling ==========
@@ -521,12 +587,12 @@ class MockExtNevofluxAPI {
 
     this._dialogObserver = {
       observe: (subject, topic, data) => {
-        if (topic === "common-dialog-loaded") {
+        if (topic === 'common-dialog-loaded') {
           this._pendingDialog = subject;
         }
-      }
+      },
     };
-    this._observerService.addObserver(this._dialogObserver, "common-dialog-loaded");
+    this._observerService.addObserver(this._dialogObserver, 'common-dialog-loaded');
   }
 
   async dialogAccept(text) {
@@ -549,7 +615,10 @@ class MockExtNevofluxAPI {
       this._pendingDialog = null;
       return { success: true };
     } catch (e) {
-      return { success: false, error: { code: 11001, message: `Accept dialog failed: ${e.message}`, recoverable: false } };
+      return {
+        success: false,
+        error: { code: 11001, message: `Accept dialog failed: ${e.message}`, recoverable: false },
+      };
     }
   }
 
@@ -570,13 +639,16 @@ class MockExtNevofluxAPI {
       this._pendingDialog = null;
       return { success: true };
     } catch (e) {
-      return { success: false, error: { code: 11002, message: `Dismiss dialog failed: ${e.message}`, recoverable: false } };
+      return {
+        success: false,
+        error: { code: 11002, message: `Dismiss dialog failed: ${e.message}`, recoverable: false },
+      };
     }
   }
 
   // Simulate dialog appearing
   _simulateDialog(dialog) {
-    this._observerService.notifyObservers(dialog, "common-dialog-loaded", null);
+    this._observerService.notifyObservers(dialog, 'common-dialog-loaded', null);
   }
 
   // ========== P3: Download Wait ==========
@@ -593,7 +665,7 @@ class MockExtNevofluxAPI {
         this._downloadListeners = [];
         resolve({
           success: false,
-          error: { code: 12001, message: 'Download timeout', recoverable: true }
+          error: { code: 12001, message: 'Download timeout', recoverable: true },
         });
       }, timeout);
 
@@ -606,7 +678,7 @@ class MockExtNevofluxAPI {
           url: downloadItem.url,
           filename: downloadItem.filename,
           mimeType: downloadItem.mime,
-          size: downloadItem.totalBytes
+          size: downloadItem.totalBytes,
         });
       };
 
@@ -713,7 +785,7 @@ describe('ext-nevoflux - Cookie Management', () => {
     const result = await api.setCookie({
       url: 'https://example.com',
       name: 'test',
-      value: 'value123'
+      value: 'value123',
     });
     expect(result.success).toBe(true);
   });
@@ -740,7 +812,7 @@ describe('ext-nevoflux - Cookie Management', () => {
     const result = await api.setCookie({
       url: 'invalid-url',
       name: 'test',
-      value: 'value'
+      value: 'value',
     });
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(7002);
@@ -1010,13 +1082,13 @@ describe('ext-nevoflux - Version and Data Extraction', () => {
   beforeEach(() => {
     api = new MockExtNevofluxAPI();
     // Add API version
-    api.getVersion = async () => "1.0.0";
+    api.getVersion = async () => '1.0.0';
     // Add data extraction proxies
-    api.getText = async (tabId, selector) => api.executeInTab(tabId, "getText", { selector });
-    api.getHtml = async (tabId, selector) => api.executeInTab(tabId, "getHtml", { selector });
-    api.getValue = async (tabId, selector) => api.executeInTab(tabId, "getValue", { selector });
-    api.snapshot = async (tabId, options) => api.executeInTab(tabId, "snapshot", options);
-    api.screenshot = async (tabId, options) => api.executeInTab(tabId, "screenshot", options);
+    api.getText = async (tabId, selector) => api.executeInTab(tabId, 'getText', { selector });
+    api.getHtml = async (tabId, selector) => api.executeInTab(tabId, 'getHtml', { selector });
+    api.getValue = async (tabId, selector) => api.executeInTab(tabId, 'getValue', { selector });
+    api.snapshot = async (tabId, options) => api.executeInTab(tabId, 'snapshot', options);
+    api.screenshot = async (tabId, options) => api.executeInTab(tabId, 'screenshot', options);
   });
 
   it('getVersion should return API version', async () => {
@@ -1053,8 +1125,8 @@ describe('ext-nevoflux - Version and Data Extraction', () => {
 describe('ext-nevoflux - State Checking Proxies', () => {
   beforeEach(() => {
     api = new MockExtNevofluxAPI();
-    api.isVisible = async (tabId, selector) => api.executeInTab(tabId, "isVisible", { selector });
-    api.exists = async (tabId, selector) => api.executeInTab(tabId, "exists", { selector });
+    api.isVisible = async (tabId, selector) => api.executeInTab(tabId, 'isVisible', { selector });
+    api.exists = async (tabId, selector) => api.executeInTab(tabId, 'exists', { selector });
   });
 
   it('isVisible should call executeInTab', async () => {
@@ -1071,10 +1143,13 @@ describe('ext-nevoflux - State Checking Proxies', () => {
 describe('ext-nevoflux - Interaction Proxies', () => {
   beforeEach(() => {
     api = new MockExtNevofluxAPI();
-    api.click = async (tabId, selector, options) => api.executeInTab(tabId, "click", { selector, ...options });
-    api.type = async (tabId, selector, text, options) => api.executeInTab(tabId, "type", { selector, text, ...options });
-    api.fill = async (tabId, selector, text) => api.executeInTab(tabId, "fill", { selector, text });
-    api.waitForSelector = async (tabId, selector, options) => api.executeInTab(tabId, "waitForSelector", { selector, ...options });
+    api.click = async (tabId, selector, options) =>
+      api.executeInTab(tabId, 'click', { selector, ...options });
+    api.type = async (tabId, selector, text, options) =>
+      api.executeInTab(tabId, 'type', { selector, text, ...options });
+    api.fill = async (tabId, selector, text) => api.executeInTab(tabId, 'fill', { selector, text });
+    api.waitForSelector = async (tabId, selector, options) =>
+      api.executeInTab(tabId, 'waitForSelector', { selector, ...options });
   });
 
   it('click should call executeInTab', async () => {
@@ -1467,7 +1542,7 @@ describe('ext-nevoflux - Wait Methods', () => {
   beforeEach(() => {
     api = new MockExtNevofluxAPI();
     api.waitForTimeout = async (ms) => {
-      await new Promise(resolve => setTimeout(resolve, Math.min(ms, 10))); // Cap for tests
+      await new Promise((resolve) => setTimeout(resolve, Math.min(ms, 10))); // Cap for tests
       return { success: true };
     };
     api.waitForRequest = async (urlPattern, timeout) => {
@@ -1702,7 +1777,7 @@ describe('ext-nevoflux - Download Wait (P3)', () => {
       url: 'https://example.com/report.pdf',
       filename: 'report.pdf',
       mime: 'application/pdf',
-      totalBytes: 2048
+      totalBytes: 2048,
     });
 
     // Start waiting in background
@@ -1746,7 +1821,7 @@ describe('ext-nevoflux - Download Wait (P3)', () => {
       url: 'https://example.com/data.csv',
       filename: 'data.csv',
       mime: 'text/csv',
-      totalBytes: 512
+      totalBytes: 512,
     });
 
     const waitPromise = api.waitForDownload({ timeout: 1000 });
@@ -1763,7 +1838,7 @@ describe('ext-nevoflux - Download Wait (P3)', () => {
 
   it('waitForDownload should handle unknown file size', async () => {
     const downloadItem = createMockDownloadItem({
-      totalBytes: -1 // Unknown size
+      totalBytes: -1, // Unknown size
     });
 
     const waitPromise = api.waitForDownload({ timeout: 1000 });
@@ -1816,7 +1891,7 @@ describe('ext-nevoflux - P2+P3 API Integration', () => {
     // Then wait for download
     const downloadItem = createMockDownloadItem({
       filename: 'export.xlsx',
-      mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     });
 
     const waitPromise = api.waitForDownload({ timeout: 1000 });
