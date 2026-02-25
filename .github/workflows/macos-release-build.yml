@@ -260,6 +260,8 @@ jobs:
             echo "Using local macOS SDK: $MACOS_SDK_DIR"
             export SDKROOT="$MACOS_SDK_DIR"
           fi
+          # Bypass Mac linker LTO bug check (safe with modern Xcode toolchain)
+          export MOZ_LD64_KNOWN_GOOD=1
           if [[ -n "${{ inputs.MOZ_BUILD_DATE }}" ]];then
             export MOZ_BUILD_DATE="${{ inputs.MOZ_BUILD_DATE }}"
           fi
