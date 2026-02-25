@@ -252,6 +252,8 @@ jobs:
           RUSTUP_TOOLCHAIN: '1.83'
           # Disable PGO for x86_64 cross-compile: can't run x86_64 binary on ARM64 runner
           ZEN_GA_DISABLE_PGO: ${{ matrix.arch == 'x86_64' && 'true' || '' }}
+          # Disable LTO for x86_64 cross-compile: ld64 linker bug check conflicts with MOZ_AUTOMATION
+          ZEN_DISABLE_LTO: ${{ matrix.arch == 'x86_64' && '1' || '' }}
         run: |
           export SURFER_PLATFORM="darwin"
           # Use local Xcode SDK to avoid 403 errors downloading from Mozilla servers
@@ -259,11 +261,6 @@ jobs:
           if [[ -n "$MACOS_SDK_DIR" ]]; then
             echo "Using local macOS SDK: $MACOS_SDK_DIR"
             export SDKROOT="$MACOS_SDK_DIR"
-          fi
-          # Bypass Mac linker LTO bug check for x86_64 cross-compile only
-          # (conflicts with MOZ_AUTOMATION on native aarch64 builds)
-          if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
-            export MOZ_LD64_KNOWN_GOOD=1
           fi
           if [[ -n "${{ inputs.MOZ_BUILD_DATE }}" ]];then
             export MOZ_BUILD_DATE="${{ inputs.MOZ_BUILD_DATE }}"
