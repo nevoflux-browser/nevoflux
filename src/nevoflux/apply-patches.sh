@@ -63,17 +63,6 @@ fi
 if [ -d "${NEVOFLUX_DIR}/root-overlays" ]; then
   echo "Copying root overlay files to project root..."
   cp -r "${NEVOFLUX_DIR}/root-overlays/"* "${ROOT_DIR}/"
-
-  # Replace __EXTENSION_INSTALL_URL__ placeholder with actual path
-  POLICIES_FILE="${ROOT_DIR}/build/AppDir/distribution/policies.json"
-  if [ -f "${POLICIES_FILE}" ] && grep -q "__EXTENSION_INSTALL_URL__" "${POLICIES_FILE}"; then
-    source "${ROOT_DIR}/scripts/lib/detect-objdir.sh"
-    OBJ_DIR="$(_detect_objdir "${ROOT_DIR}")"
-    _DIST_DIR="$(_detect_distdir "$OBJ_DIR")"
-    EXTENSION_URL="file://${_DIST_DIR}/distribution/extensions/agent@nevoflux.com.xpi"
-    sedi "s|__EXTENSION_INSTALL_URL__|${EXTENSION_URL}|g" "${POLICIES_FILE}"
-    echo "Updated policies.json install_url: ${EXTENSION_URL}"
-  fi
 fi
 
 # 4. Copy engine-overlays to engine/ directory
@@ -114,6 +103,10 @@ if [ -f "${MODULES_MOZBUILD}" ]; then
   if ! grep -q '"NevofluxContentStore.sys.mjs"' "${MODULES_MOZBUILD}"; then
     echo "Adding NevofluxContentStore to browser/modules/moz.build..."
     sedi 's/"NevofluxBridgeRouter.sys.mjs",/"NevofluxBridgeRouter.sys.mjs",\'$'\n''    "NevofluxContentStore.sys.mjs",/' "${MODULES_MOZBUILD}"
+  fi
+  if ! grep -q '"NevofluxNativeHostRegistrar.sys.mjs"' "${MODULES_MOZBUILD}"; then
+    echo "Adding NevofluxNativeHostRegistrar to browser/modules/moz.build..."
+    sedi 's/"NevofluxContentStore.sys.mjs",/"NevofluxContentStore.sys.mjs",\'$'\n''    "NevofluxNativeHostRegistrar.sys.mjs",/' "${MODULES_MOZBUILD}"
   fi
 fi
 

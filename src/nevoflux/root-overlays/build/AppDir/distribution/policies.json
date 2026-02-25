@@ -9,12 +9,6 @@
         "Value": false,
         "Status": "locked"
       }
-    },
-    "ExtensionSettings": {
-      "agent@nevoflux.com": {
-        "installation_mode": "force_installed",
-        "install_url": "__EXTENSION_INSTALL_URL__"
-      }
     }
   }
 }

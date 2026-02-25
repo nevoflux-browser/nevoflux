@@ -196,6 +196,7 @@
     "url": "chrome://browser/content/parent/ext-nevoflux.js",
     "schema": "chrome://browser/content/schemas/nevoflux.json",
     "scopes": ["addon_parent", "addon_child"],
+    "events": ["startup"],
     "paths": [["nevoflux"]]
   }
 }

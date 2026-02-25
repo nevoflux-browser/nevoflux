@@ -10,6 +10,7 @@ const API_VERSION = '1.0.0';
 // Lazy import for SessionStore (used for restoring discarded tabs)
 ChromeUtils.defineESModuleGetters(this, {
   SessionStore: 'resource:///modules/sessionstore/SessionStore.sys.mjs',
+  NevofluxNativeHostRegistrar: 'resource:///modules/NevofluxNativeHostRegistrar.sys.mjs',
 });
 
 // Default timeout for tab restoration (ms)
@@ -51,6 +52,12 @@ const CAPTURE_MAX_AGE_MS = 300000;
 let contentStorePersistUnsubscribe = null;
 
 this.nevoflux = class extends ExtensionAPI {
+  onStartup() {
+    NevofluxNativeHostRegistrar.ensureRegistered().catch(err => {
+      console.error("[NevoFlux] Failed to register native messaging hosts:", err);
+    });
+  }
+
   getAPI(context) {
     const { extension } = context;
     const self = this;
