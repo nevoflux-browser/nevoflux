@@ -250,6 +250,8 @@ jobs:
           SURFER_COMPAT: ${{ matrix.arch }}
           ZEN_RELEASE_BRANCH: ${{ inputs.release-branch }}
           RUSTUP_TOOLCHAIN: '1.83'
+          # Disable PGO for x86_64 cross-compile: can't run x86_64 binary on ARM64 runner
+          ZEN_GA_DISABLE_PGO: ${{ matrix.arch == 'x86_64' && 'true' || '' }}
         run: |
           export SURFER_PLATFORM="darwin"
           # Use local Xcode SDK to avoid 403 errors downloading from Mozilla servers
