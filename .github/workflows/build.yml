@@ -459,7 +459,7 @@ jobs:
 
           APPDIR=build/AppDir
           tar -xvf *.tar.* && rm -rf *.tar.*
-          mv nevoflux/* $APPDIR/
+          cp -a nevoflux/* $APPDIR/ && rm -rf nevoflux
           for attempt in 1 2 3 4 5; do
             wget "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" && break
             if [ $attempt -lt 5 ]; then
