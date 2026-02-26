@@ -6,6 +6,7 @@
 #
 # Sources:
 #   src/nevoflux/branding/nevoflux-logo.svg              (required)
+#   src/nevoflux/branding/nevoflux-logo-white.svg         (optional, white-on-black variant for Windows ICO)
 #   src/nevoflux/branding/nevoflux-logo-private.svg       (optional, falls back to main)
 #   src/nevoflux/branding/nevoflux-wordmark.svg           (optional, replaces firefox-wordmark.svg)
 #   src/nevoflux/branding/nevoflux-about-wordmark.svg     (optional, replaces about-wordmark.svg)
@@ -19,6 +20,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 LOGO_SVG="$SCRIPT_DIR/nevoflux-logo.svg"
+LOGO_WHITE_SVG="$SCRIPT_DIR/nevoflux-logo-white.svg"
 LOGO_PRIVATE_SVG="$SCRIPT_DIR/nevoflux-logo-private.svg"
 WORDMARK_SVG="$SCRIPT_DIR/nevoflux-wordmark.svg"
 ABOUT_WORDMARK_SVG="$SCRIPT_DIR/nevoflux-about-wordmark.svg"
@@ -50,6 +52,12 @@ check_sources() {
     echo "ERROR: Main logo SVG not found: $LOGO_SVG"
     echo "Place your logo SVG at this path and re-run."
     exit 1
+  fi
+
+  if [[ ! -f "$LOGO_WHITE_SVG" ]]; then
+    echo "NOTE: White logo SVG not found: $LOGO_WHITE_SVG"
+    echo "      Using main logo for Windows ICO files."
+    LOGO_WHITE_SVG="$LOGO_SVG"
   fi
 
   if [[ ! -f "$LOGO_PRIVATE_SVG" ]]; then
@@ -155,9 +163,9 @@ generate_variant() {
   local tmp_dir
   tmp_dir=$(mktemp -d /tmp/nevoflux-ico-XXXXXX)
 
-  # Generate temp PNGs for main logo ICO sizes
+  # Generate temp PNGs for main logo ICO sizes (white-on-black variant for Windows taskbar)
   for size in 16 32 48 64 128 256; do
-    render_png "$LOGO_SVG" "$size" "$tmp_dir/main-${size}.png"
+    render_png "$LOGO_WHITE_SVG" "$size" "$tmp_dir/main-${size}.png"
   done
 
   # Generate temp PNGs for private logo ICO sizes
@@ -195,9 +203,9 @@ generate_variant() {
   render_png "$LOGO_PRIVATE_SVG" 126 "$dir/PrivateBrowsing_70.png"
   render_png "$LOGO_PRIVATE_SVG" 270 "$dir/PrivateBrowsing_150.png"
 
-  # VisualElements tiles (1042x1046, logo centered)
-  render_png_rect "$LOGO_SVG" 1042 1046 "$dir/VisualElements_70.png"
-  render_png_rect "$LOGO_SVG" 1042 1046 "$dir/VisualElements_150.png"
+  # VisualElements tiles (1042x1046, logo centered, white-on-black for Windows)
+  render_png_rect "$LOGO_WHITE_SVG" 1042 1046 "$dir/VisualElements_70.png"
+  render_png_rect "$LOGO_WHITE_SVG" 1042 1046 "$dir/VisualElements_150.png"
 
   # wizWatermark.bmp (164x314)
   echo "  Generating Windows installer watermark..."
@@ -221,6 +229,7 @@ main() {
 
   echo ""
   echo "Source:  $LOGO_SVG"
+  echo "White:   $LOGO_WHITE_SVG"
   echo "Private: $LOGO_PRIVATE_SVG"
   echo "Output:  $OUTPUT_DIR/{release,twilight}/"
   echo ""
