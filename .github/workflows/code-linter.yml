@@ -35,6 +35,9 @@ jobs:
           sudo apt install python3-autopep8
           autopep8 --diff scripts/ src/
 
+      - name: Install system dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libvips-dev > /dev/null
+
       - name: Install dependencies
         run: npm ci
 
