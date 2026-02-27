@@ -1036,71 +1036,77 @@ function broadcastToSidebar(message) {
 /**
  * Listen for ContentStore changes and persist to Rust agent's SQLite.
  * Uses per-key debouncing (1s) to coalesce rapid writes (e.g. artifact streaming).
+ * Wrapped in guard: browser.nevoflux API may not be available on all platforms.
  */
-browser.nevoflux.onContentStoreChanged.addListener((operation, key, value) => {
-  // Skip if agent not connected
-  if (!channelManager.connectionStatus.chat) {
-    console.debug(
-      '[NevoFlux] ContentStore changed but agent not connected, skipping persist:',
-      key
-    );
-    return;
-  }
-
-  // Clear existing debounce timer for this key
-  if (contentStoreDebounceTimers.has(key)) {
-    clearTimeout(contentStoreDebounceTimers.get(key));
-  }
-
-  // Debounce per key
-  const timerId = setTimeout(() => {
-    contentStoreDebounceTimers.delete(key);
-
-    // Re-check connection after debounce delay
+if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onContentStoreChanged) {
+  browser.nevoflux.onContentStoreChanged.addListener((operation, key, value) => {
+    // Skip if agent not connected
     if (!channelManager.connectionStatus.chat) {
-      console.debug('[NevoFlux] Agent disconnected during debounce, skipping persist:', key);
+      console.debug(
+        '[NevoFlux] ContentStore changed but agent not connected, skipping persist:',
+        key
+      );
       return;
     }
 
-    if (operation === 'set') {
-      // Guard: skip oversized values
-      const serialized = JSON.stringify(value);
-      if (serialized && serialized.length > CONTENT_STORE_MAX_VALUE_SIZE) {
-        console.warn(
-          `[NevoFlux] ContentStore value too large (${serialized.length}), skipping persist: ${key}`
-        );
+    // Clear existing debounce timer for this key
+    if (contentStoreDebounceTimers.has(key)) {
+      clearTimeout(contentStoreDebounceTimers.get(key));
+    }
+
+    // Debounce per key
+    const timerId = setTimeout(() => {
+      contentStoreDebounceTimers.delete(key);
+
+      // Re-check connection after debounce delay
+      if (!channelManager.connectionStatus.chat) {
+        console.debug('[NevoFlux] Agent disconnected during debounce, skipping persist:', key);
         return;
       }
 
-      console.log(`[NevoFlux] Persisting: content_store.set ${key}`);
-      channelManager.sendToAgent({
-        type: MessageTypes.SYSTEM_COMMAND,
-        payload: {
-          command: 'content_store.set',
-          request_id: `cs_set_${Date.now()}`,
-          params: { key, value },
-        },
-      });
-    } else if (operation === 'delete') {
-      console.log(`[NevoFlux] Persisting: content_store.delete ${key}`);
-      channelManager.sendToAgent({
-        type: MessageTypes.SYSTEM_COMMAND,
-        payload: {
-          command: 'content_store.delete',
-          request_id: `cs_del_${Date.now()}`,
-          params: { key },
-        },
-      });
-    }
-  }, CONTENT_STORE_DEBOUNCE_MS);
+      if (operation === 'set') {
+        // Guard: skip oversized values
+        const serialized = JSON.stringify(value);
+        if (serialized && serialized.length > CONTENT_STORE_MAX_VALUE_SIZE) {
+          console.warn(
+            `[NevoFlux] ContentStore value too large (${serialized.length}), skipping persist: ${key}`
+          );
+          return;
+        }
 
-  contentStoreDebounceTimers.set(key, timerId);
-});
+        console.log(`[NevoFlux] Persisting: content_store.set ${key}`);
+        channelManager.sendToAgent({
+          type: MessageTypes.SYSTEM_COMMAND,
+          payload: {
+            command: 'content_store.set',
+            request_id: `cs_set_${Date.now()}`,
+            params: { key, value },
+          },
+        });
+      } else if (operation === 'delete') {
+        console.log(`[NevoFlux] Persisting: content_store.delete ${key}`);
+        channelManager.sendToAgent({
+          type: MessageTypes.SYSTEM_COMMAND,
+          payload: {
+            command: 'content_store.delete',
+            request_id: `cs_del_${Date.now()}`,
+            params: { key },
+          },
+        });
+      }
+    }, CONTENT_STORE_DEBOUNCE_MS);
+
+    contentStoreDebounceTimers.set(key, timerId);
+  });
+} else {
+  console.warn('[NevoFlux] browser.nevoflux API not available, ContentStore persistence disabled');
+}
 
 // =============================================================================
 // Bridge Request Handler (nevoflux:// pages → background)
 // =============================================================================
 
+if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest) {
 browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
   console.log(`[NevoFlux] Bridge request: ${type} (${id})`);
   let result;
@@ -1281,6 +1287,9 @@ browser.nevoflux.onBridgeRequest.addListener(async (id, type, payload) => {
     console.error(`[NevoFlux] bridgeRespond failed for ${id}:`, err);
   });
 });
+} else {
+  console.warn('[NevoFlux] browser.nevoflux API not available, Bridge handler disabled');
+}
 
 // =============================================================================
 // MCP Request Handler

@@ -4,6 +4,7 @@
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
+  AppConstants: 'resource://gre/modules/AppConstants.sys.mjs',
   ObjectUtils: 'resource://gre/modules/ObjectUtils.sys.mjs',
 });
 
@@ -18,18 +19,18 @@ export const NevofluxNativeHostRegistrar = {
     let dir = Services.dirsvc.get('GreD', Ci.nsIFile);
     dir.append('distribution');
     dir.append('bin');
-    dir.append(AppConstants.platform === 'win' ? 'nevoflux-agent.exe' : 'nevoflux-agent');
+    dir.append(lazy.AppConstants.platform === 'win' ? 'nevoflux-agent.exe' : 'nevoflux-agent');
     return dir;
   },
 
   _getManifestFolder() {
-    if (AppConstants.platform === 'win') {
+    if (lazy.AppConstants.platform === 'win') {
       return PathUtils.join(
         Services.dirsvc.get('AppData', Ci.nsIFile).path,
         'Mozilla',
         'NativeMessagingHosts'
       );
-    } else if (AppConstants.platform === 'macosx') {
+    } else if (lazy.AppConstants.platform === 'macosx') {
       return PathUtils.join(
         Services.dirsvc.get('Home', Ci.nsIFile).path,
         'Library',
@@ -70,7 +71,7 @@ export const NevofluxNativeHostRegistrar = {
       await IOUtils.writeJSON(manifestPath, jsonContent);
     }
 
-    if (AppConstants.platform === 'win') {
+    if (lazy.AppConstants.platform === 'win') {
       this._writeWindowsRegKey(hostInfo.name, manifestPath);
     }
   },
