@@ -71,7 +71,23 @@ if [ -d "${NEVOFLUX_DIR}/engine-overlays" ]; then
   cp -r "${NEVOFLUX_DIR}/engine-overlays/"* "${ENGINE_DIR}/" 2> /dev/null || true
 fi
 
-# 5. Append NevoFlux pref overrides to firefox.js (loaded via preprocessor #include chain)
+# 5. Sync engine-overlay locale files to locales/en-US/ for CI language pack step
+#    CI runs download-language-packs.sh AFTER import, which copies locales/en-US/browser/
+#    to engine/browser/locales/en-US/, overwriting our engine-overlays.
+#    Auto-sync keeps both in sync so our customizations survive the language pack step.
+OVERLAY_LOCALE_DIR="${NEVOFLUX_DIR}/engine-overlays/browser/locales/en-US"
+if [ -d "${OVERLAY_LOCALE_DIR}" ]; then
+  echo "Syncing engine-overlay locale files to locales/en-US/..."
+  find "${OVERLAY_LOCALE_DIR}" -name "*.ftl" | while read -r ftl_file; do
+    rel_path="${ftl_file#${OVERLAY_LOCALE_DIR}/}"
+    target="${ROOT_DIR}/locales/en-US/browser/${rel_path}"
+    mkdir -p "$(dirname "${target}")"
+    cp "${ftl_file}" "${target}"
+    echo "  Synced: ${rel_path}"
+  done
+fi
+
+# 6. Append NevoFlux pref overrides to firefox.js (loaded via preprocessor #include chain)
 # firefox.js → #include zen.js → #include zzz-nevoflux.js
 # Our zzz-nevoflux.js overrides zen.js defaults (e.g., sidebar position)
 FIREFOX_JS="${ENGINE_DIR}/browser/app/profile/firefox.js"
@@ -82,7 +98,7 @@ if [ -f "${FIREFOX_JS}" ] && [ -f "${ENGINE_DIR}/browser/app/profile/zzz-nevoflu
   fi
 fi
 
-# 6. Inject nevoflux-pages into browser/components/moz.build DIRS list
+# 7. Inject nevoflux-pages into browser/components/moz.build DIRS list
 #    Using sed s/// with newline instead of a\ for cross-platform compatibility
 COMPONENTS_MOZBUILD="${ENGINE_DIR}/browser/components/moz.build"
 if [ -f "${COMPONENTS_MOZBUILD}" ]; then
@@ -92,7 +108,7 @@ if [ -f "${COMPONENTS_MOZBUILD}" ]; then
   fi
 fi
 
-# 7. Inject NevofluxBridgeRouter and NevofluxContentStore into browser/modules/moz.build EXTRA_JS_MODULES
+# 8. Inject NevofluxBridgeRouter and NevofluxContentStore into browser/modules/moz.build EXTRA_JS_MODULES
 # NOTE: Must be inserted in alphabetical order (BridgeRouter before ContentStore)
 MODULES_MOZBUILD="${ENGINE_DIR}/browser/modules/moz.build"
 if [ -f "${MODULES_MOZBUILD}" ]; then
@@ -110,7 +126,7 @@ if [ -f "${MODULES_MOZBUILD}" ]; then
   fi
 fi
 
-# 8. Add NevoFlux menu item to hamburger menu (app menu)
+# 9. Add NevoFlux menu item to hamburger menu (app menu)
 APPMENU_XHTML="${ENGINE_DIR}/browser/base/content/appmenu-viewcache.inc.xhtml"
 if [ -f "${APPMENU_XHTML}" ]; then
   if ! grep -q 'appMenu-nevoflux-button' "${APPMENU_XHTML}"; then
@@ -123,7 +139,7 @@ if [ -f "${APPMENU_XHTML}" ]; then
   fi
 fi
 
-# 9. Add NevoFlux command handler to panelUI.js
+# 10. Add NevoFlux command handler to panelUI.js
 PANELUI_JS="${ENGINE_DIR}/browser/components/customizableui/content/panelUI.js"
 if [ -f "${PANELUI_JS}" ]; then
   if ! grep -q 'appMenu-nevoflux-button' "${PANELUI_JS}"; then
@@ -135,7 +151,7 @@ if [ -f "${PANELUI_JS}" ]; then
   fi
 fi
 
-# 10. Add nevoflux chrome resources to package manifest
+# 11. Add nevoflux chrome resources to package manifest
 PACKAGE_MANIFEST="${ENGINE_DIR}/browser/installer/package-manifest.in"
 if [ -f "${PACKAGE_MANIFEST}" ]; then
   if ! grep -q 'nevoflux@JAREXT@' "${PACKAGE_MANIFEST}"; then
@@ -148,7 +164,7 @@ if [ -f "${PACKAGE_MANIFEST}" ]; then
   fi
 fi
 
-# 11. Package nevoflux-agent extension as XPI
+# 12. Package nevoflux-agent extension as XPI
 if [ -f "${ROOT_DIR}/scripts/package-extension.sh" ]; then
   echo "Packaging nevoflux-agent extension..."
   bash "${ROOT_DIR}/scripts/package-extension.sh"
