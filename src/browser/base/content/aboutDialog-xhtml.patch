@@ -1,10 +1,17 @@
 diff --git a/browser/base/content/aboutDialog.xhtml b/browser/base/content/aboutDialog.xhtml
-index c64980810570fcea84e33fdc2d66ac42a79f4e46..aa629ebb38a9aa74048fe3fc759f716fad57d6f3 100644
 --- a/browser/base/content/aboutDialog.xhtml
 +++ b/browser/base/content/aboutDialog.xhtml
-@@ -102,10 +102,6 @@
+@@ -49,7 +49,6 @@
+         <!-- This HBOX is duplicated below with class="update" -->
+         <hbox align="baseline">
+           <label id="version"/>
+-          <label id="releasenotes" is="text-link" hidden="true" data-l10n-id="releaseNotes-link"/>
+         </hbox>
+ #endif
+
+@@ -102,10 +101,5 @@
                  <label id="version" class="update"/>
-                 <label id="releasenotes" is="text-link" hidden="true" data-l10n-id="releaseNotes-link"/>
+-                <label id="releasenotes" is="text-link" hidden="true" data-l10n-id="releaseNotes-link"/>
                </hbox>
 -              <description class="text-blurb">
 -                <label id="aboutDialogHelpLink" is="text-link" data-l10n-id="aboutdialog-help-user"/>
@@ -13,7 +20,7 @@ index c64980810570fcea84e33fdc2d66ac42a79f4e46..aa629ebb38a9aa74048fe3fc759f716f
              </vbox>
  #endif
            </hbox>
-@@ -120,26 +116,22 @@
+@@ -120,26 +114,22 @@
            <vbox id="experimental" hidden="true">
              <description class="text-blurb" id="warningDesc" data-l10n-id="warningDesc-version"></description>
              <description class="text-blurb" id="communityExperimentalDesc" data-l10n-id="community-exp">
