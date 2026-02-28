@@ -362,6 +362,37 @@ pub fn TextInput(disabled: bool) -> Element {
         });
     };
 
+    // Handle mode choice selection (Linux file picker workaround)
+    let handle_mode_choice = move |mode: String| {
+        let choice = ctx.pending_mode_choice.read().clone();
+        if let Some(choice) = choice {
+            ctx.pending_mode_choice.set(None);
+            spawn(async move {
+                match crate::messaging::send_pick_files_request(
+                    &mode,
+                    choice.multiple,
+                    choice.title.clone(),
+                ).await {
+                    Ok(request_id) => {
+                        tracing::info!("Mode choice re-send: mode={}, request_id={}", mode, request_id);
+                        ctx.pending_file_pick.write().replace(crate::state::PendingFilePick {
+                            request_id,
+                            multiple: choice.multiple,
+                            title: choice.title,
+                        });
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to re-send pick files request: {}", e);
+                    }
+                }
+            });
+        }
+    };
+
+    let handle_mode_cancel = move |_| {
+        ctx.pending_mode_choice.set(None);
+    };
+
     let handle_screenshot_click = move |_| {
         web_sys::console::log_1(&"[NevoFlux] Screenshot button clicked".into());
 
@@ -828,6 +859,65 @@ pub fn TextInput(disabled: bool) -> Element {
                                 } else {
                                     "No matching skills"
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Mode choice bar (Linux file picker: choose files or directories)
+            if let Some(choice) = ctx.pending_mode_choice.read().clone() {
+                div { class: "mode-choice-bar",
+                    span { class: "mode-choice-label", "Select what to pick:" }
+                    div { class: "mode-choice-options",
+                        for option in choice.options.iter().cloned() {
+                            {
+                                let opt = option.clone();
+                                let mut handler = handle_mode_choice.clone();
+                                let label = match opt.as_str() {
+                                    "files" => "Files",
+                                    "directories" => "Folders",
+                                    other => other,
+                                };
+                                let icon_d = match opt.as_str() {
+                                    "files" => "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z",
+                                    _ => "M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z",
+                                };
+                                rsx! {
+                                    button {
+                                        class: "mode-choice-btn",
+                                        onclick: move |_| handler(opt.clone()),
+                                        svg {
+                                            width: "14px",
+                                            height: "14px",
+                                            view_box: "0 0 24 24",
+                                            fill: "none",
+                                            stroke: "currentColor",
+                                            stroke_width: "2",
+                                            stroke_linecap: "round",
+                                            stroke_linejoin: "round",
+                                            path { d: "{icon_d}" }
+                                        }
+                                        "{label}"
+                                    }
+                                }
+                            }
+                        }
+                        button {
+                            class: "mode-choice-cancel",
+                            onclick: handle_mode_cancel,
+                            aria_label: "Cancel",
+                            svg {
+                                width: "14px",
+                                height: "14px",
+                                view_box: "0 0 24 24",
+                                fill: "none",
+                                stroke: "currentColor",
+                                stroke_width: "2",
+                                stroke_linecap: "round",
+                                stroke_linejoin: "round",
+                                line { x1: "18", y1: "6", x2: "6", y2: "18" }
+                                line { x1: "6", y1: "6", x2: "18", y2: "18" }
                             }
                         }
                     }
