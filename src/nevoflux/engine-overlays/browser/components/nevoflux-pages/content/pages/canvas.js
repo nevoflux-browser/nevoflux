@@ -209,14 +209,8 @@ const Canvas = {
     document.getElementById('btn-edit').addEventListener('click', () => {
       this._switchMode('edit');
     });
-    document.getElementById('btn-fullscreen').addEventListener('click', () => {
-      this._switchMode('fullscreen');
-    });
     document.getElementById('btn-copy').addEventListener('click', () => {
       this._copyCode();
-    });
-    document.getElementById('btn-export-html').addEventListener('click', () => {
-      this._exportHtml();
     });
     document.getElementById('btn-export-source').addEventListener('click', () => {
       this._exportSource();
@@ -252,9 +246,6 @@ const Canvas = {
       // nevoflux:// protocol doesn't support history.replaceState
     }
 
-    // Handle fullscreen body class
-    document.body.classList.toggle('fullscreen', mode === 'fullscreen');
-
     // Re-render with current artifact
     if (this._artifact) {
       if (mode === 'edit') {
@@ -269,14 +260,12 @@ const Canvas = {
   async _copyCode() {
     if (!this._artifact?.content) return;
     try {
-      // In chrome:// context, use the clipboard API
       await navigator.clipboard.writeText(this._artifact.content);
       const btn = document.getElementById('btn-copy');
-      const original = btn.textContent;
-      btn.textContent = 'Copied!';
-      setTimeout(() => {
-        btn.textContent = original;
-      }, 1500);
+      const originalSvg = btn.innerHTML;
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      btn.classList.add('success');
+      setTimeout(() => { btn.innerHTML = originalSvg; btn.classList.remove('success'); }, 1500);
     } catch (e) {
       console.error('Failed to copy:', e);
     }
@@ -473,11 +462,10 @@ const Canvas = {
     try {
       await navigator.clipboard.writeText(url);
       const btn = document.getElementById('btn-share');
-      const original = btn.textContent;
-      btn.textContent = 'Copied!';
-      setTimeout(() => {
-        btn.textContent = original;
-      }, 1500);
+      const originalSvg = btn.innerHTML;
+      btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      btn.classList.add('success');
+      setTimeout(() => { btn.innerHTML = originalSvg; btn.classList.remove('success'); }, 1500);
     } catch (e) {
       console.error('Failed to copy link:', e);
     }
@@ -569,8 +557,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
         this._artifact = result.value;
         this._onArtifactUpdate(result.value);
       } else {
-        // Not in ContentStore — request hydration from backend
-        this._showEmpty('Loading artifact...');
+        // Not in ContentStore — request hydration from backend (spinner already visible from HTML default)
         this._updateStatus('Loading');
 
         NevofluxPage.sendQuery('bridge:request', {
@@ -615,6 +602,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
     }
 
     this._artifact = artifact;
+    this._hideLoading();
 
     // Update toolbar
     document.getElementById('artifact-title').textContent = artifact.title || 'Untitled';
@@ -643,6 +631,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
   // ── Rendering ───────────────────────────────────────────
 
   _render(artifact) {
+    this._hideLoading();
     console.error(
       `[Canvas] _render: type=${artifact.type}, contentLen=${artifact.content?.length}, state=${artifact.state}, mode=${this._mode}`
     );
@@ -1185,9 +1174,23 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
     container.appendChild(iframe);
   },
 
-  // ── Empty State ─────────────────────────────────────────
+  // ── Loading / Empty State ───────────────────────────────
+
+  _showLoading() {
+    const loading = document.getElementById('loading-state');
+    const empty = document.getElementById('empty-state');
+    if (loading) loading.style.display = 'flex';
+    if (empty) empty.style.display = 'none';
+    if (this._iframe) { this._iframe.remove(); this._iframe = null; }
+  },
+
+  _hideLoading() {
+    const loading = document.getElementById('loading-state');
+    if (loading) loading.style.display = 'none';
+  },
 
   _showEmpty(message) {
+    this._hideLoading();
     const emptyState = document.getElementById('empty-state');
     if (emptyState) {
       emptyState.textContent = message;

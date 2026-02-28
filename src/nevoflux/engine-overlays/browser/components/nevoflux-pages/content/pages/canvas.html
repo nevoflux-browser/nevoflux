@@ -43,23 +43,47 @@
     }
 
     .toolbar-btn {
-      padding: var(--nevoflux-space-xs) var(--nevoflux-space-sm);
-      border: 1px solid var(--nevoflux-border);
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      border: 1px solid transparent;
       border-radius: var(--nevoflux-radius-sm);
-      background: var(--nevoflux-bg);
-      color: var(--nevoflux-text);
-      font-size: var(--nevoflux-font-size-sm);
+      background: transparent;
+      color: var(--nevoflux-text-secondary);
       cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .toolbar-btn svg {
+      flex-shrink: 0;
     }
 
     .toolbar-btn:hover {
       background: var(--nevoflux-bg-tertiary);
+      color: var(--nevoflux-text);
+      border-color: var(--nevoflux-border);
+    }
+
+    .toolbar-btn:focus-visible {
+      outline: 2px solid var(--nevoflux-accent);
+      outline-offset: 1px;
     }
 
     .toolbar-btn.active {
       background: var(--nevoflux-accent);
       color: white;
       border-color: var(--nevoflux-accent);
+    }
+
+    .toolbar-btn.active:hover {
+      background: var(--nevoflux-accent-hover);
+    }
+
+    .toolbar-btn.success {
+      color: #22c55e;
     }
 
     .toolbar-sep {
@@ -71,7 +95,9 @@
 
     .canvas-viewport {
       flex: 1;
+      min-height: 0;
       position: relative;
+      overflow: hidden;
     }
 
     .canvas-viewport iframe {
@@ -116,6 +142,7 @@
       resize: none;
       outline: none;
       tab-size: 2;
+      overflow: auto;
     }
 
     /* CodeMirror editor fills the pane */
@@ -141,24 +168,25 @@
       border: none;
     }
 
-    /* Fullscreen mode */
-    body.fullscreen .canvas-toolbar {
-      position: absolute;
-      top: -40px;
-      left: 0;
-      right: 0;
-      z-index: 100;
-      transition: top 0.2s ease;
+    /* Loading spinner */
+    .canvas-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: var(--nevoflux-space-md);
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-base);
     }
 
-    body.fullscreen:hover .canvas-toolbar,
-    body.fullscreen .canvas-toolbar:focus-within {
-      top: 0;
+    .spinner {
+      animation: spin 1s linear infinite;
     }
 
-    body.fullscreen .canvas-viewport {
-      position: absolute;
-      inset: 0;
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
     }
   </style>
 </head>
@@ -167,18 +195,32 @@
     <span class="title" id="artifact-title">Loading...</span>
     <span class="status" id="artifact-status"></span>
     <div class="toolbar-actions" id="toolbar-actions">
-      <button class="toolbar-btn" id="btn-preview" title="Preview">Preview</button>
-      <button class="toolbar-btn" id="btn-edit" title="Edit">Edit</button>
-      <button class="toolbar-btn" id="btn-fullscreen" title="Fullscreen">Fullscreen</button>
+      <button class="toolbar-btn" id="btn-preview" title="Preview" aria-label="Preview">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+      <button class="toolbar-btn" id="btn-edit" title="Edit" aria-label="Edit">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+      </button>
       <span class="toolbar-sep"></span>
-      <button class="toolbar-btn" id="btn-copy" title="Copy code">Copy</button>
-      <button class="toolbar-btn" id="btn-export-html" title="Export HTML">Export HTML</button>
-      <button class="toolbar-btn" id="btn-export-source" title="Export source">Export Source</button>
-      <button class="toolbar-btn" id="btn-share" title="Copy link">Share</button>
+      <button class="toolbar-btn" id="btn-copy" title="Copy code" aria-label="Copy code">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      </button>
+      <button class="toolbar-btn" id="btn-export-source" title="Export source" aria-label="Export source">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
+      <button class="toolbar-btn" id="btn-share" title="Copy link" aria-label="Copy link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      </button>
     </div>
   </div>
   <div class="canvas-viewport" id="viewport">
-    <div class="canvas-empty" id="empty-state">No artifact loaded</div>
+    <div class="canvas-loading" id="loading-state">
+      <svg class="spinner" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 2a10 10 0 0 1 10 10" stroke-linecap="round"/>
+      </svg>
+      <span>Loading...</span>
+    </div>
+    <div class="canvas-empty" id="empty-state" style="display:none">No artifact loaded</div>
   </div>
   <script src="chrome://nevoflux/content/vendor/codemirror.min.js"></script>
   <script src="chrome://nevoflux/content/vendor/babel.min.js"></script>
