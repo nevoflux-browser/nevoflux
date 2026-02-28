@@ -69,14 +69,18 @@ fn App() -> Element {
 fn ChatSidebar() -> Element {
     let ctx = use_app_context();
     let show_mcp_config = *ctx.show_mcp_config.read();
+    let is_minimized = *ctx.minimized.read();
 
     rsx! {
         div {
-            class: "chat-sidebar",
+            class: if is_minimized { "chat-sidebar chat-sidebar--minimized" } else { "chat-sidebar" },
             id: "nevoflux-chat-sidebar",
 
-            // MCP Config Modal (full-screen when visible)
-            if show_mcp_config {
+            if is_minimized {
+                // Minimized rail mode
+                Rail {}
+            } else if show_mcp_config {
+                // MCP Config Modal (full-screen when visible)
                 McpConfigModal {}
             } else {
                 // Header with connection status and controls

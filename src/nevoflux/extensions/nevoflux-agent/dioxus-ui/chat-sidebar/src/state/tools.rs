@@ -6,6 +6,21 @@
 
 use shared_protocol::ToolAuthRequest;
 
+/// Discriminator for activity items in the feed
+#[derive(Clone, Debug, PartialEq)]
+pub enum ActivityKind {
+    /// A tool execution
+    Tool,
+    /// A thinking/reasoning block with accumulated content
+    Thinking { content: String },
+}
+
+impl Default for ActivityKind {
+    fn default() -> Self {
+        Self::Tool
+    }
+}
+
 /// Real-time tool execution entry displayed during streaming
 #[derive(Clone, Debug, PartialEq)]
 pub struct LiveToolEntry {
@@ -21,6 +36,8 @@ pub struct LiveToolEntry {
     pub status: LiveToolStatus,
     /// Execution duration in milliseconds (set on completion)
     pub duration_ms: Option<u64>,
+    /// Whether this is a tool call or a thinking block
+    pub kind: ActivityKind,
 }
 
 /// Live tool execution status

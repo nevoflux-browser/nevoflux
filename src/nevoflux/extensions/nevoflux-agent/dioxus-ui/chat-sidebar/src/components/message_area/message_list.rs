@@ -7,7 +7,7 @@
 use dioxus::prelude::*;
 use shared_protocol::AgentState;
 use crate::context::use_app_context;
-use crate::state::{MessageContent, StreamingState};
+use crate::state::{MessageContent, StreamingState, ActivityKind};
 use crate::components::{PlanCard, ArtifactCard};
 use super::MessageBubble;
 
@@ -280,15 +280,15 @@ fn StreamingActionArea() -> Element {
     let tool_count = live_tools.len();
     let has_tools = tool_count > 0;
 
-    // Header label
-    let header_text = if has_tools {
-        if tool_count == 1 {
-            "1 tool".to_string()
-        } else {
-            format!("{} tools", tool_count)
-        }
-    } else {
-        "Working...".to_string()
+    // Header label — distinguish tools vs thinking items
+    let act_count = live_tools.iter().filter(|e| matches!(e.kind, ActivityKind::Tool)).count();
+    let tht_count = live_tools.iter().filter(|e| matches!(e.kind, ActivityKind::Thinking { .. })).count();
+
+    let header_text = match (act_count, tht_count) {
+        (0, 0) => "Working...".to_string(),
+        (0, t) => format!("{} thought{}", t, if t != 1 { "s" } else { "" }),
+        (a, 0) => format!("{} tool{}", a, if a != 1 { "s" } else { "" }),
+        (a, t) => format!("{} tool{}, {} thought{}", a, if a != 1 { "s" } else { "" }, t, if t != 1 { "s" } else { "" }),
     };
 
     rsx! {

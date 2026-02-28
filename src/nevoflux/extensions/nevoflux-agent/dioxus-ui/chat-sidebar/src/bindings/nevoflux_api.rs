@@ -645,6 +645,37 @@ pub async fn get_current_tab() -> Result<Option<TabInfo>, String> {
     }))
 }
 
+// ==================== Sidebar Layout API ====================
+
+/// Set the sidebar width in pixels.
+///
+/// Sends `bg:sidebar_set_width` to background.js which calls
+/// `browser.nevoflux.setSidebarWidth()` to resize `#sidebar-box`.
+pub async fn set_sidebar_width(width: u32) -> Result<(), String> {
+    let message = serde_json::json!({
+        "type": "bg:sidebar_set_width",
+        "width": width
+    });
+
+    let js_msg = to_js_value(&message)?;
+    let result = send_to_background_raw(js_msg).await?;
+
+    if let Ok(obj) = result.dyn_into::<js_sys::Object>() {
+        if let Ok(success) = js_sys::Reflect::get(&obj, &JsValue::from_str("success")) {
+            if success == JsValue::TRUE {
+                tracing::info!("Sidebar width set to {}px", width);
+                return Ok(());
+            }
+        }
+        if let Ok(error) = js_sys::Reflect::get(&obj, &JsValue::from_str("error")) {
+            if let Some(err_str) = error.as_string() {
+                return Err(err_str);
+            }
+        }
+    }
+    Ok(())
+}
+
 // ==================== Window Session API ====================
 
 /// Get the session ID for the current browser window

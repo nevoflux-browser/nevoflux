@@ -674,6 +674,15 @@ pub async fn send_open_artifact(id: &str) -> Result<(), String> {
 }
 
 // ============================================
+// Sidebar Layout Messages
+// ============================================
+
+/// Set the sidebar width via background → browser.nevoflux.setSidebarWidth
+pub async fn send_set_sidebar_width(width: u32) -> Result<(), String> {
+    crate::bindings::nevoflux_api::set_sidebar_width(width).await
+}
+
+// ============================================
 // AskUser Response Messages
 // ============================================
 

@@ -5,14 +5,30 @@
 //! Activity feed component showing tool calls above message content
 
 use dioxus::prelude::*;
-use crate::state::{ToolCallData, ToolCallStatus};
+use crate::state::{ToolCallData, ToolCallStatus, ActivityKind};
 
 /// Collapsible activity feed showing tool calls with duration and status
 #[component]
 pub fn ActivityFeed(tool_calls: Vec<ToolCallData>) -> Element {
     let mut expanded = use_signal(|| false);
-    let count = tool_calls.len();
-    let suffix = if count != 1 { "s" } else { "" };
+    let tool_count = tool_calls.iter().filter(|tc| matches!(tc.kind, ActivityKind::Tool)).count();
+    let thought_count = tool_calls.iter().filter(|tc| matches!(tc.kind, ActivityKind::Thinking { .. })).count();
+
+    let header_label = match (tool_count, thought_count) {
+        (0, t) => {
+            let s = if t != 1 { "s" } else { "" };
+            format!("{} thought{}", t, s)
+        }
+        (a, 0) => {
+            let s = if a != 1 { "s" } else { "" };
+            format!("{} action{}", a, s)
+        }
+        (a, t) => {
+            let as_ = if a != 1 { "s" } else { "" };
+            let ts = if t != 1 { "s" } else { "" };
+            format!("{} action{}, {} thought{}", a, as_, t, ts)
+        }
+    };
 
     // Calculate total duration from tools that have timing data
     let total_ms: u64 = tool_calls.iter()
@@ -32,7 +48,7 @@ pub fn ActivityFeed(tool_calls: Vec<ToolCallData>) -> Element {
                 aria_expanded: "{expanded}",
                 span { class: "activity-feed-icon", "\u{26A1}" }
                 span { class: "activity-feed-label",
-                    "{count} action{suffix}"
+                    "{header_label}"
                 }
                 if has_timing {
                     span { class: "activity-feed-timing",
@@ -49,9 +65,16 @@ pub fn ActivityFeed(tool_calls: Vec<ToolCallData>) -> Element {
             if expanded() {
                 div { class: "activity-feed-list",
                     for tc in tool_calls.iter() {
-                        ToolCallChip {
-                            key: "{tc.id}",
-                            tool_call: tc.clone(),
+                        if matches!(tc.kind, ActivityKind::Thinking { .. }) {
+                            ThinkingChip {
+                                key: "{tc.id}",
+                                tool_call: tc.clone(),
+                            }
+                        } else {
+                            ToolCallChip {
+                                key: "{tc.id}",
+                                tool_call: tc.clone(),
+                            }
                         }
                     }
                 }
@@ -115,6 +138,61 @@ fn ToolCallChip(tool_call: ToolCallData) -> Element {
                     pre { class: "tool-call-args",
                         "{format_json_args(&tool_call.arguments)}"
                     }
+                }
+            }
+        }
+    }
+}
+
+/// Collapsible thinking/reasoning chip in the activity feed
+#[component]
+fn ThinkingChip(tool_call: ToolCallData) -> Element {
+    let mut detail_expanded = use_signal(|| false);
+    let content = match &tool_call.kind {
+        ActivityKind::Thinking { content } => content.clone(),
+        _ => String::new(),
+    };
+    let has_content = !content.is_empty();
+
+    // Truncate for summary display
+    let mut chars = content.chars();
+    let summary: String = chars.by_ref().take(60).collect();
+    let summary = if chars.next().is_some() {
+        format!("{}...", summary)
+    } else {
+        summary
+    };
+
+    rsx! {
+        div {
+            class: "tool-call-chip thinking-chip",
+            class: if detail_expanded() { "detail-expanded" },
+
+            button {
+                class: "tool-call-row",
+                onclick: move |_| {
+                    if has_content {
+                        detail_expanded.set(!detail_expanded());
+                    }
+                },
+                span { class: "tool-call-status", "\u{1F4AD}" }
+                span { class: "tool-call-icon", "\u{1F4AD}" }
+                span { class: "tool-call-name", "Thinking" }
+                span { class: "tool-call-target", "{summary}" }
+                if let Some(ms) = tool_call.duration_ms {
+                    span { class: "tool-call-duration", "{format_duration(ms)}" }
+                }
+                if has_content {
+                    span {
+                        class: "tool-call-expand",
+                        if detail_expanded() { "\u{25B4}" } else { "\u{25B8}" }
+                    }
+                }
+            }
+
+            if detail_expanded() && has_content {
+                div { class: "thinking-detail",
+                    "{content}"
                 }
             }
         }

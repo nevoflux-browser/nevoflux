@@ -1526,6 +1526,16 @@
           { "name": "message", "type": "any" }
         ],
         "returns": { "$ref": "ApiResult" }
+      },
+      {
+        "name": "setSidebarWidth",
+        "type": "function",
+        "async": "promise",
+        "description": "Set the sidebar panel width in pixels",
+        "parameters": [
+          { "name": "width", "type": "integer" }
+        ],
+        "returns": { "$ref": "ApiResult" }
       }
     ],
     "events": [

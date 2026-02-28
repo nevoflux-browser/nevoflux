@@ -6,7 +6,7 @@
 
 use dioxus::prelude::*;
 use crate::context::use_app_context;
-use crate::state::{LiveToolEntry, LiveToolStatus};
+use crate::state::{LiveToolEntry, LiveToolStatus, ActivityKind};
 
 /// Real-time tool execution feed displayed above streaming content
 #[component]
@@ -33,13 +33,18 @@ pub fn LiveToolFeed() -> Element {
 /// Individual live tool execution chip
 #[component]
 pub fn LiveToolChip(entry: LiveToolEntry) -> Element {
+    let is_thinking = matches!(entry.kind, ActivityKind::Thinking { .. });
     let status_icon = entry.status.icon();
     let status_class = entry.status.css_class();
     let is_running = matches!(entry.status, LiveToolStatus::Running);
 
+    let display_icon = if is_thinking { "\u{1F4AD}" } else { &entry.icon };
+    let display_name = if is_thinking { "Thinking" } else { &entry.name };
+
     rsx! {
         div {
             class: "tool-chip tool-chip--{status_class}",
+            class: if is_thinking { "tool-chip--thinking" },
 
             span { class: "tool-chip__status",
                 if is_running {
@@ -48,8 +53,8 @@ pub fn LiveToolChip(entry: LiveToolEntry) -> Element {
                     "{status_icon}"
                 }
             }
-            span { class: "tool-chip__icon", "{entry.icon}" }
-            span { class: "tool-chip__name", "{entry.name}" }
+            span { class: "tool-chip__icon", "{display_icon}" }
+            span { class: "tool-chip__name", "{display_name}" }
             span { class: "tool-chip__summary", "{entry.summary}" }
             if let Some(ms) = entry.duration_ms {
                 span { class: "tool-chip__duration",

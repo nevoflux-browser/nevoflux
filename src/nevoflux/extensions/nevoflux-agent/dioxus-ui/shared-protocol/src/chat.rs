@@ -151,6 +151,9 @@ pub struct StreamChunkPayload {
     /// Real-time tool execution event
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event: Option<ToolEvent>,
+    /// Real-time thinking/reasoning event
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thinking_event: Option<ThinkingEvent>,
 }
 
 /// Tool call information from agent
@@ -485,6 +488,25 @@ pub enum ToolEventStatus {
     Failed,
 }
 
+/// Thinking/reasoning event for real-time display in stream chunks
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ThinkingEvent {
+    /// A new thinking block has started
+    #[serde(rename = "thinking_start")]
+    Start { thinking_id: String },
+    /// Incremental reasoning content
+    #[serde(rename = "thinking_delta")]
+    Delta { thinking_id: String, content: String },
+    /// Thinking block has completed
+    #[serde(rename = "thinking_end")]
+    End {
+        thinking_id: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        duration_ms: Option<u64>,
+    },
+}
+
 /// Authorization request for a tool execution
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolAuthRequest {
@@ -756,6 +778,9 @@ mod tests {
             content: "Hi".to_string(),
             tool_calls: vec![],
             done: false,
+            session_title: None,
+            event: None,
+            thinking_event: None,
         });
         assert_eq!(msg.direction(), MessageDirection::ToSidebar);
     }
@@ -956,6 +981,9 @@ mod tests {
             content: "Hello".to_string(),
             tool_calls: vec![],
             done: false,
+            session_title: None,
+            event: None,
+            thinking_event: None,
         });
         assert_eq!(msg.session_id(), None);
     }
@@ -1159,6 +1187,9 @@ mod tests {
             content: "Hello".to_string(),
             tool_calls: vec![],
             done: false,
+            session_title: None,
+            event: None,
+            thinking_event: None,
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("stream_chunk"));
@@ -1350,6 +1381,9 @@ mod tests {
             content: "Hello world".to_string(),
             tool_calls: vec![],
             done: true,
+            session_title: None,
+            event: None,
+            thinking_event: None,
         });
         let json = serde_json::to_string(&original).unwrap();
         let parsed: ChatMessage = serde_json::from_str(&json).unwrap();

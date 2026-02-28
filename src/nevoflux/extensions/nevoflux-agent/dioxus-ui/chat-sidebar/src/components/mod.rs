@@ -15,6 +15,7 @@ mod plan_card;
 mod artifact_card;
 mod history_panel;
 mod tool_auth_dialog;
+mod rail;
 
 pub use header::Header;
 pub use message_area::{ActivityFeed, LiveToolFeed, MessageArea, MessageBubble, WelcomeScreen};
@@ -27,3 +28,4 @@ pub use plan_card::PlanCard;
 pub use artifact_card::ArtifactCard;
 pub use history_panel::HistoryPanel;
 pub use tool_auth_dialog::ToolAuthDialog;
+pub use rail::Rail;

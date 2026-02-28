@@ -5,6 +5,7 @@
 //! Message types for chat conversations
 
 use shared_protocol::{StreamFormat, ToolCallInfo};
+use crate::state::tools::ActivityKind;
 
 /// Tool call data for display in activity feed
 #[derive(Debug, Clone, PartialEq)]
@@ -23,6 +24,8 @@ pub struct ToolCallData {
     pub duration_ms: Option<u64>,
     /// Completion status
     pub status: Option<ToolCallStatus>,
+    /// Whether this is a tool call or a thinking block
+    pub kind: ActivityKind,
 }
 
 /// Tool call completion status for activity feed display

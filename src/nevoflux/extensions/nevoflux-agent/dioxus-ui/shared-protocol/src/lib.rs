@@ -38,7 +38,7 @@ pub use chat::{
     PlanStep, PlanProposalPayload, PlanResponse, PlanResponsePayload,
     // Tool events & authorization
     ToolEvent, ToolEventStatus, ToolAuthRequest, AuthOption, AuthScope,
-    ToolAuthResponsePayload,
+    ToolAuthResponsePayload, ThinkingEvent,
 };
 
 // Re-export MCP types
@@ -165,6 +165,9 @@ mod tests {
             content: "World".to_string(),
             tool_calls: vec![],
             done: false,
+            session_title: None,
+            event: None,
+            thinking_event: None,
         });
         let json = serde_json::to_string(&msg).unwrap();
         let parsed: ChatMessage = serde_json::from_str(&json).unwrap();
@@ -191,6 +194,9 @@ mod tests {
             content: "Hi".to_string(),
             tool_calls: vec![],
             done: false,
+            session_title: None,
+            event: None,
+            thinking_event: None,
         });
         assert_eq!(msg.direction(), MessageDirection::ToSidebar);
     }
@@ -212,6 +218,9 @@ mod tests {
             content: "Response".to_string(),
             tool_calls: vec![],
             done: true,
+            session_title: None,
+            event: None,
+            thinking_event: None,
         });
         assert_eq!(msg.direction(), MessageDirection::ToSidebar);
     }

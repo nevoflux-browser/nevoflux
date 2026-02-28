@@ -33,6 +33,18 @@ pub fn Header() -> Element {
         }
     };
 
+    // Handle minimize: shrink sidebar to 48px rail
+    let handle_minimize = {
+        move |_| {
+            tracing::info!("Minimize to rail requested");
+            spawn_local(async move {
+                if let Err(e) = crate::messaging::send_set_sidebar_width(48).await {
+                    tracing::error!("Failed to minimize sidebar: {}", e);
+                }
+            });
+        }
+    };
+
     // Handle maximize: open in new tab, close sidebar
     let handle_maximize = {
         let ctx = ctx.clone();
@@ -151,6 +163,30 @@ pub fn Header() -> Element {
                             path { d: "M9 21H3v-6" }
                             path { d: "M21 3l-7 7" }
                             path { d: "M3 21l7-7" }
+                        }
+                    }
+                }
+
+                // Minimize button (only in normal sidebar mode)
+                if !is_maximized {
+                    button {
+                        class: "header-btn minimize-btn",
+                        aria_label: "Minimize to rail",
+                        title: "Minimize to rail",
+                        onclick: handle_minimize,
+                        // Panel-right-close icon (vertical line + right chevron)
+                        svg {
+                            width: "16",
+                            height: "16",
+                            view_box: "0 0 24 24",
+                            fill: "none",
+                            stroke: "currentColor",
+                            stroke_width: "2",
+                            stroke_linecap: "round",
+                            stroke_linejoin: "round",
+                            rect { x: "3", y: "3", width: "18", height: "18", rx: "2" }
+                            line { x1: "15", y1: "3", x2: "15", y2: "21" }
+                            path { d: "M19 10l2-2-2-2" }
                         }
                     }
                 }

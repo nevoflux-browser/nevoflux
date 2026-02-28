@@ -56,6 +56,7 @@ const BackgroundAPI = {
   // Sidebar control
   SIDEBAR_CLOSE: 'bg:sidebar_close',
   SIDEBAR_OPEN: 'bg:sidebar_open',
+  SIDEBAR_SET_WIDTH: 'bg:sidebar_set_width',
 
   // Settings (ContentStore)
   GET_SETTINGS: 'bg:get_settings',
@@ -4546,6 +4547,23 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
           sendResponse({ success: false, error: err.message });
         });
       return true; // Keep sendResponse valid for async
+
+    case BackgroundAPI.SIDEBAR_SET_WIDTH:
+      // Fallback: try browser.nevoflux API (requires browser rebuild with new schema)
+      // Primary path is direct DOM from sidebar WASM (nevoflux_api.rs)
+      if (browser.nevoflux && browser.nevoflux.setSidebarWidth) {
+        browser.nevoflux
+          .setSidebarWidth(message.width || 500)
+          .then(() => sendResponse({ success: true }))
+          .catch((err) => {
+            console.warn('[NevoFlux] Failed to set sidebar width:', err);
+            sendResponse({ success: false, error: err.message });
+          });
+        return true;
+      }
+      console.warn('[NevoFlux] setSidebarWidth API not available (browser rebuild needed)');
+      sendResponse({ success: false, error: 'setSidebarWidth API not available' });
+      break;
 
     case 'bg:get_window_session': {
       const windowId = message.windowId;
