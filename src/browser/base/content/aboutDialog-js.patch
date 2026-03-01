@@ -8,11 +8,11 @@ diff --git a/browser/base/content/aboutDialog.js b/browser/base/content/aboutDia
 -    version: AppConstants.MOZ_APP_VERSION_DISPLAY,
 +    version: `${AppConstants.MOZ_APP_VERSION_DISPLAY} (Firefox ${AppConstants.ZEN_FIREFOX_VERSION})`,
    };
-
+ 
    let arch = Services.sysinfo.get("arch");
 @@ -64,7 +64,7 @@ function init() {
    }
-
+ 
    let version = Services.appinfo.version;
 -  if (/a\d+$/.test(version)) {
 +  if (version.includes("t")) {
@@ -22,7 +22,7 @@ diff --git a/browser/base/content/aboutDialog.js b/browser/base/content/aboutDia
 @@ -85,21 +85,6 @@ function init() {
      versionAttributes
    );
-
+ 
 -  // Show a release notes link if we have a URL.
 -  let relNotesLink = document.getElementById("releasenotes");
 -  let relNotesPrefType = Services.prefs.getPrefType(
@@ -40,7 +40,7 @@ diff --git a/browser/base/content/aboutDialog.js b/browser/base/content/aboutDia
 -
    if (AppConstants.MOZ_UPDATER) {
      gAppUpdater = new appUpdater({ buttonAutoFocus: true });
-
+ 
 @@ -125,14 +110,6 @@ function init() {
        window.close();
      });

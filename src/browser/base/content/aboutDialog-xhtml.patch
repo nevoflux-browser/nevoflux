@@ -8,7 +8,7 @@ diff --git a/browser/base/content/aboutDialog.xhtml b/browser/base/content/about
 -          <label id="releasenotes" is="text-link" hidden="true" data-l10n-id="releaseNotes-link"/>
          </hbox>
  #endif
-
+ 
 @@ -102,10 +101,5 @@
                  <label id="version" class="update"/>
 -                <label id="releasenotes" is="text-link" hidden="true" data-l10n-id="releaseNotes-link"/>
