@@ -164,7 +164,18 @@ if [ -f "${PACKAGE_MANIFEST}" ]; then
   fi
 fi
 
-# 12. Package nevoflux-agent extension as XPI
+# 12. Add distribution directory to package manifest (for policies.json, extensions, agent binary)
+if [ -f "${PACKAGE_MANIFEST}" ]; then
+  if ! grep -q 'distribution/' "${PACKAGE_MANIFEST}"; then
+    echo "Adding distribution directory to package-manifest.in..."
+    # Append at end of file
+    echo '' >> "${PACKAGE_MANIFEST}"
+    echo '; NevoFlux distribution files (policies, extensions, agent binary)' >> "${PACKAGE_MANIFEST}"
+    echo '@RESPATH@/distribution/**' >> "${PACKAGE_MANIFEST}"
+  fi
+fi
+
+# 13. Package nevoflux-agent extension as XPI
 if [ -f "${ROOT_DIR}/scripts/package-extension.sh" ]; then
   echo "Packaging nevoflux-agent extension..."
   bash "${ROOT_DIR}/scripts/package-extension.sh"

@@ -392,6 +392,22 @@ jobs:
           fi
           bash .github/workflows/src/release-build.sh
 
+      - name: Inject distribution files before packaging
+        if: ${{ !(inputs.generate-gpo && matrix.arch == 'aarch64') }}
+        run: |
+          set -ex
+          ARCH="${{ matrix.arch }}"
+          OBJ_DIR="engine/obj-${ARCH}-pc-windows-msvc"
+          BIN_DIR="$OBJ_DIR/dist/bin"
+          if [ -d "build/AppDir/distribution" ] && [ -d "$BIN_DIR" ]; then
+            mkdir -p "$BIN_DIR/distribution"
+            cp -r build/AppDir/distribution/* "$BIN_DIR/distribution/"
+            echo "Distribution files injected into $BIN_DIR/distribution/ before packaging:"
+            ls -la "$BIN_DIR/distribution/"
+          else
+            echo "::warning::Distribution files or bin directory not found"
+          fi
+
       - name: Package
         if: ${{ !(inputs.generate-gpo && matrix.arch == 'aarch64') }}
         env:
@@ -404,27 +420,19 @@ jobs:
           export ZEN_RELEASE=1
           npm run package
 
-      - name: Inject distribution files into package
+      - name: Verify distribution files in package and rename
         if: ${{ !(inputs.generate-gpo && matrix.arch == 'aarch64') }}
         run: |
           set -ex
-          ARCH="${{ matrix.arch }}"
-          OBJ_DIR="engine/obj-${ARCH}-pc-windows-msvc"
-          STAGING_DIR="$OBJ_DIR/dist/nevoflux"
-          if [ -d "build/AppDir/distribution" ] && [ -d "$STAGING_DIR" ]; then
-            mkdir -p "$STAGING_DIR/distribution"
-            cp -r build/AppDir/distribution/* "$STAGING_DIR/distribution/"
-            ls -la "$STAGING_DIR/distribution/"
-            # Update the zip with distribution files
-            VERSION=$(npm run --silent surfer -- get version | xargs)
-            SUFFIX="${{ matrix.arch == 'aarch64' && '-aarch64' || '' }}"
-            ZIP_NAME="nevoflux-${VERSION}.en-US.win64${SUFFIX}.zip"
-            cd "$OBJ_DIR/dist" && zip -ur "../../../dist/${ZIP_NAME}" nevoflux/distribution/ && cd -
-            echo "Distribution injected into: dist/${ZIP_NAME}"
-          else
-            echo "::warning::Distribution files or staging directory not found, skipping injection"
+          VERSION=$(npm run --silent surfer -- get version | xargs)
+          SUFFIX="${{ matrix.arch == 'aarch64' && '-aarch64' || '' }}"
+          ZIP_NAME="nevoflux-${VERSION}.en-US.win64${SUFFIX}.zip"
+          # Verify distribution files are in the zip
+          if [ -f "dist/${ZIP_NAME}" ]; then
+            echo "Checking distribution files in zip:"
+            unzip -l "dist/${ZIP_NAME}" | grep -i distribution/ || echo "::warning::No distribution files found in zip"
           fi
-          mv ./dist/nevoflux-$(npm run --silent surfer -- get version | xargs).en-US.win64${{ matrix.arch == 'aarch64' && '-aarch64' || '' }}.zip nevoflux.win64.zip
+          mv "./dist/${ZIP_NAME}" nevoflux.win64.zip
           ls ./dist
           ls .
 
