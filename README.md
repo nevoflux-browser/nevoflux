@@ -32,7 +32,7 @@
 
 <p align="center">
   <a href="https://discord.gg/u25Q5cNABg">
-    <img src="https://img.shields.io/discord/0?logo=discord&logoColor=white&label=Discord&color=5865F2" alt="Discord">
+    <img src="https://img.shields.io/discord/1477910512430878741?logo=discord&logoColor=white&label=Discord&color=5865F2" alt="Discord">
   </a>
   <a href="https://x.com/NevoFlux">
     <img src="https://img.shields.io/badge/Follow-%40NevoFlux-black?logo=x&logoColor=white" alt="X (Twitter)">
