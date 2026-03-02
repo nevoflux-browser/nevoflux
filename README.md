@@ -31,6 +31,15 @@
 </p>
 
 <p align="center">
+  <a href="https://discord.gg/u25Q5cNABg">
+    <img src="https://img.shields.io/discord/0?logo=discord&logoColor=white&label=Discord&color=5865F2" alt="Discord">
+  </a>
+  <a href="https://x.com/NevoFlux">
+    <img src="https://img.shields.io/badge/Follow-%40NevoFlux-black?logo=x&logoColor=white" alt="X (Twitter)">
+  </a>
+</p>
+
+<p align="center">
   <a href="#highlights">Highlights</a> &middot;
   <a href="#three-execution-modes">Modes</a> &middot;
   <a href="#getting-started">Getting Started</a> &middot;
@@ -278,6 +287,7 @@ API keys are resolved in order: environment variables → system keychain → co
 
 Nevoflux is open source and welcomes contributions.
 
+- **Discord** — [Join our community](https://discord.gg/u25Q5cNABg)
 - **Bug Reports** — [GitHub Issues](https://github.com/dorisgyl/nevoflux/issues)
 - **Feature Requests** — [GitHub Discussions](https://github.com/dorisgyl/nevoflux/discussions)
 - **Code Contributions** — See [CONTRIBUTING.md](./CONTRIBUTING.md)
