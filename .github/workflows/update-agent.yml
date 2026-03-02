@@ -1,0 +1,365 @@
+name: Update NevoFlux Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      new-version:
+        description: 'Version tag for the new release (e.g., 0.1.1)'
+        required: true
+        type: string
+      source-release-tag:
+        description: 'Existing NevoFlux release tag to base on (e.g., 0.1.0)'
+        required: true
+        type: string
+      agent-release-tag:
+        description: 'Agent release tag (leave empty for latest from dorisgyl/nevoflux-agent)'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  resolve-agent-tag:
+    name: Resolve agent release tag
+    runs-on: ubuntu-latest
+    outputs:
+      agent-tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - name: Resolve agent release tag
+        id: resolve
+        run: |
+          if [ -n "${{ inputs.agent-release-tag }}" ]; then
+            echo "tag=${{ inputs.agent-release-tag }}" >> $GITHUB_OUTPUT
+            echo "Using provided agent tag: ${{ inputs.agent-release-tag }}"
+          else
+            TAG=$(gh release view --repo dorisgyl/nevoflux-agent --json tagName --jq '.tagName')
+            echo "tag=$TAG" >> $GITHUB_OUTPUT
+            echo "Resolved latest agent tag: $TAG"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-linux:
+    name: Update Linux - ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    needs: resolve-agent-tag
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    steps:
+      - name: Download browser tarball from source release
+        run: |
+          gh release download "${{ inputs.source-release-tag }}" \
+            --repo ${{ github.repository }} \
+            --pattern "nevoflux.linux-${{ matrix.arch }}.tar.xz"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download agent binary from agent release
+        run: |
+          gh release download "${{ needs.resolve-agent-tag.outputs.agent-tag }}" \
+            --repo dorisgyl/nevoflux-agent \
+            --pattern "nevoflux-agent-linux-${{ matrix.arch }}.tar.gz"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Replace agent binary in tarball
+        run: |
+          set -ex
+          # Extract browser tarball
+          tar -xJf "nevoflux.linux-${{ matrix.arch }}.tar.xz"
+
+          # Extract agent binary
+          tar -xzf "nevoflux-agent-linux-${{ matrix.arch }}.tar.gz"
+
+          # Replace agent binary
+          mkdir -p nevoflux/distribution/bin
+          cp nevoflux-agent nevoflux/distribution/bin/nevoflux-agent
+          chmod +x nevoflux/distribution/bin/nevoflux-agent
+
+          # Repack tarball
+          rm "nevoflux.linux-${{ matrix.arch }}.tar.xz"
+          tar -cJf "nevoflux.linux-${{ matrix.arch }}.tar.xz" nevoflux/
+
+      - name: Upload updated artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nevoflux.linux-${{ matrix.arch }}.tar.xz
+          path: nevoflux.linux-${{ matrix.arch }}.tar.xz
+          retention-days: 5
+
+  update-windows:
+    name: Update Windows - ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    needs: resolve-agent-tag
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    steps:
+      - name: Download browser zip from source release
+        run: |
+          WIN_ARCH="${{ matrix.arch == 'aarch64' && 'arm64' || matrix.arch }}"
+          gh release download "${{ inputs.source-release-tag }}" \
+            --repo ${{ github.repository }} \
+            --pattern "nevoflux.win-${WIN_ARCH}.zip"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download agent binary from agent release
+        run: |
+          gh release download "${{ needs.resolve-agent-tag.outputs.agent-tag }}" \
+            --repo dorisgyl/nevoflux-agent \
+            --pattern "nevoflux-agent-windows-${{ matrix.arch }}.zip"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Replace agent binary in zip
+        run: |
+          set -ex
+          WIN_ARCH="${{ matrix.arch == 'aarch64' && 'arm64' || matrix.arch }}"
+          ZIP_NAME="nevoflux.win-${WIN_ARCH}.zip"
+
+          # Extract browser zip
+          mkdir browser-contents
+          cd browser-contents && unzip -o "../${ZIP_NAME}" && cd ..
+
+          # Extract agent binary
+          mkdir agent-contents
+          cd agent-contents && unzip -o "../nevoflux-agent-windows-${{ matrix.arch }}.zip" && cd ..
+
+          # Find agent exe in agent archive
+          AGENT_SRC=$(find agent-contents -name "nevoflux-agent.exe" -type f | head -1)
+          if [ -z "$AGENT_SRC" ]; then
+            echo "::error::nevoflux-agent.exe not found in agent archive"
+            exit 1
+          fi
+
+          # Find and replace agent exe in browser zip, or inject it
+          AGENT_DST=$(find browser-contents -path "*/distribution/bin/nevoflux-agent.exe" -type f | head -1)
+          if [ -n "$AGENT_DST" ]; then
+            cp "$AGENT_SRC" "$AGENT_DST"
+            echo "Replaced agent at: $AGENT_DST"
+          else
+            # Determine correct injection path based on zip structure
+            TOP_DIR=$(find browser-contents -maxdepth 1 -mindepth 1 -type d | head -1)
+            if [ -n "$TOP_DIR" ]; then
+              mkdir -p "${TOP_DIR}/distribution/bin"
+              cp "$AGENT_SRC" "${TOP_DIR}/distribution/bin/nevoflux-agent.exe"
+            else
+              mkdir -p browser-contents/distribution/bin
+              cp "$AGENT_SRC" browser-contents/distribution/bin/nevoflux-agent.exe
+            fi
+            echo "Injected agent binary into distribution/bin/"
+          fi
+
+          # Repack zip
+          rm "${ZIP_NAME}"
+          cd browser-contents && zip -r "../${ZIP_NAME}" . && cd ..
+
+      - name: Upload updated artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nevoflux.win-${{ matrix.arch == 'aarch64' && 'arm64' || matrix.arch }}.zip
+          path: nevoflux.win-${{ matrix.arch == 'aarch64' && 'arm64' || matrix.arch }}.zip
+          retention-days: 5
+
+  update-macos:
+    name: Update macOS
+    runs-on: [self-hosted, macos]
+    needs: resolve-agent-tag
+    steps:
+      - name: Clean workspace
+        run: |
+          hdiutil detach /tmp/nevoflux-dmg 2>/dev/null || true
+          rm -f nevoflux.macos-universal.dmg nevoflux-agent-universal
+          rm -f nevoflux-agent-macos-*.tar.gz
+          rm -rf agent-x86_64 agent-aarch64 dmg-contents
+
+      - name: Download browser DMG from source release
+        run: |
+          gh release download "${{ inputs.source-release-tag }}" \
+            --repo ${{ github.repository }} \
+            --pattern "nevoflux.macos-universal.dmg"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download agent binaries from agent release
+        run: |
+          gh release download "${{ needs.resolve-agent-tag.outputs.agent-tag }}" \
+            --repo dorisgyl/nevoflux-agent \
+            --pattern "nevoflux-agent-macos-x86_64.tar.gz" \
+            --pattern "nevoflux-agent-macos-aarch64.tar.gz"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create universal agent binary
+        run: |
+          set -ex
+          mkdir -p agent-x86_64 agent-aarch64
+          tar -xzf nevoflux-agent-macos-x86_64.tar.gz -C agent-x86_64
+          tar -xzf nevoflux-agent-macos-aarch64.tar.gz -C agent-aarch64
+
+          lipo -create \
+            -output nevoflux-agent-universal \
+            agent-x86_64/nevoflux-agent \
+            agent-aarch64/nevoflux-agent
+          chmod +x nevoflux-agent-universal
+
+          echo "Universal binary info:"
+          file nevoflux-agent-universal
+          lipo -info nevoflux-agent-universal
+
+      - name: Replace agent binary in DMG
+        run: |
+          set -ex
+          # Mount DMG (read-only)
+          hdiutil attach -nobrowse -readonly -mountpoint /tmp/nevoflux-dmg nevoflux.macos-universal.dmg
+
+          # Copy .app to working directory (DMG is read-only)
+          APP_NAME=$(ls /tmp/nevoflux-dmg/ | grep -m1 '\.app$')
+          mkdir -p dmg-contents
+          cp -a "/tmp/nevoflux-dmg/${APP_NAME}" dmg-contents/
+
+          # Unmount original DMG
+          hdiutil detach /tmp/nevoflux-dmg
+
+          # Replace agent binary in copied .app
+          AGENT_PATH="dmg-contents/${APP_NAME}/Contents/Resources/distribution/bin/nevoflux-agent"
+          if [ -f "$AGENT_PATH" ]; then
+            cp nevoflux-agent-universal "$AGENT_PATH"
+            chmod +x "$AGENT_PATH"
+            echo "Replaced agent at: $AGENT_PATH"
+          else
+            mkdir -p "$(dirname "$AGENT_PATH")"
+            cp nevoflux-agent-universal "$AGENT_PATH"
+            chmod +x "$AGENT_PATH"
+            echo "Injected agent at: $AGENT_PATH"
+          fi
+
+          # Create new compressed DMG
+          rm nevoflux.macos-universal.dmg
+          hdiutil create \
+            -volname "NevoFlux" \
+            -srcfolder dmg-contents \
+            -ov \
+            -format UDZO \
+            nevoflux.macos-universal.dmg
+
+      - name: Upload updated artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nevoflux.macos-universal.dmg
+          path: nevoflux.macos-universal.dmg
+          retention-days: 5
+
+      - name: Cleanup
+        if: always()
+        run: |
+          hdiutil detach /tmp/nevoflux-dmg 2>/dev/null || true
+          rm -f nevoflux-agent-universal
+          rm -f nevoflux-agent-macos-*.tar.gz
+          rm -rf agent-x86_64 agent-aarch64 dmg-contents
+
+  create-release:
+    name: Create Release
+    needs: [resolve-agent-tag, update-linux, update-windows, update-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.DEPLOY_KEY }}
+
+      - name: Download updated artifacts from workflow
+        uses: actions/download-artifact@v4
+
+      - name: Download unchanged artifacts from source release
+        run: |
+          set -x
+          mkdir -p unchanged
+          cd unchanged
+
+          PATTERNS=(
+            "nevoflux-x86_64.AppImage"
+            "nevoflux-x86_64.AppImage.zsync"
+            "nevoflux-aarch64.AppImage"
+            "nevoflux-aarch64.AppImage.zsync"
+            "nevoflux.installer.exe"
+            "nevoflux.installer-arm64.exe"
+            "linux.mar"
+            "linux-aarch64.mar"
+            "windows.mar"
+            "windows-arm64.mar"
+            "macos.mar"
+            "nevoflux.source.tar.zst"
+          )
+
+          for pattern in "${PATTERNS[@]}"; do
+            gh release download "${{ inputs.source-release-tag }}" \
+              --repo ${{ github.repository }} \
+              --pattern "$pattern" || echo "::warning::Could not download $pattern from source release"
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List all artifacts
+        run: |
+          echo "=== Updated artifacts ==="
+          ls -la nevoflux.linux-x86_64.tar.xz/ nevoflux.linux-aarch64.tar.xz/ \
+                 nevoflux.win-x86_64.zip/ nevoflux.win-arm64.zip/ \
+                 nevoflux.macos-universal.dmg/ 2>/dev/null || true
+          echo "=== Unchanged artifacts ==="
+          ls -la unchanged/ 2>/dev/null || true
+
+      - name: Generate release notes
+        run: |
+          cat > release_notes.md << 'NOTES'
+          ## Agent Update Release
+
+          This release updates the NevoFlux Agent binary.
+
+          **Base release:** `${{ inputs.source-release-tag }}`
+          **Agent version:** `${{ needs.resolve-agent-tag.outputs.agent-tag }}`
+
+          ### Updated artifacts
+          - `nevoflux.linux-x86_64.tar.xz` — updated agent binary
+          - `nevoflux.linux-aarch64.tar.xz` — updated agent binary
+          - `nevoflux.win-x86_64.zip` — updated agent binary
+          - `nevoflux.win-arm64.zip` — updated agent binary
+          - `nevoflux.macos-universal.dmg` — updated agent binary (universal)
+
+          ### Unchanged artifacts
+          AppImages, installers (.exe), MAR update archives, and source tarball are carried over from `${{ inputs.source-release-tag }}` without modification.
+          NOTES
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2.2.2
+        with:
+          token: ${{ secrets.DEPLOY_KEY }}
+          tag_name: ${{ inputs.new-version }}
+          prerelease: false
+          fail_on_unmatched_files: false
+          generate_release_notes: false
+          name: 'Release build - ${{ inputs.new-version }}'
+          body_path: release_notes.md
+          files: |
+            ./nevoflux.linux-x86_64.tar.xz/nevoflux.linux-x86_64.tar.xz
+            ./nevoflux.linux-aarch64.tar.xz/nevoflux.linux-aarch64.tar.xz
+            ./nevoflux.win-x86_64.zip/nevoflux.win-x86_64.zip
+            ./nevoflux.win-arm64.zip/nevoflux.win-arm64.zip
+            ./nevoflux.macos-universal.dmg/nevoflux.macos-universal.dmg
+            ./unchanged/nevoflux-x86_64.AppImage
+            ./unchanged/nevoflux-x86_64.AppImage.zsync
+            ./unchanged/nevoflux-aarch64.AppImage
+            ./unchanged/nevoflux-aarch64.AppImage.zsync
+            ./unchanged/nevoflux.installer.exe
+            ./unchanged/nevoflux.installer-arm64.exe
+            ./unchanged/linux.mar
+            ./unchanged/linux-aarch64.mar
+            ./unchanged/windows.mar
+            ./unchanged/windows-arm64.mar
+            ./unchanged/macos.mar
+            ./unchanged/nevoflux.source.tar.zst
