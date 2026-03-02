@@ -248,7 +248,7 @@ jobs:
           mkdir -p /tmp/agent/
 
           # Find the latest release tag
-          LATEST_TAG=$(gh release list --repo dorisgyl/nevoflux-agent --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || true)
+          LATEST_TAG=$(gh release view --repo dorisgyl/nevoflux-agent --json tagName --jq '.tagName' 2>/dev/null || true)
           if [ -z "$LATEST_TAG" ]; then
             echo "::warning::No releases found in nevoflux-agent repo, skipping agent download."
           else
@@ -279,11 +279,27 @@ jobs:
             mv /tmp/agent/nevoflux-agent.exe build/AppDir/distribution/bin/nevoflux-agent.exe || \
               mv /tmp/agent/nevoflux-agent build/AppDir/distribution/bin/nevoflux-agent.exe || true
             echo "Agent binary installed: build/AppDir/distribution/bin/nevoflux-agent.exe"
+            # Copy models directory if present in release archive
+            if [ -d "/tmp/agent/models" ]; then
+              cp -r /tmp/agent/models build/AppDir/distribution/bin/models
+              echo "Models directory installed"
+            fi
           else
             echo "::notice::No agent binary available for ${PLATFORM}-${ARCH}, build continues without it."
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copy soul templates to distribution
+        run: |
+          mkdir -p build/AppDir/distribution/bin/defaults/soul
+          if [ -d "docs/reference/templates" ]; then
+            cp docs/reference/templates/*.md build/AppDir/distribution/bin/defaults/soul/
+            echo "Soul templates copied to distribution:"
+            ls -la build/AppDir/distribution/bin/defaults/soul/
+          else
+            echo "::warning::docs/reference/templates/ not found, skipping soul templates"
+          fi
 
       - name: Bootstrap
         if: ${{ !(inputs.generate-gpo && matrix.arch == 'aarch64') }}
