@@ -391,6 +391,7 @@ export class NevofluxChild extends JSWindowActorChild {
       isVisible: () => this.isVisible(safeParams),
       exists: () => this.exists(safeParams),
       click: () => this.click(safeParams),
+      clickAtCoordinates: () => this.clickAtCoordinates(safeParams),
       type: () => this.type(safeParams),
       fill: () => this.fill(safeParams),
       waitForSelector: () => this.waitForSelector(safeParams),
@@ -516,12 +517,14 @@ export class NevofluxChild extends JSWindowActorChild {
     let truncatedCount = 0;
     if (elements.length > maxElements) {
       // Protect keyword-matched elements from truncation
-      const kwElements = elements.filter(e => e.keywordMatch);
-      const nonKwElements = elements.filter(e => !e.keywordMatch);
+      const kwElements = [];
+      const nonKwElements = [];
+      for (const e of elements) {
+        (e.keywordMatch ? kwElements : nonKwElements).push(e);
+      }
       const remainingSlots = Math.max(0, maxElements - kwElements.length);
-      const keptNonKw = nonKwElements.slice(0, remainingSlots);
-      truncatedCount = nonKwElements.length - keptNonKw.length;
-      elements = [...kwElements, ...keptNonKw];
+      truncatedCount = Math.max(0, nonKwElements.length - remainingSlots);
+      elements = kwElements.concat(nonKwElements.slice(0, remainingSlots));
     }
 
     // === Phase 5 (before Phase 4): Clear old IDs and assign new ones ===
@@ -593,6 +596,7 @@ export class NevofluxChild extends JSWindowActorChild {
       canScrollDown: scrollTop + viewportHeight < scrollHeight - 1,
       pageTitle: doc.title || '',
       url: win.location?.href || '',
+      lang: doc.documentElement?.lang || '',
       modalScroll: modalScrollInfo,
     };
 
@@ -1011,17 +1015,21 @@ export class NevofluxChild extends JSWindowActorChild {
    */
   _fallbackAttrSearch(keywords, doc) {
     const results = [];
+    const lowerKeywords = keywords.map(kw => kw.toLowerCase());
     const els = doc.querySelectorAll('[aria-label], [title]');
     for (const el of els) {
-      const label = el.getAttribute('aria-label') || el.getAttribute('title');
-      if (!label) continue;
-      const lowerLabel = label.toLowerCase();
-      for (const kw of keywords) {
-        if (lowerLabel.includes(kw.toLowerCase())) {
-          const rect = el.getBoundingClientRect();
-          if (rect.width === 0 || rect.height === 0) continue;
+      const labels = [el.getAttribute('aria-label'), el.getAttribute('title')].filter(Boolean);
+      if (labels.length === 0) continue;
+      const combinedLower = labels.map(l => l.toLowerCase());
+      let rect = null;
+      for (let i = 0; i < lowerKeywords.length; i++) {
+        if (combinedLower.some(l => l.includes(lowerKeywords[i]))) {
+          if (!rect) {
+            rect = el.getBoundingClientRect();
+            if (rect.width === 0 || rect.height === 0) break;
+          }
           results.push({
-            keyword: kw,
+            keyword: keywords[i],
             element: el,
             rect,
             source: 'aria-fallback',
@@ -1042,7 +1050,7 @@ export class NevofluxChild extends JSWindowActorChild {
    * @returns {Array} Deduplicated keyword match results
    */
   _keywordSearch(keywords, doc) {
-    if (!keywords || keywords.length === 0) return [];
+    if (!keywords || !Array.isArray(keywords) || keywords.length === 0) return [];
     if (!doc.body) return [];
 
     const finder = Cc["@mozilla.org/embedcomp/rangefind;1"]
@@ -1052,6 +1060,7 @@ export class NevofluxChild extends JSWindowActorChild {
     finder.entireWord = false;
 
     const rawResults = [];
+    const MAX_MATCHES_PER_KW = 50;
 
     for (const keyword of keywords) {
       const searchRange = doc.createRange();
@@ -1063,7 +1072,9 @@ export class NevofluxChild extends JSWindowActorChild {
       endPoint.collapse(false);
 
       let found;
+      let matchCount = 0;
       while ((found = finder.Find(keyword, searchRange, startPoint, endPoint))) {
+        if (++matchCount > MAX_MATCHES_PER_KW) break;
         const textNode = found.startContainer;
         const element = textNode.nodeType === 3 ? textNode.parentElement : textNode;
         if (!element) {
@@ -1072,20 +1083,20 @@ export class NevofluxChild extends JSWindowActorChild {
           continue;
         }
 
-        const rect = found.getBoundingClientRect();
+        const interactable = this._findClosestInteractable(element);
+        const target = interactable || element;
+        const rect = target.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) {
           startPoint = found.cloneRange();
           startPoint.collapse(false);
           continue;
         }
 
-        const interactable = this._findClosestInteractable(element);
-
         rawResults.push({
           keyword,
           exactText: found.toString(),
-          element: interactable || element,
-          rect: interactable ? interactable.getBoundingClientRect() : rect,
+          element: target,
+          rect,
           source: 'nsifind',
         });
 
@@ -1131,33 +1142,38 @@ export class NevofluxChild extends JSWindowActorChild {
 
   _snapshotMerge(a11yResults, domExtras, keywordResults = []) {
     const merged = [];
+    const nodeIndex = new Map();
 
     for (const el of a11yResults) {
-      merged.push({ node: el.node, role: el.role, name: el.name,
-                    states: el.states, viewportRect: el.viewportRect,
-                    landmark: el.landmark, inferred: false, signal: null,
-                    keywordMatch: null });
+      const entry = { node: el.node, role: el.role, name: el.name,
+                      states: el.states, viewportRect: el.viewportRect,
+                      landmark: el.landmark, inferred: false, signal: null,
+                      keywordMatch: null };
+      nodeIndex.set(el.node, entry);
+      merged.push(entry);
     }
     for (const el of domExtras) {
-      merged.push({ node: el.node, role: this._tagToRole(el.tag),
-                    name: el.text, states: {}, viewportRect: el.viewportRect,
-                    landmark: null, inferred: true, signal: el.signal,
-                    keywordMatch: null });
+      const entry = { node: el.node, role: this._tagToRole(el.tag),
+                      name: el.text, states: {}, viewportRect: el.viewportRect,
+                      landmark: null, inferred: true, signal: el.signal,
+                      keywordMatch: null };
+      nodeIndex.set(el.node, entry);
+      merged.push(entry);
     }
 
     // Merge keyword results: enrich existing or add new
     for (const kwResult of keywordResults) {
-      const existingIdx = merged.findIndex(m => m.node === kwResult.node);
-      if (existingIdx >= 0) {
+      const existing = nodeIndex.get(kwResult.node);
+      if (existing) {
         // Element already found by Phase 1 or 2 — enrich with keyword metadata
-        merged[existingIdx].keywordMatch = kwResult.keywords;
+        existing.keywordMatch = kwResult.keywords;
       } else {
         // New element recovered by keyword search — add with inferred role
-        const tag = kwResult.node.tagName?.toLowerCase() || 'unknown';
+        const tag = kwResult.node.tagName || 'UNKNOWN';
         const role = this._tagToRole(tag);
         const name = this._getDirectText(kwResult.node).trim().slice(0, 60);
         const rect = kwResult.rect;
-        merged.push({
+        const entry = {
           node: kwResult.node,
           role: role || '?keyword',
           name: name || kwResult.keywords[0],
@@ -1167,7 +1183,9 @@ export class NevofluxChild extends JSWindowActorChild {
           inferred: true,
           signal: 'keyword',
           keywordMatch: kwResult.keywords,
-        });
+        };
+        nodeIndex.set(kwResult.node, entry);
+        merged.push(entry);
       }
     }
 
@@ -1609,6 +1627,8 @@ export class NevofluxChild extends JSWindowActorChild {
     lines.push(`# ${doc.title || ''}`);
     const loc = win.location || {};
     lines.push(`@ ${loc.pathname || ''}${loc.search || ''}`);
+    const pageLang = doc.documentElement?.lang || '';
+    if (pageLang) lines.push(`lang: ${pageLang}`);
 
     const scrollTop = Math.round(win.scrollY || 0);
     const scrollHeight = doc.documentElement.scrollHeight || 0;
@@ -1642,8 +1662,11 @@ export class NevofluxChild extends JSWindowActorChild {
     lines.push('');
 
     // Separate keyword-matched elements for priority output
-    const kwElements = elements.filter(e => e.keywordMatch);
-    const otherElements = elements.filter(e => !e.keywordMatch);
+    const kwElements = [];
+    const otherElements = [];
+    for (const e of elements) {
+      (e.keywordMatch ? kwElements : otherElements).push(e);
+    }
 
     if (kwElements.length > 0) {
       lines.push('');
@@ -2041,11 +2064,7 @@ export class NevofluxChild extends JSWindowActorChild {
           clickPoint.y
         );
         for (let i = 0; i < clickCount; i++) {
-          domUtils.sendMouseEvent('mousemove', clickPoint.x, clickPoint.y, buttonCode, 0, 0);
-          await this.sleep(10);
-          domUtils.sendMouseEvent('mousedown', clickPoint.x, clickPoint.y, buttonCode, 1, 0);
-          await this.sleep(50);
-          domUtils.sendMouseEvent('mouseup', clickPoint.x, clickPoint.y, buttonCode, 1, 0);
+          await this._sendTrustedMouseClick(domUtils, clickPoint.x, clickPoint.y, buttonCode);
           if (delay > 0 && i < clickCount - 1) await this.sleep(delay);
         }
 
@@ -2166,7 +2185,76 @@ export class NevofluxChild extends JSWindowActorChild {
       domChanged,
       networkRequestMade,
       elementRemoved,
+      // Provide screen-absolute bounds when all tiers failed — enables computer_click fallback
+      ...(clickMethod === 'all_tiers_exhausted' && !clickEffective
+        ? {
+            screenBounds: {
+              x: rect.left + win.mozInnerScreenX,
+              y: rect.top + win.mozInnerScreenY,
+              width: rect.width,
+              height: rect.height,
+            },
+          }
+        : {}),
     };
+  }
+
+  /**
+   * Click at viewport coordinates using trusted sendMouseEvent.
+   * Used as fallback when CSS selector resolution fails (e.g., cross-origin iframes).
+   */
+  async clickAtCoordinates({ x, y, button = 'left' }) {
+    const doc = this.currentDoc;
+    const win = this.currentWin;
+    if (!doc) {
+      return {
+        success: false,
+        error: { code: 5001, message: 'No document available', recoverable: false },
+      };
+    }
+
+    const buttonCode = { left: 0, middle: 1, right: 2 }[button] || 0;
+    const domUtils = this._getWindowUtils();
+    if (!domUtils || typeof domUtils.sendMouseEvent !== 'function') {
+      return {
+        success: false,
+        error: { code: 5001, message: 'windowUtils not available', recoverable: false },
+      };
+    }
+
+    console.log('[NevofluxChild.clickAtCoordinates] x:', x, 'y:', y, 'button:', button);
+
+    // Set up effect watcher
+    const watcher = this._setupClickEffectWatcher(doc, win);
+
+    try {
+      await this._sendTrustedMouseClick(domUtils, x, y, buttonCode);
+
+      const result = await watcher.waitForEffect(500);
+      watcher.disconnect();
+
+      const effective = result.changed;
+      console.log(
+        '[NevofluxChild.clickAtCoordinates] effective:', effective,
+        'domChanged:', result.domChanged,
+        'network:', result.networkRequest
+      );
+
+      return {
+        success: true,
+        effective,
+        clickMethod: 'coordinate_click',
+        domChanged: result.domChanged,
+        networkRequestMade: result.networkRequest,
+      };
+    } catch (e) {
+      watcher.disconnect();
+      console.error('[NevofluxChild.clickAtCoordinates] Error:', e.message);
+      return {
+        success: false,
+        error: { code: 5001, message: e.message, recoverable: false },
+      };
+    }
   }
 
   type({ selector, text }) {
@@ -2338,6 +2426,21 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     return null;
+  }
+
+  /**
+   * Fire a single trusted mouse click at viewport coordinates via sendMouseEvent.
+   * @param {object} domUtils - windowUtils from _getWindowUtils()
+   * @param {number} x - viewport X coordinate
+   * @param {number} y - viewport Y coordinate
+   * @param {number} buttonCode - 0=left, 1=middle, 2=right
+   */
+  async _sendTrustedMouseClick(domUtils, x, y, buttonCode) {
+    domUtils.sendMouseEvent('mousemove', x, y, buttonCode, 0, 0);
+    await this.sleep(10);
+    domUtils.sendMouseEvent('mousedown', x, y, buttonCode, 1, 0);
+    await this.sleep(50);
+    domUtils.sendMouseEvent('mouseup', x, y, buttonCode, 1, 0);
   }
 
   /**

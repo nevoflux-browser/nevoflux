@@ -155,6 +155,15 @@ this.nevoflux = class extends ExtensionAPI {
           });
         },
 
+        async clickAtCoordinates(tabId, x, y, options = {}) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'clickAtCoordinates', {
+            x,
+            y,
+            ...options,
+          });
+        },
+
         async type(tabId, selector, text, options = {}) {
           const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
           return self.executeInTabWithRestore(resolvedTabId, extension, 'type', {

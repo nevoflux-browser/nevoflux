@@ -739,6 +739,19 @@
         "returns": { "$ref": "ApiResult" }
       },
       {
+        "name": "clickAtCoordinates",
+        "type": "function",
+        "async": "promise",
+        "description": "Click at viewport coordinates using trusted events",
+        "parameters": [
+          { "name": "tabId", "type": "integer", "optional": true },
+          { "name": "x", "type": "number" },
+          { "name": "y", "type": "number" },
+          { "name": "options", "$ref": "ClickOptions", "optional": true }
+        ],
+        "returns": { "$ref": "ApiResult" }
+      },
+      {
         "name": "type",
         "type": "function",
         "async": "promise",

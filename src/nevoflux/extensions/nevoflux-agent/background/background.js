@@ -2893,6 +2893,44 @@ async function getElementSelector(tabId, elementId, getChildren = false) {
 }
 
 /**
+ * Try a coordinate-based click fallback using stored rect from snapshotRefs.
+ * Returns a success result object or null if fallback not possible / not effective.
+ */
+async function tryCoordinateClickFallback(tabId, element_id) {
+  const tabData = snapshotRefs.get(tabId);
+  const elemRect = tabData?.refs?.[element_id]?.rect;
+
+  if (!elemRect || elemRect.width <= 0 || elemRect.height <= 0) return null;
+
+  const centerX = elemRect.x + elemRect.width / 2;
+  const centerY = elemRect.y + elemRect.height / 2;
+  console.log(
+    `[NevoFlux] Trying coordinate click at (${centerX}, ${centerY}) for element ${element_id}`
+  );
+
+  try {
+    const coordResult = await browser.nevoflux.clickAtCoordinates(tabId, centerX, centerY);
+    if (coordResult.success !== false) {
+      console.log(
+        `[NevoFlux] Coordinate click for element ${element_id}: effective=${coordResult.effective}`
+      );
+      return {
+        success: true,
+        result: {
+          element_id,
+          clicked: true,
+          method: 'coordinate_click',
+          ...coordResult,
+        },
+      };
+    }
+  } catch (coordErr) {
+    console.log('[NevoFlux] Coordinate click fallback failed:', coordErr.message);
+  }
+  return null;
+}
+
+/**
  * Click element by ID via browser.nevoflux.click() - uses trusted mouse events
  * Falls back to content script if API is not available or fails
  */
@@ -2917,6 +2955,10 @@ async function executeClickByIdViaApi(tabId, params, timeout_ms) {
     const selectors = await getElementSelector(tabId, element_id, true);
 
     if (!selectors || selectors.length === 0) {
+      // No selectors found — try coordinate click using stored rect from snapshot
+      const coordFallback = await tryCoordinateClickFallback(tabId, element_id);
+      if (coordFallback) return coordFallback;
+
       return {
         success: false,
         error: {
@@ -3001,8 +3043,13 @@ async function executeClickByIdViaApi(tabId, params, timeout_ms) {
       };
     }
 
+    // All selector-based attempts truly failed — try coordinate-based click
+    // This handles cross-origin iframe elements where querySelector returns null
+    const coordFallback = await tryCoordinateClickFallback(tabId, element_id);
+    if (coordFallback) return coordFallback;
+
     // All attempts truly failed
-    console.error(`[NevoFlux] All ${selectorList.length} click attempts failed`);
+    console.error(`[NevoFlux] All ${selectorList.length} click attempts + coordinate fallback failed`);
     return {
       success: false,
       error: {
