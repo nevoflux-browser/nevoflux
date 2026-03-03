@@ -465,7 +465,7 @@ export class NevofluxChild extends JSWindowActorChild {
   //  Phase 5: Serialization (compact for LLM, refs for program)
   // =====================================================================
 
-  snapshot({ root, useA11y, domFallback, viewport_only, maxElements } = {}) {
+  snapshot({ root, useA11y, domFallback, viewport_only, maxElements, keywords } = {}) {
     if (useA11y == null) useA11y = true;
     if (domFallback == null) domFallback = true;
     if (viewport_only == null) viewport_only = true;
@@ -503,8 +503,11 @@ export class NevofluxChild extends JSWindowActorChild {
       domExtras = this._domPatchScan(rootEl, seenNodes, win);
     }
 
+    // === Phase K: Keyword search (parallel to Phase 1+2) ===
+    const keywordResults = this._keywordSearch(keywords, doc);
+
     // === Phase 3: Merge pipeline ===
-    let elements = this._snapshotMerge(a11yResults, domExtras);
+    let elements = this._snapshotMerge(a11yResults, domExtras, keywordResults);
     const preOcclusionCount = elements.length;
     elements = this._filterOccluded(elements, doc);
     const occludedCount = preOcclusionCount - elements.length;
@@ -512,8 +515,13 @@ export class NevofluxChild extends JSWindowActorChild {
     elements = this._prioritize(elements);
     let truncatedCount = 0;
     if (elements.length > maxElements) {
-      truncatedCount = elements.length - maxElements;
-      elements = elements.slice(0, maxElements);
+      // Protect keyword-matched elements from truncation
+      const kwElements = elements.filter(e => e.keywordMatch);
+      const nonKwElements = elements.filter(e => !e.keywordMatch);
+      const remainingSlots = Math.max(0, maxElements - kwElements.length);
+      const keptNonKw = nonKwElements.slice(0, remainingSlots);
+      truncatedCount = nonKwElements.length - keptNonKw.length;
+      elements = [...kwElements, ...keptNonKw];
     }
 
     // === Phase 5 (before Phase 4): Clear old IDs and assign new ones ===
@@ -1121,33 +1129,46 @@ export class NevofluxChild extends JSWindowActorChild {
 
   // ── Phase 3: Merge Pipeline ──
 
-  _snapshotMerge(a11yResults, domExtras) {
+  _snapshotMerge(a11yResults, domExtras, keywordResults = []) {
     const merged = [];
 
     for (const el of a11yResults) {
-      merged.push({
-        node: el.node,
-        role: el.role,
-        name: el.name,
-        states: el.states,
-        viewportRect: el.viewportRect,
-        landmark: el.landmark,
-        inferred: false,
-        signal: null,
-      });
+      merged.push({ node: el.node, role: el.role, name: el.name,
+                    states: el.states, viewportRect: el.viewportRect,
+                    landmark: el.landmark, inferred: false, signal: null,
+                    keywordMatch: null });
+    }
+    for (const el of domExtras) {
+      merged.push({ node: el.node, role: this._tagToRole(el.tag),
+                    name: el.text, states: {}, viewportRect: el.viewportRect,
+                    landmark: null, inferred: true, signal: el.signal,
+                    keywordMatch: null });
     }
 
-    for (const el of domExtras) {
-      merged.push({
-        node: el.node,
-        role: this._tagToRole(el.tag),
-        name: el.text,
-        states: {},
-        viewportRect: el.viewportRect,
-        landmark: null,
-        inferred: true,
-        signal: el.signal,
-      });
+    // Merge keyword results: enrich existing or add new
+    for (const kwResult of keywordResults) {
+      const existingIdx = merged.findIndex(m => m.node === kwResult.node);
+      if (existingIdx >= 0) {
+        // Element already found by Phase 1 or 2 — enrich with keyword metadata
+        merged[existingIdx].keywordMatch = kwResult.keywords;
+      } else {
+        // New element recovered by keyword search — add with inferred role
+        const tag = kwResult.node.tagName?.toLowerCase() || 'unknown';
+        const role = this._tagToRole(tag);
+        const name = this._getDirectText(kwResult.node).trim().slice(0, 60);
+        const rect = kwResult.rect;
+        merged.push({
+          node: kwResult.node,
+          role: role || '?keyword',
+          name: name || kwResult.keywords[0],
+          states: {},
+          viewportRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+          landmark: null,
+          inferred: true,
+          signal: 'keyword',
+          keywordMatch: kwResult.keywords,
+        });
+      }
     }
 
     return merged;
@@ -1620,9 +1641,23 @@ export class NevofluxChild extends JSWindowActorChild {
     }
     lines.push('');
 
+    // Separate keyword-matched elements for priority output
+    const kwElements = elements.filter(e => e.keywordMatch);
+    const otherElements = elements.filter(e => !e.keywordMatch);
+
+    if (kwElements.length > 0) {
+      lines.push('');
+      lines.push('=== KEYWORD MATCHES ===');
+      for (const el of kwElements) {
+        lines.push(this._elementToCompactLine(el, win));
+      }
+      lines.push('');
+      lines.push('=== OTHER INTERACTABLES ===');
+    }
+
     // Group by landmark
     const groups = new Map();
-    for (const el of elements) {
+    for (const el of otherElements) {
       const lm = el.landmark || null;
       if (!groups.has(lm)) groups.set(lm, []);
       groups.get(lm).push(el);
@@ -1664,6 +1699,7 @@ export class NevofluxChild extends JSWindowActorChild {
     if (el.name) {
       line += ` "${el.name}"`;
     }
+    if (el.keywordMatch) { line += ` (keywords: ${el.keywordMatch.map(k => `"${k}"`).join(', ')})`; }
 
     // Disambiguation context (only for duplicate names)
     if (el._hasDuplicateName) {
