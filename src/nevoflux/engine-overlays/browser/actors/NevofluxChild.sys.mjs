@@ -967,6 +967,158 @@ export class NevofluxChild extends JSWindowActorChild {
     return t.replace(/\s+/g, ' ');
   }
 
+  /**
+   * Walk up DOM tree to find nearest interactive ancestor of a text node.
+   * Mirrors the interactivity detection in _detectInteractiveSignal but
+   * operates upward from a known text match.
+   */
+  _findClosestInteractable(el) {
+    let node = el;
+    while (node && node !== node.ownerDocument.body) {
+      const tag = node.tagName?.toLowerCase();
+      const role = node.getAttribute?.('role');
+
+      // Native interactive elements
+      if (['a', 'button', 'input', 'select', 'textarea'].includes(tag)) return node;
+
+      // ARIA interactive roles
+      if (['button', 'link', 'textbox', 'checkbox', 'menuitem', 'tab', 'switch', 'combobox'].includes(role)) return node;
+
+      // Explicit tabindex
+      if (node.getAttribute?.('tabindex') !== null) return node;
+
+      // Visual cursor hint
+      try {
+        if (node.ownerGlobal?.getComputedStyle(node).cursor === 'pointer') return node;
+      } catch (e) { /* getComputedStyle can throw for detached nodes */ }
+
+      node = node.parentElement;
+    }
+    return el; // Fallback: return text element itself
+  }
+
+  /**
+   * Fallback keyword search for icon-only elements (no rendered text).
+   * Checks aria-label and title attributes.
+   */
+  _fallbackAttrSearch(keywords, doc) {
+    const results = [];
+    const els = doc.querySelectorAll('[aria-label], [title]');
+    for (const el of els) {
+      const label = el.getAttribute('aria-label') || el.getAttribute('title');
+      if (!label) continue;
+      const lowerLabel = label.toLowerCase();
+      for (const kw of keywords) {
+        if (lowerLabel.includes(kw.toLowerCase())) {
+          const rect = el.getBoundingClientRect();
+          if (rect.width === 0 || rect.height === 0) continue;
+          results.push({
+            keyword: kw,
+            element: el,
+            rect,
+            source: 'aria-fallback',
+          });
+        }
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Phase K: nsIFind-based keyword search.
+   * Uses Gecko's native text search (same engine as Ctrl+F) to find
+   * elements by visible text, then resolves to interactable ancestors.
+   *
+   * @param {string[]} keywords - Keywords to search for
+   * @param {Document} doc - The document to search in
+   * @returns {Array} Deduplicated keyword match results
+   */
+  _keywordSearch(keywords, doc) {
+    if (!keywords || keywords.length === 0) return [];
+    if (!doc.body) return [];
+
+    const finder = Cc["@mozilla.org/embedcomp/rangefind;1"]
+      .createInstance()
+      .QueryInterface(Ci.nsIFind);
+    finder.caseSensitive = false;
+    finder.entireWord = false;
+
+    const rawResults = [];
+
+    for (const keyword of keywords) {
+      const searchRange = doc.createRange();
+      searchRange.selectNodeContents(doc.body);
+
+      let startPoint = searchRange.cloneRange();
+      startPoint.collapse(true);
+      let endPoint = searchRange.cloneRange();
+      endPoint.collapse(false);
+
+      let found;
+      while ((found = finder.Find(keyword, searchRange, startPoint, endPoint))) {
+        const textNode = found.startContainer;
+        const element = textNode.nodeType === 3 ? textNode.parentElement : textNode;
+        if (!element) {
+          startPoint = found.cloneRange();
+          startPoint.collapse(false);
+          continue;
+        }
+
+        const rect = found.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) {
+          startPoint = found.cloneRange();
+          startPoint.collapse(false);
+          continue;
+        }
+
+        const interactable = this._findClosestInteractable(element);
+
+        rawResults.push({
+          keyword,
+          exactText: found.toString(),
+          element: interactable || element,
+          rect: interactable ? interactable.getBoundingClientRect() : rect,
+          source: 'nsifind',
+        });
+
+        startPoint = found.cloneRange();
+        startPoint.collapse(false);
+      }
+    }
+
+    // Fallback: aria-label/title for icon-only elements
+    const attrResults = this._fallbackAttrSearch(keywords, doc);
+    const allResults = rawResults.concat(attrResults);
+
+    // Dedup: merge keywords per unique element
+    return this._dedupKeywordResults(allResults);
+  }
+
+  /**
+   * Deduplicate keyword results by element identity.
+   * When multiple keywords match the same interactable element,
+   * merge into a single entry with combined keyword list.
+   */
+  _dedupKeywordResults(results) {
+    const byElement = new Map();
+    for (const r of results) {
+      const existing = byElement.get(r.element);
+      if (existing) {
+        if (!existing.keywords.includes(r.keyword)) {
+          existing.keywords.push(r.keyword);
+        }
+      } else {
+        byElement.set(r.element, {
+          node: r.element,
+          keywords: [r.keyword],
+          rect: r.rect,
+          source: r.source,
+        });
+      }
+    }
+    return [...byElement.values()];
+  }
+
   // ── Phase 3: Merge Pipeline ──
 
   _snapshotMerge(a11yResults, domExtras) {
