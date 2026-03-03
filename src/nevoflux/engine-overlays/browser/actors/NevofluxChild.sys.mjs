@@ -994,7 +994,12 @@ export class NevofluxChild extends JSWindowActorChild {
       if (['a', 'button', 'input', 'select', 'textarea'].includes(tag)) return node;
 
       // ARIA interactive roles
-      if (['button', 'link', 'textbox', 'checkbox', 'menuitem', 'tab', 'switch', 'combobox'].includes(role)) return node;
+      if (
+        ['button', 'link', 'textbox', 'checkbox', 'menuitem', 'tab', 'switch', 'combobox'].includes(
+          role
+        )
+      )
+        return node;
 
       // Explicit tabindex
       if (node.getAttribute?.('tabindex') !== null) return node;
@@ -1002,7 +1007,9 @@ export class NevofluxChild extends JSWindowActorChild {
       // Visual cursor hint
       try {
         if (node.ownerGlobal?.getComputedStyle(node).cursor === 'pointer') return node;
-      } catch (e) { /* getComputedStyle can throw for detached nodes */ }
+      } catch (e) {
+        /* getComputedStyle can throw for detached nodes */
+      }
 
       node = node.parentElement;
     }
@@ -1015,15 +1022,15 @@ export class NevofluxChild extends JSWindowActorChild {
    */
   _fallbackAttrSearch(keywords, doc) {
     const results = [];
-    const lowerKeywords = keywords.map(kw => kw.toLowerCase());
+    const lowerKeywords = keywords.map((kw) => kw.toLowerCase());
     const els = doc.querySelectorAll('[aria-label], [title]');
     for (const el of els) {
       const labels = [el.getAttribute('aria-label'), el.getAttribute('title')].filter(Boolean);
       if (labels.length === 0) continue;
-      const combinedLower = labels.map(l => l.toLowerCase());
+      const combinedLower = labels.map((l) => l.toLowerCase());
       let rect = null;
       for (let i = 0; i < lowerKeywords.length; i++) {
-        if (combinedLower.some(l => l.includes(lowerKeywords[i]))) {
+        if (combinedLower.some((l) => l.includes(lowerKeywords[i]))) {
           if (!rect) {
             rect = el.getBoundingClientRect();
             if (rect.width === 0 || rect.height === 0) break;
@@ -1053,7 +1060,7 @@ export class NevofluxChild extends JSWindowActorChild {
     if (!keywords || !Array.isArray(keywords) || keywords.length === 0) return [];
     if (!doc.body) return [];
 
-    const finder = Cc["@mozilla.org/embedcomp/rangefind;1"]
+    const finder = Cc['@mozilla.org/embedcomp/rangefind;1']
       .createInstance()
       .QueryInterface(Ci.nsIFind);
     finder.caseSensitive = false;
@@ -1145,18 +1152,32 @@ export class NevofluxChild extends JSWindowActorChild {
     const nodeIndex = new Map();
 
     for (const el of a11yResults) {
-      const entry = { node: el.node, role: el.role, name: el.name,
-                      states: el.states, viewportRect: el.viewportRect,
-                      landmark: el.landmark, inferred: false, signal: null,
-                      keywordMatch: null };
+      const entry = {
+        node: el.node,
+        role: el.role,
+        name: el.name,
+        states: el.states,
+        viewportRect: el.viewportRect,
+        landmark: el.landmark,
+        inferred: false,
+        signal: null,
+        keywordMatch: null,
+      };
       nodeIndex.set(el.node, entry);
       merged.push(entry);
     }
     for (const el of domExtras) {
-      const entry = { node: el.node, role: this._tagToRole(el.tag),
-                      name: el.text, states: {}, viewportRect: el.viewportRect,
-                      landmark: null, inferred: true, signal: el.signal,
-                      keywordMatch: null };
+      const entry = {
+        node: el.node,
+        role: this._tagToRole(el.tag),
+        name: el.text,
+        states: {},
+        viewportRect: el.viewportRect,
+        landmark: null,
+        inferred: true,
+        signal: el.signal,
+        keywordMatch: null,
+      };
       nodeIndex.set(el.node, entry);
       merged.push(entry);
     }
@@ -1722,7 +1743,9 @@ export class NevofluxChild extends JSWindowActorChild {
     if (el.name) {
       line += ` "${el.name}"`;
     }
-    if (el.keywordMatch) { line += ` (keywords: ${el.keywordMatch.map(k => `"${k}"`).join(', ')})`; }
+    if (el.keywordMatch) {
+      line += ` (keywords: ${el.keywordMatch.map((k) => `"${k}"`).join(', ')})`;
+    }
 
     // Disambiguation context (only for duplicate names)
     if (el._hasDuplicateName) {
@@ -2235,9 +2258,12 @@ export class NevofluxChild extends JSWindowActorChild {
 
       const effective = result.changed;
       console.log(
-        '[NevofluxChild.clickAtCoordinates] effective:', effective,
-        'domChanged:', result.domChanged,
-        'network:', result.networkRequest
+        '[NevofluxChild.clickAtCoordinates] effective:',
+        effective,
+        'domChanged:',
+        result.domChanged,
+        'network:',
+        result.networkRequest
       );
 
       return {

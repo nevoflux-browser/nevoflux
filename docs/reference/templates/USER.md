@@ -1,6 +1,6 @@
 ## Basic Info
 
-**Name:** 
+**Name:**
 **Pronouns:**
 **Timezone:**
 

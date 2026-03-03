@@ -26,7 +26,7 @@
 ## Runtime Parameters
 
 | Parameter            | Default | Description                          |
-|----------------------|---------|--------------------------------------|
+| -------------------- | ------- | ------------------------------------ |
 | request_timeout_ms   | 30000   | HTTP request timeout                 |
 | retry_count          | 3       | Max retries for transient failures   |
 | screenshot_quality   | 80      | JPEG quality for screenshots (0-100) |

@@ -24,15 +24,27 @@ function log(label, data) {
 }
 
 function pass(name) {
-  console.log(`%c  PASS  %c ${name}`, 'background: #4caf50; color: white; padding: 2px 6px; border-radius: 3px', '');
+  console.log(
+    `%c  PASS  %c ${name}`,
+    'background: #4caf50; color: white; padding: 2px 6px; border-radius: 3px',
+    ''
+  );
 }
 
 function fail(name, reason) {
-  console.log(`%c  FAIL  %c ${name}: ${reason}`, 'background: #f44336; color: white; padding: 2px 6px; border-radius: 3px', '');
+  console.log(
+    `%c  FAIL  %c ${name}: ${reason}`,
+    'background: #f44336; color: white; padding: 2px 6px; border-radius: 3px',
+    ''
+  );
 }
 
 function info(msg) {
-  console.log(`%c  INFO  %c ${msg}`, 'background: #2196f3; color: white; padding: 2px 6px; border-radius: 3px', '');
+  console.log(
+    `%c  INFO  %c ${msg}`,
+    'background: #2196f3; color: white; padding: 2px 6px; border-radius: 3px',
+    ''
+  );
 }
 
 // ── Test 1: Backward Compatibility (no keywords) ──
@@ -144,8 +156,14 @@ async function Test4() {
       const kwSection = [];
       let inKwSection = false;
       for (const line of lines) {
-        if (line.includes('=== KEYWORD MATCHES ===')) { inKwSection = true; continue; }
-        if (line.includes('===')) { inKwSection = false; continue; }
+        if (line.includes('=== KEYWORD MATCHES ===')) {
+          inKwSection = true;
+          continue;
+        }
+        if (line.includes('===')) {
+          inKwSection = false;
+          continue;
+        }
         if (inKwSection && line.trim()) kwSection.push(line);
       }
       log(`Keyword matched elements (${kwSection.length})`, kwSection.join('\n'));
@@ -178,25 +196,33 @@ async function Test5() {
     const kwElements = [];
     let inKwSection = false;
     for (const line of lines) {
-      if (line.includes('=== KEYWORD MATCHES ===')) { inKwSection = true; continue; }
-      if (line.includes('===')) { inKwSection = false; continue; }
+      if (line.includes('=== KEYWORD MATCHES ===')) {
+        inKwSection = true;
+        continue;
+      }
+      if (line.includes('===')) {
+        inKwSection = false;
+        continue;
+      }
       if (inKwSection && line.trim() && line.match(/^\[/)) kwElements.push(line);
     }
 
     log(`Keyword elements (${kwElements.length})`, kwElements.join('\n'));
 
     // Check for merged keywords
-    const mergedLine = kwElements.find(l => l.includes('"Home"') && l.includes('"Search"'));
+    const mergedLine = kwElements.find((l) => l.includes('"Home"') && l.includes('"Search"'));
     if (mergedLine) {
       log('Merged keywords', mergedLine);
       pass('Test 5 — Keywords merged on same element');
     } else {
       info('No element matched both "Home" and "Search". Check that elements appear only once.');
       // At least verify no duplicates
-      const ids = kwElements.map(l => {
-        const m = l.match(/^\[(\d+)\]/);
-        return m ? m[1] : null;
-      }).filter(Boolean);
+      const ids = kwElements
+        .map((l) => {
+          const m = l.match(/^\[(\d+)\]/);
+          return m ? m[1] : null;
+        })
+        .filter(Boolean);
       const uniqueIds = new Set(ids);
       if (ids.length === uniqueIds.size) {
         pass('Test 5 — No duplicate elements in keyword section');
@@ -224,7 +250,7 @@ async function Test6() {
 
     if (tree.includes('=== KEYWORD MATCHES ===')) {
       // Verify keyword matches are present
-      const kwLines = tree.split('\n').filter(l => l.includes('keywords:'));
+      const kwLines = tree.split('\n').filter((l) => l.includes('keywords:'));
       log(`Keyword-annotated elements: ${kwLines.length}`, kwLines.join('\n'));
 
       if (stats && typeof stats.truncated === 'number') {
@@ -265,7 +291,10 @@ async function Test7() {
 // ── Run All ──
 
 async function runAll() {
-  console.log('%c\n=== Phase K Integration Tests ===\n', 'color: #ff9800; font-size: 16px; font-weight: bold');
+  console.log(
+    '%c\n=== Phase K Integration Tests ===\n',
+    'color: #ff9800; font-size: 16px; font-weight: bold'
+  );
   info('Make sure you have navigated to a content-rich page (github.com, x.com, etc.)');
   console.log('');
 
@@ -283,11 +312,17 @@ async function runAll() {
   console.log('');
   await Test7();
 
-  console.log('%c\n=== All Tests Complete ===\n', 'color: #ff9800; font-size: 16px; font-weight: bold');
+  console.log(
+    '%c\n=== All Tests Complete ===\n',
+    'color: #ff9800; font-size: 16px; font-weight: bold'
+  );
 }
 
 // Ready message
-console.log('%c Phase K Test Suite Loaded ', 'background: #673ab7; color: white; padding: 4px 12px; border-radius: 4px; font-size: 14px');
+console.log(
+  '%c Phase K Test Suite Loaded ',
+  'background: #673ab7; color: white; padding: 4px 12px; border-radius: 4px; font-size: 14px'
+);
 console.log('Commands:');
 console.log('  await Test1()  — Backward compatibility (no keywords)');
 console.log('  await Test2()  — lang: field');

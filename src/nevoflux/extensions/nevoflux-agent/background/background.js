@@ -3049,7 +3049,9 @@ async function executeClickByIdViaApi(tabId, params, timeout_ms) {
     if (coordFallback) return coordFallback;
 
     // All attempts truly failed
-    console.error(`[NevoFlux] All ${selectorList.length} click attempts + coordinate fallback failed`);
+    console.error(
+      `[NevoFlux] All ${selectorList.length} click attempts + coordinate fallback failed`
+    );
     return {
       success: false,
       error: {
