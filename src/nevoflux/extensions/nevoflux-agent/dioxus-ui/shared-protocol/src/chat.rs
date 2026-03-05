@@ -154,6 +154,9 @@ pub struct StreamChunkPayload {
     /// Real-time thinking/reasoning event
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_event: Option<ThinkingEvent>,
+    /// When true, replace accumulated content instead of appending
+    #[serde(default)]
+    pub replace_content: bool,
 }
 
 /// Tool call information from agent

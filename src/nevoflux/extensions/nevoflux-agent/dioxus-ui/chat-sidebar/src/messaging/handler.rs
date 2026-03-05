@@ -259,9 +259,13 @@ fn handle_stream_chunk(mut ctx: AppContext, payload: StreamChunkPayload) {
         let (final_content, accumulated_tool_calls) = {
             let mut streaming = ctx.streaming.write();
             if let Some(mut stream) = streaming.take() {
-                // Append any final content from the done payload
+                // Append (or replace) final content from the done payload
                 if !payload.content.is_empty() {
-                    stream.content.push_str(&payload.content);
+                    if payload.replace_content {
+                        stream.content = payload.content.clone();
+                    } else {
+                        stream.content.push_str(&payload.content);
+                    }
                 }
                 // Also accumulate any tool_calls from the done payload
                 if !payload.tool_calls.is_empty() {
@@ -395,7 +399,11 @@ fn handle_stream_chunk(mut ctx: AppContext, payload: StreamChunkPayload) {
             match &mut *streaming {
                 Some(ref mut stream) => {
                     if has_content {
-                        stream.content.push_str(&payload.content);
+                        if payload.replace_content {
+                            stream.content = payload.content;
+                        } else {
+                            stream.content.push_str(&payload.content);
+                        }
                     }
                     if has_tool_calls {
                         stream.accumulate_tool_calls(&payload.tool_calls);
