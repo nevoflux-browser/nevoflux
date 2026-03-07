@@ -70,12 +70,21 @@ jobs:
       - name: Load Surfer CI setup
         run: npm run surfer -- ci --brand ${{ inputs.release-branch }} --display-version ${{ inputs.build-version }}
 
-      - name: Download artifact
+      - name: Authenticate to Google Cloud
         if: ${{ matrix.arch == 'x86_64' }}
-        uses: actions/download-artifact@v4
+        uses: google-github-actions/auth@v2
         with:
-          path: C:\artifact
-          name: ${{ matrix.arch == 'aarch64' && 'arm64' || matrix.arch }}-nevoflux-windows-profile-data-and-jarlog.zip
+          credentials_json: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}
+
+      - name: Setup Google Cloud SDK
+        if: ${{ matrix.arch == 'x86_64' }}
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Download PGO stage 1 from GCS
+        if: ${{ matrix.arch == 'x86_64' }}
+        run: |
+          New-Item -ItemType Directory -Force -Path C:\artifact
+          gsutil cp gs://nevoflux-builds/${{ inputs.build-version }}/pgo-stage-1.zip C:\artifact\${{ inputs.profile-data-path-archive }}
 
       - name: Unpack artifact
         if: ${{ matrix.arch == 'x86_64' }}
@@ -155,12 +164,10 @@ jobs:
           mv engine/merged.profdata merged.profdata
           mv engine/en-US.log en-US.log
 
-      - name: Upload artifacts
+      - name: Upload profile data to GCS
         if: ${{ matrix.arch == 'x86_64' }}
-        uses: actions/upload-artifact@v4
-        with:
-          retention-days: 1
-          path: |
-            merged.profdata
-            en-US.log
-          name: windows-profdata-${{ matrix.arch == 'aarch64' && 'arm64' || matrix.arch }}
+        run: |
+          gsutil cp merged.profdata gs://nevoflux-builds/${{ inputs.build-version }}/merged.profdata
+          gsutil cp en-US.log gs://nevoflux-builds/${{ inputs.build-version }}/en-US.log
+          echo "done" | Out-File -FilePath done-marker -Encoding ASCII
+          gsutil cp done-marker gs://nevoflux-builds/${{ inputs.build-version }}/done-marker
