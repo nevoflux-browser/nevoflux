@@ -1,0 +1,78 @@
+name: Wait for Cloud Build Artifacts
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Release version tag to check'
+        required: true
+        type: string
+      timeout-minutes:
+        description: 'Maximum wait time in minutes'
+        required: false
+        type: number
+        default: 180
+    outputs:
+      ready:
+        description: 'Whether all artifacts are ready'
+        value: ${{ jobs.wait.outputs.ready }}
+
+jobs:
+  wait:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.poll.outputs.ready }}
+    steps:
+      - name: Poll for draft release assets
+        id: poll
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
+          VERSION: ${{ inputs.version }}
+          TIMEOUT: ${{ inputs.timeout-minutes }}
+          REPO: ${{ github.repository }}
+        run: |
+          EXPECTED_ASSETS=(
+            "nevoflux.linux-x86_64.tar.xz"
+            "nevoflux.linux-aarch64.tar.xz"
+            "nevoflux.win-x86_64.zip"
+            "nevoflux.win-arm64.zip"
+            "linux.mar"
+            "linux-aarch64.mar"
+            "windows.mar"
+            "windows-arm64.mar"
+            "nevoflux.installer.exe"
+            "nevoflux.installer-arm64.exe"
+            "nevoflux-x86_64.AppImage"
+            "nevoflux-aarch64.AppImage"
+          )
+
+          INTERVAL=60
+          ELAPSED=0
+          MAX_SECONDS=$(( TIMEOUT * 60 ))
+
+          echo "Waiting for ${#EXPECTED_ASSETS[@]} artifacts on release $VERSION ..."
+
+          while [ $ELAPSED -lt $MAX_SECONDS ]; do
+            ASSETS=$(gh release view "$VERSION" --repo "$REPO" --json assets --jq '.assets[].name' 2>/dev/null || echo "")
+
+            MISSING=0
+            for expected in "${EXPECTED_ASSETS[@]}"; do
+              if ! echo "$ASSETS" | grep -qx "$expected"; then
+                MISSING=$((MISSING + 1))
+              fi
+            done
+
+            if [ $MISSING -eq 0 ]; then
+              echo "All ${#EXPECTED_ASSETS[@]} artifacts found."
+              echo "ready=true" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+
+            echo "[$((ELAPSED / 60))m] Missing $MISSING artifacts. Waiting..."
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+
+          echo "Timed out after ${TIMEOUT} minutes. Missing $MISSING artifacts."
+          echo "ready=false" >> $GITHUB_OUTPUT
+          exit 1
