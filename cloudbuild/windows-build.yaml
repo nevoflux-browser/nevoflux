@@ -40,8 +40,9 @@ steps:
         # ---- npm install ----
         npm ci
 
-        # ---- surfer ci — derive version from TAG_NAME, stripping 'v' prefix ----
-        DISPLAY_VERSION="$${TAG_NAME#v}"
+        # ---- surfer ci — derive version from TAG_NAME (GCB substitution), strip 'v' prefix in bash ----
+        TAG_VALUE="${TAG_NAME}"
+        DISPLAY_VERSION="$${TAG_VALUE#v}"
         echo "Display version: $${DISPLAY_VERSION}"
         if [ -n "$${DISPLAY_VERSION}" ]; then
           npm run surfer -- ci --brand ${_RELEASE_BRANCH} --display-version "$${DISPLAY_VERSION}"
