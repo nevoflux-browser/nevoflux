@@ -227,6 +227,10 @@ steps:
           export MOZ_BUILD_DATE="${_MOZ_BUILD_DATE}"
         fi
 
+        # ---- initialize Wine prefix (required for MIDL via Wine) ----
+        export WINEPREFIX=$$HOME/.wine
+        $$HOME/win-cross/wine/bin/wineboot --init 2>/dev/null || true
+
         # ---- build ----
         ulimit -n 4096
         export ZEN_RELEASE=1
@@ -417,6 +421,10 @@ steps:
           export MOZ_BUILD_DATE="${_MOZ_BUILD_DATE}"
         fi
 
+        # ---- initialize Wine prefix (required for MIDL via Wine) ----
+        export WINEPREFIX=$$HOME/.wine
+        $$HOME/win-cross/wine/bin/wineboot --init 2>/dev/null || true
+
         # ---- build (no ZEN_GA_GENERATE_PROFILE = PGO-optimized build) ----
         ulimit -n 4096
         export LLVM_PROFDATA=$$HOME/.mozbuild/clang/bin/llvm-profdata
@@ -569,6 +577,10 @@ steps:
         if [ -n "${_MOZ_BUILD_DATE}" ]; then
           export MOZ_BUILD_DATE="${_MOZ_BUILD_DATE}"
         fi
+
+        # ---- initialize Wine prefix (required for MIDL via Wine) ----
+        export WINEPREFIX=$$HOME/.wine
+        $$HOME/win-cross/wine/bin/wineboot --init 2>/dev/null || true
 
         # ---- build (no PGO for aarch64) ----
         ulimit -n 4096

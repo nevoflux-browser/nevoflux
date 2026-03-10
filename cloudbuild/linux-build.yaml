@@ -159,9 +159,14 @@ steps:
         rustup default $$RUST_VER
         rustup target add --toolchain $$RUST_VER x86_64-unknown-linux-gnu
 
-        # --- Build ---
+        # --- Build (with Xvfb for PGO profiling) ---
         ulimit -n 4096
+        export LLVM_PROFDATA=$$HOME/.mozbuild/clang/bin/llvm-profdata
         export ZEN_RELEASE=1
+        if command -v Xvfb &> /dev/null; then
+          Xvfb :2 -nolisten tcp -noreset -screen 0 1024x768x24 &
+          export DISPLAY=:2
+        fi
         npm run build
 
         # --- Inject distribution files into build output (before packaging) ---
