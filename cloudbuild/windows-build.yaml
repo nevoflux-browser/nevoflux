@@ -197,6 +197,15 @@ steps:
         RUST_VER=$$(cat .rust-toolchain)
         rustup default $$RUST_VER
         rustup target add --toolchain $$RUST_VER x86_64-pc-windows-msvc
+        # Also install target for rust-toolchain.toml version if it overrides
+        if [ -f rust-toolchain.toml ]; then
+          TOML_VER=$$(grep 'channel' rust-toolchain.toml | sed 's/.*"\(.*\)".*/\1/')
+          if [ -n "$$TOML_VER" ] && [ "$$TOML_VER" != "$$RUST_VER" ]; then
+            echo "rust-toolchain.toml overrides to $$TOML_VER, installing target for it too"
+            rustup toolchain install "$$TOML_VER"
+            rustup target add --toolchain "$$TOML_VER" x86_64-pc-windows-msvc
+          fi
+        fi
         cd engine/
         cargo install cargo-download --locked
         for attempt in 1 2 3 4 5; do
@@ -223,25 +232,23 @@ steps:
         export ZEN_RELEASE=1
         npm run build
 
+        # ---- inject distribution files into build output (before packaging) ----
+        OBJ_DIR="engine/obj-x86_64-pc-windows-msvc"
+        if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
+          mkdir -p "$$OBJ_DIR/dist/bin/distribution"
+          cp -r build/AppDir/distribution/* "$$OBJ_DIR/dist/bin/distribution/"
+          echo "Distribution files injected into $$OBJ_DIR/dist/bin/distribution/"
+        else
+          echo "Distribution files or build output not found, skipping injection."
+        fi
+
         # ---- package ----
         export ZEN_GA_DISABLE_PGO=true
         npm run package
 
-        # ---- inject distribution files into zip ----
+        # ---- stage PGO zip ----
         VERSION=$$(npm run --silent surfer -- get version | xargs)
         ZIP_NAME="nevoflux-$${VERSION}.en-US.win64.zip"
-        if [ -d "build/AppDir/distribution" ] && [ -f "dist/$${ZIP_NAME}" ]; then
-          TOP_DIR=$$(unzip -Z1 "dist/$${ZIP_NAME}" | head -1 | cut -d/ -f1)
-          STAGING=$$(mktemp -d)
-          mkdir -p "$$STAGING/$$TOP_DIR/distribution"
-          cp -r build/AppDir/distribution/* "$$STAGING/$$TOP_DIR/distribution/"
-          cd "$$STAGING"
-          zip -r "$$OLDPWD/dist/$${ZIP_NAME}" "$$TOP_DIR/distribution/"
-          cd "$$OLDPWD"
-          rm -rf "$$STAGING"
-        fi
-
-        # ---- stage PGO zip ----
         mkdir -p /workspace/artifacts
         mv "./dist/$${ZIP_NAME}" /workspace/artifacts/nevoflux.win64-pgo-stage-1.zip
 
@@ -313,8 +320,13 @@ steps:
         dos2unix configs/windows/mozconfig
 
         # ---- surfer ci (re-apply branding) ----
-        DISPLAY_VERSION="$${TAG_NAME#v}"
-        npm run surfer -- ci --brand ${_RELEASE_BRANCH} --display-version $${DISPLAY_VERSION}
+        TAG_VALUE="${TAG_NAME}"
+        DISPLAY_VERSION="$${TAG_VALUE#v}"
+        if [ -n "$${DISPLAY_VERSION}" ]; then
+          npm run surfer -- ci --brand ${_RELEASE_BRANCH} --display-version "$${DISPLAY_VERSION}"
+        else
+          npm run surfer -- ci --brand ${_RELEASE_BRANCH}
+        fi
 
         # ---- import ----
         npm run import -- --verbose
@@ -372,6 +384,15 @@ steps:
         RUST_VER=$$(cat .rust-toolchain)
         rustup default $$RUST_VER
         rustup target add --toolchain $$RUST_VER x86_64-pc-windows-msvc
+        # Also install target for rust-toolchain.toml version if it overrides
+        if [ -f rust-toolchain.toml ]; then
+          TOML_VER=$$(grep 'channel' rust-toolchain.toml | sed 's/.*"\(.*\)".*/\1/')
+          if [ -n "$$TOML_VER" ] && [ "$$TOML_VER" != "$$RUST_VER" ]; then
+            echo "rust-toolchain.toml overrides to $$TOML_VER, installing target for it too"
+            rustup toolchain install "$$TOML_VER"
+            rustup target add --toolchain "$$TOML_VER" x86_64-pc-windows-msvc
+          fi
+        fi
         cd engine/
         cargo install cargo-download --locked
         for attempt in 1 2 3 4 5; do
@@ -402,26 +423,24 @@ steps:
         export ZEN_RELEASE=1
         npm run build
 
+        # ---- inject distribution files into build output (before packaging) ----
+        OBJ_DIR="engine/obj-x86_64-pc-windows-msvc"
+        if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
+          mkdir -p "$$OBJ_DIR/dist/bin/distribution"
+          cp -r build/AppDir/distribution/* "$$OBJ_DIR/dist/bin/distribution/"
+          echo "Distribution files injected into $$OBJ_DIR/dist/bin/distribution/"
+        else
+          echo "Distribution files or build output not found, skipping injection."
+        fi
+
         # ---- package ----
         export ZEN_GA_DISABLE_PGO=true
         npm run package
 
-        # ---- inject distribution files into zip ----
-        VERSION=$$(npm run --silent surfer -- get version | xargs)
-        ZIP_NAME="nevoflux-$${VERSION}.en-US.win64.zip"
-        if [ -d "build/AppDir/distribution" ] && [ -f "dist/$${ZIP_NAME}" ]; then
-          TOP_DIR=$$(unzip -Z1 "dist/$${ZIP_NAME}" | head -1 | cut -d/ -f1)
-          STAGING=$$(mktemp -d)
-          mkdir -p "$$STAGING/$$TOP_DIR/distribution"
-          cp -r build/AppDir/distribution/* "$$STAGING/$$TOP_DIR/distribution/"
-          cd "$$STAGING"
-          zip -r "$$OLDPWD/dist/$${ZIP_NAME}" "$$TOP_DIR/distribution/"
-          cd "$$OLDPWD"
-          rm -rf "$$STAGING"
-        fi
-
         # ---- stage final artifacts ----
         mkdir -p /workspace/artifacts
+        VERSION=$$(npm run --silent surfer -- get version | xargs)
+        ZIP_NAME="nevoflux-$${VERSION}.en-US.win64.zip"
         mv "./dist/$${ZIP_NAME}" /workspace/artifacts/nevoflux.win-x86_64.zip
         mv ./dist/output.mar /workspace/artifacts/windows.mar
         mv ./dist/nevoflux.installer.exe /workspace/artifacts/nevoflux.installer.exe
@@ -454,8 +473,13 @@ steps:
         dos2unix configs/windows/mozconfig
 
         # ---- surfer ci (re-apply branding) ----
-        DISPLAY_VERSION="$${TAG_NAME#v}"
-        npm run surfer -- ci --brand ${_RELEASE_BRANCH} --display-version $${DISPLAY_VERSION}
+        TAG_VALUE="${TAG_NAME}"
+        DISPLAY_VERSION="$${TAG_VALUE#v}"
+        if [ -n "$${DISPLAY_VERSION}" ]; then
+          npm run surfer -- ci --brand ${_RELEASE_BRANCH} --display-version "$${DISPLAY_VERSION}"
+        else
+          npm run surfer -- ci --brand ${_RELEASE_BRANCH}
+        fi
 
         # ---- import ----
         npm run import -- --verbose
@@ -513,6 +537,15 @@ steps:
         RUST_VER=$$(cat .rust-toolchain)
         rustup default $$RUST_VER
         rustup target add --toolchain $$RUST_VER aarch64-pc-windows-msvc
+        # Also install target for rust-toolchain.toml version if it overrides
+        if [ -f rust-toolchain.toml ]; then
+          TOML_VER=$$(grep 'channel' rust-toolchain.toml | sed 's/.*"\(.*\)".*/\1/')
+          if [ -n "$$TOML_VER" ] && [ "$$TOML_VER" != "$$RUST_VER" ]; then
+            echo "rust-toolchain.toml overrides to $$TOML_VER, installing target for it too"
+            rustup toolchain install "$$TOML_VER"
+            rustup target add --toolchain "$$TOML_VER" aarch64-pc-windows-msvc
+          fi
+        fi
         cd engine/
         cargo install cargo-download --locked
         for attempt in 1 2 3 4 5; do
@@ -542,26 +575,24 @@ steps:
         export ZEN_RELEASE=1
         npm run build
 
+        # ---- inject distribution files into build output (before packaging) ----
+        OBJ_DIR="engine/obj-aarch64-pc-windows-msvc"
+        if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
+          mkdir -p "$$OBJ_DIR/dist/bin/distribution"
+          cp -r build/AppDir/distribution/* "$$OBJ_DIR/dist/bin/distribution/"
+          echo "Distribution files injected into $$OBJ_DIR/dist/bin/distribution/"
+        else
+          echo "Distribution files or build output not found, skipping injection."
+        fi
+
         # ---- package ----
         export ZEN_GA_DISABLE_PGO=true
         npm run package
 
-        # ---- inject distribution files into zip ----
-        VERSION=$$(npm run --silent surfer -- get version | xargs)
-        ZIP_NAME="nevoflux-$${VERSION}.en-US.win64-aarch64.zip"
-        if [ -d "build/AppDir/distribution" ] && [ -f "dist/$${ZIP_NAME}" ]; then
-          TOP_DIR=$$(unzip -Z1 "dist/$${ZIP_NAME}" | head -1 | cut -d/ -f1)
-          STAGING=$$(mktemp -d)
-          mkdir -p "$$STAGING/$$TOP_DIR/distribution"
-          cp -r build/AppDir/distribution/* "$$STAGING/$$TOP_DIR/distribution/"
-          cd "$$STAGING"
-          zip -r "$$OLDPWD/dist/$${ZIP_NAME}" "$$TOP_DIR/distribution/"
-          cd "$$OLDPWD"
-          rm -rf "$$STAGING"
-        fi
-
         # ---- stage final artifacts ----
         mkdir -p /workspace/artifacts
+        VERSION=$$(npm run --silent surfer -- get version | xargs)
+        ZIP_NAME="nevoflux-$${VERSION}.en-US.win64-aarch64.zip"
         mv "./dist/$${ZIP_NAME}" /workspace/artifacts/nevoflux.win-arm64.zip
         mv ./dist/output.mar /workspace/artifacts/windows-arm64.mar
         mv ./dist/nevoflux.installer.exe /workspace/artifacts/nevoflux.installer-arm64.exe

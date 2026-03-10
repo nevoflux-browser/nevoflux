@@ -160,29 +160,26 @@ steps:
         rustup target add --toolchain $$RUST_VER x86_64-unknown-linux-gnu
 
         # --- Build ---
-        export ZEN_RELEASE_BRANCH="${_RELEASE_BRANCH}"
-        bash .github/workflows/src/release-build.sh
+        ulimit -n 4096
+        export ZEN_RELEASE=1
+        npm run build
+
+        # --- Inject distribution files into build output (before packaging) ---
+        OBJ_DIR="engine/obj-$${ARCH}-pc-linux-gnu"
+        if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
+          mkdir -p "$$OBJ_DIR/dist/bin/distribution"
+          cp -r build/AppDir/distribution/* "$$OBJ_DIR/dist/bin/distribution/"
+          echo "Distribution files injected into $$OBJ_DIR/dist/bin/distribution/"
+        else
+          echo "Distribution files or build output not found, skipping injection."
+        fi
 
         # --- Package ---
         export ZEN_GA_DISABLE_PGO=true
-        export ZEN_RELEASE=1
         npm run package
 
         # --- Remove API Keys ---
         rm -rf $$HOME/.zen-keys
-
-        # --- Inject distribution files into package ---
-        OBJ_DIR="engine/obj-$${ARCH}-pc-linux-gnu"
-        STAGING_DIR="$$OBJ_DIR/dist/nevoflux"
-        if [ -d "build/AppDir/distribution" ] && [ -d "$$STAGING_DIR" ]; then
-          mkdir -p "$$STAGING_DIR/distribution"
-          cp -r build/AppDir/distribution/* "$$STAGING_DIR/distribution/"
-          rm -f dist/nevoflux-*.tar.xz
-          tar -cJf "dist/nevoflux-repackaged.linux-$${ARCH}.tar.xz" -C "$$OBJ_DIR/dist" nevoflux
-          echo "Tarball re-created with distribution files."
-        else
-          echo "Distribution files or staging directory not found, skipping injection."
-        fi
 
         # --- Stage artifacts ---
         mkdir -p /workspace/artifacts
@@ -287,30 +284,27 @@ steps:
         rustup target add --toolchain $$RUST_VER aarch64-unknown-linux-gnu
 
         # --- Build ---
-        export ZEN_RELEASE_BRANCH="${_RELEASE_BRANCH}"
+        ulimit -n 4096
+        export ZEN_RELEASE=1
         export ZEN_CROSS_COMPILING=1
-        bash .github/workflows/src/release-build.sh
+        npm run build
+
+        # --- Inject distribution files into build output (before packaging) ---
+        OBJ_DIR="engine/obj-$${ARCH}-pc-linux-gnu"
+        if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
+          mkdir -p "$$OBJ_DIR/dist/bin/distribution"
+          cp -r build/AppDir/distribution/* "$$OBJ_DIR/dist/bin/distribution/"
+          echo "Distribution files injected into $$OBJ_DIR/dist/bin/distribution/"
+        else
+          echo "Distribution files or build output not found, skipping injection."
+        fi
 
         # --- Package ---
         export ZEN_GA_DISABLE_PGO=true
-        export ZEN_RELEASE=1
         npm run package
 
         # --- Remove API Keys ---
         rm -rf $$HOME/.zen-keys
-
-        # --- Inject distribution files into package ---
-        OBJ_DIR="engine/obj-$${ARCH}-pc-linux-gnu"
-        STAGING_DIR="$$OBJ_DIR/dist/nevoflux"
-        if [ -d "build/AppDir/distribution" ] && [ -d "$$STAGING_DIR" ]; then
-          mkdir -p "$$STAGING_DIR/distribution"
-          cp -r build/AppDir/distribution/* "$$STAGING_DIR/distribution/"
-          rm -f dist/nevoflux-*.tar.xz
-          tar -cJf "dist/nevoflux-repackaged.linux-$${ARCH}.tar.xz" -C "$$OBJ_DIR/dist" nevoflux
-          echo "Tarball re-created with distribution files."
-        else
-          echo "Distribution files or staging directory not found, skipping injection."
-        fi
 
         # --- Stage artifacts ---
         mkdir -p /workspace/artifacts
