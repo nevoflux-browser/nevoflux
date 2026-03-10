@@ -82,6 +82,10 @@ steps:
       - 'SURFER_PLATFORM=linux'
       - 'RUSTUP_TOOLCHAIN=1.83'
       - 'CARGO_INCREMENTAL=0'
+      # --- sccache with GCS backend ---
+      - 'SCCACHE_GCS_BUCKET=nevoflux-build-cache'
+      - 'SCCACHE_GCS_RW_MODE=READ_WRITE'
+      - 'SCCACHE_IDLE_TIMEOUT=0'
     args:
       - '-c'
       - |
@@ -144,6 +148,15 @@ steps:
           echo "docs/reference/templates/ not found, skipping soul templates."
         fi
 
+        # --- Copy built-in skills ---
+        if [ -d "docs/reference/skills" ]; then
+          mkdir -p build/AppDir/distribution/bin/defaults/skills
+          cp -r docs/reference/skills/* build/AppDir/distribution/bin/defaults/skills/
+          echo "Built-in skills copied."
+        else
+          echo "docs/reference/skills/ not found, skipping skills."
+        fi
+
         # --- Insert API Keys ---
         mkdir -p $$HOME/.zen-keys
         echo "$$ZEN_SAFEBROWSING_KEY" > $$HOME/.zen-keys/safebrowsing.dat
@@ -169,7 +182,10 @@ steps:
         fi
         npm run build
 
-        # --- Inject distribution files into build output (before packaging) ---
+        # --- sccache stats ---
+        sccache --show-stats || true
+
+        # --- Inject distribution files into build output ---
         OBJ_DIR="engine/obj-$${ARCH}-pc-linux-gnu"
         if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
           mkdir -p "$$OBJ_DIR/dist/bin/distribution"
@@ -177,6 +193,15 @@ steps:
           echo "Distribution files injected into $$OBJ_DIR/dist/bin/distribution/"
         else
           echo "Distribution files or build output not found, skipping injection."
+        fi
+
+        # --- Re-add distribution to package manifest ---
+        # (removed during import to avoid PGO profile-generation phase issues,
+        #  but PGO is complete at this point so it's safe to add back)
+        MANIFEST="engine/browser/installer/package-manifest.in"
+        if ! grep -q '@RESPATH@/distribution/' "$$MANIFEST"; then
+          printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$$MANIFEST"
+          echo "Added distribution/** to package manifest"
         fi
 
         # --- Package ---
@@ -211,6 +236,10 @@ steps:
       - 'SURFER_PLATFORM=linux'
       - 'RUSTUP_TOOLCHAIN=1.83'
       - 'CARGO_INCREMENTAL=0'
+      # --- sccache with GCS backend ---
+      - 'SCCACHE_GCS_BUCKET=nevoflux-build-cache'
+      - 'SCCACHE_GCS_RW_MODE=READ_WRITE'
+      - 'SCCACHE_IDLE_TIMEOUT=0'
     args:
       - '-c'
       - |
@@ -273,6 +302,15 @@ steps:
           echo "docs/reference/templates/ not found, skipping soul templates."
         fi
 
+        # --- Copy built-in skills ---
+        if [ -d "docs/reference/skills" ]; then
+          mkdir -p build/AppDir/distribution/bin/defaults/skills
+          cp -r docs/reference/skills/* build/AppDir/distribution/bin/defaults/skills/
+          echo "Built-in skills copied."
+        else
+          echo "docs/reference/skills/ not found, skipping skills."
+        fi
+
         # --- Insert API Keys ---
         mkdir -p $$HOME/.zen-keys
         echo "$$ZEN_SAFEBROWSING_KEY" > $$HOME/.zen-keys/safebrowsing.dat
@@ -294,7 +332,10 @@ steps:
         export ZEN_CROSS_COMPILING=1
         npm run build
 
-        # --- Inject distribution files into build output (before packaging) ---
+        # --- sccache stats ---
+        sccache --show-stats || true
+
+        # --- Inject distribution files into build output ---
         OBJ_DIR="engine/obj-$${ARCH}-pc-linux-gnu"
         if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
           mkdir -p "$$OBJ_DIR/dist/bin/distribution"
@@ -302,6 +343,13 @@ steps:
           echo "Distribution files injected into $$OBJ_DIR/dist/bin/distribution/"
         else
           echo "Distribution files or build output not found, skipping injection."
+        fi
+
+        # --- Re-add distribution to package manifest ---
+        MANIFEST="engine/browser/installer/package-manifest.in"
+        if ! grep -q '@RESPATH@/distribution/' "$$MANIFEST"; then
+          printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$$MANIFEST"
+          echo "Added distribution/** to package manifest"
         fi
 
         # --- Package ---
@@ -334,7 +382,7 @@ steps:
       - '-c'
       - |
         set -eux
-        ARCH="x86_64"
+        export ARCH="x86_64"
         UPINFO="gh-releases-zsync|dorisgyl|nevoflux|latest|nevoflux-$${ARCH}.AppImage.zsync"
 
         APPDIR=build/AppDir
@@ -402,7 +450,7 @@ steps:
       - '-c'
       - |
         set -eux
-        ARCH="aarch64"
+        export ARCH="aarch64"
         UPINFO="gh-releases-zsync|dorisgyl|nevoflux|latest|nevoflux-$${ARCH}.AppImage.zsync"
 
         APPDIR=build/AppDir
@@ -491,5 +539,7 @@ steps:
 
 timeout: '18000s'
 options:
-  machineType: 'E2_HIGHCPU_32'
+  pool:
+    name: 'projects/$PROJECT_ID/locations/us-west1/workerPools/nevoflux-build-pool'
+  diskSizeGb: 300
   logging: CLOUD_LOGGING_ONLY

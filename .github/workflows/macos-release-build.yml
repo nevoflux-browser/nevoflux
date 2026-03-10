@@ -246,6 +246,17 @@ jobs:
             echo "::warning::docs/reference/templates/ not found, skipping soul templates"
           fi
 
+      - name: Copy built-in skills to distribution
+        run: |
+          if [ -d "docs/reference/skills" ]; then
+            mkdir -p build/AppDir/distribution/bin/defaults/skills
+            cp -r docs/reference/skills/* build/AppDir/distribution/bin/defaults/skills/
+            echo "Built-in skills copied to distribution:"
+            find build/AppDir/distribution/bin/defaults/skills -type f | head -20
+          else
+            echo "::warning::docs/reference/skills/ not found, skipping skills"
+          fi
+
       - name: Verify distribution essentials
         run: |
           set -e
@@ -341,18 +352,31 @@ jobs:
           set -ex
           ARCH="${{ matrix.arch }}"
           OBJ_DIR="engine/obj-${ARCH}-apple-darwin"
-          STAGING_APP=$(find "$OBJ_DIR/dist" -maxdepth 3 -name "*.app" -type d 2>/dev/null | head -1)
+
+          # Find the main browser .app bundle.
+          # dist/bin/ contains helper apps (plugin-container.app, updater.app) — skip it.
+          # The main browser .app is under dist/<binaryName>/ (e.g. dist/nevoflux/Nightly.app).
+          STAGING_APP=$(find "$OBJ_DIR/dist" -maxdepth 3 -name "*.app" -type d \
+            ! -path "*/dist/bin/*" \
+            2>/dev/null | head -1)
+
           if [ -d "build/AppDir/distribution" ] && [ -n "$STAGING_APP" ]; then
+            echo "Found browser app bundle: $STAGING_APP"
             mkdir -p "$STAGING_APP/Contents/Resources/distribution"
             cp -r build/AppDir/distribution/* "$STAGING_APP/Contents/Resources/distribution/"
+            echo "Distribution contents:"
             ls -la "$STAGING_APP/Contents/Resources/distribution/"
+
             # Re-create DMG with distribution files included
             rm -f dist/*.dmg
-            STAGING_PARENT=$(dirname "$STAGING_APP")
-            hdiutil create -volname "NevoFlux" -srcfolder "$STAGING_PARENT" -ov -format UDZO "dist/nevoflux-${ARCH}.dmg"
+            hdiutil create -volname "NevoFlux" \
+              -srcfolder "$(dirname "$STAGING_APP")" \
+              -ov -format UDZO "dist/nevoflux-${ARCH}.dmg"
             echo "DMG re-created with distribution files"
           else
             echo "::warning::Distribution files or staging app not found, skipping injection"
+            echo "Available .app directories:"
+            find "$OBJ_DIR/dist" -maxdepth 3 -name "*.app" -type d 2>/dev/null || true
           fi
 
       - name: Rename artifacts

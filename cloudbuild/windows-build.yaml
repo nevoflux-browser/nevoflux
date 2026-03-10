@@ -130,6 +130,10 @@ steps:
       - 'ZEN_GA_GENERATE_PROFILE=1'
       - 'CARGO_INCREMENTAL=0'
       - 'CARGO_TERM_COLOR=always'
+      # --- sccache with GCS backend ---
+      - 'SCCACHE_GCS_BUCKET=nevoflux-build-cache'
+      - 'SCCACHE_GCS_RW_MODE=READ_WRITE'
+      - 'SCCACHE_IDLE_TIMEOUT=0'
     secretEnv:
       - GITHUB_TOKEN
       - ZEN_SAFEBROWSING_KEY
@@ -178,6 +182,12 @@ steps:
         mkdir -p build/AppDir/distribution/bin/defaults/soul
         if [ -d "docs/reference/templates" ]; then
           cp docs/reference/templates/*.md build/AppDir/distribution/bin/defaults/soul/ || true
+        fi
+
+        # ---- built-in skills ----
+        if [ -d "docs/reference/skills" ]; then
+          mkdir -p build/AppDir/distribution/bin/defaults/skills
+          cp -r docs/reference/skills/* build/AppDir/distribution/bin/defaults/skills/
         fi
 
         # ---- safebrowsing key ----
@@ -236,7 +246,10 @@ steps:
         export ZEN_RELEASE=1
         npm run build
 
-        # ---- inject distribution files into build output (before packaging) ----
+        # ---- sccache stats ----
+        sccache --show-stats || true
+
+        # ---- inject distribution files into build output ----
         OBJ_DIR="engine/obj-x86_64-pc-windows-msvc"
         if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
           mkdir -p "$$OBJ_DIR/dist/bin/distribution"
@@ -244,6 +257,13 @@ steps:
           echo "Distribution files injected into $$OBJ_DIR/dist/bin/distribution/"
         else
           echo "Distribution files or build output not found, skipping injection."
+        fi
+
+        # ---- re-add distribution to package manifest ----
+        MANIFEST="engine/browser/installer/package-manifest.in"
+        if ! grep -q '@RESPATH@/distribution/' "$$MANIFEST"; then
+          printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$$MANIFEST"
+          echo "Added distribution/** to package manifest"
         fi
 
         # ---- package ----
@@ -305,6 +325,10 @@ steps:
       - 'ZEN_CROSS_COMPILING=1'
       - 'CARGO_INCREMENTAL=0'
       - 'CARGO_TERM_COLOR=always'
+      # --- sccache with GCS backend ---
+      - 'SCCACHE_GCS_BUCKET=nevoflux-build-cache'
+      - 'SCCACHE_GCS_RW_MODE=READ_WRITE'
+      - 'SCCACHE_IDLE_TIMEOUT=0'
     secretEnv:
       - GITHUB_TOKEN
       - ZEN_SAFEBROWSING_KEY
@@ -371,6 +395,12 @@ steps:
           cp docs/reference/templates/*.md build/AppDir/distribution/bin/defaults/soul/ || true
         fi
 
+        # ---- built-in skills ----
+        if [ -d "docs/reference/skills" ]; then
+          mkdir -p build/AppDir/distribution/bin/defaults/skills
+          cp -r docs/reference/skills/* build/AppDir/distribution/bin/defaults/skills/
+        fi
+
         # ---- safebrowsing key ----
         mkdir -p $$HOME/.zen-keys
         echo "$$ZEN_SAFEBROWSING_KEY" > $$HOME/.zen-keys/safebrowsing.dat
@@ -431,7 +461,10 @@ steps:
         export ZEN_RELEASE=1
         npm run build
 
-        # ---- inject distribution files into build output (before packaging) ----
+        # ---- sccache stats ----
+        sccache --show-stats || true
+
+        # ---- inject distribution files into build output ----
         OBJ_DIR="engine/obj-x86_64-pc-windows-msvc"
         if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
           mkdir -p "$$OBJ_DIR/dist/bin/distribution"
@@ -439,6 +472,13 @@ steps:
           echo "Distribution files injected into $$OBJ_DIR/dist/bin/distribution/"
         else
           echo "Distribution files or build output not found, skipping injection."
+        fi
+
+        # ---- re-add distribution to package manifest ----
+        MANIFEST="engine/browser/installer/package-manifest.in"
+        if ! grep -q '@RESPATH@/distribution/' "$$MANIFEST"; then
+          printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$$MANIFEST"
+          echo "Added distribution/** to package manifest"
         fi
 
         # ---- package ----
@@ -469,6 +509,10 @@ steps:
       - 'ZEN_CROSS_COMPILING=1'
       - 'CARGO_INCREMENTAL=0'
       - 'CARGO_TERM_COLOR=always'
+      # --- sccache with GCS backend ---
+      - 'SCCACHE_GCS_BUCKET=nevoflux-build-cache'
+      - 'SCCACHE_GCS_RW_MODE=READ_WRITE'
+      - 'SCCACHE_IDLE_TIMEOUT=0'
     secretEnv:
       - GITHUB_TOKEN
       - ZEN_SAFEBROWSING_KEY
@@ -526,6 +570,12 @@ steps:
         mkdir -p build/AppDir/distribution/bin/defaults/soul
         if [ -d "docs/reference/templates" ]; then
           cp docs/reference/templates/*.md build/AppDir/distribution/bin/defaults/soul/ || true
+        fi
+
+        # ---- built-in skills ----
+        if [ -d "docs/reference/skills" ]; then
+          mkdir -p build/AppDir/distribution/bin/defaults/skills
+          cp -r docs/reference/skills/* build/AppDir/distribution/bin/defaults/skills/
         fi
 
         # ---- safebrowsing key ----
@@ -587,7 +637,10 @@ steps:
         export ZEN_RELEASE=1
         npm run build
 
-        # ---- inject distribution files into build output (before packaging) ----
+        # ---- sccache stats ----
+        sccache --show-stats || true
+
+        # ---- inject distribution files into build output ----
         OBJ_DIR="engine/obj-aarch64-pc-windows-msvc"
         if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
           mkdir -p "$$OBJ_DIR/dist/bin/distribution"
@@ -595,6 +648,13 @@ steps:
           echo "Distribution files injected into $$OBJ_DIR/dist/bin/distribution/"
         else
           echo "Distribution files or build output not found, skipping injection."
+        fi
+
+        # ---- re-add distribution to package manifest ----
+        MANIFEST="engine/browser/installer/package-manifest.in"
+        if ! grep -q '@RESPATH@/distribution/' "$$MANIFEST"; then
+          printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$$MANIFEST"
+          echo "Added distribution/** to package manifest"
         fi
 
         # ---- package ----
@@ -637,5 +697,7 @@ steps:
 
 timeout: '18000s'
 options:
-  machineType: 'E2_HIGHCPU_32'
+  pool:
+    name: 'projects/$PROJECT_ID/locations/us-west1/workerPools/nevoflux-build-pool'
+  diskSizeGb: 300
   logging: CLOUD_LOGGING_ONLY

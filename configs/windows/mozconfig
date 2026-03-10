@@ -22,9 +22,12 @@ if test "$ZEN_CROSS_COMPILING"; then
   fi
 fi
 
-# We wrongly detect ccache on windows, which leads to build failures.
-# This line should be removed once the detection is fixed.
-ac_add_options --without-ccache
+# On Windows cross-compile, ccache auto-detection is broken and causes build
+# failures. However, when sccache is explicitly configured (via SCCACHE_GCS_BUCKET),
+# we want to allow the common mozconfig's sccache block to take effect.
+if test -z "$SCCACHE_GCS_BUCKET"; then
+  ac_add_options --without-ccache
+fi
 
 ac_add_options --disable-maintenance-service
 ac_add_options --disable-bits-download

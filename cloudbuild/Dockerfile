@@ -136,6 +136,15 @@ RUN curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
   && gcloud --version
 
 # ---------------------------------------------------------------------------
+# sccache (compile cache with GCS backend)
+# ---------------------------------------------------------------------------
+RUN SCCACHE_VERSION="v0.9.1" \
+  && curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+    | tar xz --strip-components=1 -C /usr/local/bin/ "sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl/sccache" \
+  && chmod +x /usr/local/bin/sccache \
+  && sccache --version
+
+# ---------------------------------------------------------------------------
 # @zen-browser/surfer (global npm package)
 # ---------------------------------------------------------------------------
 RUN npm install -g @zen-browser/surfer
