@@ -411,6 +411,27 @@ const Settings = {
     modelGroup.appendChild(modelHelp);
     form.appendChild(modelGroup);
 
+    // Base URL (hidden for CLI providers)
+    const baseUrlGroup = document.createElement('div');
+    baseUrlGroup.className = 'mcp-form-group';
+    baseUrlGroup.id = 'llm-modal-baseurl-group';
+    const baseUrlLabel = document.createElement('label');
+    baseUrlLabel.className = 'mcp-form-label';
+    baseUrlLabel.textContent = 'Base URL';
+    baseUrlGroup.appendChild(baseUrlLabel);
+    const baseUrlInput = document.createElement('input');
+    baseUrlInput.className = 'mcp-form-input';
+    baseUrlInput.type = 'text';
+    baseUrlInput.id = 'llm-modal-baseurl';
+    baseUrlInput.placeholder = 'Leave empty for default endpoint';
+    baseUrlGroup.appendChild(baseUrlInput);
+    const baseUrlHelp = document.createElement('div');
+    baseUrlHelp.className = 'mcp-form-help';
+    baseUrlHelp.id = 'llm-modal-baseurl-help';
+    baseUrlHelp.textContent = 'Custom API endpoint for proxy or compatible services.';
+    baseUrlGroup.appendChild(baseUrlHelp);
+    form.appendChild(baseUrlGroup);
+
     // Set as active checkbox
     const activeGroup = document.createElement('div');
     activeGroup.className = 'mcp-form-group llm-active-group';
@@ -471,9 +492,14 @@ const Settings = {
     document.getElementById('llm-modal-apikey').value = '';
     document.getElementById('llm-modal-apikey').placeholder = 'Enter API key...';
     document.getElementById('llm-modal-model').value = '';
+    document.getElementById('llm-modal-baseurl').value = '';
     document.getElementById('llm-modal-set-active').checked = false;
     document.getElementById('llm-modal-status').textContent = '';
     document.getElementById('llm-modal-status').className = 'llm-modal-status';
+
+    // Hide base URL for CLI providers (they don't support it)
+    const baseUrlGroup = document.getElementById('llm-modal-baseurl-group');
+    baseUrlGroup.style.display = provider.type === 'cli' ? 'none' : '';
 
     // Load current config from agent
     try {
@@ -485,6 +511,9 @@ const Settings = {
         }
         if (data.model) {
           document.getElementById('llm-modal-model').value = data.model;
+        }
+        if (data.base_url) {
+          document.getElementById('llm-modal-baseurl').value = data.base_url;
         }
         document.getElementById('llm-modal-set-active').checked = !!data.active;
         document.getElementById('llm-modal-model-help').textContent =
@@ -516,11 +545,14 @@ const Settings = {
 
     const apiKey = document.getElementById('llm-modal-apikey').value.trim();
     const model = document.getElementById('llm-modal-model').value.trim();
+    const baseUrl = document.getElementById('llm-modal-baseurl').value.trim();
     const setActive = document.getElementById('llm-modal-set-active').checked;
 
     const params = { provider: providerId, set_active: setActive };
     if (apiKey) params.api_key = apiKey;
     if (model !== undefined) params.model = model;
+    // Always send base_url so it can be cleared (empty string = remove)
+    params.base_url = baseUrl;
 
     saveBtn.disabled = true;
     statusEl.textContent = 'Saving...';
