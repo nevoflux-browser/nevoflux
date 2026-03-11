@@ -1,0 +1,334 @@
+# Cloud Build - Linux aarch64 only (rebuild without re-building x86_64)
+#
+# Use when x86_64 already succeeded and only aarch64 needs rebuilding.
+#
+# Trigger:
+#   gcloud builds submit --config=cloudbuild/linux-aarch64-build.yaml \
+#     --substitutions=TAG_NAME=v0.1.1 --region=us-west1
+
+substitutions:
+  _RELEASE_BRANCH: 'release'
+  _GITHUB_REPO: 'dorisgyl/nevoflux'
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/github-deploy-token/versions/latest
+      env: GITHUB_TOKEN
+    - versionName: projects/$PROJECT_ID/secrets/zen-safebrowsing-key/versions/latest
+      env: ZEN_SAFEBROWSING_KEY
+
+steps:
+  # ===================================================================
+  # 1. setup — git config, npm ci, surfer ci, download source + langpacks
+  # ===================================================================
+  - id: setup
+    name: 'gcr.io/$PROJECT_ID/nevoflux-builder:latest'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -ex
+
+        # Git init (GCB uploads source as tarball, surfer requires a git repo)
+        git config --global user.email "nevoflux-bot@users.noreply.github.com"
+        git config --global user.name "NevoFlux Bot"
+        if [ ! -d ".git" ]; then
+          git init
+          git add -A
+          git commit -m "GCB build init"
+        fi
+
+        # npm install
+        npm ci
+
+        # Surfer CI setup
+        TAG_VALUE="${TAG_NAME}"
+        DISPLAY_VERSION="$${TAG_VALUE#v}"
+        echo "Display version: $${DISPLAY_VERSION}"
+        if [ -n "$${DISPLAY_VERSION}" ]; then
+          npm run surfer -- ci --brand ${_RELEASE_BRANCH} --display-version "$${DISPLAY_VERSION}"
+        else
+          echo "WARNING: TAG_NAME not set, running surfer ci without --display-version"
+          npm run surfer -- ci --brand ${_RELEASE_BRANCH}
+        fi
+
+        # Download Firefox source with retries
+        for attempt in 1 2 3 4 5; do
+          npm run download && break
+          if [ $$attempt -lt 5 ]; then
+            echo "Download attempt $$attempt/5 failed. Retrying in $$((attempt * 15))s..."
+            sleep $$((attempt * 15))
+          else
+            echo "Download failed after 5 attempts"
+            exit 1
+          fi
+        done
+
+        # Download language packs
+        for attempt in 1 2 3 4 5; do
+          sh scripts/download-language-packs.sh && break
+          if [ $$attempt -lt 5 ]; then
+            echo "Langpack download attempt $$attempt/5 failed. Retrying in $$((attempt * 15))s..."
+            sleep $$((attempt * 15))
+          else
+            echo "Langpack download failed after 5 attempts"
+            exit 1
+          fi
+        done
+
+  # ===================================================================
+  # 2. linux-aarch64 — import, build, package
+  # ===================================================================
+  - id: linux-aarch64
+    name: 'gcr.io/$PROJECT_ID/nevoflux-builder:latest'
+    waitFor: ['setup']
+    entrypoint: bash
+    secretEnv: ['GITHUB_TOKEN', 'ZEN_SAFEBROWSING_KEY']
+    env:
+      - 'SURFER_COMPAT=aarch64'
+      - 'SURFER_PLATFORM=linux'
+      - 'RUSTUP_TOOLCHAIN=1.83'
+      - 'CARGO_INCREMENTAL=0'
+      # --- sccache with GCS backend ---
+      - 'SCCACHE_GCS_BUCKET=nevoflux-build-cache'
+      - 'SCCACHE_GCS_RW_MODE=READ_WRITE'
+      - 'SCCACHE_IDLE_TIMEOUT=0'
+    args:
+      - '-c'
+      - |
+        set -ex
+        ARCH="aarch64"
+
+        # --- Import ---
+        npm run import
+
+        # --- Download NevoFlux Agent binary ---
+        PLATFORM="linux"
+        ARCHIVE_NAME="nevoflux-agent-$${PLATFORM}-$${ARCH}.tar.gz"
+        mkdir -p /tmp/agent/
+        export GH_TOKEN="$$GITHUB_TOKEN"
+
+        LATEST_TAG=$$(gh release view --repo dorisgyl/nevoflux-agent --json tagName --jq '.tagName' 2>/dev/null || true)
+        if [ -n "$$LATEST_TAG" ]; then
+          echo "Latest agent release tag: $$LATEST_TAG"
+          ASSET_EXISTS=$$(gh release view "$$LATEST_TAG" --repo dorisgyl/nevoflux-agent --json assets --jq ".assets[].name" 2>/dev/null | grep -c "^$${ARCHIVE_NAME}$$" || true)
+          if [ "$$ASSET_EXISTS" != "0" ]; then
+            for attempt in 1 2 3; do
+              gh release download "$$LATEST_TAG" \
+                --repo dorisgyl/nevoflux-agent \
+                --pattern "$${ARCHIVE_NAME}" \
+                --dir /tmp/agent/ --clobber && break
+              if [ $$attempt -lt 3 ]; then
+                echo "Agent download attempt $$attempt/3 failed. Retrying..."
+                sleep $$((attempt * 10))
+              else
+                echo "Agent binary download failed after 3 attempts, continuing..."
+              fi
+            done
+          else
+            echo "Asset $${ARCHIVE_NAME} not found in release $${LATEST_TAG}, skipping."
+          fi
+        else
+          echo "No releases found in nevoflux-agent repo, skipping agent download."
+        fi
+
+        if [ -f "/tmp/agent/$${ARCHIVE_NAME}" ]; then
+          mkdir -p build/AppDir/distribution/bin/
+          tar -xzf "/tmp/agent/$${ARCHIVE_NAME}" -C /tmp/agent/
+          mv /tmp/agent/nevoflux-agent build/AppDir/distribution/bin/nevoflux-agent
+          chmod +x build/AppDir/distribution/bin/nevoflux-agent
+          echo "Agent binary installed."
+          if [ -d "/tmp/agent/models" ]; then
+            cp -r /tmp/agent/models build/AppDir/distribution/bin/models
+            echo "Models directory installed."
+          fi
+        else
+          echo "No agent binary available for $${PLATFORM}-$${ARCH}, build continues without it."
+        fi
+
+        # --- Copy soul templates ---
+        mkdir -p build/AppDir/distribution/bin/defaults/soul
+        if [ -d "docs/reference/templates" ]; then
+          cp docs/reference/templates/*.md build/AppDir/distribution/bin/defaults/soul/
+          echo "Soul templates copied."
+        else
+          echo "docs/reference/templates/ not found, skipping soul templates."
+        fi
+
+        # --- Copy built-in skills ---
+        if [ -d "docs/reference/skills" ]; then
+          mkdir -p build/AppDir/distribution/bin/defaults/skills
+          cp -r docs/reference/skills/* build/AppDir/distribution/bin/defaults/skills/
+          echo "Built-in skills copied."
+        else
+          echo "docs/reference/skills/ not found, skipping skills."
+        fi
+
+        # --- Insert API Keys ---
+        mkdir -p $$HOME/.zen-keys
+        echo "$$ZEN_SAFEBROWSING_KEY" > $$HOME/.zen-keys/safebrowsing.dat
+
+        # --- Bootstrap ---
+        cd engine
+        export SURFER_PLATFORM="linux"
+        ./mach --no-interactive bootstrap --application-choice browser
+        cd ..
+
+        # --- Pin Rust version after bootstrap ---
+        RUST_VER=$$(cat .rust-toolchain)
+        rustup default $$RUST_VER
+        rustup target add --toolchain $$RUST_VER aarch64-unknown-linux-gnu
+
+        # --- Build ---
+        ulimit -n 4096
+        export ZEN_RELEASE=1
+        export ZEN_CROSS_COMPILING=1
+        npm run build
+
+        # --- sccache stats ---
+        sccache --show-stats || true
+
+        # --- Inject distribution files into build output ---
+        OBJ_DIR=$$(ls -d engine/obj-$${ARCH}-*-linux-gnu 2>/dev/null | head -1)
+        if [ -z "$$OBJ_DIR" ]; then
+          echo "ERROR: No obj dir found for $${ARCH}"
+          exit 1
+        fi
+        echo "Detected obj dir: $$OBJ_DIR"
+        if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
+          mkdir -p "$$OBJ_DIR/dist/bin/distribution"
+          cp -r build/AppDir/distribution/* "$$OBJ_DIR/dist/bin/distribution/"
+          echo "Distribution files injected into $$OBJ_DIR/dist/bin/distribution/"
+        else
+          echo "Distribution files or build output not found, skipping injection."
+        fi
+
+        # --- Re-add distribution to package manifest ---
+        MANIFEST="engine/browser/installer/package-manifest.in"
+        if ! grep -q '@RESPATH@/distribution/' "$$MANIFEST"; then
+          printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$$MANIFEST"
+          echo "Added distribution/** to package manifest"
+        fi
+
+        # --- Package ---
+        export ZEN_GA_DISABLE_PGO=true
+        npm run package
+
+        # --- Remove API Keys ---
+        rm -rf $$HOME/.zen-keys
+
+        # --- Stage artifacts ---
+        mkdir -p /workspace/artifacts
+        mv dist/nevoflux-*.tar.xz "/workspace/artifacts/nevoflux.linux-$${ARCH}.tar.xz"
+        mv dist/output.mar "/workspace/artifacts/linux-aarch64.mar"
+        # Stage update manifests
+        if [ -d "dist/update" ]; then
+          mkdir -p /workspace/update_manifests/aarch64
+          cp -r dist/update/* /workspace/update_manifests/aarch64/
+        fi
+
+        echo "linux-aarch64 build complete."
+
+  # ===================================================================
+  # 3. appimage-aarch64 — extract tarball, create AppImage
+  # ===================================================================
+  - id: appimage-aarch64
+    name: 'gcr.io/$PROJECT_ID/nevoflux-builder:latest'
+    waitFor: ['linux-aarch64']
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -eux
+        export ARCH="aarch64"
+        UPINFO="gh-releases-zsync|dorisgyl|nevoflux|latest|nevoflux-$${ARCH}.AppImage.zsync"
+
+        APPDIR=build/AppDir
+
+        # Setup branding icons
+        rm -f $$APPDIR/.DirIcon || true
+        cp configs/branding/release/logo128.png $$APPDIR/usr/share/icons/hicolor/128x128/apps/zen.png
+        cp configs/branding/release/logo128.png $$APPDIR/zen.png
+        ln -sf zen.png $$APPDIR/.DirIcon
+
+        # Extract tarball into AppDir
+        tar -xf /workspace/artifacts/nevoflux.linux-$${ARCH}.tar.xz
+        cp -a nevoflux/* $$APPDIR/
+        rm -rf nevoflux
+
+        # Download appimagetool (always x86_64 — runs on the build host)
+        for attempt in 1 2 3 4 5; do
+          wget "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage" && break
+          if [ $$attempt -lt 5 ]; then
+            echo "appimagetool download attempt $$attempt/5 failed. Retrying..."
+            sleep $$((attempt * 15))
+          else
+            echo "appimagetool download failed after 5 attempts"
+            exit 1
+          fi
+        done
+
+        # Download uruntime for aarch64
+        for attempt in 1 2 3 4 5; do
+          wget "https://github.com/VHSgunzo/uruntime/releases/latest/download/uruntime-appimage-squashfs-lite-$${ARCH}" && break
+          if [ $$attempt -lt 5 ]; then
+            echo "uruntime download attempt $$attempt/5 failed. Retrying..."
+            sleep $$((attempt * 15))
+          else
+            echo "uruntime download failed after 5 attempts"
+            exit 1
+          fi
+        done
+
+        chmod +x *.AppImage
+        chmod +x ./uruntime-appimage-squashfs-lite-"$$ARCH"
+        chmod +x ./build/AppDir/AppRun
+
+        # Keep uruntime mountpoint for faster launch
+        sed -i 's|URUNTIME_MOUNT=[0-9]|URUNTIME_MOUNT=0|' ./uruntime-appimage-squashfs-lite-"$$ARCH"
+
+        # Build AppImage
+        ./appimagetool-x86_64.AppImage -u "$$UPINFO" "$$APPDIR" nevoflux-"$$ARCH".AppImage \
+          --runtime-file ./uruntime-appimage-squashfs-lite-"$$ARCH"
+
+        # Stage AppImage artifacts
+        cp nevoflux-$${ARCH}.AppImage /workspace/artifacts/
+        cp nevoflux-$${ARCH}.AppImage.zsync /workspace/artifacts/ || true
+
+        echo "appimage-aarch64 complete."
+
+  # ===================================================================
+  # 4. upload-linux — upload all artifacts to GitHub release + GCS
+  # ===================================================================
+  - id: upload-linux
+    name: 'gcr.io/$PROJECT_ID/nevoflux-builder:latest'
+    waitFor: ['appimage-aarch64']
+    entrypoint: bash
+    secretEnv: ['GITHUB_TOKEN']
+    args:
+      - '-c'
+      - |
+        set -ex
+
+        echo "Artifacts to upload:"
+        ls -lh /workspace/artifacts/
+
+        # Upload artifacts to GitHub draft release
+        bash cloudbuild/scripts/upload-to-release.sh \
+          "${TAG_NAME}" "${_GITHUB_REPO}" "$$GITHUB_TOKEN"
+
+        # Upload update manifests to GCS
+        if [ -d "/workspace/update_manifests" ]; then
+          echo "Uploading update manifests to GCS..."
+          gsutil -m cp -r /workspace/update_manifests/* \
+            "gs://$${PROJECT_ID}-updates/linux/" || \
+            echo "GCS upload failed (non-fatal), manifests are in artifacts."
+        fi
+
+        echo "Linux upload complete."
+
+timeout: '14400s'
+options:
+  pool:
+    name: 'projects/$PROJECT_ID/locations/us-west1/workerPools/nevoflux-build-pool'
+  logging: CLOUD_LOGGING_ONLY
