@@ -22,12 +22,10 @@ if test "$ZEN_CROSS_COMPILING"; then
   fi
 fi
 
-# On Windows cross-compile, ccache auto-detection is broken and causes build
-# failures. However, when sccache is explicitly configured (via SCCACHE_GCS_BUCKET),
-# we want to allow the common mozconfig's sccache block to take effect.
-if test -z "$SCCACHE_GCS_BUCKET"; then
-  ac_add_options --without-ccache
-fi
+# On Windows cross-compile, sccache wrapping clang-cl through wine is broken
+# (clang-cl gets invoked without input files). Always disable ccache/sccache
+# for C/C++ compilation. Rust still benefits from sccache via RUSTC_WRAPPER=sccache.
+ac_add_options --without-ccache
 
 ac_add_options --disable-maintenance-service
 ac_add_options --disable-bits-download
