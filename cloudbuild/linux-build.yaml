@@ -27,9 +27,14 @@ steps:
       - |
         set -ex
 
-        # Git config
+        # Git init (GCB uploads source as tarball, surfer requires a git repo)
         git config --global user.email "nevoflux-bot@users.noreply.github.com"
         git config --global user.name "NevoFlux Bot"
+        if [ ! -d ".git" ]; then
+          git init
+          git add -A
+          git commit -m "GCB build init"
+        fi
 
         # npm install
         npm ci
