@@ -20,17 +20,25 @@ sedi() {
 echo "Applying nevoflux patches to src/zen..."
 
 # 1. Apply all .nfpatch files (using .nfpatch extension to avoid surfer scanning)
+#    Patch paths are relative to project root (e.g., src/zen/common/jar.inc.mn),
+#    so we apply from ROOT_DIR. In non-git environments (Cloud Build tarball uploads),
+#    fall back to the patch command.
 find "${NEVOFLUX_DIR}/patches" -type f -name "*.nfpatch" 2> /dev/null | while read -r patch_file; do
   echo "Applying: $patch_file"
   # Check if patch is already applied (idempotent)
-  if (cd "${ZEN_DIR}" && git apply --check --reverse --ignore-whitespace "$patch_file") 2> /dev/null; then
+  if (cd "${ROOT_DIR}" && git apply --check --reverse --ignore-whitespace "$patch_file") 2> /dev/null; then
     echo "  Already applied, skipping."
     continue
   fi
-  # Apply the patch in the zen directory
-  (cd "${ZEN_DIR}" && git apply --ignore-whitespace "$patch_file") || {
-    echo "WARN: Failed to apply $patch_file, trying with --3way"
-    (cd "${ZEN_DIR}" && git apply --3way "$patch_file")
+  # Apply from project root where patch paths match
+  if (cd "${ROOT_DIR}" && git apply --ignore-whitespace "$patch_file") 2> /dev/null; then
+    continue
+  fi
+  # Fall back to patch command for non-git environments (e.g., Cloud Build tarball)
+  echo "  git apply failed, falling back to patch command"
+  (cd "${ROOT_DIR}" && patch -p1 --forward --ignore-whitespace < "$patch_file") || {
+    echo "ERROR: Failed to apply $patch_file"
+    exit 1
   }
 done
 
