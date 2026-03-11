@@ -186,10 +186,26 @@ if [ -f "${PACKAGE_MANIFEST}" ]; then
   fi
 fi
 
-# 13. Package nevoflux-agent extension as XPI
+# 13. Fix clang-cl cross-compilation: relativize source paths in C/C++ rules
+#     clang-cl interprets Unix absolute paths (e.g. /workspace/...) as MSVC flags
+#     (the /w prefix looks like a compiler flag). The assembly rule already uses
+#     $(call relativize,$<) but C/C++ rules pass raw $< to the compiler.
+#     The relativize function is a no-op when WINE is not defined.
+RULES_MK="${ENGINE_DIR}/config/rules.mk"
+if [ -f "${RULES_MK}" ]; then
+  if ! grep -q 'COMPILE_C.*relativize' "${RULES_MK}"; then
+    echo "Patching rules.mk: relativize source paths for clang-cl cross-compile..."
+    # Replace trailing $< with $(call relativize,$<) on lines containing COMPILE_C
+    # (matches COMPILE_CFLAGS, COMPILE_CXXFLAGS, COMPILE_CMFLAGS, COMPILE_CMMFLAGS)
+    sedi '/COMPILE_C/s/\$<$/$(call relativize,$<)/' "${RULES_MK}"
+  fi
+fi
+
+# 14. Package nevoflux-agent extension as XPI
 if [ -f "${ROOT_DIR}/scripts/package-extension.sh" ]; then
   echo "Packaging nevoflux-agent extension..."
   bash "${ROOT_DIR}/scripts/package-extension.sh"
 fi
+
 
 echo "All nevoflux patches applied successfully."
