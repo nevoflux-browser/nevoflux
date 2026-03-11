@@ -135,10 +135,12 @@ steps:
       - 'ZEN_GA_GENERATE_PROFILE=1'
       - 'CARGO_INCREMENTAL=0'
       - 'CARGO_TERM_COLOR=always'
-      # --- sccache with GCS backend ---
+      # --- sccache: Rust only (C/C++ via clang-cl+wine is incompatible) ---
       - 'SCCACHE_GCS_BUCKET=nevoflux-build-cache'
       - 'SCCACHE_GCS_RW_MODE=READ_WRITE'
       - 'SCCACHE_IDLE_TIMEOUT=0'
+      - 'RUSTC_WRAPPER=sccache'
+      - 'SCCACHE_GHA_ENABLED=false'
     secretEnv:
       - GITHUB_TOKEN
       - ZEN_SAFEBROWSING_KEY
@@ -330,10 +332,12 @@ steps:
       - 'ZEN_CROSS_COMPILING=1'
       - 'CARGO_INCREMENTAL=0'
       - 'CARGO_TERM_COLOR=always'
-      # --- sccache with GCS backend ---
+      # --- sccache: Rust only (C/C++ via clang-cl+wine is incompatible) ---
       - 'SCCACHE_GCS_BUCKET=nevoflux-build-cache'
       - 'SCCACHE_GCS_RW_MODE=READ_WRITE'
       - 'SCCACHE_IDLE_TIMEOUT=0'
+      - 'RUSTC_WRAPPER=sccache'
+      - 'SCCACHE_GHA_ENABLED=false'
     secretEnv:
       - GITHUB_TOKEN
       - ZEN_SAFEBROWSING_KEY
@@ -514,10 +518,12 @@ steps:
       - 'ZEN_CROSS_COMPILING=1'
       - 'CARGO_INCREMENTAL=0'
       - 'CARGO_TERM_COLOR=always'
-      # --- sccache with GCS backend ---
+      # --- sccache: Rust only (C/C++ via clang-cl+wine is incompatible) ---
       - 'SCCACHE_GCS_BUCKET=nevoflux-build-cache'
       - 'SCCACHE_GCS_RW_MODE=READ_WRITE'
       - 'SCCACHE_IDLE_TIMEOUT=0'
+      - 'RUSTC_WRAPPER=sccache'
+      - 'SCCACHE_GHA_ENABLED=false'
     secretEnv:
       - GITHUB_TOKEN
       - ZEN_SAFEBROWSING_KEY
