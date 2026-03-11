@@ -1,0 +1,486 @@
+# Cloud Build - Windows Final Build (skip PGO stage 1)
+#
+# Use when pgo-stage1 already succeeded and only x86_64-final + aarch64 need rebuilding.
+#
+# Trigger:
+#   gcloud builds submit --config=cloudbuild/windows-final-build.yaml \
+#     --substitutions=TAG_NAME=v0.1.1 --region=us-west1
+
+substitutions:
+  _GITHUB_REPO: 'dorisgyl/nevoflux'
+  _RELEASE_BRANCH: 'release'
+  _MOZ_BUILD_DATE: ''
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/github-deploy-token/versions/latest
+      env: GITHUB_TOKEN
+    - versionName: projects/$PROJECT_ID/secrets/zen-safebrowsing-key/versions/latest
+      env: ZEN_SAFEBROWSING_KEY
+
+steps:
+  # ===================================================================
+  # 1. setup - git config, npm ci, surfer ci, download source + langpacks
+  # ===================================================================
+  - id: setup
+    name: 'gcr.io/$PROJECT_ID/nevoflux-builder:latest'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -ex
+
+        # ---- git init (GCB uploads source as tarball, surfer requires a git repo) ----
+        git config --global user.email "nevoflux-builder@nevoflux.com"
+        git config --global user.name "NevoFlux Cloud Build"
+        if [ ! -d ".git" ]; then
+          git init
+          git add -A
+          git commit -m "GCB build init"
+        fi
+
+        # ---- npm install ----
+        npm ci
+
+        # ---- surfer ci ----
+        TAG_VALUE="${TAG_NAME}"
+        DISPLAY_VERSION="$${TAG_VALUE#v}"
+        echo "Display version: $${DISPLAY_VERSION}"
+        if [ -n "$${DISPLAY_VERSION}" ]; then
+          npm run surfer -- ci --brand ${_RELEASE_BRANCH} --display-version "$${DISPLAY_VERSION}"
+        else
+          npm run surfer -- ci --brand ${_RELEASE_BRANCH}
+        fi
+
+        # ---- download Firefox source (with retries) ----
+        for attempt in 1 2 3 4 5; do
+          npm run download && break
+          if [ $$attempt -lt 5 ]; then
+            echo "Download attempt $$attempt/5 failed. Retrying in $$((attempt * 15))s..."
+            sleep $$((attempt * 15))
+          else
+            echo "ERROR: Download failed after 5 attempts"
+            exit 1
+          fi
+        done
+
+        # ---- download language packs (with retries) ----
+        for attempt in 1 2 3 4 5; do
+          sh scripts/download-language-packs.sh && break
+          if [ $$attempt -lt 5 ]; then
+            echo "Language pack download attempt $$attempt/5 failed. Retrying in $$((attempt * 15))s..."
+            sleep $$((attempt * 15))
+          else
+            echo "ERROR: Language pack download failed after 5 attempts"
+            exit 1
+          fi
+        done
+
+  # ===================================================================
+  # 2. windows-setup - Wine + VS2022 cross-compile toolchain
+  # ===================================================================
+  - id: windows-setup
+    name: 'gcr.io/$PROJECT_ID/nevoflux-builder:latest'
+    waitFor: ['setup']
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -ex
+
+        # If already present in the builder image, skip
+        if [ -d "$$HOME/win-cross/wine" ] && [ -d "$$HOME/win-cross/vs2022" ]; then
+          echo "win-cross already set up, skipping."
+          exit 0
+        fi
+
+        mkdir -p $$HOME/win-cross
+
+        # ---- Wine from Mozilla CI TaskCluster ----
+        for attempt in 1 2 3 4 5; do
+          aria2c "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-1.toolchains.v3.linux64-wine.latest/artifacts/public%2Fbuild%2Fwine.tar.zst" \
+            -o wine.tar.zst && break
+          if [ $$attempt -lt 5 ]; then
+            echo "Wine download attempt $$attempt/5 failed. Retrying in $$((attempt * 15))s..."
+            sleep $$((attempt * 15))
+          else
+            echo "ERROR: Wine download failed after 5 attempts"
+            exit 1
+          fi
+        done
+        # Ensure zstd is available for .tar.zst extraction
+        which zstd || apt-get update -qq && apt-get install -y -qq zstd
+        zstd -d wine.tar.zst -o wine.tar && tar xf wine.tar -C $$HOME/win-cross
+        rm -f wine.tar.zst wine.tar
+
+        # ---- VS2022 via mach python script ----
+        cd engine/
+        ./mach python --virtualenv build taskcluster/scripts/misc/get_vs.py build/vs/vs2022.yaml $$HOME/win-cross/vs2022
+
+  # ===================================================================
+  # 3. windows-x86_64-final - x86_64 build (no PGO)
+  # ===================================================================
+  - id: windows-x86_64-final
+    name: 'gcr.io/$PROJECT_ID/nevoflux-builder:latest'
+    waitFor: ['windows-setup']
+    entrypoint: bash
+    env:
+      - 'SURFER_COMPAT=x86_64'
+      - 'SURFER_PLATFORM=win32'
+      - 'ZEN_CROSS_COMPILING=1'
+      - 'ZEN_GA_DISABLE_PGO=true'
+      - 'CARGO_INCREMENTAL=0'
+      - 'CARGO_TERM_COLOR=always'
+      # --- sccache: Rust only (C/C++ via clang-cl+wine is incompatible) ---
+      - 'SCCACHE_GCS_BUCKET=nevoflux-build-cache'
+      - 'SCCACHE_GCS_RW_MODE=READ_WRITE'
+      - 'SCCACHE_IDLE_TIMEOUT=0'
+      - 'RUSTC_WRAPPER=sccache'
+      - 'SCCACHE_GHA_ENABLED=false'
+    secretEnv:
+      - GITHUB_TOKEN
+      - ZEN_SAFEBROWSING_KEY
+    args:
+      - '-c'
+      - |
+        set -ex
+
+        # ---- dos2unix mozconfig ----
+        dos2unix configs/windows/mozconfig
+
+        # ---- surfer ci (re-apply branding) ----
+        TAG_VALUE="${TAG_NAME}"
+        DISPLAY_VERSION="$${TAG_VALUE#v}"
+        if [ -n "$${DISPLAY_VERSION}" ]; then
+          npm run surfer -- ci --brand ${_RELEASE_BRANCH} --display-version "$${DISPLAY_VERSION}"
+        else
+          npm run surfer -- ci --brand ${_RELEASE_BRANCH}
+        fi
+
+        # ---- import ----
+        npm run import -- --verbose
+
+        # ---- download NevoFlux Agent binary (Windows x86_64) ----
+        PLATFORM="windows"
+        ARCH="x86_64"
+        ARCHIVE_NAME="nevoflux-agent-$${PLATFORM}-$${ARCH}.zip"
+        mkdir -p /tmp/agent/
+        export GH_TOKEN="$$GITHUB_TOKEN"
+
+        LATEST_TAG=$$(gh release view --repo ${_GITHUB_REPO}-agent --json tagName --jq '.tagName' 2>/dev/null || true)
+        if [ -n "$$LATEST_TAG" ]; then
+          ASSET_EXISTS=$$(gh release view "$$LATEST_TAG" --repo ${_GITHUB_REPO}-agent --json assets --jq ".assets[].name" 2>/dev/null | grep -c "^$${ARCHIVE_NAME}$$" || true)
+          if [ "$$ASSET_EXISTS" != "0" ]; then
+            for attempt in 1 2 3; do
+              gh release download "$$LATEST_TAG" \
+                --repo ${_GITHUB_REPO}-agent \
+                --pattern "$${ARCHIVE_NAME}" \
+                --dir /tmp/agent/ --clobber && break
+              [ $$attempt -lt 3 ] && sleep $$((attempt * 10))
+            done
+          fi
+        fi
+        if [ -f "/tmp/agent/$${ARCHIVE_NAME}" ]; then
+          mkdir -p build/AppDir/distribution/bin/
+          cd /tmp/agent && unzip -o "$${ARCHIVE_NAME}" && cd -
+          mv /tmp/agent/nevoflux-agent.exe build/AppDir/distribution/bin/nevoflux-agent.exe || \
+            mv /tmp/agent/nevoflux-agent build/AppDir/distribution/bin/nevoflux-agent.exe || true
+          if [ -d "/tmp/agent/models" ]; then
+            cp -r /tmp/agent/models build/AppDir/distribution/bin/models
+          fi
+        fi
+
+        # ---- soul templates ----
+        mkdir -p build/AppDir/distribution/bin/defaults/soul
+        if [ -d "docs/reference/templates" ]; then
+          cp docs/reference/templates/*.md build/AppDir/distribution/bin/defaults/soul/ || true
+        fi
+
+        # ---- built-in skills ----
+        if [ -d "docs/reference/skills" ]; then
+          mkdir -p build/AppDir/distribution/bin/defaults/skills
+          cp -r docs/reference/skills/* build/AppDir/distribution/bin/defaults/skills/
+        fi
+
+        # ---- safebrowsing key ----
+        mkdir -p $$HOME/.zen-keys
+        echo "$$ZEN_SAFEBROWSING_KEY" > $$HOME/.zen-keys/safebrowsing.dat
+
+        # ---- bootstrap ----
+        cd engine/
+        chmod -R +x "$$HOME/win-cross/vs2022" || true
+        cd ..
+        npm run bootstrap
+        cd engine/
+        echo "export LIB=\"$$(cd $$HOME/.mozbuild/clang/lib/clang/* && cd lib/windows && pwd)\"" >> ../configs/common/mozconfig
+        cd ..
+
+        # ---- setup Rust for Windows ----
+        RUST_VER=$$(cat .rust-toolchain)
+        rustup default $$RUST_VER
+        rustup target add --toolchain $$RUST_VER x86_64-pc-windows-msvc
+        cd engine/
+        cargo install cargo-download --locked
+        for attempt in 1 2 3 4 5; do
+          cargo download -x windows=0.58.0 && break
+          if [ $$attempt -lt 5 ]; then
+            echo "cargo download attempt $$attempt/5 failed. Retrying..."
+            sleep $$((attempt * 15))
+          else
+            echo "ERROR: cargo download failed after 5 attempts"
+            exit 1
+          fi
+        done
+        echo "" >> ../configs/common/mozconfig
+        echo "export MOZ_WINDOWS_RS_DIR=$$(pwd)/windows-0.58.0" >> ../configs/common/mozconfig
+        cd ..
+
+        # ---- clean stale build artifacts ----
+        rm -rf engine/obj-x86_64-pc-windows-msvc/
+
+        # ---- set MOZ_BUILD_DATE if provided ----
+        if [ -n "${_MOZ_BUILD_DATE}" ]; then
+          export MOZ_BUILD_DATE="${_MOZ_BUILD_DATE}"
+        fi
+
+        # ---- initialize Wine prefix (required for MIDL via Wine) ----
+        export WINEPREFIX=$$HOME/.wine
+        $$HOME/win-cross/wine/bin/wineboot --init 2>/dev/null || true
+
+        # ---- build (no PGO) ----
+        ulimit -n 4096
+        export ZEN_RELEASE=1
+        npm run build
+
+        # ---- sccache stats ----
+        sccache --show-stats || true
+
+        # ---- inject distribution files into build output ----
+        OBJ_DIR="engine/obj-x86_64-pc-windows-msvc"
+        if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
+          mkdir -p "$$OBJ_DIR/dist/bin/distribution"
+          cp -r build/AppDir/distribution/* "$$OBJ_DIR/dist/bin/distribution/"
+          echo "Distribution files injected into $$OBJ_DIR/dist/bin/distribution/"
+        else
+          echo "Distribution files or build output not found, skipping injection."
+        fi
+
+        # ---- re-add distribution to package manifest ----
+        MANIFEST="engine/browser/installer/package-manifest.in"
+        if ! grep -q '@RESPATH@/distribution/' "$$MANIFEST"; then
+          printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$$MANIFEST"
+          echo "Added distribution/** to package manifest"
+        fi
+
+        # ---- package ----
+        export ZEN_GA_DISABLE_PGO=true
+        npm run package
+
+        # ---- stage final artifacts ----
+        mkdir -p /workspace/artifacts
+        VERSION=$$(npm run --silent surfer -- get version | xargs)
+        ZIP_NAME="nevoflux-$${VERSION}.en-US.win64.zip"
+        mv "./dist/$${ZIP_NAME}" /workspace/artifacts/nevoflux.win-x86_64.zip
+        mv ./dist/output.mar /workspace/artifacts/windows.mar
+        mv ./dist/nevoflux.installer.exe /workspace/artifacts/nevoflux.installer.exe
+
+        # ---- cleanup keys ----
+        rm -rf $$HOME/.zen-keys
+
+  # ===================================================================
+  # 4. windows-aarch64 - Windows aarch64 build (no PGO)
+  # ===================================================================
+  - id: windows-aarch64
+    name: 'gcr.io/$PROJECT_ID/nevoflux-builder:latest'
+    waitFor: ['windows-x86_64-final']
+    entrypoint: bash
+    env:
+      - 'SURFER_COMPAT=aarch64'
+      - 'SURFER_PLATFORM=win32'
+      - 'ZEN_CROSS_COMPILING=1'
+      - 'CARGO_INCREMENTAL=0'
+      - 'CARGO_TERM_COLOR=always'
+      # --- sccache: Rust only (C/C++ via clang-cl+wine is incompatible) ---
+      - 'SCCACHE_GCS_BUCKET=nevoflux-build-cache'
+      - 'SCCACHE_GCS_RW_MODE=READ_WRITE'
+      - 'SCCACHE_IDLE_TIMEOUT=0'
+      - 'RUSTC_WRAPPER=sccache'
+      - 'SCCACHE_GHA_ENABLED=false'
+    secretEnv:
+      - GITHUB_TOKEN
+      - ZEN_SAFEBROWSING_KEY
+    args:
+      - '-c'
+      - |
+        set -ex
+
+        # ---- dos2unix mozconfig ----
+        dos2unix configs/windows/mozconfig
+
+        # ---- surfer ci (re-apply branding) ----
+        TAG_VALUE="${TAG_NAME}"
+        DISPLAY_VERSION="$${TAG_VALUE#v}"
+        if [ -n "$${DISPLAY_VERSION}" ]; then
+          npm run surfer -- ci --brand ${_RELEASE_BRANCH} --display-version "$${DISPLAY_VERSION}"
+        else
+          npm run surfer -- ci --brand ${_RELEASE_BRANCH}
+        fi
+
+        # ---- import ----
+        npm run import -- --verbose
+
+        # ---- download NevoFlux Agent binary (Windows aarch64) ----
+        PLATFORM="windows"
+        ARCH="aarch64"
+        ARCHIVE_NAME="nevoflux-agent-$${PLATFORM}-$${ARCH}.zip"
+        mkdir -p /tmp/agent/
+        export GH_TOKEN="$$GITHUB_TOKEN"
+
+        LATEST_TAG=$$(gh release view --repo ${_GITHUB_REPO}-agent --json tagName --jq '.tagName' 2>/dev/null || true)
+        if [ -n "$$LATEST_TAG" ]; then
+          ASSET_EXISTS=$$(gh release view "$$LATEST_TAG" --repo ${_GITHUB_REPO}-agent --json assets --jq ".assets[].name" 2>/dev/null | grep -c "^$${ARCHIVE_NAME}$$" || true)
+          if [ "$$ASSET_EXISTS" != "0" ]; then
+            for attempt in 1 2 3; do
+              gh release download "$$LATEST_TAG" \
+                --repo ${_GITHUB_REPO}-agent \
+                --pattern "$${ARCHIVE_NAME}" \
+                --dir /tmp/agent/ --clobber && break
+              [ $$attempt -lt 3 ] && sleep $$((attempt * 10))
+            done
+          fi
+        fi
+        if [ -f "/tmp/agent/$${ARCHIVE_NAME}" ]; then
+          mkdir -p build/AppDir/distribution/bin/
+          cd /tmp/agent && unzip -o "$${ARCHIVE_NAME}" && cd -
+          mv /tmp/agent/nevoflux-agent.exe build/AppDir/distribution/bin/nevoflux-agent.exe || \
+            mv /tmp/agent/nevoflux-agent build/AppDir/distribution/bin/nevoflux-agent.exe || true
+          if [ -d "/tmp/agent/models" ]; then
+            cp -r /tmp/agent/models build/AppDir/distribution/bin/models
+          fi
+        fi
+
+        # ---- soul templates ----
+        mkdir -p build/AppDir/distribution/bin/defaults/soul
+        if [ -d "docs/reference/templates" ]; then
+          cp docs/reference/templates/*.md build/AppDir/distribution/bin/defaults/soul/ || true
+        fi
+
+        # ---- built-in skills ----
+        if [ -d "docs/reference/skills" ]; then
+          mkdir -p build/AppDir/distribution/bin/defaults/skills
+          cp -r docs/reference/skills/* build/AppDir/distribution/bin/defaults/skills/
+        fi
+
+        # ---- safebrowsing key ----
+        mkdir -p $$HOME/.zen-keys
+        echo "$$ZEN_SAFEBROWSING_KEY" > $$HOME/.zen-keys/safebrowsing.dat
+
+        # ---- bootstrap ----
+        cd engine/
+        chmod -R +x "$$HOME/win-cross/vs2022" || true
+        cd ..
+        npm run bootstrap
+        cd engine/
+        echo "export LIB=\"$$(cd $$HOME/.mozbuild/clang/lib/clang/* && cd lib/windows && pwd)\"" >> ../configs/common/mozconfig
+        cd ..
+
+        # ---- setup Rust for Windows aarch64 ----
+        RUST_VER=$$(cat .rust-toolchain)
+        rustup default $$RUST_VER
+        rustup target add --toolchain $$RUST_VER aarch64-pc-windows-msvc
+        cd engine/
+        cargo install cargo-download --locked
+        for attempt in 1 2 3 4 5; do
+          cargo download -x windows=0.58.0 && break
+          if [ $$attempt -lt 5 ]; then
+            echo "cargo download attempt $$attempt/5 failed. Retrying..."
+            sleep $$((attempt * 15))
+          else
+            echo "ERROR: cargo download failed after 5 attempts"
+            exit 1
+          fi
+        done
+        echo "" >> ../configs/common/mozconfig
+        echo "export MOZ_WINDOWS_RS_DIR=$$(pwd)/windows-0.58.0" >> ../configs/common/mozconfig
+        cd ..
+
+        # ---- clean stale build artifacts ----
+        rm -rf engine/obj-aarch64-pc-windows-msvc/
+
+        # ---- set MOZ_BUILD_DATE if provided ----
+        if [ -n "${_MOZ_BUILD_DATE}" ]; then
+          export MOZ_BUILD_DATE="${_MOZ_BUILD_DATE}"
+        fi
+
+        # ---- initialize Wine prefix (required for MIDL via Wine) ----
+        export WINEPREFIX=$$HOME/.wine
+        $$HOME/win-cross/wine/bin/wineboot --init 2>/dev/null || true
+
+        # ---- build (no PGO for aarch64) ----
+        ulimit -n 4096
+        export ZEN_RELEASE=1
+        npm run build
+
+        # ---- sccache stats ----
+        sccache --show-stats || true
+
+        # ---- inject distribution files into build output ----
+        OBJ_DIR="engine/obj-aarch64-pc-windows-msvc"
+        if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
+          mkdir -p "$$OBJ_DIR/dist/bin/distribution"
+          cp -r build/AppDir/distribution/* "$$OBJ_DIR/dist/bin/distribution/"
+          echo "Distribution files injected into $$OBJ_DIR/dist/bin/distribution/"
+        else
+          echo "Distribution files or build output not found, skipping injection."
+        fi
+
+        # ---- re-add distribution to package manifest ----
+        MANIFEST="engine/browser/installer/package-manifest.in"
+        if ! grep -q '@RESPATH@/distribution/' "$$MANIFEST"; then
+          printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$$MANIFEST"
+          echo "Added distribution/** to package manifest"
+        fi
+
+        # ---- package ----
+        export ZEN_GA_DISABLE_PGO=true
+        npm run package
+
+        # ---- stage final artifacts ----
+        mkdir -p /workspace/artifacts
+        VERSION=$$(npm run --silent surfer -- get version | xargs)
+        ZIP_NAME="nevoflux-$${VERSION}.en-US.win64-aarch64.zip"
+        mv "./dist/$${ZIP_NAME}" /workspace/artifacts/nevoflux.win-arm64.zip
+        mv ./dist/output.mar /workspace/artifacts/windows-arm64.mar
+        mv ./dist/nevoflux.installer.exe /workspace/artifacts/nevoflux.installer-arm64.exe
+
+        # ---- cleanup keys ----
+        rm -rf $$HOME/.zen-keys
+
+  # ===================================================================
+  # 5. upload-windows - Upload all Windows artifacts to GitHub release
+  # ===================================================================
+  - id: upload-windows
+    name: 'gcr.io/$PROJECT_ID/nevoflux-builder:latest'
+    waitFor: ['windows-x86_64-final', 'windows-aarch64']
+    entrypoint: bash
+    secretEnv:
+      - GITHUB_TOKEN
+    args:
+      - '-c'
+      - |
+        set -ex
+
+        echo "Artifacts to upload:"
+        ls -la /workspace/artifacts/
+
+        chmod +x cloudbuild/scripts/upload-to-release.sh
+        cloudbuild/scripts/upload-to-release.sh \
+          "${TAG_NAME}" \
+          "${_GITHUB_REPO}" \
+          "$$GITHUB_TOKEN"
+
+timeout: '18000s'
+options:
+  pool:
+    name: 'projects/$PROJECT_ID/locations/us-west1/workerPools/nevoflux-build-pool'
+  logging: CLOUD_LOGGING_ONLY
