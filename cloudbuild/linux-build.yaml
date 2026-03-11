@@ -191,7 +191,13 @@ steps:
         sccache --show-stats || true
 
         # --- Inject distribution files into build output ---
-        OBJ_DIR="engine/obj-$${ARCH}-pc-linux-gnu"
+        # Detect actual obj dir (triple varies: x86_64-pc-linux-gnu vs aarch64-unknown-linux-gnu)
+        OBJ_DIR=$$(ls -d engine/obj-$${ARCH}-*-linux-gnu 2>/dev/null | head -1)
+        if [ -z "$$OBJ_DIR" ]; then
+          echo "ERROR: No obj dir found for $${ARCH}"
+          exit 1
+        fi
+        echo "Detected obj dir: $$OBJ_DIR"
         if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
           mkdir -p "$$OBJ_DIR/dist/bin/distribution"
           cp -r build/AppDir/distribution/* "$$OBJ_DIR/dist/bin/distribution/"
@@ -341,7 +347,13 @@ steps:
         sccache --show-stats || true
 
         # --- Inject distribution files into build output ---
-        OBJ_DIR="engine/obj-$${ARCH}-pc-linux-gnu"
+        # Detect actual obj dir (triple varies: x86_64-pc-linux-gnu vs aarch64-unknown-linux-gnu)
+        OBJ_DIR=$$(ls -d engine/obj-$${ARCH}-*-linux-gnu 2>/dev/null | head -1)
+        if [ -z "$$OBJ_DIR" ]; then
+          echo "ERROR: No obj dir found for $${ARCH}"
+          exit 1
+        fi
+        echo "Detected obj dir: $$OBJ_DIR"
         if [ -d "build/AppDir/distribution" ] && [ -d "$$OBJ_DIR/dist/bin" ]; then
           mkdir -p "$$OBJ_DIR/dist/bin/distribution"
           cp -r build/AppDir/distribution/* "$$OBJ_DIR/dist/bin/distribution/"
