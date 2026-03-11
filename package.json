@@ -12,7 +12,7 @@
     "start": "cd engine && python3 ./mach run",
     "reload-ext": "bash scripts/reload-extension.sh",
     "setup": "bash scripts/setup-native-host.sh",
-    "import": "npm run ffprefs && npm run import:dumps && mkdir -p engine/browser/branding/release/content engine/browser/branding/twilight/content && surfer import && bash src/nevoflux/apply-patches.sh",
+    "import": "npm run ffprefs && npm run import:dumps && bash src/nevoflux/pre-import.sh && surfer import && bash src/nevoflux/apply-patches.sh",
     "import:dumps": "python3 scripts/update_service_dumps.py",
     "export": "surfer export",
     "init": "npm run download && npm run import && npm run bootstrap",
