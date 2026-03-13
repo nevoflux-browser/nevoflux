@@ -207,7 +207,22 @@ if [ -f "${RULES_MK}" ]; then
   fi
 fi
 
-# 14. Package nevoflux-agent extension as XPI
+# 14. Patch toolkit/moz.configure: set NevoFlux vendor and profile names
+#     Uses sed instead of git patch for cross-platform reliability (engine file
+#     state differs between Linux and macOS after Zen upstream patches).
+MOZ_CONFIGURE="${ENGINE_DIR}/toolkit/moz.configure"
+if [ -f "${MOZ_CONFIGURE}" ]; then
+  if grep -q 'default="Zen Team"' "${MOZ_CONFIGURE}"; then
+    echo "Patching toolkit/moz.configure: MOZ_APP_VENDOR → NevoFlux Team..."
+    sedi 's/default="Zen Team"/default="NevoFlux Team"/' "${MOZ_CONFIGURE}"
+  fi
+  if grep -q 'default="zen"' "${MOZ_CONFIGURE}"; then
+    echo "Patching toolkit/moz.configure: MOZ_APP_PROFILE → nevoflux..."
+    sedi 's/default="zen"/default="nevoflux"/' "${MOZ_CONFIGURE}"
+  fi
+fi
+
+# 15. Package nevoflux-agent extension as XPI
 if [ -f "${ROOT_DIR}/scripts/package-extension.sh" ]; then
   echo "Packaging nevoflux-agent extension..."
   bash "${ROOT_DIR}/scripts/package-extension.sh"
