@@ -18,8 +18,13 @@ on:
         required: false
         type: boolean
         default: false
-      artifacts-run-id:
-        description: 'Run ID to download artifacts from (leave empty for current run)'
+      x86_64-run-id:
+        description: 'Run ID of macOS x86_64 build (required for standalone dispatch)'
+        required: false
+        type: string
+        default: ''
+      aarch64-run-id:
+        description: 'Run ID of macOS aarch64 build (required for standalone dispatch)'
         required: false
         type: string
         default: ''
@@ -124,19 +129,22 @@ jobs:
           cd engine
           ./mach configure
 
+      # Artifact source:
+      # - workflow_call from build.yml: artifacts are in the same parent run (github.run_id)
+      # - workflow_dispatch standalone: x86_64 and aarch64 are separate runs, use input run IDs
       - name: Download x86_64 DMG from artifacts
         uses: actions/download-artifact@v4
         with:
           name: nevoflux-x86_64-apple-darwin.dmg
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ inputs.artifacts-run-id || github.run_id }}
+          run-id: ${{ inputs.x86_64-run-id || github.run_id }}
 
       - name: Download aarch64 DMG from artifacts
         uses: actions/download-artifact@v4
         with:
           name: nevoflux-aarch64-apple-darwin.dmg
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ inputs.artifacts-run-id || github.run_id }}
+          run-id: ${{ inputs.aarch64-run-id || github.run_id }}
 
       - name: Remove any existing .app folders
         run: |
@@ -175,7 +183,7 @@ jobs:
           find . -maxdepth 1 -name "*.app" -type d
           cd ../..
 
-      - name: create .p12 for codesign 🖊️
+      - name: create .p12 for codesign
         if: ${{ inputs.sign_macos }}
         run: |
           cd engine
@@ -283,7 +291,7 @@ jobs:
         with:
           name: nevoflux-macos-host-mar
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ inputs.artifacts-run-id || github.run_id }}
+          run-id: ${{ inputs.aarch64-run-id || github.run_id }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -297,7 +305,7 @@ jobs:
         with:
           name: platform.ini
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          run-id: ${{ inputs.artifacts-run-id || github.run_id }}
+          run-id: ${{ inputs.x86_64-run-id || github.run_id }}
 
       - name: Package for mar
         env:
