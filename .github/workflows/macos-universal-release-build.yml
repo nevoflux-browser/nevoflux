@@ -207,20 +207,22 @@ jobs:
           set -ex
           X86_APP="engine/obj-x86_64-apple-darwin/dist/${{ env.APP_NAME }}.app"
           ARM_APP="engine/obj-aarch64-apple-darwin/dist/${{ env.APP_NAME }}.app"
-          # unify.py requires these files to be identical across architectures.
-          # When builds come from separate workflow runs they have different
-          # BuildID, SourceStamp, and CFBundleVersion. Copy x86_64 versions
-          # to aarch64 so unify succeeds (content is arch-independent).
-          for f in \
-            Contents/Info.plist \
-            Contents/Resources/application.ini \
-            Contents/Resources/platform.ini \
-            Contents/Resources/modules/AppConstants.sys.mjs; do
-            if [ -f "$X86_APP/$f" ] && [ -f "$ARM_APP/$f" ]; then
-              cp "$X86_APP/$f" "$ARM_APP/$f"
-              echo "Synced: $f"
+          # unify.py requires non-binary files to be identical across architectures.
+          # When builds come from separate workflow runs they differ in BuildID,
+          # SourceStamp, CFBundleVersion. Find all differing text files in aarch64
+          # and overwrite with x86_64 versions.
+          echo "=== Scanning for differing files ==="
+          SYNCED=0
+          cd "$ARM_APP"
+          find . -type f \( -name "*.plist" -o -name "*.ini" -o -name "*.mjs" -o -name "*.js" -o -name "*.json" \) | while read -r rel; do
+            x86_file="$OLDPWD/$X86_APP/$rel"
+            arm_file="$OLDPWD/$ARM_APP/$rel"
+            if [ -f "$x86_file" ] && ! diff -q "$x86_file" "$arm_file" > /dev/null 2>&1; then
+              cp "$x86_file" "$arm_file"
+              echo "Synced: $rel"
             fi
           done
+          cd "$OLDPWD"
 
       - name: Unify architectures
         run: |
