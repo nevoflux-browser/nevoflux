@@ -295,7 +295,10 @@ jobs:
         run: |
           set -ex
           hdiutil convert nevoflux-macOS-universal-temp.dmg -format UDZO -imagekey zlib-level=9 -o nevoflux.macos-universal.dmg
-          codesign -s "${{ secrets.macOS_AppleDeveloperId }}" nevoflux.macos-universal.dmg
+          rcodesign sign \
+            --p12-file engine/zenCert.p12 \
+            --p12-password-file engine/zenpCertPassword.passwd \
+            nevoflux.macos-universal.dmg
           xcrun notarytool submit "nevoflux.macos-universal.dmg" \
             --apple-id "${{ secrets.macOS_AppleAccountId }}" \
             --team-id "${{ secrets.macOS_AppleDeveloperIdTeamId }}" \
