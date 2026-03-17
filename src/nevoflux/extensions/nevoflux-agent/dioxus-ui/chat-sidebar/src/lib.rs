@@ -70,6 +70,15 @@ fn ChatSidebar() -> Element {
     let ctx = use_app_context();
     let show_mcp_config = *ctx.show_mcp_config.read();
     let is_minimized = *ctx.minimized.read();
+    let first_run = *ctx.first_run.read();
+    let has_configured = *ctx.has_configured_provider.read();
+
+    // First-launch onboarding: show OnboardingScreen instead of normal UI
+    if first_run && !has_configured {
+        return rsx! {
+            OnboardingScreen {}
+        };
+    }
 
     rsx! {
         div {
@@ -83,6 +92,9 @@ fn ChatSidebar() -> Element {
                 // MCP Config Modal (full-screen when visible)
                 McpConfigModal {}
             } else {
+                // Connection status bar at the top (shows reconnecting/error states)
+                ConnectionStatusBar {}
+
                 // Header with connection status and controls
                 Header {}
 

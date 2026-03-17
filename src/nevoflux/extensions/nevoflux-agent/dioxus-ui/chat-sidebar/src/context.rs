@@ -107,8 +107,8 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     let pending_tool_auth = use_signal(|| None::<ToolAuthRequest>);
     let avatar_url = use_signal(|| None::<String>);
     let minimized = use_signal(|| false);
-    let first_run = use_signal(|| false);
-    let has_configured_provider = use_signal(|| false);
+    let mut first_run = use_signal(|| false);
+    let mut has_configured_provider = use_signal(|| false);
 
     // Build context
     let mut ctx = AppContext {
@@ -158,6 +158,44 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
             let maximize_state = ctx.maximize.read().clone();
 
             spawn(async move {
+                // Progressive retry for agent status (spec: 1s, 3s, 5s, 10s, 15s)
+                let delays: [u32; 5] = [1000, 3000, 5000, 10000, 15000];
+                let mut status_ok = false;
+
+                // Try immediately first
+                match crate::messaging::query_agent_status().await {
+                    Ok(status) => {
+                        let is_first_run = status.get("first_run").and_then(|v| v.as_bool()).unwrap_or(false);
+                        let has_configured = status.get("has_configured_provider").and_then(|v| v.as_bool()).unwrap_or(false);
+                        first_run.set(is_first_run);
+                        has_configured_provider.set(has_configured);
+                        status_ok = true;
+                    }
+                    Err(_) => {
+                        // Agent not ready, start progressive retry
+                        for delay in &delays {
+                            crate::messaging::sleep_ms(*delay).await;
+                            match crate::messaging::query_agent_status().await {
+                                Ok(status) => {
+                                    let is_first_run = status.get("first_run").and_then(|v| v.as_bool()).unwrap_or(false);
+                                    let has_configured = status.get("has_configured_provider").and_then(|v| v.as_bool()).unwrap_or(false);
+                                    first_run.set(is_first_run);
+                                    has_configured_provider.set(has_configured);
+                                    status_ok = true;
+                                    break;
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Status retry failed: {e}");
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if !status_ok {
+                    tracing::warn!("All status retries failed — showing normal UI with connection bar");
+                }
+
                 // Send ping
                 let _ = crate::messaging::send_ping().await;
 
