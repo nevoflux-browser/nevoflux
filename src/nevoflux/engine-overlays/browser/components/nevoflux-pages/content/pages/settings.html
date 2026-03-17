@@ -718,6 +718,117 @@
       font-size: var(--nevoflux-font-size-base);
     }
 
+    /* ── Guidance Banner ─────────────────────────── */
+    .llm-guidance-banner {
+      padding: var(--nevoflux-space-md) var(--nevoflux-space-lg);
+      margin-bottom: var(--nevoflux-space-md);
+      background: color-mix(in srgb, var(--nevoflux-accent) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--nevoflux-accent) 30%, transparent);
+      border-radius: var(--nevoflux-radius-md);
+      color: var(--nevoflux-text);
+      font-size: var(--nevoflux-font-size-base);
+      line-height: 1.5;
+    }
+
+    /* ── Connecting State ─────────────────────────── */
+    .llm-connecting {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--nevoflux-space-md);
+      padding: var(--nevoflux-space-2xl);
+    }
+
+    .llm-connecting-spinner {
+      width: 24px;
+      height: 24px;
+      border: 2px solid var(--nevoflux-border);
+      border-top-color: var(--nevoflux-accent);
+      border-radius: 50%;
+      animation: nevoflux-spin 0.8s linear infinite;
+    }
+
+    @keyframes nevoflux-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .llm-connecting-text {
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-base);
+    }
+
+    /* ── Error State ─────────────────────────── */
+    .llm-error {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--nevoflux-space-md);
+      padding: var(--nevoflux-space-2xl);
+    }
+
+    .llm-error-text {
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-base);
+    }
+
+    .llm-retry-button {
+      padding: var(--nevoflux-space-xs) var(--nevoflux-space-lg);
+      background: var(--nevoflux-accent);
+      color: var(--nevoflux-bg);
+      border: none;
+      border-radius: var(--nevoflux-radius-md);
+      cursor: pointer;
+      font-size: var(--nevoflux-font-size-base);
+      transition: opacity 0.15s ease;
+    }
+
+    .llm-retry-button:hover {
+      opacity: 0.85;
+    }
+
+    /* ── Skeleton Loading ─────────────────────────── */
+    .llm-provider-card.skeleton {
+      pointer-events: none;
+      cursor: default;
+    }
+
+    .skeleton-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: var(--nevoflux-radius-sm);
+      background: var(--nevoflux-bg-tertiary);
+      animation: nevoflux-skeleton-pulse 1.5s ease-in-out infinite;
+    }
+
+    .skeleton-text {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: var(--nevoflux-space-xs);
+    }
+
+    .skeleton-line {
+      height: 12px;
+      border-radius: 4px;
+      background: var(--nevoflux-bg-tertiary);
+      animation: nevoflux-skeleton-pulse 1.5s ease-in-out infinite;
+    }
+
+    .skeleton-line.wide {
+      width: 80%;
+    }
+
+    .skeleton-line.narrow {
+      width: 50%;
+    }
+
+    @keyframes nevoflux-skeleton-pulse {
+      0%, 100% { opacity: 0.4; }
+      50% { opacity: 1; }
+    }
+
     .llm-provider-card {
       display: flex;
       align-items: center;
