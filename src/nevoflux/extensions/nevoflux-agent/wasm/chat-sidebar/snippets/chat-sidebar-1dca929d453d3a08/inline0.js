@@ -1,7 +1,16 @@
 
-export function base64_to_arraybuffer(base64_data) {
-    const bin = atob(base64_data);
-    const buf = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-    return buf.buffer;
+export function copyTextFallback(text) {
+    // execCommand fallback — works in extension sidebar where
+    // navigator.clipboard.writeText is blocked by security context
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (ok) return true;
+    } catch (_) {}
+    return false;
 }

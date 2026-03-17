@@ -143,7 +143,7 @@ Full action reference: load auxiliary file `callTool-actions.md`.
 
 ### Agent (bidirectional AI interaction)
 
-`agent.chat()` sends a message to the AI agent and returns a Promise that resolves with the full response when the agent finishes. It supports streaming callbacks for real-time feedback.
+`agent.chat()` sends a message to the AI agent and returns a Promise that resolves with the full response when the agent finishes. It supports streaming callbacks for real-time feedback and attachments (images, files, directories).
 
 **Simple (await final result):**
 
@@ -151,6 +151,45 @@ Full action reference: load auxiliary file `callTool-actions.md`.
 const result = await NevofluxSDK.agent.chat('summarize this page');
 // result = { text: "...", toolResults: [...], sessionId: "cs_..." }
 ```
+
+**With attachments:**
+
+```javascript
+// Send image (base64 encoded)
+const result = await NevofluxSDK.agent.chat('describe this image', {
+  attachments: [
+    { name: 'photo.png', mime_type: 'image/png', data: base64String }
+  ],
+});
+
+// Send local files or directories
+const result = await NevofluxSDK.agent.chat('analyze this codebase', {
+  attachments: [
+    { path: '/home/user/project', is_directory: true },
+    { path: '/home/user/data.csv' },
+  ],
+});
+
+// Mixed: images + files in one request
+const result = await NevofluxSDK.agent.chat('compare the screenshot with the source', {
+  attachments: [
+    { name: 'screenshot.png', mime_type: 'image/png', data: base64String },
+    { path: '/home/user/index.html' },
+  ],
+});
+```
+
+Attachment types:
+
+| Field          | Type    | Description                                    |
+| -------------- | ------- | ---------------------------------------------- |
+| `name`         | string  | Display name (for images)                      |
+| `mime_type`    | string  | MIME type, e.g. `"image/png"` (for images)     |
+| `data`         | string  | Base64 encoded content (for images)            |
+| `path`         | string  | Absolute file/directory path (for local files) |
+| `is_directory` | boolean | `true` if path is a directory (default: false) |
+
+Use `{ name, mime_type, data }` for images. Use `{ path }` or `{ path, is_directory: true }` for local files/directories.
 
 **Streaming (real-time callbacks):**
 
@@ -452,3 +491,5 @@ Use for complex apps with multiple components and module imports. The canvas bun
 10. `agent.chat()` resolves only after the agent finishes — use `onStream` callback for real-time output
 11. Streaming callbacks (`onStream`, `onToolResult`, `onState`) are optional — omit for simple request-response
 12. Use `sessionId` from a previous result to continue a multi-turn conversation
+13. `agent.chat()` attachments: use `{ name, mime_type, data }` for base64 images, `{ path }` for local files, `{ path, is_directory: true }` for directories
+14. Image `data` must be **base64 encoded** (no `data:` URI prefix) — use `btoa()` or `FileReader.readAsDataURL()` then strip the prefix

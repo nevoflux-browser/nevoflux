@@ -123,11 +123,13 @@ const Canvas = {
       chat: function(message, options) {
         options = options || {};
         var sessionId = options.sessionId || null;
+        var attachments = options.attachments || [];
 
         return new Promise(function(resolve, reject) {
           request("agent.chat", {
             message: message,
-            sessionId: sessionId
+            sessionId: sessionId,
+            attachments: attachments
           }).then(function(res) {
             var sid = res && res.sessionId;
             if (!sid) {
@@ -359,9 +361,14 @@ const Canvas = {
         await NevofluxPage.sendQuery('agent:subscribe', { sessionId });
 
         // Step 2: THEN send to background.js which forwards to agent
+        // Include attachments if provided (images, files, directories)
+        const chatPayload = { message: msgStr, sessionId };
+        if (args.attachments && args.attachments.length > 0) {
+          chatPayload.attachments = args.attachments;
+        }
         await NevofluxPage.sendQuery('bridge:request', {
           type: 'agent:chat',
-          payload: { message: msgStr, sessionId },
+          payload: chatPayload,
         });
 
         return { sessionId };
@@ -614,6 +621,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
 
     // Update toolbar
     document.getElementById('artifact-title').textContent = artifact.title || 'Untitled';
+    document.title = artifact.title || 'Canvas';
 
     const stateLabels = {
       streaming: 'Generating...',

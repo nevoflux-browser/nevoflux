@@ -647,6 +647,40 @@ body {
   overflow-wrap: break-word;
 }
 
+/* Collapsible user text */
+.collapsible-user-text {
+  position: relative;
+}
+
+.collapsible-user-text p {
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.collapse-toggle-btn {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: var(--nevo-radius-sm);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, transform 0.2s ease;
+}
+
+.collapse-toggle-btn:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.collapse-toggle-btn.expanded svg {
+  transform: rotate(180deg);
+}
+
 /* Plain text messages keep pre-wrap; markdown-content resets it */
 .bubble-content > p {
   margin: 0;

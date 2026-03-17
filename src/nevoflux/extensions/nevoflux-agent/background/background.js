@@ -58,6 +58,9 @@ const BackgroundAPI = {
   SIDEBAR_OPEN: 'bg:sidebar_open',
   SIDEBAR_SET_WIDTH: 'bg:sidebar_set_width',
 
+  // Tab management
+  OPEN_TAB: 'bg:open_tab',
+
   // Settings (ContentStore)
   GET_SETTINGS: 'bg:get_settings',
 
@@ -1243,6 +1246,30 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
             const agentChatContent = agentChatHint
               ? agentChatHint + '\n\n' + payload.message
               : payload.message;
+            // Separate attachments into images (base64) and local files
+            const rawAttachments = payload.attachments || [];
+            const imageAttachments = [];
+            const localFiles = [];
+            for (const att of rawAttachments) {
+              if (att.data && att.mime_type) {
+                // Image with base64 data
+                imageAttachments.push({
+                  name: att.name || 'image',
+                  mime_type: att.mime_type,
+                  data: att.data,
+                });
+              } else if (att.path) {
+                // Local file or directory
+                localFiles.push({
+                  path: att.path,
+                  is_directory: !!att.is_directory,
+                  size: att.size || null,
+                  modified: att.modified || null,
+                  mime_type: att.mime_type || null,
+                });
+              }
+            }
+
             channelManager.sendToAgent({
               type: 'chat_message',
               payload: {
@@ -1250,8 +1277,8 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
                 message_id: messageId,
                 content: agentChatContent,
                 mode: 'agent',
-                attachments: [],
-                local_files: [],
+                attachments: imageAttachments,
+                local_files: localFiles,
                 tab_id: null,
                 tab_ids: [],
               },
@@ -1260,14 +1287,22 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
             // Notify sidebar for UI display only (fire-and-forget).
             // Sidebar will show the user message but NOT re-send to agent.
             try {
+              const injectPayload = {
+                session_id: sessionId,
+                message_id: messageId,
+                content: payload.message,
+                source: 'canvas',
+              };
+              // Include attachments for sidebar display
+              if (imageAttachments.length > 0) {
+                injectPayload.attachments = imageAttachments;
+              }
+              if (localFiles.length > 0) {
+                injectPayload.local_files = localFiles;
+              }
               await browser.runtime.sendMessage({
                 type: 'canvas_chat_inject',
-                payload: {
-                  session_id: sessionId,
-                  message_id: messageId,
-                  content: payload.message,
-                  source: 'canvas',
-                },
+                payload: injectPayload,
               });
             } catch (_e) {
               // Sidebar not open — that's fine, agent message already sent above
@@ -4767,6 +4802,37 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
       sendResponse({ success: false, error: 'setSidebarWidth API not available' });
       break;
 
+    case BackgroundAPI.OPEN_TAB:
+      (async () => {
+        try {
+          const url = message.url;
+          if (!url) {
+            sendResponse({ success: false, error: 'url required' });
+            return;
+          }
+          const isActive = message.active !== false;
+          // Privileged URLs (nevoflux://, chrome://) must use browser.nevoflux.openPage()
+          // because browser.tabs.create/update rejects them
+          if (
+            (url.startsWith('nevoflux://') || url.startsWith('chrome://')) &&
+            typeof browser.nevoflux !== 'undefined' &&
+            browser.nevoflux.openPage
+          ) {
+            const result = await browser.nevoflux.openPage(url, {
+              inBackground: !isActive,
+            });
+            sendResponse(result);
+          } else {
+            const tab = await browser.tabs.create({ url, active: isActive });
+            sendResponse({ success: true, tab_id: tab.id });
+          }
+        } catch (err) {
+          console.error('[NevoFlux] OPEN_TAB error:', err);
+          sendResponse({ success: false, error: err.message });
+        }
+      })();
+      return true; // Keep sendResponse valid for async
+
     case 'bg:get_window_session': {
       const windowId = message.windowId;
       if (!windowId) {
@@ -4940,9 +5006,9 @@ tabEventListeners.onActivated = async (_activeInfo) => {
 };
 browser.tabs.onActivated.addListener(tabEventListeners.onActivated);
 
-// Update tab context when tab URL changes
+// Update tab context when tab URL, status, or favicon changes
 tabEventListeners.onUpdated = async (tabId, changeInfo, _tab) => {
-  if (changeInfo.status === 'complete' || changeInfo.url) {
+  if (changeInfo.status === 'complete' || changeInfo.url || changeInfo.favIconUrl) {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (tabs[0]?.id === tabId) {
       const context = await getActiveTabContext();

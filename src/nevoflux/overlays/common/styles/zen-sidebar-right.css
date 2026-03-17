@@ -16,8 +16,8 @@
 
 /* NevoFlux sidebar-box width override.
  * Firefox CSS hardcodes width:18em (~288px) and the sidebar.width pref
- * is never consumed.  Set the desired initial width here.
- * No !important on width — allows the XUL splitter to resize via inline style. */
+ * is never consumed.  Set the fallback width here; NevoFluxSidebarResize.mjs
+ * overrides it with inline !important on startup from the persisted pref. */
 #sidebar-box {
   width: 500px;
   min-width: 300px !important;

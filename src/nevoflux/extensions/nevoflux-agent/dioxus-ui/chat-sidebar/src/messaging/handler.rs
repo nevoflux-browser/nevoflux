@@ -1411,12 +1411,38 @@ fn handle_artifact_complete(mut ctx: AppContext, payload: crate::messaging::send
 /// session_id mismatch that prevents streaming responses from being routed
 /// back to the canvas iframe.
 fn handle_canvas_chat_inject(mut ctx: AppContext, payload: crate::messaging::sender::CanvasChatInjectPayload) {
-    use crate::state::Message;
+    use crate::state::{Message, ImageAttachment};
 
-    tracing::info!("Canvas chat inject (UI only): {}", payload.content);
+    tracing::info!("Canvas chat inject (UI only): content='{}', attachments={}, local_files={}",
+        payload.content, payload.attachments.len(), payload.local_files.len());
+
+    // Build attachment list for display
+    let mut display_attachments = Vec::new();
+    for att in &payload.attachments {
+        display_attachments.push(ImageAttachment {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: att.name.clone(),
+            mime_type: att.mime_type.clone(),
+            data: att.data.clone().unwrap_or_default(),
+        });
+    }
+    for f in &payload.local_files {
+        let name = f.path.rsplit('/').next().unwrap_or(&f.path).to_string();
+        let icon = if f.is_directory { "folder" } else { "file" };
+        display_attachments.push(ImageAttachment {
+            id: uuid::Uuid::new_v4().to_string(),
+            name,
+            mime_type: f.mime_type.clone().unwrap_or_else(|| icon.to_string()),
+            data: String::new(),
+        });
+    }
 
     // Add user message to sidebar message list for display
-    ctx.messages.write().push(Message::user(&payload.content));
+    if display_attachments.is_empty() {
+        ctx.messages.write().push(Message::user(&payload.content));
+    } else {
+        ctx.messages.write().push(Message::user_with_images(&payload.content, display_attachments));
+    }
     ctx.agent_status.write().set_thinking();
 }
 

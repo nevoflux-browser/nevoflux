@@ -596,6 +596,7 @@ pub fn TextInput(disabled: bool) -> Element {
                         space: file.tab_space.clone().unwrap_or_else(|| "default".to_string()),
                         tab_id,
                         tab_title: file.name.clone(),
+                        url: String::new(),
                     });
                 }
             } else if file.file_type.starts_with("image/") && file.data.is_some() {
@@ -635,7 +636,6 @@ pub fn TextInput(disabled: bool) -> Element {
         ctx.messages.write().push(message);
 
         let session_id = ctx.session.read().id.clone();
-        let tab_id = ctx.tab_context.read().tab_id;
         let mock_enabled = ctx.mock_enabled;
         let mode = ctx.chat_mode.read().clone();
 
@@ -644,7 +644,18 @@ pub fn TextInput(disabled: bool) -> Element {
                 crate::mock::mock_send_message(ctx, display_text).await;
             } else {
                 ctx.agent_status.write().set_thinking();
-                let _ = crate::messaging::send_chat_message(&session_id, text, mode, protocol_attachments, local_files, Some(tab_id), tab_ids).await;
+
+                // Query fresh tab context and merge with user's @-mentioned tabs
+                let (tab_id, current_tab) = crate::messaging::build_current_tab_ids().await;
+                let mut all_tab_ids = current_tab;
+                // Append user's @-mentioned tabs (avoid duplicates)
+                for t in tab_ids {
+                    if !all_tab_ids.iter().any(|existing| existing.tab_id == t.tab_id) {
+                        all_tab_ids.push(t);
+                    }
+                }
+
+                let _ = crate::messaging::send_chat_message(&session_id, text, mode, protocol_attachments, local_files, tab_id, all_tab_ids).await;
             }
         });
     };

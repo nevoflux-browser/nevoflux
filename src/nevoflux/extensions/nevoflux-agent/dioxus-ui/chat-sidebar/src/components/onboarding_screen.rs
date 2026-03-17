@@ -6,7 +6,7 @@
 
 use dioxus::prelude::*;
 
-use crate::bindings::nevoflux_api::create_tab;
+use crate::bindings::nevoflux_api::open_tab_via_background;
 use crate::context::use_app_context;
 use crate::messaging::{query_agent_status, sleep_ms};
 
@@ -63,7 +63,9 @@ pub fn OnboardingScreen() -> Element {
 
     let handle_start_setup = move |_| {
         spawn(async move {
-            let _ = create_tab("nevoflux://settings/llm", true).await;
+            if let Err(e) = open_tab_via_background("nevoflux://settings/llm", true).await {
+                tracing::warn!("Failed to open settings tab: {}", e);
+            }
         });
     };
 

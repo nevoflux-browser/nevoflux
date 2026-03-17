@@ -170,6 +170,9 @@ pub fn MessageBubble(
                     // Text content
                     div { class: "bubble-content",
                         match &message.content {
+                            MessageContent::Text(text) if !text.is_empty() && is_user => rsx! {
+                                CollapsibleUserText { text: text.clone() }
+                            },
                             MessageContent::Text(text) if !text.is_empty() => rsx! {
                                 p { "{text}" }
                             },
@@ -310,7 +313,6 @@ fn EditMessageForm(
 
         // Send updated message
         let session_id = ctx.session.read().id.clone();
-        let tab_id = ctx.tab_context.read().tab_id;
         let mock_enabled = ctx.mock_enabled;
         let text = new_text;
 
@@ -319,7 +321,8 @@ fn EditMessageForm(
                 crate::mock::mock_send_message(ctx, text).await;
             } else {
                 ctx.agent_status.write().set_thinking();
-                let _ = crate::messaging::send_chat_message(&session_id, text, ctx.chat_mode.read().clone(), vec![], vec![], Some(tab_id), vec![]).await;
+                let (tab_id, tab_ids) = crate::messaging::build_current_tab_ids().await;
+                let _ = crate::messaging::send_chat_message(&session_id, text, ctx.chat_mode.read().clone(), vec![], vec![], tab_id, tab_ids).await;
             }
         });
     };
@@ -739,4 +742,78 @@ fn html_escape(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+/// Maximum visible lines for collapsed user messages
+const MAX_COLLAPSED_LINES: usize = 5;
+/// Maximum chars on the last visible line before truncation
+const TRUNCATE_LAST_LINE_CHARS: usize = 20;
+
+/// Truncate text to at most `MAX_COLLAPSED_LINES` lines.
+/// If the text exceeds that, the last visible line is truncated with "...".
+/// Returns `(truncated_text, was_truncated)`.
+fn truncate_user_text(text: &str) -> (String, bool) {
+    let lines: Vec<&str> = text.lines().collect();
+    if lines.len() <= MAX_COLLAPSED_LINES {
+        return (text.to_string(), false);
+    }
+    let mut result: Vec<&str> = lines[..MAX_COLLAPSED_LINES - 1].to_vec();
+    let last_line = lines[MAX_COLLAPSED_LINES - 1];
+    // Truncate the last line, respecting character boundaries (safe for CJK)
+    let truncated: String = last_line.chars().take(TRUNCATE_LAST_LINE_CHARS).collect();
+    let last = if truncated.len() < last_line.len() {
+        format!("{}...", truncated)
+    } else {
+        truncated
+    };
+    result.push(&""); // placeholder, we'll build the final string manually
+    let mut out = result[..MAX_COLLAPSED_LINES - 1].join("\n");
+    out.push('\n');
+    out.push_str(&last);
+    (out, true)
+}
+
+/// Collapsible text component for user messages.
+/// Shows at most 5 lines with "..." truncation; expand button in top-right corner.
+#[component]
+fn CollapsibleUserText(text: String) -> Element {
+    let mut expanded = use_signal(|| false);
+    let (truncated, needs_collapse) = truncate_user_text(&text);
+
+    let display_text = if *expanded.read() || !needs_collapse {
+        text.clone()
+    } else {
+        truncated
+    };
+
+    let is_expanded = *expanded.read();
+
+    rsx! {
+        div { class: "collapsible-user-text",
+            class: if needs_collapse && !is_expanded { "collapsed" },
+            p { "{display_text}" }
+            if needs_collapse {
+                button {
+                    class: "collapse-toggle-btn",
+                    class: if is_expanded { "expanded" },
+                    title: if is_expanded { "Collapse" } else { "Expand" },
+                    aria_label: if is_expanded { "Collapse message" } else { "Expand message" },
+                    onclick: move |_| expanded.set(!is_expanded),
+                    // Chevron SVG icon
+                    svg {
+                        xmlns: "http://www.w3.org/2000/svg",
+                        width: "14",
+                        height: "14",
+                        view_box: "0 0 24 24",
+                        fill: "none",
+                        stroke: "currentColor",
+                        stroke_width: "2",
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                        polyline { points: "6 9 12 15 18 9" }
+                    }
+                }
+            }
+        }
+    }
 }

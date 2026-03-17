@@ -531,6 +531,12 @@ pub struct CanvasChatInjectPayload {
     pub session_id: String,
     pub message_id: String,
     pub content: String,
+    /// Image attachments from SDK (base64 encoded)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<shared_protocol::Attachment>,
+    /// Local files/directories from SDK
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub local_files: Vec<shared_protocol::FileInfo>,
 }
 
 /// Artifact start payload (from background.js broadcast)
@@ -639,6 +645,23 @@ pub async fn request_tab_context_for_tab(tab_id: Option<i32>) -> Result<Option<T
 /// Request current active tab context via bg:get_tab_context
 pub async fn request_tab_context() -> Result<Option<TabContextPayload>, String> {
     request_tab_context_for_tab(None).await
+}
+
+/// Query fresh tab context and build (tab_id, tab_ids) for chat messages.
+/// Ensures the current tab's URL/title are always included.
+pub async fn build_current_tab_ids() -> (Option<u32>, Vec<shared_protocol::TabReference>) {
+    match request_tab_context().await {
+        Ok(Some(tc)) => {
+            let tab_ids = vec![shared_protocol::TabReference {
+                space: String::new(),
+                tab_id: tc.tab_id as i64,
+                tab_title: tc.title,
+                url: tc.url,
+            }];
+            (Some(tc.tab_id), tab_ids)
+        }
+        _ => (None, vec![])
+    }
 }
 
 /// Request connection to native agent via bg:connect

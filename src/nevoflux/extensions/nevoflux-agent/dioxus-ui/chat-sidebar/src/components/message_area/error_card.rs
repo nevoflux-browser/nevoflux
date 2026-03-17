@@ -30,7 +30,6 @@ pub fn ErrorCard(code: String, message: String, recoverable: bool) -> Element {
 
         if let Some(text) = last_user_text {
             let session_id = ctx.session.read().id.clone();
-            let tab_id = ctx.tab_context.read().tab_id;
             let mock_enabled = ctx.mock_enabled;
 
             // Add new user message
@@ -41,7 +40,8 @@ pub fn ErrorCard(code: String, message: String, recoverable: bool) -> Element {
                 if mock_enabled {
                     crate::mock::mock_send_message(ctx, text).await;
                 } else {
-                    let _ = crate::messaging::send_chat_message(&session_id, text, ctx.chat_mode.read().clone(), vec![], vec![], Some(tab_id), vec![]).await;
+                    let (tab_id, tab_ids) = crate::messaging::build_current_tab_ids().await;
+                    let _ = crate::messaging::send_chat_message(&session_id, text, ctx.chat_mode.read().clone(), vec![], vec![], tab_id, tab_ids).await;
                 }
             });
         }

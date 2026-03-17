@@ -587,6 +587,33 @@ pub async fn open_sidebar() -> Result<(), String> {
 
 // ==================== Tab Management API ====================
 
+/// Open a tab via the background script (works for privileged URLs like nevoflux://)
+pub async fn open_tab_via_background(url: &str, active: bool) -> Result<(), String> {
+    let message = js_sys::Object::new();
+    js_sys::Reflect::set(&message, &JsValue::from_str("type"), &JsValue::from_str("bg:open_tab"))
+        .map_err(|_| "Failed to set type")?;
+    js_sys::Reflect::set(&message, &JsValue::from_str("url"), &JsValue::from_str(url))
+        .map_err(|_| "Failed to set url")?;
+    js_sys::Reflect::set(&message, &JsValue::from_str("active"), &JsValue::from_bool(active))
+        .map_err(|_| "Failed to set active")?;
+
+    let result = send_to_background_raw(message.into()).await?;
+
+    if let Ok(obj) = result.dyn_into::<js_sys::Object>() {
+        if let Ok(success) = js_sys::Reflect::get(&obj, &JsValue::from_str("success")) {
+            if success == JsValue::TRUE {
+                return Ok(());
+            }
+        }
+        if let Ok(error) = js_sys::Reflect::get(&obj, &JsValue::from_str("error")) {
+            if let Some(err_str) = error.as_string() {
+                return Err(err_str);
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Create a new tab
 pub async fn create_tab(url: &str, active: bool) -> Result<TabInfo, String> {
     let options = js_sys::Object::new();

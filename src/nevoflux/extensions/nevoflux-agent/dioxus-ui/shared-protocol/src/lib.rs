@@ -23,7 +23,7 @@ pub use common::*;
 pub use chat::{
     ChatMessage, MessageDirection, ChatMode,
     // Sidebar -> Agent
-    ChatMessagePayload, SkillCommandPayload, StopGenerationPayload, CancelPayload,
+    TabReference, ChatMessagePayload, SkillCommandPayload, StopGenerationPayload, CancelPayload,
     PermissionResponsePayload, PluginCommandPayload, SystemCommandPayload,
     BrowserToolResponsePayload, BrowserToolError,
     // File picker (native dialog)

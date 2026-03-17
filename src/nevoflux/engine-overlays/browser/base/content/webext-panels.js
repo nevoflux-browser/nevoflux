@@ -169,7 +169,8 @@ var _gBrowser = {
   },
 };
 
-function _updatePosition() {
+// eslint-disable-next-line no-unused-vars -- called via contentWindow.updatePosition from browser-sidebar.js
+function updatePosition() {
   // We need both of these to make sure we update the position
   // after any lower level updates have finished.
   requestAnimationFrame(() =>
@@ -182,7 +183,8 @@ function _updatePosition() {
   );
 }
 
-function _loadPanel(extensionId, extensionUrl, browserStyle) {
+// eslint-disable-next-line no-unused-vars -- called via contentWindow.loadPanel from ext-sidebarAction.js
+function loadPanel(extensionId, extensionUrl, browserStyle) {
   let browserEl = document.getElementById('webext-panels-browser');
   if (browserEl) {
     if (browserEl.currentURI.spec === extensionUrl) {

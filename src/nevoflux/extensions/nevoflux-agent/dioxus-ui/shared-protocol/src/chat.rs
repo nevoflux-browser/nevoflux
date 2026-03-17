@@ -28,7 +28,7 @@ pub enum ChatMode {
     Agent,
 }
 
-/// Tab reference with space, id and title (for @ mention context)
+/// Tab reference with space, id, title and url (for @ mention context)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TabReference {
     /// The space/workspace the tab belongs to
@@ -37,6 +37,9 @@ pub struct TabReference {
     pub tab_id: i64,
     /// Tab title
     pub tab_title: String,
+    /// Tab URL
+    #[serde(default)]
+    pub url: String,
 }
 
 /// Chat message from user

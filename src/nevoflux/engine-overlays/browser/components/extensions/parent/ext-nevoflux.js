@@ -2044,6 +2044,33 @@ this.nevoflux = class extends ExtensionAPI {
           return { success: true, id, tabId: extTabId };
         },
 
+        // ========== Page Navigation ==========
+
+        async openPage(url, options) {
+          const opts = options || {};
+          const win = Services.wm.getMostRecentBrowserWindow();
+          if (!win?.gBrowser) {
+            return {
+              success: false,
+              error: { code: 12003, message: 'No browser window', recoverable: true },
+            };
+          }
+          const nativeTab = win.gBrowser.addTab(url, {
+            triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+            inBackground: !!opts.inBackground,
+          });
+          if (!opts.inBackground) {
+            win.gBrowser.selectedTab = nativeTab;
+          }
+          let extTabId;
+          try {
+            extTabId = tabTracker.getId(nativeTab);
+          } catch (e) {
+            console.warn('[ext-nevoflux] openPage: could not get tab ID:', e);
+          }
+          return { success: true, tabId: extTabId };
+        },
+
         // ========== Settings ==========
 
         async getSettings(key) {

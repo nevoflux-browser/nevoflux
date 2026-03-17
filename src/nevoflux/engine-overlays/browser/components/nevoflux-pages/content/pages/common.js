@@ -12,13 +12,42 @@
  * - URL query parameter parsing
  * - Event helpers
  */
-const _NevofluxPage = {
+// eslint-disable-next-line no-unused-vars -- used by settings.js, home.js, canvas.js
+const NevofluxPage = {
   /**
    * Parse query parameters from current URL.
+   * Handles both chrome://...?section=llm and nevoflux://settings/llm formats.
+   * The protocol handler sets originalURI so window.location shows the nevoflux:// URL,
+   * which has path segments instead of query params.
    * @returns {URLSearchParams}
    */
   getParams() {
-    return new URLSearchParams(window.location.search);
+    const loc = window.location;
+    // If we have query params, use them directly (chrome:// resolved URL)
+    if (loc.search) {
+      return new URLSearchParams(loc.search);
+    }
+    // For nevoflux:// URLs, derive params from the path segments
+    // using the same routing logic as NevofluxProtocolHandler
+    if (loc.protocol === 'nevoflux:') {
+      const host = loc.hostname;
+      const segments = loc.pathname.replace(/^\/+/, '').split('/').filter(Boolean);
+      const params = new URLSearchParams();
+      switch (host) {
+        case 'canvas':
+          if (segments[0]) params.set('id', segments[0]);
+          params.set('mode', segments[1] || 'preview');
+          break;
+        case 'settings':
+          params.set('section', segments[0] || 'general');
+          break;
+        case 'plan':
+          if (segments[0]) params.set('id', segments[0]);
+          break;
+      }
+      return params;
+    }
+    return new URLSearchParams();
   },
 
   /**

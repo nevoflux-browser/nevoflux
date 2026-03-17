@@ -1513,6 +1513,24 @@
         "returns": { "$ref": "ApiResult" }
       },
       {
+        "name": "openPage",
+        "type": "function",
+        "async": "promise",
+        "description": "Open a nevoflux:// URL in a new tab using privileged browser API",
+        "parameters": [
+          { "name": "url", "type": "string" },
+          {
+            "name": "options",
+            "type": "object",
+            "optional": true,
+            "properties": {
+              "inBackground": { "type": "boolean", "optional": true }
+            }
+          }
+        ],
+        "returns": { "$ref": "ApiResult" }
+      },
+      {
         "name": "getSettings",
         "type": "function",
         "async": "promise",
