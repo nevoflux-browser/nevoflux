@@ -26,11 +26,7 @@ class NevoFluxSidebarResize {
   #startWidth = 0;
 
   constructor() {
-    document.addEventListener(
-      'MozBeforeInitialXULLayout',
-      () => this.#init(),
-      { once: true }
-    );
+    document.addEventListener('MozBeforeInitialXULLayout', () => this.#init(), { once: true });
   }
 
   #init() {
@@ -80,9 +76,7 @@ class NevoFluxSidebarResize {
     const delta = event.screenX - this.#startX;
 
     // Sidebar is on the right: dragging left (negative delta) = wider
-    const newWidth = Math.round(
-      Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, this.#startWidth - delta))
-    );
+    const newWidth = Math.round(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, this.#startWidth - delta)));
     this.#box.style.width = newWidth + 'px';
   }
 
