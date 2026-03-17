@@ -793,6 +793,19 @@ class ChannelManager {
         browser.nevoflux.bridgeRespond(bridgeId, message.payload).catch((err) => {
           console.error('[NevoFlux] agent:command bridgeRespond failed:', err);
         });
+        // Cache status response for first-launch detection
+        if (message.payload?.command === 'status' && message.payload?.success) {
+          const statusData = message.payload.data;
+          browser.storage.local.set({
+            nevoflux_last_status: {
+              first_run: statusData.first_run,
+              has_configured_provider: statusData.has_configured_provider,
+              timestamp: Date.now(),
+            },
+          }).catch((err) => {
+            console.warn('[NevoFlux] Failed to cache status:', err);
+          });
+        }
         // Don't fall through to sidebar broadcast for this response
         return;
       }
@@ -1279,6 +1292,13 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
 
           // Don't call bridgeRespond here — wait for system_response
           return;
+        }
+
+        case 'getCache': {
+          const key = payload?.key || 'nevoflux_last_status';
+          const stored = await browser.storage.local.get(key);
+          result = { success: true, data: stored[key] || null };
+          break;
         }
 
         default:
