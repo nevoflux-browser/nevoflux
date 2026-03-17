@@ -17,6 +17,7 @@ mod history_panel;
 mod tool_auth_dialog;
 mod onboarding_screen;
 mod rail;
+pub mod connection_status_bar;
 
 pub use header::Header;
 pub use message_area::{ActivityFeed, LiveToolFeed, MessageArea, MessageBubble, WelcomeScreen};
@@ -31,3 +32,4 @@ pub use history_panel::HistoryPanel;
 pub use tool_auth_dialog::ToolAuthDialog;
 pub use onboarding_screen::OnboardingScreen;
 pub use rail::Rail;
+pub use connection_status_bar::ConnectionStatusBar;
