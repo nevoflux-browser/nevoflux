@@ -4067,6 +4067,122 @@ body {
   }
 }
 
+/* ============================================
+   Onboarding Screen
+   ============================================ */
+.onboarding-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: var(--nevo-space-lg);
+}
+
+.onboarding-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: var(--nevo-space-md);
+  max-width: 300px;
+}
+
+.onboarding-logo {
+  width: 64px;
+  height: 64px;
+  margin-bottom: var(--nevo-space-sm);
+}
+
+.onboarding-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--nevo-text);
+  margin: 0;
+}
+
+.onboarding-subtitle {
+  font-size: 14px;
+  color: var(--nevo-text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.onboarding-button {
+  padding: 8px 24px;
+  border: none;
+  border-radius: var(--nevo-radius-md);
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.onboarding-button:hover {
+  opacity: 0.85;
+}
+
+.onboarding-button.primary {
+  background: var(--nevo-primary);
+  color: var(--nevo-background);
+}
+
+.onboarding-button.secondary {
+  background: var(--nevo-surface);
+  color: var(--nevo-text);
+}
+
+/* ============================================
+   Connection Status Bar
+   ============================================ */
+.connection-status-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--nevo-space-xs);
+  padding: 4px var(--nevo-space-sm);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.connection-status-bar.connecting {
+  background: color-mix(in srgb, var(--nevo-primary) 10%, transparent);
+  color: var(--nevo-text-secondary);
+}
+
+.connection-status-bar.error,
+.connection-status-bar.disconnected {
+  background: color-mix(in srgb, #e74c3c 10%, transparent);
+  color: #e74c3c;
+}
+
+.connection-status-spinner {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--nevo-border);
+  border-top-color: var(--nevo-primary);
+  border-radius: 50%;
+  animation: nevo-spin 0.8s linear infinite;
+}
+
+@keyframes nevo-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.connection-retry-btn {
+  margin-left: auto;
+  padding: 2px 8px;
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.connection-retry-btn:hover {
+  opacity: 0.7;
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .tool-chip__spinner {
