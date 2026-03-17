@@ -15,6 +15,7 @@ mod plan_card;
 mod artifact_card;
 mod history_panel;
 mod tool_auth_dialog;
+mod onboarding_screen;
 mod rail;
 
 pub use header::Header;
@@ -28,4 +29,5 @@ pub use plan_card::PlanCard;
 pub use artifact_card::ArtifactCard;
 pub use history_panel::HistoryPanel;
 pub use tool_auth_dialog::ToolAuthDialog;
+pub use onboarding_screen::OnboardingScreen;
 pub use rail::Rail;
