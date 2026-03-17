@@ -22,7 +22,7 @@
  *
  * Assumes `globalThis.Babel` and `VirtualFS` are available as globals.
  */
-const Bundler = {
+const _Bundler = {
   /** @type {boolean} Whether Babel has been verified available. */
   _initialized: false,
 

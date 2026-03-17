@@ -57,6 +57,7 @@ Adapt criteria to the specific task.
 ### Step 4: Evaluate Each Output Against the Rubric
 
 For each output (A and B):
+
 1. **Score each criterion** on the rubric (1-5 scale)
 2. **Calculate dimension totals**: Content score, Structure score
 3. **Calculate overall score**: Average of dimension scores, scaled to 1-10
@@ -64,6 +65,7 @@ For each output (A and B):
 ### Step 5: Check Assertions (if provided)
 
 If expectations are provided:
+
 1. Check each expectation against output A
 2. Check each expectation against output B
 3. Count pass rates for each output
@@ -72,6 +74,7 @@ If expectations are provided:
 ### Step 6: Determine the Winner
 
 Compare A and B based on (in priority order):
+
 1. **Primary**: Overall rubric score (content + structure)
 2. **Secondary**: Assertion pass rates (if applicable)
 3. **Tiebreaker**: If truly equal, declare a TIE

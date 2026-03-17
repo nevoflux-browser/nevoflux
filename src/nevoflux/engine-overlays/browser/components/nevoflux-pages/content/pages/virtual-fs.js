@@ -17,7 +17,7 @@
  *
  * All paths are stored and returned as absolute (starting with `/`).
  */
-const VirtualFS = {
+const _VirtualFS = {
   /** @type {Map<string, string>} */
   _files: new Map(),
 

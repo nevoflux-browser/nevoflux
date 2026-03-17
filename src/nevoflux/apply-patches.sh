@@ -228,5 +228,4 @@ if [ -f "${ROOT_DIR}/scripts/package-extension.sh" ]; then
   bash "${ROOT_DIR}/scripts/package-extension.sh"
 fi
 
-
 echo "All nevoflux patches applied successfully."

@@ -175,7 +175,7 @@ const Canvas = {
     }
   };
 })();
-<\/script>`,
+</script>`,
 
   init() {
     // window.location retains original nevoflux:// URL even though content
@@ -502,16 +502,16 @@ const Canvas = {
     return `<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>${title}</title>
 <style>body{margin:0;font-family:system-ui,sans-serif;}</style>
-<script>${react}<\/script>
-<script>${reactDom}<\/script>
-<script>${babel}<\/script>
+<script>${react}</script>
+<script>${reactDom}</script>
+<script>${babel}</script>
 </head><body>
 <div id="root"></div>
 <script type="text/babel" data-type="module">
 ${artifact.content}
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(typeof App !== 'undefined' ? App : () => React.createElement('div', null, 'No App component found')));
-<\/script>
+</script>
 </body></html>`;
   },
 
@@ -534,8 +534,8 @@ table { border-collapse: collapse; width: 100%; }
 th, td { border: 1px solid #d2d2d7; padding: 8px; text-align: left; }
 th { background: #f5f5f7; }
 </style>
-<script>${markdownIt}<\/script>
-<script>${highlightJs}<\/script>
+<script>${markdownIt}</script>
+<script>${highlightJs}</script>
 </head><body>
 <div id="content"></div>
 <script>
@@ -549,7 +549,7 @@ var md = window.markdownit({
   }
 });
 document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifact.content)});
-<\/script>
+</script>
 </body></html>`;
   },
 
@@ -746,16 +746,16 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
     const srcdoc = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <style>body{margin:0;font-family:system-ui,sans-serif;}</style>
-<script>${react}<\/script>
-<script>${reactDom}<\/script>
-<script>${babel}<\/script>
+<script>${react}</script>
+<script>${reactDom}</script>
+<script>${babel}</script>
 </head><body>
 <div id="root"></div>
 <script type="text/babel" data-type="module">
 ${code}
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(React.createElement(typeof App !== 'undefined' ? App : () => React.createElement('div', null, 'No App component found')));
-<\/script>
+</script>
 </body></html>`;
 
     this._renderSrcdoc(viewport, srcdoc);
@@ -784,8 +784,8 @@ table { border-collapse: collapse; width: 100%; }
 th, td { border: 1px solid #d2d2d7; padding: 8px; text-align: left; }
 th { background: #f5f5f7; }
 </style>
-<script>${markdownIt}<\/script>
-<script>${highlightJs}<\/script>
+<script>${markdownIt}</script>
+<script>${highlightJs}</script>
 </head><body>
 <div id="content"></div>
 <script>
@@ -799,7 +799,7 @@ var md = window.markdownit({
   }
 });
 document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdown)});
-<\/script>
+</script>
 </body></html>`;
 
     this._renderSrcdoc(viewport, srcdoc);
@@ -814,10 +814,10 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
     const srcdoc = `<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <style>body{margin:24px;display:flex;justify-content:center;}</style>
-<script>${mermaid}<\/script>
+<script>${mermaid}</script>
 </head><body>
 <div class="mermaid">${this._escapeHtml(code)}</div>
-<script>mermaid.initialize({ startOnLoad: true, theme: 'default' });<\/script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'default' });</script>
 </body></html>`;
 
     this._renderSrcdoc(viewport, srcdoc);

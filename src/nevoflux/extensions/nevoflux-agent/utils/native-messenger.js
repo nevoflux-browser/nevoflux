@@ -187,7 +187,7 @@ class NativeMessenger {
     this.isConnected = false;
 
     // Reject all pending requests
-    for (const [id, { reject }] of this.pendingRequests) {
+    for (const [_id, { reject }] of this.pendingRequests) {
       reject(new Error('Connection closed'));
     }
     this.pendingRequests.clear();

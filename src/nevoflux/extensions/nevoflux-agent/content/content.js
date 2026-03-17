@@ -1388,7 +1388,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse(actionClick({ selector: message.selector }));
       break;
 
-    case 'fill_form':
+    case 'fill_form': {
       // Convert legacy format
       const results = [];
       for (const field of message.fields || []) {
@@ -1396,6 +1396,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       sendResponse({ success: true, results });
       break;
+    }
 
     default:
       console.warn('[NevoFlux] Unknown message type:', message.type);

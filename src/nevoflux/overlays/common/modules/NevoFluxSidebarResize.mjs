@@ -80,7 +80,7 @@ class NevoFluxSidebarResize {
     this.#box.style.width = newWidth + 'px';
   }
 
-  #onMouseUp(event) {
+  #onMouseUp(_event) {
     if (!this.#dragging) return;
     this.#dragging = false;
     window.removeEventListener('mousemove', this);

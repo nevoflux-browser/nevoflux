@@ -247,7 +247,7 @@ export class ProtocolClient {
     const { stream_id, delta, finish } = payload;
 
     // Notify stream handlers
-    for (const [id, handler] of this.streamHandlers) {
+    for (const [_id, handler] of this.streamHandlers) {
       try {
         handler({
           streamId: stream_id,
@@ -269,7 +269,7 @@ export class ProtocolClient {
     const { route, view_id, layout } = payload;
 
     // Notify UI handlers
-    for (const [id, handler] of this.uiHandlers) {
+    for (const [_id, handler] of this.uiHandlers) {
       try {
         handler({
           action: 'render',
@@ -291,7 +291,7 @@ export class ProtocolClient {
     const { view_id, target_component_id, props } = payload;
 
     // Notify UI handlers
-    for (const [id, handler] of this.uiHandlers) {
+    for (const [_id, handler] of this.uiHandlers) {
       try {
         handler({
           action: 'update',

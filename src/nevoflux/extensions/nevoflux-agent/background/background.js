@@ -959,7 +959,7 @@ class ChannelManager {
   /**
    * Handle Chat channel status change
    */
-  handleChatStatusChange(connected, error) {
+  handleChatStatusChange(connected, _error) {
     this.connectionStatus.chat = connected;
     if (connected) {
       console.log('[NevoFlux] Chat channel connected (bidirectional communication ready)');
@@ -981,7 +981,7 @@ class ChannelManager {
   /**
    * Handle MCP channel status change
    */
-  handleMcpStatusChange(connected, error) {
+  handleMcpStatusChange(connected, _error) {
     this.connectionStatus.mcp = connected;
     this.broadcastConnectionStatus();
   }
@@ -2724,7 +2724,7 @@ async function executeSnapshotViaApi(tabId, params) {
 
   try {
     // Remove tab_id from params as it's passed separately
-    const { tab_id, ...options } = params || {};
+    const { tab_id: _tab_id, ...options } = params || {};
     console.log(
       `[NevoFlux] Calling browser.nevoflux.snapshot(${tabId}, ${JSON.stringify(options)})`
     );
@@ -2897,7 +2897,7 @@ async function getElementSelector(tabId, elementId, getChildren = false) {
     const allRefs = Object.entries(tabData.refs);
 
     // Find direct children by checking CSS path relationship
-    const childRefs = allRefs.filter(([id, ref]) => {
+    const childRefs = allRefs.filter(([_id, ref]) => {
       const sel = getBestCssSelector(ref);
       if (!sel || sel === parentSelector) return false;
       if (!sel.startsWith(parentSelector)) return false;
@@ -2908,7 +2908,7 @@ async function getElementSelector(tabId, elementId, getChildren = false) {
     childRefs.sort((a, b) => Number(a[0]) - Number(b[0]));
 
     const selectors = [];
-    for (const [id, ref] of childRefs) {
+    for (const [_id, ref] of childRefs) {
       selectors.push(getBestCssSelector(ref));
     }
     selectors.push(parentSelector);
@@ -3888,7 +3888,7 @@ async function executeInContentScript(tabId, action, params, timeout_ms) {
 
   // Refactor: avoid async in Promise constructor to ensure proper timeout cleanup
   let timeoutId = null;
-  let resolved = false;
+  let _resolved = false;
 
   try {
     // First try: send message to existing content script
@@ -3903,7 +3903,7 @@ async function executeInContentScript(tabId, action, params, timeout_ms) {
       ),
     ]);
 
-    resolved = true;
+    _resolved = true;
     if (timeoutId) clearTimeout(timeoutId);
     if (response && response.success !== undefined) {
       return response;
@@ -3932,7 +3932,7 @@ async function executeInContentScript(tabId, action, params, timeout_ms) {
         ),
       ]);
 
-      resolved = true;
+      _resolved = true;
       if (timeoutId) clearTimeout(timeoutId);
       if (response && response.success !== undefined) {
         return response;
@@ -4173,7 +4173,7 @@ async function getHomeDirectory() {
 /**
  * Check if valid cache exists
  */
-async function checkCache(cacheFilePath, metaFilePath) {
+async function checkCache(_cacheFilePath, _metaFilePath) {
   // Cache checking is done via native agent
   // For now, return null to always fetch fresh
   // TODO: Implement cache checking via native messaging
@@ -4183,7 +4183,7 @@ async function checkCache(cacheFilePath, metaFilePath) {
 /**
  * Save content to cache via native agent
  */
-async function saveToCacheViaAgent(cacheFilePath, metaFilePath, markdown, meta) {
+async function saveToCacheViaAgent(_cacheFilePath, _metaFilePath, _markdown, _meta) {
   // The agent will handle the actual file writing
   // The _markdown field in the result will be used by the agent
   return true;
@@ -4194,7 +4194,7 @@ async function saveToCacheViaAgent(cacheFilePath, metaFilePath, markdown, meta) 
  * Simplified implementation for background script context
  */
 function htmlToMarkdown(html, options = {}) {
-  const { includeImages = false, maxLength = 100000 } = options;
+  const { includeImages = false, maxLength: _maxLength = 100000 } = options;
 
   // Parse HTML
   const parser = new DOMParser();
@@ -4440,7 +4440,7 @@ function processElement(el, options, lines, depth) {
 /**
  * Get inline text content
  */
-function getInlineText(el, options) {
+function getInlineText(el, _options) {
   let text = '';
   for (const child of el.childNodes) {
     if (child.nodeType === 3) {
@@ -4664,7 +4664,7 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
         );
       return true; // Keep sendResponse valid for async
 
-    case BackgroundAPI.GET_TAB_CONTEXT:
+    case BackgroundAPI.GET_TAB_CONTEXT: {
       // Support optional tab_id parameter to get specific tab context
       const requestedTabId = message.tab_id ?? null;
       console.log(
@@ -4680,6 +4680,7 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
         })
         .catch(() => sendResponse(null));
       return true; // Keep sendResponse valid for async
+    }
 
     case BackgroundAPI.SIDEBAR_CLOSE:
       browser.sidebarAction
@@ -4863,7 +4864,7 @@ const tabEventListeners = {
 };
 
 // Update tab context when active tab changes
-tabEventListeners.onActivated = async (activeInfo) => {
+tabEventListeners.onActivated = async (_activeInfo) => {
   const context = await getActiveTabContext();
   broadcastToSidebar({
     type: MessageTypes.TAB_CONTEXT_UPDATE,
@@ -4873,7 +4874,7 @@ tabEventListeners.onActivated = async (activeInfo) => {
 browser.tabs.onActivated.addListener(tabEventListeners.onActivated);
 
 // Update tab context when tab URL changes
-tabEventListeners.onUpdated = async (tabId, changeInfo, tab) => {
+tabEventListeners.onUpdated = async (tabId, changeInfo, _tab) => {
   if (changeInfo.status === 'complete' || changeInfo.url) {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (tabs[0]?.id === tabId) {
@@ -4895,7 +4896,7 @@ browser.tabs.onRemoved.addListener((tabId) => {
 });
 
 // Cleanup function to remove event listeners (call on extension unload if needed)
-function cleanupTabEventListeners() {
+function _cleanupTabEventListeners() {
   if (tabEventListeners.onActivated) {
     browser.tabs.onActivated.removeListener(tabEventListeners.onActivated);
     tabEventListeners.onActivated = null;

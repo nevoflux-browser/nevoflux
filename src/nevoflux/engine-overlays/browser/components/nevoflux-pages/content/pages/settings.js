@@ -1285,7 +1285,7 @@ const Settings = {
 
   // ── Form Helpers ────────────────────────────────────────
 
-  _createSection(id, title) {
+  _createSection(id, _title) {
     const section = document.createElement('div');
     section.className = 'settings-section';
     section.id = `section-${id}`;

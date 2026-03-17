@@ -12,7 +12,7 @@
  * - URL query parameter parsing
  * - Event helpers
  */
-const NevofluxPage = {
+const _NevofluxPage = {
   /**
    * Parse query parameters from current URL.
    * @returns {URLSearchParams}

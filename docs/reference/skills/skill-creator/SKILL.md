@@ -61,18 +61,18 @@ Based on the user interview, fill in the YAML frontmatter. Required fields are `
 
 ```yaml
 ---
-name: my-skill                    # Required. kebab-case, max 64 chars
-description: What it does and when to use it  # Required. Max 1024 chars. Primary trigger mechanism.
-version: 1.0.0                    # Semantic version
-tags:                             # Categorization keywords (used in listing)
+name: my-skill # Required. kebab-case, max 64 chars
+description: What it does and when to use it # Required. Max 1024 chars. Primary trigger mechanism.
+version: 1.0.0 # Semantic version
+tags: # Categorization keywords (used in listing)
   - keyword1
   - keyword2
-enabled: true                     # Set false to disable without deleting
-triggers:                         # Auto-suggest patterns (case-insensitive substring match)
+enabled: true # Set false to disable without deleting
+triggers: # Auto-suggest patterns (case-insensitive substring match)
   - phrase that should suggest this skill
-allowed_tools:                    # Only inject skill if these tools are available (glob patterns)
+allowed_tools: # Only inject skill if these tools are available (glob patterns)
   - tool_name
-dependencies:                     # Other skills this depends on
+dependencies: # Other skills this depends on
   - other-skill
 ---
 ```
@@ -109,11 +109,13 @@ Skills use a three-level loading system. In NevoFlux, each level maps to a speci
 This means: the **description** determines whether the skill gets loaded (Level 1 → 2), and **pointers in SKILL.md** determine which auxiliary files get read (Level 2 → 3).
 
 **Key patterns:**
+
 - Keep SKILL.md under 500 lines; if approaching this limit, move details to reference files with clear pointers like "load auxiliary file `references/advanced.md` for details"
 - Reference files clearly from SKILL.md with guidance on when to read them
 - For large reference files (>300 lines), include a table of contents
 
 **Domain organization**: When a skill supports multiple domains/frameworks, organize by variant:
+
 ```
 cloud-deploy/
   SKILL.md (workflow + selection)
@@ -122,6 +124,7 @@ cloud-deploy/
     gcp.md
     azure.md
 ```
+
 The agent reads only the relevant reference file.
 
 #### Principle of Lack of Surprise
@@ -133,18 +136,26 @@ Skills must not contain malware, exploit code, or any content that could comprom
 Prefer using the imperative form in instructions.
 
 **Defining output formats** - You can do it like this:
+
 ```markdown
 ## Report structure
+
 ALWAYS use this exact template:
+
 # [Title]
+
 ## Executive summary
+
 ## Key findings
+
 ## Recommendations
 ```
 
 **Examples pattern** - Include examples:
+
 ```markdown
 ## Commit message format
+
 **Example 1:**
 Input: Added user authentication with JWT tokens
 Output: feat(auth): implement JWT-based authentication
@@ -210,6 +221,7 @@ Execute this task:
 ```
 
 **Baseline run** (same prompt, but the baseline depends on context):
+
 - **Creating a new skill**: no skill at all. Same prompt, no skill path, save to `without_skill/outputs/`.
 - **Improving an existing skill**: the old version. Before editing, snapshot the skill (`cp -r <skill-path> <workspace>/skill-snapshot/`), then point the baseline subagent at the snapshot. Save to `old_skill/outputs/`.
 
@@ -253,6 +265,7 @@ Once all runs are done:
 2. **Aggregate into benchmark** -- read all `grading.json` and `timing.json` files across the iteration, compute aggregate statistics (mean, stddev, min, max for pass_rate, time_seconds, tokens), and write `benchmark.json` and `benchmark.md`. See `references/schemas.md` for the exact schema. Put each with_skill version before its baseline counterpart.
 
    To compute these aggregates inline:
+
    - For each configuration (with_skill, without_skill), collect all pass_rate, time, token values
    - Calculate: mean = sum/count, stddev = sqrt(sum((x-mean)^2)/count), min, max
    - Delta = with_skill.mean - without_skill.mean (format as "+X.XX" or "-X.XX")
@@ -260,6 +273,7 @@ Once all runs are done:
 3. **Do an analyst pass** -- read the benchmark data and surface patterns the aggregate stats might hide. Read `agents/analyzer.md` for what to look for -- things like assertions that always pass regardless of skill, high-variance evals, and time/token tradeoffs.
 
 4. **Generate the HTML review page** -- create a standalone HTML file that lets the user review results. Write it to `<workspace>/iteration-N/review.html`. The page should include:
+
    - A tab or section for each test case showing: prompt, output files (inline where possible), grades (pass/fail for each assertion), and a feedback textbox
    - A benchmark summary section with pass rates, timing, token usage
    - A "Submit All Reviews" button that downloads `feedback.json`
@@ -273,6 +287,7 @@ Once all runs are done:
 ### What the user sees in the review page
 
 The "Outputs" section shows one test case at a time:
+
 - **Prompt**: the task that was given
 - **Output**: the files the skill produced, rendered inline where possible
 - **Previous Output** (iteration 2+): collapsed section showing last iteration's output
@@ -291,8 +306,12 @@ When the user tells you they're done, read `feedback.json`:
 ```json
 {
   "reviews": [
-    {"run_id": "eval-0-with_skill", "feedback": "the chart is missing axis labels", "timestamp": "..."},
-    {"run_id": "eval-1-with_skill", "feedback": "", "timestamp": "..."}
+    {
+      "run_id": "eval-0-with_skill",
+      "feedback": "the chart is missing axis labels",
+      "timestamp": "..."
+    },
+    { "run_id": "eval-1-with_skill", "feedback": "", "timestamp": "..." }
   ],
   "status": "complete"
 }
@@ -327,6 +346,7 @@ After improving the skill:
 5. Read the new feedback, improve again, repeat
 
 Keep going until:
+
 - The user says they're happy
 - The feedback is all empty (everything looks good)
 - You're not making meaningful progress
@@ -353,8 +373,8 @@ Create 20 eval queries -- a mix of should-trigger and should-not-trigger. Save a
 
 ```json
 [
-  {"query": "the user prompt", "should_trigger": true},
-  {"query": "another prompt", "should_trigger": false}
+  { "query": "the user prompt", "should_trigger": true },
+  { "query": "another prompt", "should_trigger": false }
 ]
 ```
 
@@ -394,26 +414,29 @@ Tell the user: "I'll run the optimization loop now. This involves multiple itera
 2. **For each iteration** (up to 5):
 
    a. **Evaluate current description against ALL queries (train + test)**:
-      For each query, determine if the current skill description would cause the agent to trigger the skill. To test this, ask yourself: "Given this query and this skill description appearing in my available_skills list, would I invoke this skill?" Run each query 3 times mentally and record the trigger rate. Be honest and simulate a fresh context each time.
+   For each query, determine if the current skill description would cause the agent to trigger the skill. To test this, ask yourself: "Given this query and this skill description appearing in my available_skills list, would I invoke this skill?" Run each query 3 times mentally and record the trigger rate. Be honest and simulate a fresh context each time.
 
-      Score each query:
-      - `trigger_rate` = (times triggered) / (total runs)
-      - `pass` = true if (should_trigger AND trigger_rate >= 0.5) OR (NOT should_trigger AND trigger_rate < 0.5)
+   Score each query:
+
+   - `trigger_rate` = (times triggered) / (total runs)
+   - `pass` = true if (should_trigger AND trigger_rate >= 0.5) OR (NOT should_trigger AND trigger_rate < 0.5)
 
    b. **Check train results**: If all train queries pass, stop early.
 
    c. **Generate improved description**:
-      Analyze the failures on the TRAIN set only (don't look at test scores when improving). Identify:
-      - Failed-to-trigger queries: what intent/keywords are missing from the description?
-      - False-trigger queries: what's too broad in the description?
+   Analyze the failures on the TRAIN set only (don't look at test scores when improving). Identify:
 
-      Then write a new description that:
-      - Uses imperative language ("Use this skill for...")
-      - Focuses on user intent, not implementation details
-      - Is distinctive and immediately recognizable
-      - Stays under 1024 characters (hard limit), ideally 100-200 words
-      - Does NOT overfit to specific test queries -- generalize from failures to broader categories
-      - Is structurally different from previous attempts
+   - Failed-to-trigger queries: what intent/keywords are missing from the description?
+   - False-trigger queries: what's too broad in the description?
+
+   Then write a new description that:
+
+   - Uses imperative language ("Use this skill for...")
+   - Focuses on user intent, not implementation details
+   - Is distinctive and immediately recognizable
+   - Stays under 1024 characters (hard limit), ideally 100-200 words
+   - Does NOT overfit to specific test queries -- generalize from failures to broader categories
+   - Is structurally different from previous attempts
 
    d. **Record the iteration**: Save description, train scores, test scores.
 
@@ -432,7 +455,7 @@ Take the best description and update the skill's SKILL.md frontmatter. Show the 
 When the skill is ready to distribute, package it using the bundled shell script:
 
 ```bash
-bash <this-skill-dir>/scripts/package.sh <path-to-skill-directory> [output-directory]
+bash < this-skill-dir > /scripts/package.sh < path-to-skill-directory > [output-directory]
 ```
 
 This creates a `.skill` file (zip format) excluding `__pycache__`, `node_modules`, `*.pyc`, `.DS_Store`, and the `evals/` directory.
@@ -446,6 +469,7 @@ This creates a `.skill` file (zip format) excluding `__pycache__`, `node_modules
 ### Tool names
 
 NevoFlux Agent uses these tool names (different from Claude Code):
+
 - `read_file` (not `Read`)
 - `write_file` (not `Write`)
 - `list_files` (not `Glob`)
@@ -459,15 +483,16 @@ When writing skills for NevoFlux, use these tool names in examples and instructi
 
 **Where to save new skills** (platform-specific primary directory):
 
-| Platform | Primary skill directory |
-|----------|----------------------|
-| **Linux** | `~/.config/nevoflux/skills/` |
-| **macOS** | `~/Library/Application Support/nevoflux/skills/` |
-| **Windows** | `%APPDATA%\nevoflux\skills\` |
+| Platform    | Primary skill directory                          |
+| ----------- | ------------------------------------------------ |
+| **Linux**   | `~/.config/nevoflux/skills/`                     |
+| **macOS**   | `~/Library/Application Support/nevoflux/skills/` |
+| **Windows** | `%APPDATA%\nevoflux\skills\`                     |
 
 When creating a new skill, always save it to the primary directory for the current platform. Detect the OS and use the correct path — do not hardcode `~/.config/nevoflux/skills/` on macOS or Windows.
 
 **Additional directories** (also scanned, later directories override earlier):
+
 - `~/.claude/skills/` (Claude Code compatible)
 - `~/.gemini/skills/` (Gemini compatible)
 - `~/.config/opencode/skills/` (OpenCode compatible)
@@ -478,6 +503,7 @@ Skills are compatible with all these agents if they use the standard YAML frontm
 ### Subagent modes
 
 NevoFlux supports three subagent modes:
+
 - `chat` - Dialogue mode
 - `browser` - Browser automation mode
 - `agent` - Full capabilities (file I/O, shell, computer use)
@@ -487,6 +513,7 @@ For skill testing, always use `agent` mode.
 ### Cross-agent compatibility
 
 The SKILL.md format (YAML frontmatter + Markdown body) is a shared standard. Skills created with this tool are compatible with:
+
 - NevoFlux Agent
 - Claude Code (via `.claude/skills/`)
 - Any agent that supports the Agent Skills specification
@@ -504,6 +531,7 @@ The agents/ directory contains instructions for specialized subagents. Read them
 - `agents/analyzer.md` -- How to analyze why one version beat another
 
 The references/ directory has additional documentation:
+
 - `references/schemas.md` -- JSON structures for evals.json, grading.json, etc.
 
 ---

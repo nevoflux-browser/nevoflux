@@ -14,7 +14,7 @@
  *
  * Assumes `VirtualFS` and `Bundler` are available as globals.
  */
-const CanvasRuntime = {
+const _CanvasRuntime = {
   /** @type {string|null} The resolved entry point path. */
   _entry: null,
 
@@ -400,7 +400,7 @@ const CanvasRuntime = {
    */
   _assembleHTMLEntry(entryPath, sdkScript) {
     let html = VirtualFS.read(entryPath) || '';
-    const entryDir = entryPath.substring(0, entryPath.lastIndexOf('/')) || '/';
+    const _entryDir = entryPath.substring(0, entryPath.lastIndexOf('/')) || '/';
 
     // Inline <script src="local-path"></script> from VFS
     html = html.replace(
@@ -415,7 +415,7 @@ const CanvasRuntime = {
           // Preserve type attribute if present
           const typeMatch = (pre + post).match(/type\s*=\s*["']([^"']+)["']/);
           const typeAttr = typeMatch ? ` type="${typeMatch[1]}"` : '';
-          return `<script${typeAttr}>\n${content}\n<\/script>`;
+          return `<script${typeAttr}>\n${content}\n</script>`;
         }
         return _match; // Keep original if file not found
       }

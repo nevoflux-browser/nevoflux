@@ -159,8 +159,7 @@ function getBrowser(panel) {
 
 // Stub tabbrowser implementation to make sure that links from inside
 // extension sidebar panels open in new tabs, see bug 1488055.
-var gBrowser = {
-  // eslint-disable-line no-unused-vars
+var _gBrowser = {
   get selectedBrowser() {
     return document.getElementById('webext-panels-browser');
   },
@@ -170,8 +169,7 @@ var gBrowser = {
   },
 };
 
-function updatePosition() {
-  // eslint-disable-line no-unused-vars
+function _updatePosition() {
   // We need both of these to make sure we update the position
   // after any lower level updates have finished.
   requestAnimationFrame(() =>
@@ -184,8 +182,7 @@ function updatePosition() {
   );
 }
 
-function loadPanel(extensionId, extensionUrl, browserStyle) {
-  // eslint-disable-line no-unused-vars
+function _loadPanel(extensionId, extensionUrl, browserStyle) {
   let browserEl = document.getElementById('webext-panels-browser');
   if (browserEl) {
     if (browserEl.currentURI.spec === extensionUrl) {

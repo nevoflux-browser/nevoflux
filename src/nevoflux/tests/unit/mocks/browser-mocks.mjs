@@ -233,7 +233,6 @@ export function createMockWindow(doc) {
       opacity: '1',
     }),
     eval: (script) => {
-      // eslint-disable-next-line no-eval
       return eval(script);
     },
     windowUtils: {

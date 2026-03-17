@@ -16,8 +16,14 @@ for arg in "$@"; do
   [[ "$arg" == "--with-make" ]] && WITH_MAKE=true
 done
 
-pass() { PASS=$((PASS + 1)); echo "  PASS: $1"; }
-fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
+pass() {
+  PASS=$((PASS + 1))
+  echo "  PASS: $1"
+}
+fail() {
+  FAIL=$((FAIL + 1))
+  echo "  FAIL: $1"
+}
 
 check() {
   local desc="$1" expected="$2" actual="$3"
@@ -60,10 +66,10 @@ check ".res patch: create_res.py line" "$res_expected" "$res_actual"
 
 # --- Negative tests: lines that should NOT be modified ---
 neg_lines=(
-  '	$(CC) $(OUTOPTION)$@ -c $(COMPILE_CFLAGS) $($(notdir $<)_FLAGS) $(call relativize,$<)'  # already patched
-  'COMPILE_CFLAGS += $(COMPILE_PDB_FLAG)'  # no trailing $<
-  '$(eval $(call PREPROCESS_RULES,c,CSRCS,CC,COMPILE_CFLAGS))'  # eval line, no trailing $<
-  '	$(call WINEWRAP,$(AS)) $(ASOUTOPTION)$@ $(ASFLAGS) $($(notdir $<)_FLAGS) $(AS_DASH_C_FLAG) $(call relativize,$<)'  # assembly, already has relativize
+  '	$(CC) $(OUTOPTION)$@ -c $(COMPILE_CFLAGS) $($(notdir $<)_FLAGS) $(call relativize,$<)'                            # already patched
+  'COMPILE_CFLAGS += $(COMPILE_PDB_FLAG)'                                                                             # no trailing $<
+  '$(eval $(call PREPROCESS_RULES,c,CSRCS,CC,COMPILE_CFLAGS))'                                                        # eval line, no trailing $<
+  '	$(call WINEWRAP,$(AS)) $(ASOUTOPTION)$@ $(ASFLAGS) $($(notdir $<)_FLAGS) $(AS_DASH_C_FLAG) $(call relativize,$<)' # assembly, already has relativize
 )
 
 for line in "${neg_lines[@]}"; do
@@ -143,7 +149,7 @@ if $WITH_MAKE; then
   TMPDIR="$(mktemp -d)"
   trap 'rm -rf "$TMPDIR"' EXIT
 
-  cat > "$TMPDIR/Makefile" <<'MAKEFILE'
+  cat > "$TMPDIR/Makefile" << 'MAKEFILE'
 # Minimal test for the relativize function
 topobjdir := /workspace/build/obj
 empty :=

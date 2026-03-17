@@ -17,16 +17,14 @@ Defines the evals for a skill. Located at `evals/evals.json` within the skill di
       "prompt": "User's example prompt",
       "expected_output": "Description of expected result",
       "files": ["evals/files/sample1.pdf"],
-      "expectations": [
-        "The output includes X",
-        "The skill used script Y"
-      ]
+      "expectations": ["The output includes X", "The skill used script Y"]
     }
   ]
 }
 ```
 
 **Fields:**
+
 - `skill_name`: Name matching the skill's frontmatter
 - `evals[].id`: Unique integer identifier
 - `evals[].prompt`: The task to execute
@@ -65,6 +63,7 @@ Tracks version progression in Improve mode. Located at workspace root.
 ```
 
 **Fields:**
+
 - `started_at`: ISO timestamp
 - `skill_name`: Name of the skill being improved
 - `current_best`: Version identifier of the best performer
@@ -143,6 +142,7 @@ Output from the grader agent. Located at `<run-dir>/grading.json`.
 ```
 
 **Fields:**
+
 - `expectations[]`: Graded expectations with evidence
   - `text`: The original expectation text
   - `passed`: Boolean
@@ -231,25 +231,21 @@ Output from Benchmark mode. Located at `<workspace>/iteration-N/benchmark.json`.
         "tool_calls": 18,
         "errors": 0
       },
-      "expectations": [
-        {"text": "...", "passed": true, "evidence": "..."}
-      ],
-      "notes": [
-        "Used 2023 data, may be stale"
-      ]
+      "expectations": [{ "text": "...", "passed": true, "evidence": "..." }],
+      "notes": ["Used 2023 data, may be stale"]
     }
   ],
 
   "run_summary": {
     "with_skill": {
-      "pass_rate": {"mean": 0.85, "stddev": 0.05, "min": 0.80, "max": 0.90},
-      "time_seconds": {"mean": 45.0, "stddev": 12.0, "min": 32.0, "max": 58.0},
-      "tokens": {"mean": 3800, "stddev": 400, "min": 3200, "max": 4100}
+      "pass_rate": { "mean": 0.85, "stddev": 0.05, "min": 0.8, "max": 0.9 },
+      "time_seconds": { "mean": 45.0, "stddev": 12.0, "min": 32.0, "max": 58.0 },
+      "tokens": { "mean": 3800, "stddev": 400, "min": 3200, "max": 4100 }
     },
     "without_skill": {
-      "pass_rate": {"mean": 0.35, "stddev": 0.08, "min": 0.28, "max": 0.45},
-      "time_seconds": {"mean": 32.0, "stddev": 8.0, "min": 24.0, "max": 42.0},
-      "tokens": {"mean": 2100, "stddev": 300, "min": 1800, "max": 2500}
+      "pass_rate": { "mean": 0.35, "stddev": 0.08, "min": 0.28, "max": 0.45 },
+      "time_seconds": { "mean": 32.0, "stddev": 8.0, "min": 24.0, "max": 42.0 },
+      "tokens": { "mean": 2100, "stddev": 300, "min": 1800, "max": 2500 }
     },
     "delta": {
       "pass_rate": "+0.50",
@@ -267,6 +263,7 @@ Output from Benchmark mode. Located at `<workspace>/iteration-N/benchmark.json`.
 ```
 
 **Fields:**
+
 - `metadata`: Information about the benchmark run
 - `runs[]`: Individual run results
   - `configuration`: Must be `"with_skill"` or `"without_skill"`

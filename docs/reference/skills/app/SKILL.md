@@ -45,20 +45,21 @@ You build interactive Canvas applications using the `create_artifact` tool. Ever
 
 Pick the simplest type that fits:
 
-| Type | `content_type` | When to Use |
-|------|---------------|-------------|
-| **HTML** | `"text/html"` | Default. Single-page apps, tools, dashboards, games |
-| **React** | `"react"` | 3+ independent components or complex state management |
-| **Project** | `"project"` | Multi-file apps needing module imports and bundling |
-| **SVG** | `"image/svg+xml"` | Vector graphics, icons, illustrations |
-| **Mermaid** | `"text/mermaid"` | Flowcharts, sequence diagrams, ER diagrams |
-| **Markdown** | `"text/markdown"` | Formatted text, documentation, reports |
+| Type         | `content_type`    | When to Use                                           |
+| ------------ | ----------------- | ----------------------------------------------------- |
+| **HTML**     | `"text/html"`     | Default. Single-page apps, tools, dashboards, games   |
+| **React**    | `"react"`         | 3+ independent components or complex state management |
+| **Project**  | `"project"`       | Multi-file apps needing module imports and bundling   |
+| **SVG**      | `"image/svg+xml"` | Vector graphics, icons, illustrations                 |
+| **Mermaid**  | `"text/mermaid"`  | Flowcharts, sequence diagrams, ER diagrams            |
+| **Markdown** | `"text/markdown"` | Formatted text, documentation, reports                |
 
 **Decision guide**: Start with HTML. Move to React if you have 3+ components with shared state. Move to project only when you need separate files with imports between them.
 
 ## create_artifact Tool
 
 **Single-file** (HTML / React / SVG / Mermaid / Markdown):
+
 ```json
 {
   "title": "My Dashboard",
@@ -68,6 +69,7 @@ Pick the simplest type that fits:
 ```
 
 **Multi-file project** (bundled with esbuild):
+
 ```json
 {
   "title": "Task Manager",
@@ -82,6 +84,7 @@ Pick the simplest type that fits:
 ```
 
 Parameters:
+
 - `title` (string, required) — Display name for the artifact
 - `content_type` (string, required) — One of the types from the table above
 - `content` (string) — Full source for single-file artifacts
@@ -103,34 +106,38 @@ Use either `content` (single-file) or `files` + `entry` (project), not both.
 ## NevofluxSDK API
 
 ### Storage (persistent key-value)
+
 ```javascript
-await NevofluxSDK.storage.get(key)           // Returns value or null
-await NevofluxSDK.storage.set(key, value)    // Persist JSON-serializable value
-await NevofluxSDK.storage.delete(key)        // Remove key
-await NevofluxSDK.storage.query(prefix)      // List keys by prefix
+await NevofluxSDK.storage.get(key); // Returns value or null
+await NevofluxSDK.storage.set(key, value); // Persist JSON-serializable value
+await NevofluxSDK.storage.delete(key); // Remove key
+await NevofluxSDK.storage.query(prefix); // List keys by prefix
 ```
+
 Use app-specific key prefixes (e.g. `todo:items`, `dashboard:config`) to avoid collisions.
 
 ### Browser Tools (via callTool)
+
 ```javascript
-await NevofluxSDK.callTool(action, params)
+await NevofluxSDK.callTool(action, params);
 ```
+
 Action names use **snake_case**. Common actions:
 
-| Action | Params | Purpose |
-|--------|--------|---------|
-| `navigate` | `{ url }` | Navigate browser tab |
-| `get_markdown` | `{}` | Get page content as markdown |
-| `screenshot` | `{}` | Capture page screenshot |
-| `list_tabs` | `{}` | List all open tabs |
-| `query_tabs` | `{ url?, title?, active? }` | Filter tabs |
-| `get_elements` | `{}` | Get interactive page elements |
-| `click` | `{ selector }` | Click element |
-| `type` | `{ selector, text }` | Type into element |
-| `web_search` | `{ query }` | Search the web |
-| `web_fetch` | `{ url }` | Fetch URL content |
-| `eval_js` | `{ code }` | Run JS in active browser tab |
-| `ask_user` | `{ question, options? }` | Prompt user in sidebar |
+| Action         | Params                      | Purpose                       |
+| -------------- | --------------------------- | ----------------------------- |
+| `navigate`     | `{ url }`                   | Navigate browser tab          |
+| `get_markdown` | `{}`                        | Get page content as markdown  |
+| `screenshot`   | `{}`                        | Capture page screenshot       |
+| `list_tabs`    | `{}`                        | List all open tabs            |
+| `query_tabs`   | `{ url?, title?, active? }` | Filter tabs                   |
+| `get_elements` | `{}`                        | Get interactive page elements |
+| `click`        | `{ selector }`              | Click element                 |
+| `type`         | `{ selector, text }`        | Type into element             |
+| `web_search`   | `{ query }`                 | Search the web                |
+| `web_fetch`    | `{ url }`                   | Fetch URL content             |
+| `eval_js`      | `{ code }`                  | Run JS in active browser tab  |
+| `ask_user`     | `{ question, options? }`    | Prompt user in sidebar        |
 
 Full action reference: load auxiliary file `callTool-actions.md`.
 
@@ -139,14 +146,16 @@ Full action reference: load auxiliary file `callTool-actions.md`.
 `agent.chat()` sends a message to the AI agent and returns a Promise that resolves with the full response when the agent finishes. It supports streaming callbacks for real-time feedback.
 
 **Simple (await final result):**
+
 ```javascript
-const result = await NevofluxSDK.agent.chat("summarize this page");
+const result = await NevofluxSDK.agent.chat('summarize this page');
 // result = { text: "...", toolResults: [...], sessionId: "cs_..." }
 ```
 
 **Streaming (real-time callbacks):**
+
 ```javascript
-const result = await NevofluxSDK.agent.chat("analyze the data", {
+const result = await NevofluxSDK.agent.chat('analyze the data', {
   onStream: (chunk) => {
     // { type: "text", delta: "I'll start by..." }
     outputEl.textContent += chunk.delta;
@@ -157,88 +166,131 @@ const result = await NevofluxSDK.agent.chat("analyze the data", {
   onState: (state) => {
     // { status: "thinking" | "tool_executing" | "streaming" | "idle" }
     statusEl.textContent = state.status;
-  }
+  },
 });
 ```
 
 **Multi-turn conversation:**
+
 ```javascript
-const r1 = await NevofluxSDK.agent.chat("find all images on this page");
-const r2 = await NevofluxSDK.agent.chat("now download the first one", {
-  sessionId: r1.sessionId  // continues same conversation
+const r1 = await NevofluxSDK.agent.chat('find all images on this page');
+const r2 = await NevofluxSDK.agent.chat('now download the first one', {
+  sessionId: r1.sessionId, // continues same conversation
 });
 ```
 
 **Cancel a running request:**
+
 ```javascript
 NevofluxSDK.agent.cancel(sessionId);
 ```
 
 **System commands:**
+
 ```javascript
-await NevofluxSDK.agent.sendCommand(command, params)
+await NevofluxSDK.agent.sendCommand(command, params);
 ```
+
 MCP tools are not directly callable. Use `agent.chat()` to ask the agent to invoke them.
 
 ### Sidebar
+
 ```javascript
-await NevofluxSDK.sidebar.open()              // Open sidebar panel
-await NevofluxSDK.sidebar.send(message)       // Send message to sidebar
-await NevofluxSDK.sidebar.notify(type, data)  // Typed notification
+await NevofluxSDK.sidebar.open(); // Open sidebar panel
+await NevofluxSDK.sidebar.send(message); // Send message to sidebar
+await NevofluxSDK.sidebar.notify(type, data); // Typed notification
 ```
 
 ### System
+
 ```javascript
-await NevofluxSDK.system.getInfo()  // Get browser/system info
+await NevofluxSDK.system.getInfo(); // Get browser/system info
 ```
 
 ## HTML Template
 
 ```html
 <!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>My App</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: system-ui, sans-serif; padding: 20px; color: #1a1a1a; }
-  .card { background: #fff; border: 1px solid #e5e5e5; border-radius: 8px; padding: 12px 16px; margin: 8px 0; }
-  button { padding: 8px 16px; border: none; border-radius: 6px; background: #0066ff; color: #fff; cursor: pointer; }
-  button:hover { background: #0052cc; }
-  input { padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; outline: none; }
-  input:focus { border-color: #0066ff; box-shadow: 0 0 0 2px rgba(0,102,255,0.15); }
-</style>
-</head><body>
-  <h2>Notes</h2>
-  <div style="display:flex;gap:8px;margin:12px 0">
-    <input id="input" placeholder="New note..." style="flex:1">
-    <button id="add">Add</button>
-  </div>
-  <div id="list"></div>
-  <script>
-    const KEY = "notes:items";
-    async function load() {
-      const items = (await NevofluxSDK.storage.get(KEY)) || [];
-      render(items);
-    }
-    async function add() {
-      const el = document.getElementById("input");
-      if (!el.value.trim()) return;
-      const items = (await NevofluxSDK.storage.get(KEY)) || [];
-      items.push({ text: el.value.trim(), ts: Date.now() });
-      await NevofluxSDK.storage.set(KEY, items);
-      el.value = "";
-      render(items);
-    }
-    function render(items) {
-      document.getElementById("list").innerHTML =
-        items.map(n => `<div class="card">${n.text}</div>`).join("");
-    }
-    document.getElementById("add").addEventListener("click", add);
-    document.getElementById("input").addEventListener("keydown", e => {
-      if (e.key === "Enter") add();
-    });
-    load();
-  </script>
-</body></html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>My App</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: system-ui, sans-serif;
+        padding: 20px;
+        color: #1a1a1a;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #e5e5e5;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin: 8px 0;
+      }
+      button {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        background: #0066ff;
+        color: #fff;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #0052cc;
+      }
+      input {
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        outline: none;
+      }
+      input:focus {
+        border-color: #0066ff;
+        box-shadow: 0 0 0 2px rgba(0, 102, 255, 0.15);
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Notes</h2>
+    <div style="display:flex;gap:8px;margin:12px 0">
+      <input id="input" placeholder="New note..." style="flex:1" />
+      <button id="add">Add</button>
+    </div>
+    <div id="list"></div>
+    <script>
+      const KEY = 'notes:items';
+      async function load() {
+        const items = (await NevofluxSDK.storage.get(KEY)) || [];
+        render(items);
+      }
+      async function add() {
+        const el = document.getElementById('input');
+        if (!el.value.trim()) return;
+        const items = (await NevofluxSDK.storage.get(KEY)) || [];
+        items.push({ text: el.value.trim(), ts: Date.now() });
+        await NevofluxSDK.storage.set(KEY, items);
+        el.value = '';
+        render(items);
+      }
+      function render(items) {
+        document.getElementById('list').innerHTML = items
+          .map((n) => `<div class="card">${n.text}</div>`)
+          .join('');
+      }
+      document.getElementById('add').addEventListener('click', add);
+      document.getElementById('input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') add();
+      });
+      load();
+    </script>
+  </body>
+</html>
 ```
 
 ## React Template
@@ -252,22 +304,25 @@ function App() {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    NevofluxSDK.callTool("list_tabs", {})
-      .then(r => { if (r.success) setTabs(r.result?.tabs || []); })
+    NevofluxSDK.callTool('list_tabs', {})
+      .then((r) => {
+        if (r.success) setTabs(r.result?.tabs || []);
+      })
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div style={{ padding: 40, textAlign: "center" }}>Loading...</div>;
+  if (loading) return <div style={{ padding: 40, textAlign: 'center' }}>Loading...</div>;
 
   return (
-    <div style={{ fontFamily: "system-ui", padding: 20 }}>
+    <div style={{ fontFamily: 'system-ui', padding: 20 }}>
       <h2>Tabs ({tabs.length})</h2>
-      {tabs.map(tab => (
-        <div key={tab.id}
-             onClick={() => NevofluxSDK.callTool("navigate", { url: tab.url })}
-             style={{ padding: 12, borderBottom: "1px solid #eee", cursor: "pointer" }}>
+      {tabs.map((tab) => (
+        <div
+          key={tab.id}
+          onClick={() => NevofluxSDK.callTool('navigate', { url: tab.url })}
+          style={{ padding: 12, borderBottom: '1px solid #eee', cursor: 'pointer' }}>
           <strong>{tab.title}</strong>
-          <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>{tab.url}</div>
+          <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>{tab.url}</div>
         </div>
       ))}
     </div>
@@ -281,47 +336,88 @@ Use when the app needs AI features — analysis, generation, Q&A, or orchestrati
 
 ```html
 <!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>AI Assistant</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: system-ui, sans-serif; padding: 20px; max-width: 640px; }
-  #output { white-space: pre-wrap; font-family: ui-monospace, monospace; background: #f5f5f5;
-    padding: 16px; border-radius: 8px; min-height: 100px; margin: 12px 0; line-height: 1.5; }
-  #status { font-size: 12px; color: #888; margin: 4px 0; }
-  button { padding: 8px 16px; border: none; border-radius: 6px; background: #0066ff; color: #fff; cursor: pointer; }
-  button:hover { background: #0052cc; }
-  button:disabled { opacity: 0.5; cursor: default; }
-</style>
-</head><body>
-  <h2>Page Analyzer</h2>
-  <button id="analyze">Analyze Current Page</button>
-  <div id="status">Ready</div>
-  <div id="output"></div>
-  <script>
-    const btn = document.getElementById("analyze");
-    const output = document.getElementById("output");
-    const status = document.getElementById("status");
-
-    btn.addEventListener("click", async () => {
-      btn.disabled = true;
-      output.textContent = "";
-      status.textContent = "Thinking...";
-      try {
-        await NevofluxSDK.agent.chat(
-          "Analyze the current page and summarize its key content in 3 bullet points",
-          {
-            onStream: (chunk) => { output.textContent += chunk.delta; },
-            onState: (s) => { status.textContent = s.status; }
-          }
-        );
-        status.textContent = "Done";
-      } catch (err) {
-        status.textContent = "Error: " + err.message;
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>AI Assistant</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
       }
-      btn.disabled = false;
-    });
-  </script>
-</body></html>
+      body {
+        font-family: system-ui, sans-serif;
+        padding: 20px;
+        max-width: 640px;
+      }
+      #output {
+        white-space: pre-wrap;
+        font-family: ui-monospace, monospace;
+        background: #f5f5f5;
+        padding: 16px;
+        border-radius: 8px;
+        min-height: 100px;
+        margin: 12px 0;
+        line-height: 1.5;
+      }
+      #status {
+        font-size: 12px;
+        color: #888;
+        margin: 4px 0;
+      }
+      button {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        background: #0066ff;
+        color: #fff;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #0052cc;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Page Analyzer</h2>
+    <button id="analyze">Analyze Current Page</button>
+    <div id="status">Ready</div>
+    <div id="output"></div>
+    <script>
+      const btn = document.getElementById('analyze');
+      const output = document.getElementById('output');
+      const status = document.getElementById('status');
+
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        output.textContent = '';
+        status.textContent = 'Thinking...';
+        try {
+          await NevofluxSDK.agent.chat(
+            'Analyze the current page and summarize its key content in 3 bullet points',
+            {
+              onStream: (chunk) => {
+                output.textContent += chunk.delta;
+              },
+              onState: (s) => {
+                status.textContent = s.status;
+              },
+            }
+          );
+          status.textContent = 'Done';
+        } catch (err) {
+          status.textContent = 'Error: ' + err.message;
+        }
+        btn.disabled = false;
+      });
+    </script>
+  </body>
+</html>
 ```
 
 ## Multi-File Project Template

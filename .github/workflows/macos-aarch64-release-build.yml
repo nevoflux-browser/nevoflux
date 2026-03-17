@@ -373,13 +373,13 @@ jobs:
       - name: Upload dist dmg
         uses: actions/upload-artifact@v4
         with:
-          retention-days: 1
+          retention-days: 5
           name: nevoflux-aarch64-apple-darwin.dmg
           path: ./nevoflux-aarch64-apple-darwin.dmg
 
       - name: Upload host mar
         uses: actions/upload-artifact@v4
         with:
-          retention-days: 1
+          retention-days: 5
           name: nevoflux-macos-host-mar
           path: ./nevoflux-macos-host-mar
