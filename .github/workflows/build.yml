@@ -318,7 +318,7 @@ jobs:
     secrets: inherit
     needs: [build-data]
     with:
-      build-version: ${{ needs.build-data.outputs.version }}
+      build-version: ${{ inputs.display_version || needs.build-data.outputs.version }}
       profile-data-path-archive: nevoflux.win64-pgo-stage-1.zip
       release-branch: ${{ inputs.update_branch }}
 
@@ -330,7 +330,7 @@ jobs:
     secrets: inherit
     needs: [build-data, buildid]
     with:
-      build-version: ${{ needs.build-data.outputs.version }}
+      build-version: ${{ inputs.display_version || needs.build-data.outputs.version }}
       release-branch: ${{ inputs.update_branch }}
       MOZ_BUILD_DATE: ${{needs.buildid.outputs.buildids}}
       use-sccache: ${{ inputs.use-sccache }}
@@ -343,7 +343,7 @@ jobs:
     secrets: inherit
     needs: [build-data, buildid]
     with:
-      build-version: ${{ needs.build-data.outputs.version }}
+      build-version: ${{ inputs.display_version || needs.build-data.outputs.version }}
       release-branch: ${{ inputs.update_branch }}
       MOZ_BUILD_DATE: ${{needs.buildid.outputs.buildids}}
       use-sccache: ${{ inputs.use-sccache }}
@@ -356,6 +356,6 @@ jobs:
     secrets: inherit
     needs: [build-data, mac-x86_64, mac-aarch64]
     with:
-      build-version: ${{ needs.build-data.outputs.version }}
+      build-version: ${{ inputs.display_version || needs.build-data.outputs.version }}
       release-branch: ${{ inputs.update_branch }}
       sign_macos: ${{ inputs.sign_macos || false }}

@@ -7,7 +7,7 @@ on:
         description: 'The version to build'
         required: true
         type: string
-        default: '0.1.0'
+        default: '0.1.1'
       release-branch:
         description: 'The branch to build'
         required: true
