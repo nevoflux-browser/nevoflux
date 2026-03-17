@@ -7,7 +7,7 @@ index abbf33e9d2b3c9d1e0a34bd46e7cd289c435533b..d580b156fed13f4de8eb73e5c29c646a
      <!-- Required for com.apple.developer.web-browser.public-key-credential -->
      <key>com.apple.application-identifier</key>
 -    <string>43AQ936H96.org.mozilla.firefox</string>
-+    <string>9V5K9TP787.app.zen-browser.zen</string>
++    <string>8843NC46L2.app.nevoflux.nevoflux</string>
  
      <!-- For platform passkey (webauthn) support -->
      <key>com.apple.developer.web-browser.public-key-credential</key><true/>
