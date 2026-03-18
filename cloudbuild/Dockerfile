@@ -3,8 +3,19 @@
 # Pre-installs all dependencies needed for Linux and Windows cross-compilation
 # builds of the NevoFlux browser (Firefox/Zen-based).
 #
+# Includes pre-installed Wine + VS2022 cross-compile toolchain so that
+# the `windows-setup` build step is skipped entirely (saves ~15-20 min).
+#
 # Build:
 #   docker build -t gcr.io/PROJECT_ID/nevoflux-builder:latest cloudbuild/
+#
+# Push:
+#   docker push gcr.io/PROJECT_ID/nevoflux-builder:latest
+#
+# NOTE: When updating the Firefox/engine version, re-copy the VS2022 manifest:
+#   cp engine/build/vs/vs2022.yaml cloudbuild/win-cross/vs2022.yaml
+#   cp engine/third_party/python/vsdownload/vsdownload.py cloudbuild/win-cross/vsdownload.py
+#   Then rebuild and push the image.
 #
 # This image is used by Cloud Build configs in cloudbuild/*.yaml
 
@@ -88,6 +99,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   libfuse2 \
   desktop-file-utils \
   appstream \
+  zstd \
   ca-certificates \
   software-properties-common \
   && rm -rf /var/lib/apt/lists/*
@@ -148,6 +160,34 @@ RUN SCCACHE_VERSION="v0.9.1" \
 # @zen-browser/surfer (global npm package)
 # ---------------------------------------------------------------------------
 RUN npm install -g @zen-browser/surfer
+
+# ---------------------------------------------------------------------------
+# Python packages for VS2022 installer
+# ---------------------------------------------------------------------------
+RUN pip3 install --no-cache-dir certifi pyyaml six
+
+# ---------------------------------------------------------------------------
+# Wine (Mozilla cross-compile toolchain for Windows builds)
+# ---------------------------------------------------------------------------
+RUN mkdir -p /root/win-cross \
+  && aria2c "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.cache.level-1.toolchains.v3.linux64-wine.latest/artifacts/public%2Fbuild%2Fwine.tar.zst" \
+    -o /tmp/wine.tar.zst \
+  && zstd -d /tmp/wine.tar.zst -o /tmp/wine.tar \
+  && tar xf /tmp/wine.tar -C /root/win-cross \
+  && rm -f /tmp/wine.tar.zst /tmp/wine.tar \
+  && ls -d /root/win-cross/wine
+
+# ---------------------------------------------------------------------------
+# VS2022 cross-compile toolchain (downloaded via Mozilla's vsdownload)
+# ---------------------------------------------------------------------------
+COPY win-cross/vsdownload.py /tmp/win-cross/vsdownload.py
+COPY win-cross/vs2022.yaml /tmp/win-cross/vs2022.yaml
+COPY win-cross/install-vs.py /tmp/win-cross/install-vs.py
+
+RUN cd /tmp/win-cross \
+  && python3 install-vs.py vs2022.yaml /root/win-cross/vs2022 \
+  && rm -rf /tmp/win-cross \
+  && ls -d /root/win-cross/vs2022
 
 # ---------------------------------------------------------------------------
 # Workspace
