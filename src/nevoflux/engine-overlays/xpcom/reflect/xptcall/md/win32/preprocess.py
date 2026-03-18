@@ -1,0 +1,54 @@
+# -*- Mode: python; indent-tabs-mode: nil; tab-width: 40 -*-
+# vim: set filetype=python:
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+import errno
+import os
+import shlex
+import subprocess
+import sys
+import tempfile
+
+import buildconfig
+from mozfile import which
+
+
+def preprocess(out, asm_file):
+    cxx = shlex.split(buildconfig.substs["CXX"])
+    if not os.path.exists(cxx[0]):
+        tool = cxx[0]
+        cxx[0] = which(tool)
+        if not cxx[0]:
+            raise OSError(errno.ENOENT, f"Could not find {tool} on PATH.")
+
+    cppflags = buildconfig.substs["OS_CPPFLAGS"]
+
+    # subprocess.Popen(stdout=) only accepts actual file objects, which `out`,
+    # above, is not.  So fake a temporary file to write to.
+    (outhandle, tmpout) = tempfile.mkstemp(suffix=".cpp")
+
+    # NevoFlux: When cross-compiling for Windows via Wine, clang-cl (a Windows
+    # executable) misinterprets absolute Unix paths starting with '/' as MSVC
+    # compiler flags (e.g. '/workspace' -> '/w' flag).  Convert to a relative
+    # path to avoid this.
+    if os.path.isabs(asm_file):
+        try:
+            asm_file = os.path.relpath(asm_file)
+        except ValueError:
+            pass  # Different drive on Windows; keep absolute
+
+    # #line directives will confuse armasm64, and /EP is the only way to
+    # preprocess without emitting #line directives.
+    command = cxx + ["/EP"] + cppflags + ["/TP", asm_file]
+    with open(tmpout, "wb") as t:
+        result = subprocess.Popen(command, stdout=t).wait()
+        if result != 0:
+            sys.exit(result)
+
+    with open(tmpout, "rb") as t:
+        out.write(t.read())
+
+    os.close(outhandle)
+    os.remove(tmpout)
