@@ -26,7 +26,7 @@
 
     <!-- Required for com.apple.developer.web-browser.public-key-credential -->
     <key>com.apple.application-identifier</key>
-    <string>8843NC46L2.app.nevoflux.nevoflux</string>
+    <string>8843NC46L2.com.nevoflux.browser</string>
 
     <!-- For platform passkey (webauthn) support -->
     <key>com.apple.developer.web-browser.public-key-credential</key><true/>
