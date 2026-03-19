@@ -70,7 +70,7 @@ jobs:
 
             # Delete the non-v release
             echo "Deleting release '${VERSION}'..."
-            gh release delete "${VERSION}" --yes --cleanup-tag
+            gh release delete "${VERSION}" --yes
             echo "Release '${VERSION}' deleted."
           else
             echo "No non-v release '${VERSION}' found, skipping merge."
