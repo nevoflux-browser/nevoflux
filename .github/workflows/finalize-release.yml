@@ -1,30 +1,23 @@
 name: Finalize Release
 
-# Manual workflow to finalize a release after all builds complete and Windows signing is done.
+# Manual workflow to finalize a release after all builds complete.
 #
 # Prerequisites:
-#   - build.yml has completed (macOS, source uploaded to draft release)
-#   - GCB builds have completed (Linux, Windows uploaded to draft release)
-#   - Windows signing is done (if sign_windows=true, binaries pushed to windows-binaries repo)
+#   - build.yml has completed (macOS assets uploaded to draft release WITHOUT v prefix)
+#   - GCB builds have completed (Linux, Windows assets uploaded to draft release WITH v prefix)
 #
 # This workflow:
-#   1. Uploads signed Windows binaries (overwriting unsigned ones)
-#   2. Collects update manifests → commits to nevoflux-updates repo
-#   3. Generates release notes
-#   4. Marks the draft release as published
+#   1. Merges macOS assets from non-v release into v-prefixed release, deletes non-v release
+#   2. Generates release notes
+#   3. Marks the draft release as published
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (must match the draft release tag, e.g. 1.0.0-a.1)'
+        description: 'Release version without v prefix (e.g. 0.1.2)'
         required: true
         type: string
-      sign_windows:
-        description: 'Upload signed Windows binaries (from windows-binaries repo)'
-        required: false
-        type: boolean
-        default: false
       release_branch:
         description: 'Release branch (for release notes generation)'
         required: true
@@ -32,16 +25,6 @@ on:
         default: 'release'
         options:
           - 'release'
-      build_run_id:
-        description: 'Build workflow run ID (for downloading macOS update manifests from Actions artifacts)'
-        required: false
-        type: string
-        default: ''
-      build_flatpak:
-        description: 'Build Flatpak package'
-        required: false
-        type: boolean
-        default: false
 
 jobs:
   finalize:
@@ -58,253 +41,60 @@ jobs:
           submodules: recursive
           token: ${{ secrets.DEPLOY_KEY }}
 
-      - name: Download macOS update manifest
-        if: ${{ inputs.build_run_id != '' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: macos_update_manifest
-          path: macos_update_manifest
-          github-token: ${{ secrets.DEPLOY_KEY }}
-          run-id: ${{ inputs.build_run_id }}
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}
-
-      - name: Setup Google Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Download Linux update manifests from GCS
+      # =================================================================
+      # 1. Merge macOS assets from non-v release into v-prefixed release
+      # =================================================================
+      - name: Merge macOS assets into v-prefixed release
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
         run: |
           VERSION="${{ inputs.version }}"
-          mkdir -p linux_update_manifest_x86_64 linux_update_manifest_aarch64
-          gsutil -m cp -r "gs://nevoflux-builds/${VERSION}/linux_update_manifest_x86_64/*" linux_update_manifest_x86_64/ || \
-            echo "::warning::Linux x86_64 update manifests not found in GCS"
-          gsutil -m cp -r "gs://nevoflux-builds/${VERSION}/linux_update_manifest_aarch64/*" linux_update_manifest_aarch64/ || \
-            echo "::warning::Linux aarch64 update manifests not found in GCS"
+          V_TAG="v${VERSION}"
 
-      - name: Checkout updates repository
-        uses: actions/checkout@v4
-        with:
-          repository: dorisgyl/nevoflux-updates
-          path: updates-server
-          token: ${{ secrets.DEPLOY_KEY }}
+          echo "Checking for non-v release '${VERSION}'..."
+          if gh release view "${VERSION}" --json assets --jq '.assets[].name' 2>/dev/null; then
+            echo "Found release '${VERSION}', downloading assets..."
+            mkdir -p /tmp/macos-assets
 
-      - name: Download signed Windows binaries
-        if: ${{ inputs.sign_windows }}
-        run: |
-          git clone https://github.com/dorisgyl/windows-binaries.git .github/workflows/object --depth 1
+            # Download all assets from the non-v release
+            gh release download "${VERSION}" --dir /tmp/macos-assets --clobber
 
-      - name: Copy update manifests
-        run: |
-          cd updates-server
-          mkdir -p updates
-          if [ -d "../linux_update_manifest_x86_64" ] && [ "$(ls -A ../linux_update_manifest_x86_64 2>/dev/null)" ]; then
-            cp -a ../linux_update_manifest_x86_64/.  updates/
-          fi
-          if [ -d "../linux_update_manifest_aarch64" ] && [ "$(ls -A ../linux_update_manifest_aarch64 2>/dev/null)" ]; then
-            cp -a ../linux_update_manifest_aarch64/.  updates/
-          fi
-          if [ "${{ inputs.sign_windows }}" = "true" ]; then
-            cp -a ../.github/workflows/object/windows-x64-signed-x86_64/update_manifest/.  updates/ || true
-            cp -a ../.github/workflows/object/windows-x64-signed-arm64/update_manifest/.  updates/ || true
-          fi
-          if [ -d "../macos_update_manifest" ] && [ "$(ls -A ../macos_update_manifest 2>/dev/null)" ]; then
-            cp -a ../macos_update_manifest/.  updates/
+            # Upload each asset to the v-prefixed release
+            echo "Uploading assets to '${V_TAG}'..."
+            for f in /tmp/macos-assets/*; do
+              if [ -f "$f" ]; then
+                echo "  Uploading $(basename "$f")..."
+                gh release upload "${V_TAG}" "$f" --clobber
+              fi
+            done
+
+            # Delete the non-v release
+            echo "Deleting release '${VERSION}'..."
+            gh release delete "${VERSION}" --yes --cleanup-tag
+            echo "Release '${VERSION}' deleted."
+          else
+            echo "No non-v release '${VERSION}' found, skipping merge."
           fi
 
-      - name: Commit update manifests
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: 🚀 Update update manifests
-          commit_user_name: NevoFlux Bot
-          commit_user_email: nevoflux-bot@users.noreply.github.com
-          repository: ./updates-server
-
+      # =================================================================
+      # 2. Generate release notes
+      # =================================================================
       - name: Generate Release Notes
         env:
           RELEASE_BRANCH: ${{ inputs.release_branch }}
         run: bash .github/workflows/src/generate_release_notes.sh
 
-      - name: Upload signed Windows binaries to release
-        if: ${{ inputs.sign_windows }}
-        env:
-          GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
-        run: |
-          VERSION="${{ inputs.version }}"
-          # Upload signed Windows binaries (overwrite unsigned ones from GCB)
-          for f in \
-            .github/workflows/object/windows-x64-signed-x86_64/nevoflux.win-x86_64.zip \
-            .github/workflows/object/windows-x64-signed-arm64/nevoflux.win-arm64.zip \
-            .github/workflows/object/windows-x64-signed-x86_64/windows.mar \
-            .github/workflows/object/windows-x64-signed-arm64/windows-arm64.mar \
-            .github/workflows/object/windows-x64-signed-x86_64/nevoflux.installer.exe \
-            .github/workflows/object/windows-x64-signed-arm64/nevoflux.installer-arm64.exe; do
-            [ -f "$f" ] && gh release upload "$VERSION" "$f" --clobber || true
-          done
-
+      # =================================================================
+      # 3. Publish the release
+      # =================================================================
       - name: Finalize release
         env:
           GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
         run: |
           VERSION="${{ inputs.version }}"
+          V_TAG="v${VERSION}"
           BUILD_DATE=$(date +"%Y-%m-%d")
-          gh release edit "$VERSION" \
+          gh release edit "${V_TAG}" \
             --draft=false \
-            --title "Release build - $VERSION ($BUILD_DATE)" \
+            --title "Release build - ${V_TAG} ($BUILD_DATE)" \
             --notes-file release_notes.md
-
-  prepare-flatpak:
-    if: ${{ inputs.build_flatpak }}
-    permissions: write-all
-    name: Prepare Flatpak
-    needs: [finalize]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Flatpak repository
-        uses: actions/checkout@v4
-        with:
-          repository: dorisgyl/nevoflux-release-utils
-          token: ${{ secrets.DEPLOY_KEY }}
-
-      - name: Install dependencies
-        run: |
-          git pull
-          sudo apt-get update || true
-          npm ci
-
-      - name: Generate new Flatpak release
-        run: |
-          npm run build-flatpak -- \
-            --version ${{ inputs.version }}
-
-      - name: Commit
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: 🚀 Update releases for Flatpak
-          commit_user_name: NevoFlux Bot
-          commit_user_email: nevoflux-bot@users.noreply.github.com
-
-      - name: Checkout Flatpak repository
-        uses: actions/checkout@v4
-        with:
-          repository: dorisgyl/nevoflux-flatpak
-          token: ${{ secrets.DEPLOY_KEY }}
-          path: flatpak
-
-      - name: Move releases.xml
-        run: |
-          mv releases.xml ./flatpak/app.zen_browser.zen.metainfo.xml
-          echo -n ${{ inputs.version }} > ./flatpak/version
-
-      - name: Commit
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: '[release]: Update Flatpak manifest'
-          commit_user_name: NevoFlux Bot
-          commit_user_email: nevoflux-bot@users.noreply.github.com
-          repository: ./flatpak
-
-      - name: Wait 2 minutes for the Flatpak repo to update
-        run: sleep 120
-
-  release-flatpak:
-    if: ${{ inputs.build_flatpak }}
-    permissions: write-all
-    name: Release Flatpak
-    needs: [prepare-flatpak]
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Flatpak repository
-        uses: actions/checkout@v4
-        with:
-          repository: flathub/app.zen_browser.zen
-          token: ${{ secrets.DEPLOY_KEY }}
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCS_SERVICE_ACCOUNT_KEY }}
-
-      - name: Setup Google Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Download Linux builds from GCS
-        run: |
-          VERSION="${{ inputs.version }}"
-          gsutil cp "gs://nevoflux-builds/${VERSION}/nevoflux.linux-x86_64.tar.xz" .
-          gsutil cp "gs://nevoflux-builds/${VERSION}/nevoflux.linux-aarch64.tar.xz" .
-
-      - name: Update repository
-        uses: actions/checkout@v4
-        with:
-          path: zen-browser
-          token: ${{ secrets.DEPLOY_KEY }}
-
-      - name: Download Flatpak archive
-        run: |
-          for attempt in 1 2 3 4 5; do
-            wget https://github.com/dorisgyl/nevoflux-flatpak/releases/latest/download/archive.tar -O archive.tar && break
-            if [ $attempt -lt 5 ]; then
-              echo "::warning::Download attempt $attempt/5 failed. Retrying in $((attempt * 15))s..."
-              sleep $((attempt * 15))
-            else
-              echo "::error::Download failed after 5 attempts"
-              exit 1
-            fi
-          done
-
-      - name: Setup Git
-        run: |
-          git config --global user.name "NevoFlux Bot"
-          git config --global user.email "nevoflux-bot@users.noreply.github.com"
-
-      - name: Prepare Flatpak manifest
-        run: |
-          python3 ./zen-browser/scripts/prepare-flatpak-release.py \
-            --flatpak-archive archive.tar \
-            --version ${{ inputs.version }} \
-            --linux-archive nevoflux.linux-x86_64.tar.xz \
-            --linux-aarch64-archive nevoflux.linux-aarch64.tar.xz \
-            --output app.zen_browser.zen.yml \
-            --template-root ./zen-browser/build/flatpak
-
-      - name: Commit changes
-        run: |
-          git add app.zen_browser.zen.yml
-          git commit -m "Update to version ${{ inputs.version }}"
-
-      - name: Clean up
-        run: |
-          rm -rf zen-browser
-          rm -rf archive.tar
-          rm -rf nevoflux.linux-x86_64.tar.xz
-          rm -rf nevoflux.linux-aarch64.tar.xz
-
-      - name: Upload Flatpak manifest
-        uses: actions/upload-artifact@v4
-        with:
-          retention-days: 5
-          name: app.zen_browser.zen.yml
-          path: ./app.zen_browser.zen.yml
-
-      - name: Create pull request
-        uses: peter-evans/create-pull-request@v7
-        env:
-          GIT_TRACE: 1
-          GIT_CURL_VERBOSE: 1
-        with:
-          token: ${{ secrets.DEPLOY_KEY }}
-          commit-message: Update to version `${{ inputs.version }}`
-          title: Update to version `${{ inputs.version }}`
-          body: |
-            This PR updates the NevoFlux Flatpak package to version ${{ inputs.version }}.
-
-            @${{ github.actor }} please review and merge this PR.
-          branch: update-to-${{ inputs.version }}
-          base: master
-          git-token: ${{ secrets.DEPLOY_KEY }}
-          delete-branch: true
