@@ -98,6 +98,8 @@ pub enum MessageContent {
     Plan(PlanData),
     /// Artifact card (canvas preview)
     Artifact(ArtifactData),
+    /// Q&A pair (user's response to agent's question)
+    QA { question: String, answer: String },
 }
 
 /// Artifact streaming state
@@ -250,6 +252,23 @@ impl Message {
                 steps,
                 is_active,
             }),
+            attachments: Vec::new(),
+            tool_calls: Vec::new(),
+            timestamp: js_sys::Date::now() as u64,
+            status: MessageStatus::Sent,
+            is_live: false,
+        }
+    }
+
+    /// Create a Q&A message (user's response to agent's question)
+    pub fn qa(question: impl Into<String>, answer: impl Into<String>) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            role: MessageRole::User,
+            content: MessageContent::QA {
+                question: question.into(),
+                answer: answer.into(),
+            },
             attachments: Vec::new(),
             tool_calls: Vec::new(),
             timestamp: js_sys::Date::now() as u64,

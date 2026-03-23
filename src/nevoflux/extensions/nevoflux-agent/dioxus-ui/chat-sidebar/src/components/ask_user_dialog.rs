@@ -56,9 +56,8 @@ pub fn AskUserDialog() -> Element {
                 return;
             };
 
-            // Add user reply to chat as a visible message
-            let reply_text = format!("Re: {}\n\n{}", question, answer);
-            ctx.messages.write().push(Message::user(&reply_text));
+            // Add user reply to chat as a Q&A message
+            ctx.messages.write().push(Message::qa(&question, &answer));
 
             // Clear the request
             ctx.ask_user.set(None);
@@ -73,8 +72,7 @@ pub fn AskUserDialog() -> Element {
             send_ask_user_cancel(&request_id);
 
             // Add cancellation notice to chat
-            let reply_text = format!("Re: {}\n\n*Cancelled*", question);
-            ctx.messages.write().push(Message::user(&reply_text));
+            ctx.messages.write().push(Message::qa(&question, "Cancelled"));
 
             ctx.ask_user.set(None);
         }
@@ -109,14 +107,12 @@ pub fn AskUserDialog() -> Element {
                 };
 
                 if let Some(answer) = answer {
-                    let reply_text = format!("Re: {}\n\n{}", question, answer);
-                    ctx.messages.write().push(Message::user(&reply_text));
+                    ctx.messages.write().push(Message::qa(&question, &answer));
                     ctx.ask_user.set(None);
                 }
             } else if evt.key() == Key::Escape {
                 send_ask_user_cancel(&request_id);
-                let reply_text = format!("Re: {}\n\n*Cancelled*", question);
-                ctx.messages.write().push(Message::user(&reply_text));
+                ctx.messages.write().push(Message::qa(&question, "Cancelled"));
                 ctx.ask_user.set(None);
             }
         }

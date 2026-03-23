@@ -647,6 +647,27 @@ body {
   overflow-wrap: break-word;
 }
 
+/* Q&A message (user response to agent question) */
+.qa-message {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.qa-question {
+  font-size: 12px;
+  opacity: 0.65;
+  line-height: 1.4;
+}
+.qa-answer {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.qa-label {
+  font-weight: 600;
+  opacity: 0.8;
+}
+
 /* Collapsible user text */
 .collapsible-user-text {
   position: relative;

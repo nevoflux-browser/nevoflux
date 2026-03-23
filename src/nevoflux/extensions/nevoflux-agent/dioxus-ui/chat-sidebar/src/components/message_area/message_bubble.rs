@@ -31,6 +31,7 @@ pub fn MessageBubble(
         MessageContent::Error { message, .. } => message.clone(),
         MessageContent::Plan(plan) => plan.summary.clone(),
         MessageContent::Artifact(data) => data.title.clone(),
+        MessageContent::QA { answer, .. } => answer.clone(),
     };
 
     // Live messages skip the slideIn animation to prevent layout shift
@@ -193,6 +194,18 @@ pub fn MessageBubble(
                                     code: code.clone(),
                                     message: message.clone(),
                                     recoverable: *recoverable,
+                                }
+                            },
+                            MessageContent::QA { question, answer } => rsx! {
+                                div { class: "qa-message",
+                                    div { class: "qa-question",
+                                        span { class: "qa-label", "Q: " }
+                                        "{question}"
+                                    }
+                                    div { class: "qa-answer",
+                                        span { class: "qa-label", "A: " }
+                                        "{answer}"
+                                    }
                                 }
                             },
                             MessageContent::Plan(_) => rsx! {},
