@@ -188,6 +188,134 @@
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
+
+    /* Split Button */
+    .split-btn-container {
+      display: inline-flex;
+      align-items: center;
+      position: relative;
+    }
+    .split-btn-main { border-radius: 4px 0 0 4px !important; }
+    .split-btn-arrow {
+      border-radius: 0 4px 4px 0 !important;
+      border-left: 1px solid rgba(255,255,255,0.1) !important;
+      padding: 4px 4px !important;
+      min-width: 20px !important;
+    }
+    .split-btn-arrow svg { pointer-events: none; }
+
+    /* Export Dropdown */
+    .export-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 4px);
+      right: 0;
+      background: var(--nevoflux-bg, #16162a);
+      border: 1px solid var(--nevoflux-border, #333);
+      border-radius: 8px;
+      padding: 4px 0;
+      min-width: 200px;
+      z-index: 1000;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .export-dropdown.open { display: block; }
+    .export-dropdown-header {
+      padding: 6px 12px;
+      font-size: 11px;
+      opacity: 0.5;
+      user-select: none;
+    }
+    .export-dropdown-sep {
+      height: 1px;
+      background: var(--nevoflux-border, #333);
+      margin: 4px 0;
+    }
+    .export-dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 7px 12px;
+      background: none;
+      border: none;
+      color: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      text-align: left;
+    }
+    .export-dropdown-item:hover,
+    .export-dropdown-item:focus {
+      background: rgba(255,255,255,0.08);
+      outline: none;
+    }
+    .export-icon { font-size: 14px; width: 20px; text-align: center; }
+    .export-ext { opacity: 0.5; font-size: 11px; margin-left: auto; }
+
+    /* Export progress spinner */
+    .split-btn-main.exporting svg { animation: spin 0.8s linear infinite; }
+
+    /* Slides Preview */
+    .slides-container { display: flex; height: 100%; }
+    .slides-thumb-panel {
+      width: 120px;
+      min-width: 120px;
+      background: rgba(0,0,0,0.2);
+      border-right: 1px solid var(--nevoflux-border, #333);
+      overflow-y: auto;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .slides-thumb {
+      position: relative;
+      border: 2px solid transparent;
+      border-radius: 4px;
+      cursor: pointer;
+      overflow: hidden;
+      aspect-ratio: 16/9;
+      background: var(--nevoflux-bg, #16162a);
+    }
+    .slides-thumb.active { border-color: var(--nevoflux-accent, #4a9eff); }
+    .slides-thumb:hover:not(.active) { border-color: rgba(255,255,255,0.2); }
+    .slides-thumb-number {
+      position: absolute;
+      top: 2px;
+      left: 4px;
+      font-size: 9px;
+      opacity: 0.5;
+    }
+    .slides-thumb-preview {
+      transform: scale(0.15);
+      transform-origin: top left;
+      width: 667%;
+      pointer-events: none;
+      font-size: 14px;
+      padding: 8px;
+    }
+    .slides-main-panel {
+      flex: 1;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .slides-main-panel iframe { flex: 1; border: none; width: 100%; }
+    .slides-page-indicator {
+      position: absolute;
+      bottom: 12px;
+      right: 16px;
+      font-size: 12px;
+      opacity: 0.5;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    /* Print styles — hide toolbar/chrome when printing to PDF */
+    @media print {
+      .canvas-toolbar, #toolbar, .split-btn-arrow, .export-dropdown { display: none !important; }
+      #viewport, .canvas-viewport { width: 100% !important; margin: 0 !important; padding: 0 !important; }
+      iframe { border: none !important; width: 100% !important; height: auto !important; }
+    }
   </style>
 </head>
 <body>
@@ -205,9 +333,31 @@
       <button class="toolbar-btn" id="btn-copy" title="Copy code" aria-label="Copy code">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
       </button>
-      <button class="toolbar-btn" id="btn-export-source" title="Export source" aria-label="Export source">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      </button>
+      <div class="split-btn-container" id="export-container">
+        <button class="toolbar-btn split-btn-main" id="btn-export-default" title="Export source" aria-label="Export source">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </button>
+        <button class="toolbar-btn split-btn-arrow" id="btn-export-arrow" title="More export formats" aria-label="More export formats" aria-haspopup="true" aria-expanded="false">
+          <svg width="8" height="8" viewBox="0 0 12 12" fill="currentColor"><path d="M2 4l4 4 4-4z"/></svg>
+        </button>
+        <div class="export-dropdown" id="export-dropdown" role="menu">
+          <div class="export-dropdown-header">Export as...</div>
+          <div class="export-dropdown-sep"></div>
+          <!-- Universal formats -->
+          <button class="export-dropdown-item" role="menuitem" data-format="source"><span class="export-icon">📄</span> Source <span class="export-ext" id="export-ext-source"></span></button>
+          <button class="export-dropdown-item" role="menuitem" data-format="html"><span class="export-icon">🌐</span> HTML</button>
+          <button class="export-dropdown-item" role="menuitem" data-format="image"><span class="export-icon">🖼</span> Image (PNG)</button>
+          <button class="export-dropdown-item" role="menuitem" data-format="pdf"><span class="export-icon">📑</span> PDF</button>
+          <button class="export-dropdown-item" role="menuitem" data-format="docx"><span class="export-icon">📝</span> Word (.docx)</button>
+          <!-- Conditional separator + items -->
+          <div class="export-dropdown-sep export-conditional-sep" style="display:none"></div>
+          <button class="export-dropdown-item export-conditional" role="menuitem" data-format="svg" style="display:none"><span class="export-icon">🔷</span> SVG</button>
+          <button class="export-dropdown-item export-conditional" role="menuitem" data-format="markdown" style="display:none"><span class="export-icon">📋</span> Markdown (.md)</button>
+          <button class="export-dropdown-item export-conditional" role="menuitem" data-format="pptx" style="display:none"><span class="export-icon">📊</span> PowerPoint (.pptx)</button>
+          <button class="export-dropdown-item export-conditional" role="menuitem" data-format="xlsx" style="display:none"><span class="export-icon">📈</span> Excel (.xlsx)</button>
+          <button class="export-dropdown-item export-conditional" role="menuitem" data-format="zip" style="display:none"><span class="export-icon">📦</span> ZIP</button>
+        </div>
+      </div>
       <button class="toolbar-btn" id="btn-share" title="Copy link" aria-label="Copy link">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
       </button>
