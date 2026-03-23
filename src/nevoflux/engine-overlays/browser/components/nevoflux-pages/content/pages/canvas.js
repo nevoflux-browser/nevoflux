@@ -577,6 +577,64 @@ const Canvas = {
     this._downloadBlob(blob, `${this._artifact.title || 'artifact'}.docx`);
   },
 
+  _exportSvg() {
+    const iframeDoc = this._getPreviewDocument();
+    if (!iframeDoc) { this._showToast('Nothing to export', 'error'); return; }
+
+    const svg = iframeDoc.querySelector('svg');
+    if (!svg) { this._showToast('No SVG found', 'error'); return; }
+
+    const clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+
+    const defs = iframeDoc.querySelectorAll('defs');
+    defs.forEach(d => clone.prepend(d.cloneNode(true)));
+
+    const svgString = new XMLSerializer().serializeToString(clone);
+    this._downloadFile(svgString, `${this._artifact.title || 'artifact'}.svg`, 'image/svg+xml');
+  },
+
+  async _exportMarkdown() {
+    await this._loadVendor('turndown.min.js');
+    const iframeDoc = this._getPreviewDocument();
+    if (!iframeDoc) { this._showToast('Nothing to export', 'error'); return; }
+
+    const turndownService = new TurndownService();
+    const md = turndownService.turndown(iframeDoc.body.innerHTML);
+    this._downloadFile(md, `${this._artifact.title || 'artifact'}.md`, 'text/markdown');
+  },
+
+  async _exportXlsx() {
+    await this._loadVendor('xlsx.min.js');
+    const iframeDoc = this._getPreviewDocument();
+    if (!iframeDoc) { this._showToast('Nothing to export', 'error'); return; }
+
+    const tables = iframeDoc.querySelectorAll('table');
+    if (!tables.length) { this._showToast('No tables found', 'error'); return; }
+
+    const wb = XLSX.utils.book_new();
+    tables.forEach((table, i) => {
+      const ws = XLSX.utils.table_to_sheet(table);
+      XLSX.utils.book_append_sheet(wb, ws, `Sheet${i + 1}`);
+    });
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    this._downloadBlob(blob, `${this._artifact.title || 'artifact'}.xlsx`);
+  },
+
+  async _exportZip() {
+    await this._loadVendor('jszip.min.js');
+    if (!this._artifact?.files) { this._showToast('No project files found', 'error'); return; }
+
+    const zip = new JSZip();
+    for (const [path, content] of Object.entries(this._artifact.files)) {
+      zip.file(path, content || '');
+    }
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    this._downloadBlob(blob, `${this._artifact.title || 'project'}.zip`);
+  },
+
   async _shareLink() {
     const url = `nevoflux://canvas/${this._artifactId}`;
     try {
