@@ -557,7 +557,7 @@ ${slidesHtml}
 
   async _exportImage() {
     await this._loadVendor('html2canvas.min.js');
-    const html = this._lastRenderedHtml;
+    const html = this._lastContentHtml;
     if (!html) { this._showToast('Nothing to export', 'error'); return; }
 
     // Parse stored HTML to extract styles + body content
@@ -590,8 +590,8 @@ ${slidesHtml}
   },
 
   _exportPdf() {
-    // Open rendered content as a blob URL in a new tab for printing
-    const html = this._lastRenderedHtml;
+    // Open clean content as a blob URL in a new tab for printing
+    const html = this._lastContentHtml;
     if (!html) { this._showToast('Nothing to export', 'error'); return; }
 
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
@@ -606,10 +606,10 @@ ${slidesHtml}
 
   async _exportDocx() {
     await this._loadVendor('html-docx.min.js');
-    const html = this._lastRenderedHtml;
+    // Use clean pre-injection HTML (no SDK scripts) for DOCX conversion
+    const html = this._lastContentHtml;
     if (!html) { this._showToast('Nothing to export', 'error'); return; }
 
-    // Use stored rendered HTML directly — no DOM access needed
     const blob = htmlDocx.asBlob(html);
     this._downloadBlob(blob, `${this._artifact.title || 'artifact'}.docx`);
   },
@@ -1185,6 +1185,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
     );
     this._iframe.srcdoc = injected;
     this._lastRenderedHtml = injected;
+    this._lastContentHtml = htmlContent; // pre-injection, clean HTML for export
     viewport.appendChild(this._iframe);
   },
 
