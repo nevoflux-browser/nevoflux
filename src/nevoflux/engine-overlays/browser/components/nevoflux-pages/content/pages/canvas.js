@@ -583,7 +583,28 @@ ${slidesHtml}
   },
 
   _exportPdf() {
-    window.print();
+    // Print the rendered content, not the parent chrome page.
+    // Open a new window with the rendered HTML and trigger print there.
+    const html = this._lastRenderedHtml;
+    if (!html) { this._showToast('Nothing to export', 'error'); return; }
+
+    const printWin = window.open('', '_blank', 'width=800,height=600');
+    if (!printWin) { this._showToast('Popup blocked — please allow popups', 'error'); return; }
+
+    printWin.document.write(html);
+    printWin.document.close();
+    // Wait for content to render before printing
+    printWin.addEventListener('load', () => {
+      printWin.print();
+      printWin.close();
+    });
+    // Fallback in case load doesn't fire (srcdoc-like content)
+    setTimeout(() => {
+      if (!printWin.closed) {
+        printWin.print();
+        printWin.close();
+      }
+    }, 1000);
   },
 
   async _exportDocx() {
