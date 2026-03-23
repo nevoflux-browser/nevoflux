@@ -535,6 +535,48 @@ const Canvas = {
     this._downloadFile(this._artifact.content, filename, mime);
   },
 
+  async _exportImage() {
+    await this._loadVendor('html2canvas.min.js');
+    const iframeDoc = this._getPreviewDocument();
+    if (!iframeDoc) { this._showToast('Nothing to export', 'error'); return; }
+
+    const temp = document.createElement('div');
+    temp.style.cssText = 'position:fixed;left:-9999px;top:0;';
+
+    // Copy styles from iframe
+    const styles = iframeDoc.querySelectorAll('style, link[rel="stylesheet"]');
+    styles.forEach(s => temp.appendChild(s.cloneNode(true)));
+
+    // Copy body content
+    const bodyClone = iframeDoc.body.cloneNode(true);
+    temp.appendChild(bodyClone);
+    document.body.appendChild(temp);
+
+    try {
+      const canvas = await html2canvas(bodyClone, { useCORS: true, scale: 2 });
+      canvas.toBlob(blob => {
+        if (blob) this._downloadBlob(blob, `${this._artifact.title || 'artifact'}.png`);
+      }, 'image/png');
+    } finally {
+      document.body.removeChild(temp);
+    }
+  },
+
+  _exportPdf() {
+    window.print();
+  },
+
+  async _exportDocx() {
+    await this._loadVendor('html-docx.min.js');
+    const iframeDoc = this._getPreviewDocument();
+    if (!iframeDoc) { this._showToast('Nothing to export', 'error'); return; }
+
+    const html = iframeDoc.body.innerHTML;
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`;
+    const blob = htmlDocx.asBlob(fullHtml);
+    this._downloadBlob(blob, `${this._artifact.title || 'artifact'}.docx`);
+  },
+
   async _shareLink() {
     const url = `nevoflux://canvas/${this._artifactId}`;
     try {
