@@ -221,20 +221,26 @@ const Settings = {
     banner.style.display = 'none';
     section.appendChild(banner);
 
+    // LLM Providers group (service + local)
     const providerGroup = this._createGroup('LLM Providers');
-
     const grid = document.createElement('div');
     grid.className = 'llm-providers-grid';
     grid.id = 'llm-providers-grid';
-
     const loading = document.createElement('div');
     loading.className = 'llm-loading';
     loading.id = 'llm-loading';
     loading.textContent = 'Loading providers...';
     grid.appendChild(loading);
-
     providerGroup.appendChild(grid);
     section.appendChild(providerGroup);
+
+    // Agents group (cli + agent)
+    const agentGroup = this._createGroup('Agents');
+    const agentGrid = document.createElement('div');
+    agentGrid.className = 'llm-providers-grid';
+    agentGrid.id = 'llm-agents-grid';
+    agentGroup.appendChild(agentGrid);
+    section.appendChild(agentGroup);
 
     return section;
   },
@@ -307,21 +313,25 @@ const Settings = {
   },
 
   _refreshLlmGrid() {
-    const grid = document.getElementById('llm-providers-grid');
-    if (!grid) return;
-    grid.innerHTML = '';
+    const llmGrid = document.getElementById('llm-providers-grid');
+    const agentGrid = document.getElementById('llm-agents-grid');
+    if (!llmGrid) return;
+    llmGrid.innerHTML = '';
+    if (agentGrid) agentGrid.innerHTML = '';
 
     const providers = this._llmProviders;
     if (!providers.length) {
       const empty = document.createElement('div');
       empty.className = 'llm-loading';
       empty.textContent = 'No providers available.';
-      grid.appendChild(empty);
+      llmGrid.appendChild(empty);
       return;
     }
 
     for (const provider of providers) {
-      grid.appendChild(this._createProviderCard(provider));
+      const isAgent = provider.type === 'cli' || provider.type === 'agent';
+      const targetGrid = isAgent && agentGrid ? agentGrid : llmGrid;
+      targetGrid.appendChild(this._createProviderCard(provider));
     }
   },
 
@@ -771,21 +781,28 @@ const Settings = {
           return;
         }
 
-        // 1) Save OpenClaw model config (openclaw.json)
-        await this._sendAgentCommand('config.openclaw.model.set', {
-          provider_name: providerName,
-          base_url: baseUrl,
-          api_key: apiKey,
-          api_type: apiType,
-          model_id: model || 'astron-code-latest',
-          model_name: model || 'astron-code-latest',
-          context_window: contextWindow,
-          max_tokens: maxTokens,
-          reasoning: reasoning,
-          set_as_primary: setActive,
-        });
+        // 1) Try to save OpenClaw model config (openclaw.json)
+        //    This may fail if OpenClaw CLI is not installed — continue anyway
+        let openclawSaved = false;
+        try {
+          await this._sendAgentCommand('config.openclaw.model.set', {
+            provider_name: providerName,
+            base_url: baseUrl,
+            api_key: apiKey,
+            api_type: apiType,
+            model_id: model || 'astron-code-latest',
+            model_name: model || 'astron-code-latest',
+            context_window: contextWindow,
+            max_tokens: maxTokens,
+            reasoning: reasoning,
+            set_as_primary: setActive,
+          });
+          openclawSaved = true;
+        } catch (ocErr) {
+          console.warn('OpenClaw config save failed (CLI may not be installed):', ocErr.message);
+        }
 
-        // 2) Save NevoFlux config.toml (provider = openclaw)
+        // 2) Save NevoFlux config.toml (provider = openclaw) — always runs
         const llmParams = {
           provider: 'openclaw',
           set_active: setActive,
@@ -794,6 +811,14 @@ const Settings = {
         if (apiKey) llmParams.api_key = apiKey;
         llmParams.base_url = baseUrl;
         await this._sendAgentCommand('config.llm.set', llmParams);
+
+        if (!openclawSaved) {
+          statusEl.textContent = 'NevoFlux config saved. OpenClaw CLI not available — install it to sync model config.';
+          statusEl.className = 'llm-modal-status success';
+          await this._populateLlmProviders();
+          saveBtn.disabled = false;
+          return;
+        }
       } else {
         // Standard provider: single save
         const params = { provider: providerId, set_active: setActive };
