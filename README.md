@@ -55,7 +55,7 @@
 
 Built on [Zen Browser](https://zen-browser.app/) (Firefox/Gecko), Nevoflux bridges the gap between you, AI, and the internet. It browses with you, thinks with you, and acts for you — from simple conversations to autonomous web navigation and full computer control.
 
-Under the hood: a Rust-native agent daemon with 16+ LLM providers, 80+ browser automation APIs, cross-platform computer control, MCP integration, and an encrypted cross-session memory system.
+Under the hood: a Rust-native agent daemon with 16+ LLM providers, 80+ browser automation APIs, cross-platform computer control, MCP integration, an encrypted cross-session memory system, and integration with external coding agents and personal AI assistants.
 
 ```
 User ──► Sidebar UI ──► Browser Extension ──► Native Messaging ──► Rust Agent Daemon
@@ -64,7 +64,8 @@ User ──► Sidebar UI ──► Browser Extension ──► Native Messaging
                                                                        ├── Computer Control
                                                                        ├── MCP (Server + Client)
                                                                        ├── Memory & Learning
-                                                                       └── WASM Skills
+                                                                       ├── WASM Skills
+                                                                       └── External Agents (Claude Code, OpenClaw, ...)
 ```
 
 ---
@@ -74,10 +75,11 @@ User ──► Sidebar UI ──► Browser Extension ──► Native Messaging
 - 🧬 **Identity & Soul** — Your companion has its own personality, values, and behavioral patterns that evolve over time
 - 🧠 **Memory & Learning** — Remembers across sessions, learns your preferences, adapts to how you work — with encrypted storage
 - 🎛️ **Progressive Autonomy** — Three modes (Chat, Browser, Agent) — you decide how much control to hand over
-- ⚡ **Micro Apps** — Generate fully functional mini-apps on the fly — not just rendered artifacts, but living apps with full agent capabilities (browser automation, native tools, MCP services). Think Claude Artifacts, but alive.
+- ⚡ **Micro Apps (Canvas)** — Generate fully functional mini-apps on the fly — not just rendered artifacts, but living apps with full agent capabilities (browser automation, native tools, MCP services). Export to 10+ formats: HTML, PNG, PDF, DOCX, PPTX, XLSX, SVG, ZIP, and more.
 - 🧩 **WASM Skills** — Extensible skill system powered by WebAssembly — sandboxed, pluggable, and progressively loaded
 - 🖥️ **Browser + Computer Control** — 80+ browser APIs and cross-platform desktop control (screenshot, mouse, keyboard)
 - 🤖 **Multi-LLM Freedom** — 16+ providers: Anthropic, OpenAI, Qwen, DeepSeek, Gemini, Ollama, and more — your choice
+- 🐙 **Agent Integration** — Seamlessly delegate tasks to external coding agents (Claude Code, Gemini CLI, Kimi Agent) or personal AI assistants (OpenClaw)
 
 ---
 
@@ -99,7 +101,9 @@ Nevoflux uses progressive capability unlocking — each mode builds on the previ
 
 ---
 
-## Supported LLM Providers
+## Supported LLM Providers & Agents
+
+### LLM Providers
 
 | Provider         | Type  | Notes                     |
 | ---------------- | ----- | ------------------------- |
@@ -116,8 +120,15 @@ Nevoflux uses progressive capability unlocking — each mode builds on the previ
 | Perplexity       | API   |                           |
 | Together         | API   |                           |
 | OpenRouter       | API   |                           |
-| Claude Code      | CLI   | Subprocess integration    |
-| Gemini CLI       | CLI   | Subprocess integration    |
+
+### Agents
+
+| Agent            | Type     | Notes                             |
+| ---------------- | -------- | --------------------------------- |
+| Claude Code      | Coding   | Subprocess integration            |
+| Gemini CLI       | Coding   | Subprocess integration            |
+| Kimi Agent       | Coding   | Subprocess integration            |
+| OpenClaw         | Personal | Personal AI assistant integration |
 
 Configure your preferred provider in `~/.config/nevoflux/config.toml`:
 
@@ -172,37 +183,71 @@ Then register the native messaging host:
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                       Entry Layer                                    │
-│                                                                      │
-│  Browser Extension        Claude Code (MCP)        CLI               │
-│  (Native Messaging)       (stdio JSON-RPC)         (--daemon/--mcp)  │
-│         │                       │                        │           │
-└─────────┼───────────────────────┼────────────────────────┼───────────┘
-          │                       │                        │
-          └───────────────────────┼────────────────────────┘
-                                  │
-                                  ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Daemon Layer (ZeroMQ ROUTER)                       │
-│                                                                      │
-│  ┌─────────────┐  ┌──────────────┐  ┌────────────┐  ┌────────────┐ │
-│  │ Agent Engine │  │ Context      │  │ Session    │  │ Permission │ │
-│  │ (50 iter max)│  │ Builder      │  │ Manager    │  │ Enforcer   │ │
-│  └──────┬───────┘  └──────────────┘  └────────────┘  └────────────┘ │
-│         │                                                            │
-│  ┌──────▼────────────────────────────────────────────────────────┐  │
-│  │                    Backend Services                            │  │
-│  │  LLM Providers │ Browser Tools │ Computer │ WASM │ MCP │ Memory│ │
-│  └───────────────────────────────────────────────────────────────┘  │
-│                                                                      │
-│  ┌───────────────────────────────────────────────────────────────┐  │
-│  │               SQLite Storage (WAL mode, encrypted)             │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          Entry Layer                                      │
+│                                                                           │
+│  Browser Extension         Claude Code (MCP)         CLI                  │
+│  (Native Messaging)        (stdio JSON-RPC)          (--daemon/--mcp)     │
+│         │                        │                         │              │
+└─────────┼────────────────────────┼─────────────────────────┼──────────────┘
+          │                        │                         │
+          └────────────────────────┼─────────────────────────┘
+                                   │
+                                   ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                     Daemon Layer (ZeroMQ ROUTER)                          │
+│                                                                           │
+│  ┌──────────────┐  ┌───────────────┐  ┌─────────────┐  ┌─────────────┐  │
+│  │ Agent Engine  │  │ Context       │  │ Session     │  │ Permission  │  │
+│  │ (50 iter max) │  │ Builder       │  │ Manager     │  │ Enforcer    │  │
+│  └──────┬────────┘  └───────────────┘  └─────────────┘  └─────────────┘  │
+│         │                                                                 │
+│  ┌──────▼──────────────────────────────────────────────────────────────┐  │
+│  │                      Backend Services                                │  │
+│  │                                                                      │  │
+│  │  LLM Providers    │ Browser Tools  │ Computer  │ WASM  │ MCP       │  │
+│  │  (16+ services,   │ (80+ APIs)     │ Control   │ Skills│ Server +  │  │
+│  │   local, agents)  │                │           │       │ Client    │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                           │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │           Memory & Learning (encrypted, cross-session)               │  │
+│  │  Knowledge Graph │ Conversation History │ User Preferences │ Skills  │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                           │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │               SQLite Storage (WAL mode, encrypted)                   │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────────┘
+
+                                   │
+                    ┌──────────────┼──────────────┐
+                    ▼              ▼              ▼
+             ┌────────────┐ ┌──────────┐ ┌─────────────┐
+             │ Claude Code │ │ OpenClaw │ │ Gemini CLI  │
+             │ (coding)    │ │(personal)│ │ (coding)    │
+             └────────────┘ └──────────┘ └─────────────┘
+                      External Agents
 ```
 
-### Crate Structure
+### Browser-Side Components
+
+```
+nevoflux (browser repo)
+├── src/nevoflux/
+│   ├── extensions/nevoflux-agent/     # WebExtension (sidebar UI, background.js)
+│   │   ├── dioxus-ui/chat-sidebar/    # Dioxus/WASM sidebar application
+│   │   ├── background/               # Extension background script
+│   │   └── content/                   # Content scripts for browser tools
+│   ├── engine-overlays/               # Browser chrome modifications
+│   │   ├── browser/actors/            # NevofluxChild/Parent actors
+│   │   ├── browser/components/        # nevoflux:// pages (canvas, settings)
+│   │   └── browser/modules/           # Bridge router, content store
+│   ├── patches/                       # Zen Browser patches
+│   └── overlays/                      # New files for src/zen/
+```
+
+### Crate Structure (Native Agent)
 
 The native agent is organized as a Rust workspace with 10 crates:
 
@@ -219,6 +264,29 @@ nevoflux-agent/
 ├── nevoflux-builtin-wasm  # Built-in WASM agent module
 └── nevoflux-testing       # Test infrastructure (mocks, builders, helpers)
 ```
+
+---
+
+## Canvas (Micro Apps)
+
+Nevoflux's Canvas system lets you generate interactive artifacts — HTML apps, React components, SVG graphics, Mermaid diagrams, multi-file projects, and more — directly in the chat.
+
+Canvas artifacts are living applications with access to the NevofluxSDK, enabling them to call browser tools, interact with the agent, and access storage.
+
+### Export Formats
+
+| Format     | Availability                    |
+| ---------- | ------------------------------- |
+| Source     | Always                          |
+| HTML       | Always                          |
+| PNG        | Always                          |
+| PDF        | Always                          |
+| DOCX       | Always                          |
+| SVG        | SVG / Mermaid artifacts         |
+| Markdown   | HTML artifacts                  |
+| PPTX       | Slides artifacts                |
+| XLSX       | Artifacts containing tables     |
+| ZIP        | Project (multi-file) artifacts  |
 
 ---
 
@@ -252,6 +320,7 @@ Nevoflux uses a **default-deny** permission model. Every sensitive action requir
 - **Sensitive path blocklist** — `.ssh/`, `.gnupg/`, `.aws/credentials`, and other critical paths are always blocked
 - **Permission scopes** — Grant access once, for the session, or permanently
 - **Encrypted storage** — Memory and knowledge data encrypted with AES-256-GCM
+- **SDK sandboxing** — Canvas artifacts run in sandboxed iframes; the NevofluxSDK is only injected into `nevoflux://` pages, never external websites
 
 ---
 
@@ -328,6 +397,7 @@ git commit -m "patch(feature): description"
 
 - [Zen Browser](https://zen-browser.app/) — The productivity-focused browser that serves as our foundation
 - [Firefox](https://www.mozilla.org/firefox/) — The open-source Gecko engine
+- [OpenClaw](https://openclaw.ai/) — Personal AI assistant framework
 - [Wasmtime](https://wasmtime.dev/) — WebAssembly runtime
 - [Model Context Protocol](https://modelcontextprotocol.io/) — AI-tool integration protocol
 
