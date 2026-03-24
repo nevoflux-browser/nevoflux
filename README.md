@@ -57,17 +57,6 @@ Built on [Zen Browser](https://zen-browser.app/) (Firefox/Gecko), Nevoflux bridg
 
 Under the hood: a Rust-native agent daemon with 16+ LLM providers, 80+ browser automation APIs, cross-platform computer control, MCP integration, an encrypted cross-session memory system, and integration with external coding agents and personal AI assistants.
 
-```
-User ──► Sidebar UI ──► Browser Extension ──► Native Messaging ──► Rust Agent Daemon
-                                                                       ├── LLM (16+ providers)
-                                                                       ├── Browser Control (80+ APIs)
-                                                                       ├── Computer Control
-                                                                       ├── MCP (Server + Client)
-                                                                       ├── Memory & Learning
-                                                                       ├── WASM Skills
-                                                                       └── External Agents (Claude Code, OpenClaw, ...)
-```
-
 ---
 
 ## Highlights
