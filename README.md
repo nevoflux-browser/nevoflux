@@ -75,11 +75,12 @@ User ──► Sidebar UI ──► Browser Extension ──► Native Messaging
 - 🧬 **Identity & Soul** — Your companion has its own personality, values, and behavioral patterns that evolve over time
 - 🧠 **Memory & Learning** — Remembers across sessions, learns your preferences, adapts to how you work — with encrypted storage
 - 🎛️ **Progressive Autonomy** — Three modes (Chat, Browser, Agent) — you decide how much control to hand over
-- ⚡ **Micro Apps (Canvas)** — Generate fully functional mini-apps on the fly — not just rendered artifacts, but living apps with full agent capabilities (browser automation, native tools, MCP services). Export to 10+ formats: HTML, PNG, PDF, DOCX, PPTX, XLSX, SVG, ZIP, and more.
+- ⚡ **Build: Micro Apps (Canvas)** — Generate fully functional mini-apps on the fly — not just rendered artifacts, but living apps with full agent capabilities. Exportable to 10+ formats (HTML, PNG, PDF, DOCX, PPTX, XLSX, SVG, ZIP). Every other AI just shows you text — Nevoflux creates tools you can actually use.
+- 🐙 **Manage: OpenClaw Integration** — Your personal AI assistant that manages your life beyond coding — schedules, tasks, knowledge, and workflows. Nevoflux is the unified interface: Canvas Micro Apps help you **build** tools, OpenClaw helps you **manage** everything else.
 - 🧩 **WASM Skills** — Extensible skill system powered by WebAssembly — sandboxed, pluggable, and progressively loaded
 - 🖥️ **Browser + Computer Control** — 80+ browser APIs and cross-platform desktop control (screenshot, mouse, keyboard)
 - 🤖 **Multi-LLM Freedom** — 16+ providers: Anthropic, OpenAI, Qwen, DeepSeek, Gemini, Ollama, and more — your choice
-- 🐙 **Agent Integration** — Seamlessly delegate tasks to external coding agents (Claude Code, Gemini CLI, Kimi Agent) or personal AI assistants (OpenClaw)
+- 🔧 **Coding Agent Delegation** — Seamlessly delegate development tasks to Claude Code, Gemini CLI, or Kimi Agent — they work as sub-agents within your browser
 
 ---
 
@@ -195,11 +196,11 @@ Then register the native messaging host:
                                    │
                                    ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                     Daemon Layer (ZeroMQ ROUTER)                          │
+│                        Daemon Layer (Rust)                                 │
 │                                                                           │
 │  ┌──────────────┐  ┌───────────────┐  ┌─────────────┐  ┌─────────────┐  │
 │  │ Agent Engine  │  │ Context       │  │ Session     │  │ Permission  │  │
-│  │ (50 iter max) │  │ Builder       │  │ Manager     │  │ Enforcer    │  │
+│  │ (agentic loop)│  │ Builder       │  │ Manager     │  │ Enforcer    │  │
 │  └──────┬────────┘  └───────────────┘  └─────────────┘  └─────────────┘  │
 │         │                                                                 │
 │  ┌──────▼──────────────────────────────────────────────────────────────┐  │
@@ -220,14 +221,20 @@ Then register the native messaging host:
 │  └──────────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────────┘
 
-                                   │
-                    ┌──────────────┼──────────────┐
-                    ▼              ▼              ▼
-             ┌────────────┐ ┌──────────┐ ┌─────────────┐
-             │ Claude Code │ │ OpenClaw │ │ Gemini CLI  │
-             │ (coding)    │ │(personal)│ │ (coding)    │
-             └────────────┘ └──────────┘ └─────────────┘
-                      External Agents
+         Build ▼                              Manage ▼
+  ┌─────────────────────┐          ┌──────────────────────────┐
+  │  Canvas Micro Apps   │          │  OpenClaw                 │
+  │  Create tools,       │          │  Personal AI assistant    │
+  │  export to 10+       │          │  — schedules, tasks,      │
+  │  formats             │          │    knowledge, workflows   │
+  └─────────────────────┘          └──────────────────────────┘
+
+         Code ▼
+  ┌────────────┐ ┌─────────────┐ ┌─────────────┐
+  │ Claude Code │ │ Gemini CLI  │ │ Kimi Agent  │
+  │ (coding)    │ │ (coding)    │ │ (coding)    │
+  └────────────┘ └─────────────┘ └─────────────┘
+                Coding Agents
 ```
 
 ### Browser-Side Components
