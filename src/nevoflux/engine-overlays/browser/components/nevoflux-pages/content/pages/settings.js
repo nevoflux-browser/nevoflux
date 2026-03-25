@@ -674,8 +674,8 @@ const Settings = {
       document.getElementById('llm-modal-oc-reasoning').checked = false;
 
       // Change labels for OpenClaw context
-      document.getElementById('llm-modal-model').placeholder = 'e.g. astron-code-latest';
-      document.getElementById('llm-modal-baseurl').placeholder = 'e.g. https://maas-coding-api.cn-huabei-1.xf-yun.com/v2';
+      document.getElementById('llm-modal-model').placeholder = 'e.g. gpt-4o';
+      document.getElementById('llm-modal-baseurl').placeholder = 'e.g. https://api.openai.com/v1';
     } else {
       document.getElementById('llm-modal-model').placeholder = 'Leave empty for default';
       document.getElementById('llm-modal-baseurl').placeholder = 'Leave empty for default endpoint';
@@ -790,8 +790,8 @@ const Settings = {
             base_url: baseUrl,
             api_key: apiKey,
             api_type: apiType,
-            model_id: model || 'astron-code-latest',
-            model_name: model || 'astron-code-latest',
+            model_id: model || 'gpt-4o',
+            model_name: model || 'gpt-4o',
             context_window: contextWindow,
             max_tokens: maxTokens,
             reasoning: reasoning,
@@ -806,7 +806,7 @@ const Settings = {
         const llmParams = {
           provider: 'openclaw',
           set_active: setActive,
-          model: providerName + '/' + (model || 'astron-code-latest'),
+          model: providerName + '/' + (model || 'gpt-4o'),
         };
         if (apiKey) llmParams.api_key = apiKey;
         llmParams.base_url = baseUrl;
