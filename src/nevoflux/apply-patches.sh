@@ -126,6 +126,48 @@ for BRANDING_NSI in "${ENGINE_DIR}"/browser/branding/*/branding.nsi; do
   fi
 done
 
+# 4.2. Patch NSIS installer to clear NevoFlux extension cache on upgrade
+#      Firefox caches the extension XPI in profiles. Without cleanup the
+#      bundled extension won't update on browser upgrade. We inject NSIS
+#      code into InstallEndCleanup to delete the cached XPI, unpacked dir,
+#      and addonStartup.json.lz4 for every NevoFlux profile. extensions.json
+#      is NOT deleted so other user-installed extensions are unaffected.
+INSTALLER_NSI="${ENGINE_DIR}/browser/installer/windows/nsis/installer.nsi"
+if [ -f "${INSTALLER_NSI}" ]; then
+  if grep -q "NevoFlux: Clear extension cache" "${INSTALLER_NSI}" 2>/dev/null; then
+    echo "NSIS extension cache cleanup already patched, skipping."
+  else
+    python3 -c "
+import sys
+marker = '\${InstallEndCleanupCommon}'
+cleanup = '''
+  ; NevoFlux: Clear extension cache in all profiles so the updated XPI is loaded
+  FindFirst \$0 \$1 \"\$APPDATA\\\\Mozilla\\\\NevoFlux\\\\Profiles\\\\*\"
+  \${DoWhile} \$1 != \"\"
+    \${If} \$1 != \".\"
+    \${AndIf} \$1 != \"..\"
+      Delete \"\$APPDATA\\\\Mozilla\\\\NevoFlux\\\\Profiles\\\\\$1\\\\extensions\\\\agent@nevoflux.com.xpi\"
+      Delete \"\$APPDATA\\\\Mozilla\\\\NevoFlux\\\\Profiles\\\\\$1\\\\addonStartup.json.lz4\"
+      RMDir /r \"\$APPDATA\\\\Mozilla\\\\NevoFlux\\\\Profiles\\\\\$1\\\\extensions\\\\agent@nevoflux.com\"
+    \${EndIf}
+    FindNext \$0 \$1
+  \${Loop}
+  FindClose \$0
+'''
+path = '${INSTALLER_NSI}'
+text = open(path, 'r').read()
+# Insert cleanup BEFORE the InstallEndCleanupCommon call (last occurrence)
+idx = text.rfind(marker)
+if idx == -1:
+    print('WARNING: InstallEndCleanupCommon not found in installer.nsi', file=sys.stderr)
+    sys.exit(0)
+text = text[:idx] + cleanup + '\n  ' + text[idx:]
+open(path, 'w').write(text)
+print('Patched NSIS installer with extension cache cleanup')
+" || echo "WARNING: Failed to patch NSIS installer"
+  fi
+fi
+
 # 5. Sync engine-overlay locale files to locales/en-US/ for CI language pack step
 #    CI runs download-language-packs.sh AFTER import, which copies locales/en-US/browser/
 #    to engine/browser/locales/en-US/, overwriting our engine-overlays.
