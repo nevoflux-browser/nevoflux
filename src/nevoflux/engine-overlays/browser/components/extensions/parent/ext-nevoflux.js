@@ -66,37 +66,89 @@ this.nevoflux = class extends ExtensionAPI {
   }
 
   async _syncDistributionExtension() {
-    const { AddonManager } = ChromeUtils.importESModule(
-      'resource://gre/modules/AddonManager.sys.mjs'
-    );
+    const EXT_ID = 'agent@nevoflux.com';
 
     // Locate the XPI shipped in distribution/extensions/
     const appDir = Services.dirsvc.get('GreD', Ci.nsIFile);
     const distXpi = appDir.clone();
     distXpi.append('distribution');
     distXpi.append('extensions');
-    distXpi.append('agent@nevoflux.com.xpi');
+    distXpi.append(`${EXT_ID}.xpi`);
     if (!distXpi.exists()) return;
 
-    // Currently installed addon
-    const addon = await AddonManager.getAddonByID('agent@nevoflux.com');
-    if (!addon) return;
+    // Read version from distribution XPI manifest.json
+    const zipReader = Cc['@mozilla.org/libjar/zip-reader;1'].createInstance(
+      Ci.nsIZipReader
+    );
+    let distVersion;
+    try {
+      zipReader.open(distXpi);
+      const stream = zipReader.getInputStream('manifest.json');
+      const bytes = new Uint8Array(stream.available());
+      stream.read(bytes, bytes.length);
+      stream.close();
+      const manifest = JSON.parse(new TextDecoder().decode(bytes));
+      distVersion = manifest.version;
+    } finally {
+      zipReader.close();
+    }
+    if (!distVersion) return;
 
-    // Parse distribution XPI to get its version
-    const install = await AddonManager.getInstallForFile(distXpi);
-    if (!install) return;
+    // Compare with currently installed version
+    const { AddonManager } = ChromeUtils.importESModule(
+      'resource://gre/modules/AddonManager.sys.mjs'
+    );
+    const addon = await AddonManager.getAddonByID(EXT_ID);
+    if (!addon || addon.version === distVersion) return;
 
-    const distVersion = install.version;
-    if (!distVersion || distVersion === addon.version) {
-      install.cancel();
-      return;
+    console.log(
+      `[NevoFlux] Extension version mismatch: installed=${addon.version}, distribution=${distVersion}. Syncing…`
+    );
+
+    // Copy distribution XPI into profile, replacing the cached version
+    const profDir = Services.dirsvc.get('ProfD', Ci.nsIFile);
+    const extDir = profDir.clone();
+    extDir.append('extensions');
+
+    // Remove extracted directory if present
+    const extUnpacked = extDir.clone();
+    extUnpacked.append(EXT_ID);
+    if (extUnpacked.exists()) {
+      extUnpacked.remove(true);
+    }
+
+    // Copy XPI to profile extensions/
+    const profileXpi = extDir.clone();
+    profileXpi.append(`${EXT_ID}.xpi`);
+    if (profileXpi.exists()) {
+      profileXpi.remove(false);
+    }
+    distXpi.copyTo(extDir, `${EXT_ID}.xpi`);
+
+    // Clear addon metadata cache so Firefox re-reads on next startup
+    for (const cacheFile of ['addonStartup.json.lz4', 'extensions.json']) {
+      const f = profDir.clone();
+      f.append(cacheFile);
+      if (f.exists()) {
+        f.remove(false);
+      }
     }
 
     console.log(
-      `[NevoFlux] Extension version mismatch: installed=${addon.version}, distribution=${distVersion}. Updating…`
+      `[NevoFlux] Extension synced to ${distVersion}. Reloading…`
     );
-    await install.install();
-    console.log(`[NevoFlux] Extension updated to ${distVersion}`);
+
+    // Reload the addon to apply changes immediately
+    try {
+      const updated = await AddonManager.getAddonByID(EXT_ID);
+      if (updated) {
+        await updated.reload();
+        console.log(`[NevoFlux] Extension reloaded with version ${distVersion}`);
+      }
+    } catch (e) {
+      // Reload may fail; changes will take effect on next browser restart
+      console.log(`[NevoFlux] Extension will update on next restart`);
+    }
   }
 
   getAPI(context) {
