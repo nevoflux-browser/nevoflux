@@ -106,57 +106,34 @@ this.nevoflux = class extends ExtensionAPI {
     if (!addon || addon.version === distVersion) return;
 
     console.log(
-      `[NevoFlux] Extension version mismatch: installed=${addon.version}, distribution=${distVersion}. Syncing…`
+      `[NevoFlux] Extension version mismatch: installed=${addon.version}, distribution=${distVersion}. Scheduling update…`
     );
 
-    // Use IOUtils (async file API) to copy the XPI — nsIFile.remove/copyTo
-    // fails with NS_ERROR_FILE_ACCESS_DENIED because Firefox locks the XPI.
+    // Firefox locks the profile XPI while running, so we cannot overwrite it.
+    // Instead, delete the addon metadata caches. On next startup Firefox will
+    // have no cached state for this extension and will re-install it from
+    // distribution/extensions/, picking up the new version automatically.
     const profDir = Services.dirsvc.get('ProfD', Ci.nsIFile);
-    const extDirPath = PathUtils.join(profDir.path, 'extensions');
-    const profileXpiPath = PathUtils.join(extDirPath, `${EXT_ID}.xpi`);
-    const extUnpackedPath = PathUtils.join(extDirPath, EXT_ID);
-
-    // Read distribution XPI as bytes
-    const xpiBytes = await IOUtils.read(distXpi.path);
-
-    // Write XPI to profile (IOUtils.write overwrites atomically)
-    await IOUtils.write(profileXpiPath, xpiBytes);
-
-    // Remove extracted directory if present
-    try {
-      if (await IOUtils.exists(extUnpackedPath)) {
-        await IOUtils.remove(extUnpackedPath, { recursive: true });
-      }
-    } catch (e) {
-      // May be locked; will be cleaned up on next restart
-    }
-
-    // Clear addon metadata cache so Firefox re-reads on next startup
+    let cleared = false;
     for (const cacheFile of ['addonStartup.json.lz4', 'extensions.json']) {
       try {
         const cachePath = PathUtils.join(profDir.path, cacheFile);
         if (await IOUtils.exists(cachePath)) {
           await IOUtils.remove(cachePath);
+          cleared = true;
+          console.log(`[NevoFlux] Removed ${cacheFile}`);
         }
       } catch (e) {
-        // May be locked; acceptable — the XPI copy is what matters
+        // File may be locked on some platforms; update will happen on
+        // the next cold start when the file is not locked.
+        console.log(`[NevoFlux] Could not remove ${cacheFile}: ${e.message}`);
       }
     }
 
-    console.log(
-      `[NevoFlux] Extension synced to ${distVersion}. Reloading…`
-    );
-
-    // Reload the addon to apply changes immediately
-    try {
-      const updated = await AddonManager.getAddonByID(EXT_ID);
-      if (updated) {
-        await updated.reload();
-        console.log(`[NevoFlux] Extension reloaded with version ${distVersion}`);
-      }
-    } catch (e) {
-      // Reload may fail; changes will take effect on next browser restart
-      console.log(`[NevoFlux] Extension will update on next restart`);
+    if (cleared) {
+      console.log(
+        `[NevoFlux] Extension update staged: ${addon.version} → ${distVersion}. Will apply on next restart.`
+      );
     }
   }
 
