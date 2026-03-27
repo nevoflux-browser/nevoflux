@@ -41,6 +41,44 @@ if [ -d "$DIOXUS_DIST" ]; then
   echo "✓ WASM files copied"
 fi
 
+# Inject a unique version into manifest.json so Firefox always picks up updates.
+# Priority: NEVOFLUX_EXT_VERSION env > surfer.json display version > date-based version.
+# Firefox compares extension versions and only re-extracts when the version changes,
+# so every build MUST have a distinct version string.
+EXT_VERSION="${NEVOFLUX_EXT_VERSION:-}"
+if [ -z "$EXT_VERSION" ]; then
+  SURFER_JSON="$PROJECT_ROOT/surfer.json"
+  if [ -f "$SURFER_JSON" ]; then
+    # CI sets displayVersion via: surfer ci --display-version <version>
+    EXT_VERSION=$(python3 -c "
+import json
+s = json.load(open('$SURFER_JSON'))
+brands = s.get('brands', {})
+for b in brands.values():
+    dv = b.get('release', {}).get('displayVersion', '')
+    if dv and dv != '0.0.1' and dv != '0.0.1-dev':
+        print(dv)
+        break
+" 2>/dev/null || true)
+  fi
+fi
+if [ -z "$EXT_VERSION" ]; then
+  # Fallback: date-based version (e.g. 0.2026.32706 from YYYY + DDDHH as minor.patch)
+  EXT_VERSION="0.$(date -u +%Y).$(date -u +%j%H%M)"
+fi
+MANIFEST="$EXTENSION_DIR/manifest.json"
+cp "$MANIFEST" "$MANIFEST.bak"
+echo "Injecting extension version: $EXT_VERSION"
+python3 -c "
+import json
+p = '$MANIFEST'
+m = json.load(open(p))
+m['version'] = '$EXT_VERSION'
+json.dump(m, open(p, 'w'), indent=2)
+open(p, 'a').write('\n')
+print('✓ manifest.json version set to $EXT_VERSION')
+"
+
 # Create output directory
 mkdir -p "$BUILD_DIR"
 
@@ -67,6 +105,11 @@ zip -r "$BUILD_DIR/$XPI_NAME" . \
   -x "package-lock.json"
 
 echo "✓ Extension packaged: $BUILD_DIR/$XPI_NAME"
+
+# Restore original manifest.json to avoid dirtying git
+if [ -f "$MANIFEST.bak" ]; then
+  mv "$MANIFEST.bak" "$MANIFEST"
+fi
 
 # Copy to engine directory if it exists
 source "$SCRIPT_DIR/lib/detect-objdir.sh"

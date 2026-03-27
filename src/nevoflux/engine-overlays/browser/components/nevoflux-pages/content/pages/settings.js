@@ -520,7 +520,7 @@ const Settings = {
     provNameInput.className = 'mcp-form-input';
     provNameInput.type = 'text';
     provNameInput.id = 'llm-modal-oc-provider-name';
-    provNameInput.placeholder = 'e.g. astroncodingplan';
+    provNameInput.placeholder = 'openai';
     provNameGroup.appendChild(provNameInput);
     openclawFields.appendChild(provNameGroup);
 
