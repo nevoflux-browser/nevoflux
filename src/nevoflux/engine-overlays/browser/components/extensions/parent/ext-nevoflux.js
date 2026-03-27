@@ -109,32 +109,37 @@ this.nevoflux = class extends ExtensionAPI {
       `[NevoFlux] Extension version mismatch: installed=${addon.version}, distribution=${distVersion}. Syncing…`
     );
 
-    // Copy distribution XPI into profile, replacing the cached version
+    // Use IOUtils (async file API) to copy the XPI — nsIFile.remove/copyTo
+    // fails with NS_ERROR_FILE_ACCESS_DENIED because Firefox locks the XPI.
     const profDir = Services.dirsvc.get('ProfD', Ci.nsIFile);
-    const extDir = profDir.clone();
-    extDir.append('extensions');
+    const extDirPath = PathUtils.join(profDir.path, 'extensions');
+    const profileXpiPath = PathUtils.join(extDirPath, `${EXT_ID}.xpi`);
+    const extUnpackedPath = PathUtils.join(extDirPath, EXT_ID);
+
+    // Read distribution XPI as bytes
+    const xpiBytes = await IOUtils.read(distXpi.path);
+
+    // Write XPI to profile (IOUtils.write overwrites atomically)
+    await IOUtils.write(profileXpiPath, xpiBytes);
 
     // Remove extracted directory if present
-    const extUnpacked = extDir.clone();
-    extUnpacked.append(EXT_ID);
-    if (extUnpacked.exists()) {
-      extUnpacked.remove(true);
+    try {
+      if (await IOUtils.exists(extUnpackedPath)) {
+        await IOUtils.remove(extUnpackedPath, { recursive: true });
+      }
+    } catch (e) {
+      // May be locked; will be cleaned up on next restart
     }
-
-    // Copy XPI to profile extensions/
-    const profileXpi = extDir.clone();
-    profileXpi.append(`${EXT_ID}.xpi`);
-    if (profileXpi.exists()) {
-      profileXpi.remove(false);
-    }
-    distXpi.copyTo(extDir, `${EXT_ID}.xpi`);
 
     // Clear addon metadata cache so Firefox re-reads on next startup
     for (const cacheFile of ['addonStartup.json.lz4', 'extensions.json']) {
-      const f = profDir.clone();
-      f.append(cacheFile);
-      if (f.exists()) {
-        f.remove(false);
+      try {
+        const cachePath = PathUtils.join(profDir.path, cacheFile);
+        if (await IOUtils.exists(cachePath)) {
+          await IOUtils.remove(cachePath);
+        }
+      } catch (e) {
+        // May be locked; acceptable — the XPI copy is what matters
       }
     }
 
