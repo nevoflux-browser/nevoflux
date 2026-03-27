@@ -102,7 +102,8 @@ zip -r "$BUILD_DIR/$XPI_NAME" . \
   -x "dioxus-ui/content-sidebar/target/*" \
   -x "dioxus-ui/shared-protocol/target/*" \
   -x "dioxus-ui/.cargo/*" \
-  -x "package-lock.json"
+  -x "package-lock.json" \
+  -x "manifest.json.bak"
 
 echo "✓ Extension packaged: $BUILD_DIR/$XPI_NAME"
 
