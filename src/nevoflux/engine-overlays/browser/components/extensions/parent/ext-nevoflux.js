@@ -56,6 +56,47 @@ this.nevoflux = class extends ExtensionAPI {
     NevofluxNativeHostRegistrar.ensureRegistered().catch((err) => {
       console.error('[NevoFlux] Failed to register native messaging hosts:', err);
     });
+    // Auto-sync extension from distribution/extensions/ on every startup.
+    // Firefox only re-reads distribution extensions when the build ID changes,
+    // but users upgrading via installer may keep their profile. This ensures
+    // the installed extension always matches the shipped XPI.
+    this._syncDistributionExtension().catch((err) => {
+      console.error('[NevoFlux] Distribution extension sync failed:', err);
+    });
+  }
+
+  async _syncDistributionExtension() {
+    const { AddonManager } = ChromeUtils.importESModule(
+      'resource://gre/modules/AddonManager.sys.mjs'
+    );
+
+    // Locate the XPI shipped in distribution/extensions/
+    const appDir = Services.dirsvc.get('GreD', Ci.nsIFile);
+    const distXpi = appDir.clone();
+    distXpi.append('distribution');
+    distXpi.append('extensions');
+    distXpi.append('agent@nevoflux.com.xpi');
+    if (!distXpi.exists()) return;
+
+    // Currently installed addon
+    const addon = await AddonManager.getAddonByID('agent@nevoflux.com');
+    if (!addon) return;
+
+    // Parse distribution XPI to get its version
+    const install = await AddonManager.getInstallForFile(distXpi);
+    if (!install) return;
+
+    const distVersion = install.version;
+    if (!distVersion || distVersion === addon.version) {
+      install.cancel();
+      return;
+    }
+
+    console.log(
+      `[NevoFlux] Extension version mismatch: installed=${addon.version}, distribution=${distVersion}. Updating…`
+    );
+    await install.install();
+    console.log(`[NevoFlux] Extension updated to ${distVersion}`);
   }
 
   getAPI(context) {
