@@ -78,7 +78,7 @@ m = json.load(open(p))
 m['version'] = ver
 json.dump(m, open(p, 'w'), indent=2)
 open(p, 'a').write('\n')
-print(f'✓ manifest.json version set to {ver}')
+print('manifest.json version set to ' + ver)
 PYEOF
 else
   echo "⚠ Warning: manifest.json not found at $MANIFEST, skipping version injection"
