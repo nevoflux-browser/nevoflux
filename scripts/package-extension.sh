@@ -50,16 +50,17 @@ if [ -z "$EXT_VERSION" ]; then
   SURFER_JSON="$PROJECT_ROOT/surfer.json"
   if [ -f "$SURFER_JSON" ]; then
     # CI sets displayVersion via: surfer ci --display-version <version>
-    EXT_VERSION=$(python3 -c "
-import json
-s = json.load(open('$SURFER_JSON'))
+    EXT_VERSION=$(python3 - "$SURFER_JSON" <<'PYEOF'
+import json, sys
+s = json.load(open(sys.argv[1]))
 brands = s.get('brands', {})
 for b in brands.values():
     dv = b.get('release', {}).get('displayVersion', '')
     if dv and dv != '0.0.1' and dv != '0.0.1-dev':
         print(dv)
         break
-" 2>/dev/null || true)
+PYEOF
+    )
   fi
 fi
 if [ -z "$EXT_VERSION" ]; then
@@ -67,17 +68,21 @@ if [ -z "$EXT_VERSION" ]; then
   EXT_VERSION="0.$(date -u +%Y).$(date -u +%j%H%M)"
 fi
 MANIFEST="$EXTENSION_DIR/manifest.json"
-cp "$MANIFEST" "$MANIFEST.bak"
-echo "Injecting extension version: $EXT_VERSION"
-python3 -c "
-import json
-p = '$MANIFEST'
+if [ -f "$MANIFEST" ]; then
+  cp "$MANIFEST" "$MANIFEST.bak"
+  echo "Injecting extension version: $EXT_VERSION"
+  python3 - "$MANIFEST" "$EXT_VERSION" <<'PYEOF'
+import json, sys
+p, ver = sys.argv[1], sys.argv[2]
 m = json.load(open(p))
-m['version'] = '$EXT_VERSION'
+m['version'] = ver
 json.dump(m, open(p, 'w'), indent=2)
 open(p, 'a').write('\n')
-print('✓ manifest.json version set to $EXT_VERSION')
-"
+print(f'✓ manifest.json version set to {ver}')
+PYEOF
+else
+  echo "⚠ Warning: manifest.json not found at $MANIFEST, skipping version injection"
+fi
 
 # Create output directory
 mkdir -p "$BUILD_DIR"

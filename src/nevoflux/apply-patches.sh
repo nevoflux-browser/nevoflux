@@ -137,26 +137,25 @@ if [ -f "${INSTALLER_NSI}" ]; then
   if grep -q "NevoFlux: Clear extension cache" "${INSTALLER_NSI}" 2>/dev/null; then
     echo "NSIS extension cache cleanup already patched, skipping."
   else
-    python3 -c "
+    python3 - "${INSTALLER_NSI}" <<'PYEOF' || echo "WARNING: Failed to patch NSIS installer"
 import sys
-marker = '\${InstallEndCleanupCommon}'
+marker = '${InstallEndCleanupCommon}'
 cleanup = '''
   ; NevoFlux: Clear extension cache in all profiles so the updated XPI is loaded
-  FindFirst \$0 \$1 \"\$APPDATA\\\\Mozilla\\\\NevoFlux\\\\Profiles\\\\*\"
-  \${DoWhile} \$1 != \"\"
-    \${If} \$1 != \".\"
-    \${AndIf} \$1 != \"..\"
-      Delete \"\$APPDATA\\\\Mozilla\\\\NevoFlux\\\\Profiles\\\\\$1\\\\extensions\\\\agent@nevoflux.com.xpi\"
-      Delete \"\$APPDATA\\\\Mozilla\\\\NevoFlux\\\\Profiles\\\\\$1\\\\addonStartup.json.lz4\"
-      RMDir /r \"\$APPDATA\\\\Mozilla\\\\NevoFlux\\\\Profiles\\\\\$1\\\\extensions\\\\agent@nevoflux.com\"
-    \${EndIf}
-    FindNext \$0 \$1
-  \${Loop}
-  FindClose \$0
+  FindFirst $0 $1 "$APPDATA\\Mozilla\\NevoFlux\\Profiles\\*"
+  ${DoWhile} $1 != ""
+    ${If} $1 != "."
+    ${AndIf} $1 != ".."
+      Delete "$APPDATA\\Mozilla\\NevoFlux\\Profiles\\$1\\extensions\\agent@nevoflux.com.xpi"
+      Delete "$APPDATA\\Mozilla\\NevoFlux\\Profiles\\$1\\addonStartup.json.lz4"
+      RMDir /r "$APPDATA\\Mozilla\\NevoFlux\\Profiles\\$1\\extensions\\agent@nevoflux.com"
+    ${EndIf}
+    FindNext $0 $1
+  ${Loop}
+  FindClose $0
 '''
-path = '${INSTALLER_NSI}'
+path = sys.argv[1]
 text = open(path, 'r').read()
-# Insert cleanup BEFORE the InstallEndCleanupCommon call (last occurrence)
 idx = text.rfind(marker)
 if idx == -1:
     print('WARNING: InstallEndCleanupCommon not found in installer.nsi', file=sys.stderr)
@@ -164,7 +163,7 @@ if idx == -1:
 text = text[:idx] + cleanup + '\n  ' + text[idx:]
 open(path, 'w').write(text)
 print('Patched NSIS installer with extension cache cleanup')
-" || echo "WARNING: Failed to patch NSIS installer"
+PYEOF
   fi
 fi
 
