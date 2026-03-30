@@ -368,7 +368,7 @@ API keys are resolved in order: environment variables → system keychain → co
 > First install the Claude Code ACP adapter globally:
 >
 > ```bash
-> npm install -g @anthropic-ai/claude-code-acp
+> npm install -g @agentclientprotocol/claude-agent-acp
 > ```
 >
 > Then go to `nevoflux://settings` → AI Models → click the **Claude Code** card and configure it.
