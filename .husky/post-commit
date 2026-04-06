@@ -1,39 +1,31 @@
 #!/bin/sh
 
-# Post-commit hook: Re-apply patches and overlays to src/zen/
-# This allows developers to continue working seamlessly after committing
+# Post-commit hook: Notify developer if src/zen/ needs restoration
+# The pre-commit hook reverts overlay/patch changes in src/zen/ before committing.
+# After committing, developers should run `npm run import` to restore the working state.
+#
+# NOTE: We intentionally do NOT auto-run apply-patches.sh here because it
+# requires the full engine symlink chain (created by surfer import) to work.
+# Running it without surfer import leads to broken symlinks and blank UI.
 
-# Check if src/zen/ needs restoration (overlay files missing)
 OVERLAYS_DIR="src/nevoflux/overlays"
-NEED_IMPORT=false
+NEED_RESTORE=false
 
 if [ -d "$OVERLAYS_DIR" ]; then
-    # Check if any overlay target file is missing in src/zen/
     for file in $(find "$OVERLAYS_DIR" -type f 2>/dev/null); do
         relative_path="${file#$OVERLAYS_DIR/}"
         target_file="src/zen/$relative_path"
         if [ ! -f "$target_file" ]; then
-            NEED_IMPORT=true
+            NEED_RESTORE=true
             break
         fi
     done
 fi
 
-if [ "$NEED_IMPORT" = true ]; then
+if [ "$NEED_RESTORE" = true ]; then
     echo ""
     echo "============================================================"
-    echo "  Restoring src/zen/ for continued development..."
+    echo "  src/zen/ was reverted for clean commit."
+    echo "  Run 'npm run import' to restore for development."
     echo "============================================================"
-    echo ""
-
-    # Run apply-patches.sh directly (faster than full npm run import)
-    if [ -f "src/nevoflux/apply-patches.sh" ]; then
-        bash src/nevoflux/apply-patches.sh
-        echo ""
-        echo "============================================================"
-        echo "  src/zen/ restored. Ready for continued development."
-        echo "============================================================"
-    else
-        echo "NOTE: Run 'npm run import' to restore src/zen/ for development."
-    fi
 fi

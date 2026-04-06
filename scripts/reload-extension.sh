@@ -50,6 +50,12 @@ if [ -d "$PROFILE_DIR" ]; then
     echo "  ✓ Cleared profile extensions/*.xpi"
   fi
 
+  # Clear distribution addon install markers so Firefox re-installs from distribution/
+  if [ -f "$PROFILE_DIR/prefs.js" ]; then
+    sed -i '/extensions\.installedDistroAddon\./d' "$PROFILE_DIR/prefs.js"
+    echo "  ✓ Cleared distribution addon install markers from prefs.js"
+  fi
+
   echo "✓ All caches cleared"
 else
   echo "⚠ Warning: Profile directory not found. Browser hasn't run yet?"
