@@ -5,7 +5,11 @@
 zen-panel-ui-current-profile-text = 使用中のプロファイル
 unified-extensions-description = 拡張機能は{ -brand-short-name }に多く追加機能をもたらすために使用されます。
 tab-context-zen-reset-pinned-tab = 
-    .label = 固定したタブをリセット
+    .label =
+        { $isEssential ->
+            [true] Reset Essential Tab
+           *[false] Reset Pinned Tab
+        }
     .accesskey = R
 tab-context-zen-add-essential = 
     .label = Essentialsに追加
@@ -15,8 +19,16 @@ tab-context-zen-remove-essential =
     .label = Essentialsから削除
     .accesskey = R
 tab-context-zen-replace-pinned-url-with-current = 
-    .label = 固定したURLを現在のURLに置き換える
+    .label =
+        { $isEssential ->
+            [true] Replace Essential URL with Current
+           *[false] Replace Pinned URL with Current
+        }
     .accesskey = C
+tab-context-zen-edit-title = 
+    .label = ラベルを変更する...
+tab-context-zen-edit-icon = 
+    .label = アイコンを変更する...
 zen-themes-corrupted = { -brand-short-name }モッドファイルが文字化けしています。デフォルトのテーマにリセットされました。
 zen-shortcuts-corrupted = { -brand-short-name }ショートカットファイルが文字化けしています。デフォルトのショートカットにリセットされました。
 # note: Do not translate the "<br/>" tags in the following string
@@ -28,8 +40,8 @@ pictureinpicture-minimize-btn =
     .aria-label = 最小化
     .tooltip = 最小化
 zen-panel-ui-gradient-generator-custom-color = カスタムカラー
-zen-panel-ui-gradient-generator-saved-message = グラデーションを無事に保存しました！
 zen-copy-current-url-confirmation = URLをクリップボードにコピーしました！
+zen-copy-current-url-as-markdown-confirmation = Copied current URL as Markdown!
 zen-general-cancel-label = 
     .label = キャンセル
 zen-general-confirm = 
@@ -38,10 +50,6 @@ zen-pinned-tab-replaced = 固定したタブのURLが現在のURLに置き換え
 zen-tabs-renamed = タグの名前は無事に変更されました！
 zen-background-tab-opened-toast = 新しい背景タブが開きました！
 zen-workspace-renamed-toast = ワークスペースの名前が変更されました！
-zen-library-sidebar-workspaces = 
-    .label = スペース
-zen-library-sidebar-mods = 
-    .label = モッド
 zen-toggle-compact-mode-button = 
     .label = コンパクトモード
     .tooltiptext = コンパクトモードの切り替え
@@ -61,6 +69,8 @@ zen-site-data-settings = 設定
 zen-generic-manage = 管理
 zen-generic-more = その他
 zen-generic-next = 次へ
+zen-essentials-promo-label = Essentialsに追加
+zen-essentials-promo-sublabel = お気に入りのタブをワンクリックで表示
 # These labels will be used for the site data panel settings
 zen-site-data-setting-allow = 許可済み
 zen-site-data-setting-block = ブロック済み
@@ -70,11 +80,11 @@ zen-site-data-setting-cross-site = クロスサイトクッキー
 zen-site-data-security-info-extension = 
     .label = 拡張機能
 zen-site-data-security-info-secure = 
-    .label = 大丈夫
+    .label = 保護されています
 zen-site-data-security-info-not-secure = 
-    .label = 大丈夫じゃない
+    .label = 保護されていません
 zen-site-data-manage-addons = 
-    .label = 拡張機能の管理
+    .label = 拡張機能を管理
 zen-site-data-get-addons = 
     .label = 拡張機能を追加
 zen-site-data-site-settings = 
@@ -108,3 +118,9 @@ zen-sidebar-notification-updated-tooltip =
 zen-sidebar-notification-restart-safe-mode-label = 何か壊れましたか？
 zen-sidebar-notification-restart-safe-mode-tooltip = 
     .title = セーフモードで再起動する
+zen-window-sync-migration-dialog-title = Windowsを同期させておく
+zen-window-sync-migration-dialog-message = Zenは同一デバイス内のウィンドウを同期するようになり、１つのウィンドウでの操作が、他のウィンドウに、即座に反映されます。
+zen-window-sync-migration-dialog-learn-more = もっと詳しく
+zen-window-sync-migration-dialog-accept = わかりました
+zen-appmenu-new-blank-window = 
+    .label = 新しい空のウィンドウ

@@ -11,6 +11,7 @@ set -e
 
 ENGINE_DIR="$(cd "$(dirname "$0")/../.." && pwd)/engine"
 
+
 # Ensure branding content directories exist
 mkdir -p "$ENGINE_DIR/browser/branding/release/content"
 mkdir -p "$ENGINE_DIR/browser/branding/twilight/content"

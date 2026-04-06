@@ -5,18 +5,30 @@
 zen-panel-ui-current-profile-text = nuvarande profil
 unified-extensions-description = Tillägg används för att få fler extra funktioner i { -brand-short-name }.
 tab-context-zen-reset-pinned-tab = 
-    .label = Återställ Fäst flik
+    .label =
+        { $isEssential ->
+            [true] Återställ Essential flik
+           *[false] Återställ fäst flik
+        }
     .accesskey = R
 tab-context-zen-add-essential = 
-    .label = Lägg till i Essentials
+    .label = Lägg till Essentials
     .accesskey = E
 tab-context-zen-add-essential-badge = { $num } / { $max } platser fyllda
 tab-context-zen-remove-essential = 
     .label = Ta bort från Essentials
     .accesskey = R
 tab-context-zen-replace-pinned-url-with-current = 
-    .label = Ersätt fäst fliks URL med nuvarande
+    .label =
+        { $isEssential ->
+            [true] Ersätt Essential webbadress med nuvarande
+           *[false] Ersätt fäst webbadress med nuvarande
+        }
     .accesskey = C
+tab-context-zen-edit-title = 
+    .label = Ändra etikett...
+tab-context-zen-edit-icon = 
+    .label = Ändra ikon...
 zen-themes-corrupted = Din { -brand-short-name } modds-fil är skadad. De har återställts till standardtemat.
 zen-shortcuts-corrupted = Din { -brand-short-name } Genvägsfil är korrupt. De har återställts till standardgenvägarna.
 # note: Do not translate the "<br/>" tags in the following string
@@ -28,8 +40,8 @@ pictureinpicture-minimize-btn =
     .aria-label = Minimera
     .tooltip = Minimera
 zen-panel-ui-gradient-generator-custom-color = Anpassad färg
-zen-panel-ui-gradient-generator-saved-message = Lyckades spara gradienten!
 zen-copy-current-url-confirmation = Kopierade nuvarande URL!
+zen-copy-current-url-as-markdown-confirmation = Kopierade nuvarande webbadress som Markdown!
 zen-general-cancel-label = 
     .label = Avbryt
 zen-general-confirm = 
@@ -38,10 +50,6 @@ zen-pinned-tab-replaced = Den fästa flikens URL har ersatts med den aktuella UR
 zen-tabs-renamed = Fliken har fått nytt namn!
 zen-background-tab-opened-toast = Ny bakgrundsflik öppnad!
 zen-workspace-renamed-toast = Arbetsytan har fått ett nytt namn!
-zen-library-sidebar-workspaces = 
-    .label = Arbetsytor
-zen-library-sidebar-mods = 
-    .label = Moddar
 zen-toggle-compact-mode-button = 
     .label = Kompakt läge
     .tooltiptext = Växla kompakt läge
@@ -61,6 +69,8 @@ zen-site-data-settings = Inställningar
 zen-generic-manage = Hantera
 zen-generic-more = Mer
 zen-generic-next = Nästa
+zen-essentials-promo-label = Lägg till Essentials
+zen-essentials-promo-sublabel = Behåll dina favoritflikar bara ett klick bort
 # These labels will be used for the site data panel settings
 zen-site-data-setting-allow = Tillåtet
 zen-site-data-setting-block = Blockerade
@@ -108,3 +118,9 @@ zen-sidebar-notification-updated-tooltip =
 zen-sidebar-notification-restart-safe-mode-label = Har något gått sönder?
 zen-sidebar-notification-restart-safe-mode-tooltip = 
     .title = Starta om i felsäkert läge
+zen-window-sync-migration-dialog-title = Behåll dina fönster i Sync
+zen-window-sync-migration-dialog-message = Zen synkroniserar nu fönster på samma enhet, så ändringar i ett fönster återspeglas direkt i de andra.
+zen-window-sync-migration-dialog-learn-more = Läs mer
+zen-window-sync-migration-dialog-accept = Jag förstår
+zen-appmenu-new-blank-window = 
+    .label = Nytt blankt fönster

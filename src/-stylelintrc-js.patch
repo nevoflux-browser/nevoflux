@@ -1,0 +1,13 @@
+diff --git a/.stylelintrc.js b/.stylelintrc.js
+index 3c9fecf731..fa6f4b1b68 100644
+--- a/.stylelintrc.js
++++ b/.stylelintrc.js
+@@ -67,7 +67,7 @@ module.exports = {
+     ],
+ 
+     "max-nesting-depth": [
+-      3,
++      6,
+       {
+         ignore: ["blockless-at-rules"],
+       },

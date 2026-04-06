@@ -1,8 +1,16 @@
 diff --git a/browser/modules/URILoadingHelper.sys.mjs b/browser/modules/URILoadingHelper.sys.mjs
-index a3a84f96e54e5b74ad15f3825b380c30c117695f..ca702841c1df404a6f270ac08f962c8a225549d8 100644
+index a005dbdf84609622ef8054f73f78c0c290e76125..d5bf6fb51c9af5e60f69a73612ee91598080730a 100644
 --- a/browser/modules/URILoadingHelper.sys.mjs
 +++ b/browser/modules/URILoadingHelper.sys.mjs
-@@ -542,7 +542,7 @@ export const URILoadingHelper = {
+@@ -224,6 +224,7 @@ function openInWindow(url, params, sourceWindow) {
+     features,
+     sa
+   );
++  win._zenStartupSyncFlag = Services.prefs.getBoolPref('zen.window-sync.open-link-in-new-unsynced-window') ? 'unsynced' : 'synced';
+ }
+ 
+ function openInCurrentTab(targetBrowser, url, uriObj, params) {
+@@ -541,7 +542,7 @@ export const URILoadingHelper = {
        // page. If a load request bounces off for the currently selected tab,
        // we'll open a new tab instead.
        let tab = w.gBrowser.getTabForBrowser(targetBrowser);
@@ -11,7 +19,7 @@ index a3a84f96e54e5b74ad15f3825b380c30c117695f..ca702841c1df404a6f270ac08f962c8a
          where = "tab";
          targetBrowser = null;
        } else if (
-@@ -972,7 +972,7 @@ export const URILoadingHelper = {
+@@ -974,7 +975,7 @@ export const URILoadingHelper = {
          ignoreQueryString || replaceQueryString,
          ignoreFragmentWhenComparing
        );
@@ -20,12 +28,12 @@ index a3a84f96e54e5b74ad15f3825b380c30c117695f..ca702841c1df404a6f270ac08f962c8a
        for (let i = 0; i < browsers.length; i++) {
          let browser = browsers[i];
          let browserCompare = cleanURL(
-@@ -1018,7 +1018,7 @@ export const URILoadingHelper = {
+@@ -1030,7 +1031,7 @@ export const URILoadingHelper = {
+               );
+               aSplitView.ownerGlobal.focus();
+             } else {
+-              aWindow.gBrowser.tabContainer.selectedIndex = i;
++              aWindow.gZenWorkspaces.switchIfNeeded(browser);
+             }
            }
  
-           if (!doAdopt) {
--            aWindow.gBrowser.tabContainer.selectedIndex = i;
-+            aWindow.gZenWorkspaces.switchIfNeeded(browser);
-           }
- 
-           return true;

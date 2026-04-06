@@ -41,4 +41,7 @@ tool_test_lab/
 build/AppDir/distribution/extensions/*
 !build/AppDir/distribution/extensions/*.xpi
 
-# Distribution policies are now committed (template paths, not machine-specific)
+!src/toolkit/themes/shared/design-system/dist/
+.DS_Store
+
+mozconfig

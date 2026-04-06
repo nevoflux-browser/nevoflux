@@ -18,7 +18,7 @@
   value: true
 
 - name: browser.toolbars.bookmarks.visibility
-  value: 'never'
+  value: "never"
 
 - name: widget.non-native-theme.scrollbar.style
   value: 2
@@ -48,7 +48,7 @@
 
 - name: app.update.checkInstallTime.days
   value: 6
-  condition: 'defined(MOZILLA_OFFICIAL)'
+  condition: "defined(MOZILLA_OFFICIAL)"
 
 - name: browser.profiles.enabled
   value: false
@@ -65,3 +65,28 @@
 
 - name: browser.tabs.closeWindowWithLastTab
   value: false
+
+- name: browser.tabs.dragDrop.multiselectStacking
+  value: false
+  locked: true
+
+- name: browser.tabs.notes.enabled
+  value: false
+
+- name: browser.tabs.dragDrop.dragToPin.enabled
+  value: false
+  locked: true
+
+- name: browser.tabs.dragDrop.moveOverThresholdPercent
+  value: 50 # Percentage of tab height to trigger move over on drag-and-drop
+
+- name: browser.settings-redesign.enabled
+  value: true
+
+- name: browser.tabs.splitView.enabled
+  value: false
+  locked: true
+
+# See gh-12985 for details on the following preferences
+- name: browser.search.widget.new
+  value: true

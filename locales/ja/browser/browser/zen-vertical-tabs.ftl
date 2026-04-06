@@ -27,13 +27,18 @@ sidebar-zen-create-new =
 tabbrowser-unload-tab-button = 
     .tooltiptext =
         { $tabCount ->
-        [one] タブをアンロードして切り替える
-        *[other] { $tabCount }つタブをアンロードして最初タブに切り替える
+            [one] タブをアンロードして切り替える
+           *[other] { $tabCount }つタブをアンロードして最初タブに切り替える
         }
 tabbrowser-reset-pin-button = 
     .tooltiptext =
         { $tabCount ->
-        [one] タブをリセットして固定する
-        *[other] タブをリセットして{ $tabCount }つタブを固定する
+            [one] タブをリセットして固定する
+           *[other] タブをリセットして{ $tabCount }つタブを固定する
         }
-tab-reset-pin-label = 固定したURLに戻る
+zen-tab-sublabel =
+    { $tabSubtitle ->
+        [zen-default-pinned] Back to pinned url
+        [zen-default-pinned-cmd] Separate from pinned tab
+       *[other] { $tabSubtitle }
+    }

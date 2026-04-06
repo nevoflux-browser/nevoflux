@@ -2,10 +2,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-zen-panel-ui-current-profile-text = perfil atual
+zen-panel-ui-current-profile-text = Perfil atual
 unified-extensions-description = As extensões são usadas para trazer mais recursos adicionais para o { -brand-short-name }.
 tab-context-zen-reset-pinned-tab = 
-    .label = Redefinir Guia Fixada
+    .label =
+        { $isEssential ->
+            [true] Reiniciar Aba Essencial
+           *[false] Reiniciar Aba Fixada
+        }
     .accesskey = R
 tab-context-zen-add-essential = 
     .label = Adicionar aos Essenciais
@@ -15,8 +19,16 @@ tab-context-zen-remove-essential =
     .label = Remover dos Essenciais
     .accesskey = R
 tab-context-zen-replace-pinned-url-with-current = 
-    .label = Substituir URL da Guia Fixada pela Atual
+    .label =
+        { $isEssential ->
+            [true] Substituir URL Essencial pela atual
+           *[false] Substituir URL Fixada pela atual
+        }
     .accesskey = C
+tab-context-zen-edit-title = 
+    .label = Alterar Rótulo...
+tab-context-zen-edit-icon = 
+    .label = Alterar Ícone...
 zen-themes-corrupted = Seu arquivo de modificações { -brand-short-name } está corrompido. Eles foram redefinidos para o tema padrão.
 zen-shortcuts-corrupted = Seu arquivo de atalhos { -brand-short-name } está corrompido. Eles foram redefinidos para os atalhos padrão.
 # note: Do not translate the "<br/>" tags in the following string
@@ -26,8 +38,8 @@ pictureinpicture-minimize-btn =
     .aria-label = Minimizar
     .tooltip = Minimizar
 zen-panel-ui-gradient-generator-custom-color = Cor Personalizada
-zen-panel-ui-gradient-generator-saved-message = O gradiente foi salvo com sucesso!
 zen-copy-current-url-confirmation = URL atual copiada!
+zen-copy-current-url-as-markdown-confirmation = URL atual copiada como Markdown!
 zen-general-cancel-label = 
     .label = Cancelar
 zen-general-confirm = 
@@ -36,10 +48,6 @@ zen-pinned-tab-replaced = A URL da guia fixada foi substituída pela URL atual!
 zen-tabs-renamed = A guia foi renomeada com sucesso!
 zen-background-tab-opened-toast = Nova guia em segundo plano aberta!
 zen-workspace-renamed-toast = A área de trabalho foi renomeada com sucesso!
-zen-library-sidebar-workspaces = 
-    .label = Espaços
-zen-library-sidebar-mods = 
-    .label = Mods
 zen-toggle-compact-mode-button = 
     .label = Modo Compacto
     .tooltiptext = Alternar Modo Compacto
@@ -59,6 +67,8 @@ zen-site-data-settings = Configurações
 zen-generic-manage = Gerenciar
 zen-generic-more = Mais
 zen-generic-next = Próximo
+zen-essentials-promo-label = Adicionar aos Essenciais
+zen-essentials-promo-sublabel = Mantenha suas abas favoritas a um clique de distância
 # These labels will be used for the site data panel settings
 zen-site-data-setting-allow = Permitido
 zen-site-data-setting-block = Bloqueado
@@ -106,3 +116,9 @@ zen-sidebar-notification-updated-tooltip =
 zen-sidebar-notification-restart-safe-mode-label = Algo quebrou?
 zen-sidebar-notification-restart-safe-mode-tooltip = 
     .title = Reiniciar no Modo Seguro
+zen-window-sync-migration-dialog-title = Mantenha Suas Janelas em Sincronia
+zen-window-sync-migration-dialog-message = Zen agora sincroniza as janelas no mesmo dispositivo, assim as mudanças feitas em uma janela são refletidas para as outras instantaneamente.
+zen-window-sync-migration-dialog-learn-more = Saiba Mais
+zen-window-sync-migration-dialog-accept = Entendi
+zen-appmenu-new-blank-window = 
+    .label = Nova janela em branco

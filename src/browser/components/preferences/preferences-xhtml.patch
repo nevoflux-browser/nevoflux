@@ -1,9 +1,9 @@
 diff --git a/browser/components/preferences/preferences.xhtml b/browser/components/preferences/preferences.xhtml
-index 993554d64efa6ce39fbcc01d4676a69199e158ff..e69aec388162997ef7cb93481cfedb9d102b4fe0 100644
+index b006d5e5e64c418fbf930c010401e4ea3a3647a3..27886c04258e40f7c6ec444320a9a2a1cf960db0 100644
 --- a/browser/components/preferences/preferences.xhtml
 +++ b/browser/components/preferences/preferences.xhtml
-@@ -45,6 +45,8 @@
-   <link rel="stylesheet" href="chrome://browser/content/preferences/widgets/setting-group.css" />
+@@ -42,6 +42,8 @@
+   <link rel="stylesheet" href="chrome://browser/content/preferences/widgets/setting-pane.css" />
    <link rel="stylesheet" href="chrome://browser/content/preferences/widgets/setting-control.css" />
  
 +#include zen-preferences-links.xhtml
@@ -11,7 +11,7 @@ index 993554d64efa6ce39fbcc01d4676a69199e158ff..e69aec388162997ef7cb93481cfedb9d
    <link rel="localization" href="branding/brand.ftl"/>
    <link rel="localization" href="browser/browser.ftl"/>
      <!-- Used by fontbuilder.js -->
-@@ -113,6 +115,11 @@
+@@ -112,6 +114,11 @@
    <hbox flex="1">
  
      <vbox class="navigation">
@@ -23,7 +23,7 @@ index 993554d64efa6ce39fbcc01d4676a69199e158ff..e69aec388162997ef7cb93481cfedb9d
        <!-- category list -->
        <richlistbox id="categories" data-l10n-id="category-list" data-l10n-attrs="aria-label">
          <richlistitem id="category-general"
-@@ -125,6 +132,50 @@
+@@ -124,6 +131,50 @@
            <label class="category-name" flex="1" data-l10n-id="pane-general-title"></label>
          </richlistitem>
  
@@ -74,7 +74,7 @@ index 993554d64efa6ce39fbcc01d4676a69199e158ff..e69aec388162997ef7cb93481cfedb9d
          <richlistitem id="category-home"
                        class="category"
                        value="paneHome"
-@@ -236,11 +287,6 @@
+@@ -249,11 +300,6 @@
                  <html:a href="about:policies" target="_blank" data-l10n-id="managed-notice"/>
                </hbox>
              </hbox>
@@ -86,7 +86,7 @@ index 993554d64efa6ce39fbcc01d4676a69199e158ff..e69aec388162997ef7cb93481cfedb9d
            </hbox>
          </hbox>
          <vbox id="mainPrefPane">
-@@ -254,6 +300,10 @@
+@@ -266,6 +312,10 @@
  #include sync.inc.xhtml
  #include experimental.inc.xhtml
  #include moreFromMozilla.inc.xhtml

@@ -1,19 +1,13 @@
 diff --git a/browser/base/content/browser-fullScreenAndPointerLock.js b/browser/base/content/browser-fullScreenAndPointerLock.js
-index f459f3ca4048c29a32832b46ba87de8552a0ab8a..d317676e6d12d756ddf5dfbffe73050de07c2375 100644
+index 38b4267c737ba247068e1001c12f1cb93cd248f7..f0d7002246645de48dd3ed24a84122d0bcc95b5a 100644
 --- a/browser/base/content/browser-fullScreenAndPointerLock.js
 +++ b/browser/base/content/browser-fullScreenAndPointerLock.js
-@@ -423,10 +423,10 @@ var FullScreen = {
+@@ -461,8 +461,6 @@ var FullScreen = {
      gNavToolbox.classList.toggle("fullscreen-with-menubar", shiftSize > 0);
  
      let transform = shiftSize > 0 ? `translateY(${shiftSize}px)` : "";
 -    gNavToolbox.style.transform = transform;
--    gURLBar.textbox.style.transform = gURLBar.textbox.hasAttribute("breakout")
--      ? transform
--      : "";
-+    //gNavToolbox.style.transform = transform;
-+    //gURLBar.textbox.style.transform = gURLBar.textbox.hasAttribute("breakout")
-+    //  ? transform
-+    //  : "";
-     if (shiftSize > 0) {
-       // If the mouse tracking missed our fullScreenToggler, then the toolbox
-       // might not have been shown before the menubar is animated down. Make
+-    gURLBar.style.transform = gURLBar.hasAttribute("breakout") ? transform : "";
+     let searchbar = document.getElementById("searchbar-new");
+     if (searchbar) {
+       searchbar.style.transform = searchbar.hasAttribute("breakout")

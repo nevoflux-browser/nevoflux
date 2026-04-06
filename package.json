@@ -23,9 +23,8 @@
     "sync:raw": "surfer update",
     "sync:rc": "python3 scripts/update_ff.py --rc",
     "sync:l10n": "python3 scripts/update_ff.py --just-l10n",
-    "pretty": "prettier . --write --cache && autopep8 -r --in-place scripts/ src/ --exclude */tests/*",
-    "lint": "npx eslint src/ && prettier . --check --cache",
-    "lint:fix": "npm run pretty && npx eslint src/ --fix",
+    "lint": "cd engine && ./mach lint zen",
+    "lint:fix": "npm run lint -- --fix",
     "prepare": "husky",
     "reset-ff": "surfer reset",
     "surfer": "surfer",
@@ -57,19 +56,12 @@
   },
   "homepage": "https://github.com/zen-browser/desktop#readme",
   "dependencies": {
-    "@zen-browser/surfer": "^1.12.1",
     "lit": "^3.3.2"
   },
   "devDependencies": {
     "@babel/preset-typescript": "^7.27.0",
-    "@eslint/js": "^9.32.0",
-    "@microsoft/eslint-plugin-sdl": "^1.1.0",
-    "eslint": "^9.32.0",
-    "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-html": "^8.1.3",
-    "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-json": "^4.0.1",
-    "eslint-plugin-react-hooks": "^5.2.0",
+    "@zen-browser/prettier": "^3.9.3",
+    "@zen-browser/surfer": "^1.13.4",
     "formal-git": "^1.2.9",
     "globals": "^16.3.0",
     "husky": "^9.1.7",
@@ -77,5 +69,7 @@
     "prettier": "^3.4.2",
     "prettier-plugin-sh": "^0.14.0",
     "typescript": "^5.9.3"
-  }
+  },
+  "notes(private)": "We don't want to publish to npm, so this is marked as private",
+  "private": true
 }

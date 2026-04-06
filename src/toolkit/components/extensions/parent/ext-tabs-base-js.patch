@@ -1,8 +1,8 @@
 diff --git a/toolkit/components/extensions/parent/ext-tabs-base.js b/toolkit/components/extensions/parent/ext-tabs-base.js
-index d3c2d62406d17a14b0288752c34b6dd4350f032a..2f970d41b8ada9a13fc18b8d2a6607b973983072 100644
+index b915a9bed9a08afc4cabcc9c7268ecfddeb5a9f6..f318a20a17caf3d4c9ebaa67715ad3835bf89970 100644
 --- a/toolkit/components/extensions/parent/ext-tabs-base.js
 +++ b/toolkit/components/extensions/parent/ext-tabs-base.js
-@@ -1942,6 +1942,7 @@ class TabManagerBase {
+@@ -1964,6 +1964,7 @@ class TabManagerBase {
     */
    addActiveTabPermission(nativeTab) {
      let tab = this.getWrapper(nativeTab);
@@ -10,7 +10,7 @@ index d3c2d62406d17a14b0288752c34b6dd4350f032a..2f970d41b8ada9a13fc18b8d2a6607b9
      if (
        this.extension.hasPermission("activeTab") ||
        (this.extension.originControls &&
-@@ -1963,7 +1964,9 @@ class TabManagerBase {
+@@ -1985,7 +1986,9 @@ class TabManagerBase {
     *        The native tab for which to revoke permissions.
     */
    revokeActiveTabPermission(nativeTab) {
@@ -21,7 +21,7 @@ index d3c2d62406d17a14b0288752c34b6dd4350f032a..2f970d41b8ada9a13fc18b8d2a6607b9
    }
  
    /**
-@@ -1976,7 +1979,9 @@ class TabManagerBase {
+@@ -1998,7 +2001,9 @@ class TabManagerBase {
     *        True if the extension has activeTab permissions for this tab.
     */
    hasActiveTabPermission(nativeTab) {
@@ -32,7 +32,7 @@ index d3c2d62406d17a14b0288752c34b6dd4350f032a..2f970d41b8ada9a13fc18b8d2a6607b9
    }
  
    /**
-@@ -1987,6 +1992,7 @@ class TabManagerBase {
+@@ -2009,6 +2014,7 @@ class TabManagerBase {
     */
    activateScripts(nativeTab) {
      let tab = this.getWrapper(nativeTab);
@@ -40,7 +40,7 @@ index d3c2d62406d17a14b0288752c34b6dd4350f032a..2f970d41b8ada9a13fc18b8d2a6607b9
      if (
        this.extension.originControls &&
        !tab.matchesHostPermission &&
-@@ -2019,7 +2025,9 @@ class TabManagerBase {
+@@ -2041,7 +2047,9 @@ class TabManagerBase {
     *        True if the extension has permissions for this tab.
     */
    hasTabPermission(nativeTab) {
@@ -51,7 +51,7 @@ index d3c2d62406d17a14b0288752c34b6dd4350f032a..2f970d41b8ada9a13fc18b8d2a6607b9
    }
  
    /**
-@@ -2066,7 +2074,9 @@ class TabManagerBase {
+@@ -2088,7 +2096,9 @@ class TabManagerBase {
     * @returns {object}
     */
    convert(nativeTab, fallbackTabSize = null) {

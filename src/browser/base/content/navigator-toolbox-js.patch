@@ -1,8 +1,8 @@
 diff --git a/browser/base/content/navigator-toolbox.js b/browser/base/content/navigator-toolbox.js
-index 7b776b15d52367a008ce6bf53dcfcbbe007b7453..da23f716c753f5a43f17bb5ed7a3d335891168c2 100644
+index 362a85c20d8f0633fa78f85578e4cf015fdd0e44..ef7d6ff9e0e9876bc1918e365fd0addcd177cecb 100644
 --- a/browser/base/content/navigator-toolbox.js
 +++ b/browser/base/content/navigator-toolbox.js
-@@ -6,7 +6,7 @@
+@@ -11,7 +11,7 @@ ChromeUtils.defineESModuleGetters(this, {
  document.addEventListener(
    "DOMContentLoaded",
    () => {
@@ -11,31 +11,41 @@ index 7b776b15d52367a008ce6bf53dcfcbbe007b7453..da23f716c753f5a43f17bb5ed7a3d335
      const widgetOverflow = document.getElementById("widget-overflow");
  
      function onPopupShowing(event) {
-@@ -185,6 +185,7 @@ document.addEventListener(
+@@ -189,6 +189,7 @@ document.addEventListener(
+         #forward-button,
          #reload-button ,
-         #urlbar-go-button,
          #reader-mode-button,
 +        #zen-tabs-wrapper,
          #picture-in-picture-button,
          #urlbar-zoom-button,
          #star-button-box,
-@@ -206,6 +207,7 @@ document.addEventListener(
-         case "vertical-tabs-newtab-button":
-         case "tabs-newtab-button":
-         case "new-tab-button":
-+        case "zen-tabs-wrapper":
+@@ -215,6 +216,17 @@ document.addEventListener(
            gBrowser.handleNewTabMiddleClick(element, event);
            break;
  
-@@ -316,6 +318,7 @@ document.addEventListener(
++        case "zen-tabs-wrapper":
++          if (event.button == 1) {
++            BrowserCommands.openTab();
++            // Stop the propagation of the click event, to prevent the event from being
++            // handled more than once.
++            // E.g. see https://bugzilla.mozilla.org/show_bug.cgi?id=1657992#c4
++            event.stopPropagation();
++            event.preventDefault();
++          }
++          break;
++
+         case "back-button":
+         case "forward-button":
+         case "reload-button":
+@@ -330,6 +342,7 @@ document.addEventListener(
          #downloads-button,
          #fxa-toolbar-menu-button,
          #unified-extensions-button,
 +        #zen-site-data-icon-button,
-         #library-button
-       `);
-       if (!element) {
-@@ -398,6 +401,16 @@ document.addEventListener(
+         #library-button,
+         #split-view-button,
+         #smartwindow-ask-button
+@@ -414,6 +427,16 @@ document.addEventListener(
            gUnifiedExtensions.togglePanel(event);
            break;
  

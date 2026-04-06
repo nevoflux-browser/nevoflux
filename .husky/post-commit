@@ -1,12 +1,11 @@
 #!/bin/sh
 
-# Post-commit hook: Notify developer if src/zen/ needs restoration
-# The pre-commit hook reverts overlay/patch changes in src/zen/ before committing.
-# After committing, developers should run `npm run import` to restore the working state.
-#
-# NOTE: We intentionally do NOT auto-run apply-patches.sh here because it
-# requires the full engine symlink chain (created by surfer import) to work.
-# Running it without surfer import leads to broken symlinks and blank UI.
+# Post-commit hook: Restore src/zen/ after pre-commit reverted it.
+# Runs apply-patches.sh to re-copy overlays and inject NevoFlux customizations.
+# This is safe because:
+#   - engine/ symlinks to src/zen/ are intact (surfer import created them)
+#   - apply-patches.sh operations are idempotent (sed checks, overlay copies)
+#   - No nfpatch files (jar-inc-mn replaced with sed injection)
 
 OVERLAYS_DIR="src/nevoflux/overlays"
 NEED_RESTORE=false
@@ -25,7 +24,17 @@ fi
 if [ "$NEED_RESTORE" = true ]; then
     echo ""
     echo "============================================================"
-    echo "  src/zen/ was reverted for clean commit."
-    echo "  Run 'npm run import' to restore for development."
+    echo "  Restoring src/zen/ for continued development..."
     echo "============================================================"
+    echo ""
+
+    if [ -f "src/nevoflux/apply-patches.sh" ]; then
+        bash src/nevoflux/apply-patches.sh
+        echo ""
+        echo "============================================================"
+        echo "  src/zen/ restored. Ready for continued development."
+        echo "============================================================"
+    else
+        echo "NOTE: Run 'npm run import' to restore src/zen/ for development."
+    fi
 fi

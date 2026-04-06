@@ -1,8 +1,17 @@
 diff --git a/browser/components/customizableui/ToolbarContextMenu.sys.mjs b/browser/components/customizableui/ToolbarContextMenu.sys.mjs
-index 5be4e8ea7867e93bda2cd3eb49d966ebd73dc786..650d0008e755583392e07f35bd8e541dff7c43c4 100644
+index d5fd707b98e4b163a624c97ff4a8f2574e0b0180..a3ac939aa9133a678396c16bc6746444a3f3ac1f 100644
 --- a/browser/components/customizableui/ToolbarContextMenu.sys.mjs
 +++ b/browser/components/customizableui/ToolbarContextMenu.sys.mjs
-@@ -246,10 +246,7 @@ export var ToolbarContextMenu = {
+@@ -183,7 +183,7 @@ export var ToolbarContextMenu = {
+ 
+     let showTabStripItems = toolbarItem?.id == "tabbrowser-tabs";
+     let isVerticalTabStripMenu =
+-      showTabStripItems && toolbarItem.parentElement.id == "vertical-tabs";
++      showTabStripItems && toolbarItem.parentElement.id == "TabsToolbar-customization-target";
+ 
+     if (aInsertPoint) {
+       aInsertPoint.hidden = isVerticalTabStripMenu;
+@@ -243,10 +243,7 @@ export var ToolbarContextMenu = {
      // Show/hide sidebar and vertical tabs menu items
      let sidebarRevampEnabled = Services.prefs.getBoolPref("sidebar.revamp");
      let showSidebarActions =

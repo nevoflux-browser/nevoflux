@@ -47,6 +47,8 @@
   <a href="#contributing">Contributing</a>
 </p>
 
+- Currently built on Firefox `149.0`
+
 ---
 
 ## What is Nevoflux?

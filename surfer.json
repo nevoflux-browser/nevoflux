@@ -5,8 +5,9 @@
     "binaryName": "nevoflux",
     "version": {
         "product": "firefox",
-        "version": "146.0.1",
-        "candidate": "146.0.1"
+        "version": "149.0",
+        "candidate": "149.0",
+        "candidateBuild": 1
     },
     "buildOptions": {
         "generateBranding": true

@@ -1,8 +1,8 @@
 diff --git a/browser/components/preferences/main.js b/browser/components/preferences/main.js
-index a184086f10d6a919c8125ab5d7728319256b3b73..7c826000ccdc8a55a12a08bdc2c547d886e5610c 100644
+index e77dfebdf3a15033182eeae6eccd44a63aae3740..4e25b3e1abaeeaec3e83e0e1b53bf578eba5587b 100644
 --- a/browser/components/preferences/main.js
 +++ b/browser/components/preferences/main.js
-@@ -1117,6 +1117,11 @@ let SETTINGS_CONFIG = {
+@@ -2652,6 +2652,11 @@ SettingGroupManager.registerGroups({
          id: "browserRestoreSession",
          l10nId: "startup-restore-windows-and-tabs",
        },
@@ -14,7 +14,7 @@ index a184086f10d6a919c8125ab5d7728319256b3b73..7c826000ccdc8a55a12a08bdc2c547d8
        {
          id: "windowsLaunchOnLogin",
          l10nId: "windows-launch-on-login",
-@@ -1700,7 +1705,7 @@ function getBundleForLocales(newLocales) {
+@@ -5277,7 +5282,7 @@ function getBundleForLocales(newLocales) {
      ])
    );
    return new Localization(

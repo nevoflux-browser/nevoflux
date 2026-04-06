@@ -42,6 +42,13 @@ find "${NEVOFLUX_DIR}/patches" -type f -name "*.nfpatch" 2> /dev/null | while re
   }
 done
 
+# 1b. Inject zen-sidebar-right.css into jar.inc.mn (idempotent sed, replaces fragile nfpatch)
+JAR_INC="${ZEN_DIR}/common/jar.inc.mn"
+if [ -f "${JAR_INC}" ] && ! grep -q 'zen-sidebar-right.css' "${JAR_INC}"; then
+  echo "Injecting zen-sidebar-right.css into jar.inc.mn..."
+  sedi '/zen-sidebar\.css/a\        content/browser/zen-styles/zen-sidebar-right.css                        (../../zen/common/styles/zen-sidebar-right.css)' "${JAR_INC}"
+fi
+
 # 2. Copy overlay files (new or overwritten files) to src/zen/
 #    Then create symlinks in engine/zen/ for new files added by overlays.
 #    surfer import creates symlinks engine/zen/ -> src/zen/ but only for files
@@ -107,6 +114,22 @@ if [ -d "${NEVOFLUX_DIR}/root-overlays" ]; then
       fi
     fi
   fi
+fi
+
+# 3b. Replace symlinks with real files in engine/browser/base/content/
+#     Firefox's preprocessor does not follow symlinks when expanding #include
+#     directives, causing zen-assets.inc.xhtml etc. to be silently skipped
+#     during build. Replace symlinks with copies of their targets.
+if [ -d "${ENGINE_DIR}/browser/base/content" ]; then
+  for f in "${ENGINE_DIR}"/browser/base/content/*.inc.xhtml; do
+    if [ -L "$f" ]; then
+      target=$(readlink "$f")
+      if [ -f "$target" ]; then
+        cp "$target" "$f.tmp" && rm "$f" && mv "$f.tmp" "$f"
+        echo "  Replaced symlink with file: $(basename "$f")"
+      fi
+    fi
+  done
 fi
 
 # 4. Copy engine-overlays to engine/ directory
@@ -183,12 +206,17 @@ if [ -d "${OVERLAY_LOCALE_DIR}" ]; then
   done
 fi
 
-# 6. Append NevoFlux pref overrides to firefox.js (loaded via preprocessor #include chain)
+# 6. Append pref includes to firefox.js (loaded via preprocessor #include chain)
 # firefox.js → #include zen.js → #include zzz-nevoflux.js
-# Our zzz-nevoflux.js overrides zen.js defaults (e.g., sidebar position)
 FIREFOX_JS="${ENGINE_DIR}/browser/app/profile/firefox.js"
-if [ -f "${FIREFOX_JS}" ] && [ -f "${ENGINE_DIR}/browser/app/profile/zzz-nevoflux.js" ]; then
-  if ! grep -q "zzz-nevoflux.js" "${FIREFOX_JS}"; then
+if [ -f "${FIREFOX_JS}" ]; then
+  # Ensure zen.js is included (provides all Zen Browser prefs)
+  if [ -f "${ENGINE_DIR}/browser/app/profile/zen.js" ] && ! grep -q '#include zen.js' "${FIREFOX_JS}"; then
+    echo "Appending #include zen.js to firefox.js..."
+    echo '#include zen.js' >> "${FIREFOX_JS}"
+  fi
+  # Ensure zzz-nevoflux.js is included (overrides zen.js defaults)
+  if [ -f "${ENGINE_DIR}/browser/app/profile/zzz-nevoflux.js" ] && ! grep -q '#include zzz-nevoflux.js' "${FIREFOX_JS}"; then
     echo "Appending #include zzz-nevoflux.js to firefox.js..."
     echo '#include zzz-nevoflux.js' >> "${FIREFOX_JS}"
   fi
@@ -328,6 +356,14 @@ fi
 if [ -f "${ROOT_DIR}/scripts/package-extension.sh" ]; then
   echo "Packaging nevoflux-agent extension..."
   bash "${ROOT_DIR}/scripts/package-extension.sh"
+fi
+
+# 16. Copy en-US locale files to engine (Zen FTL files for menus, settings, etc.)
+#     CI runs download-language-packs.sh separately for all languages, but local dev
+#     needs at least en-US to avoid blank menus. This is idempotent.
+if [ -f "${ROOT_DIR}/scripts/copy_language_pack.py" ]; then
+  echo "Copying en-US locale files to engine..."
+  python3 "${ROOT_DIR}/scripts/copy_language_pack.py" en-US
 fi
 
 echo "All nevoflux patches applied successfully."

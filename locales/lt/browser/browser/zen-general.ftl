@@ -5,7 +5,11 @@
 zen-panel-ui-current-profile-text = dabartinis profilis
 unified-extensions-description = Plėtiniai naudojami norint į „{ -brand-short-name }“ įtraukti daugiau papildomų funkcijų.
 tab-context-zen-reset-pinned-tab = 
-    .label = Atkurti prisegtą kortelę
+    .label =
+        { $isEssential ->
+            [true] Atkurti butiniausią kortelę
+           *[false] Atkurti prisegtą kortelę
+        }
     .accesskey = R
 tab-context-zen-add-essential = 
     .label = Įtraukti į būtiniausius
@@ -15,21 +19,29 @@ tab-context-zen-remove-essential =
     .label = Šalinti iš būtiniausių
     .accesskey = R
 tab-context-zen-replace-pinned-url-with-current = 
-    .label = Pakeisti prisegtą URL adresą dabartiniu
+    .label =
+        { $isEssential ->
+            [true] Keisti būtiniausią URL su dabartiniu
+           *[false] Keisti prisegtą URL su dabartiniu
+        }
     .accesskey = C
+tab-context-zen-edit-title = 
+    .label = Keisti žymę...
+tab-context-zen-edit-icon = 
+    .label = Keisti piktogramą...
 zen-themes-corrupted = Jūsų „{ -brand-short-name }“ modifikacijos failas sugadintas. Jie buvo atkurti į numatytąją temą.
 zen-shortcuts-corrupted = Jūsų „{ -brand-short-name }“ sparčiųjų klavišų failas sugadintas. Jie buvo atkurti į numatytuosius sparčiuosius klavišus.
 # note: Do not translate the "<br/>" tags in the following string
 zen-new-urlbar-notification =
-    Įjungta nauja URL juosta, todėl nebereikia naujų kortelių puslapių.<br/><br/>
-    Pabandykite atverti naują kortelę, kad pamatytumėte naująją URL juostą!
+    Įjungta naujoji URL juosta, todėl nebereikia naujų kortelių puslapių.<br/><br/>
+    Pabandykite atverti naują kortelę, kad matytumėte veikiantį naująjį URL juostą!
 zen-disable = Išjungti
 pictureinpicture-minimize-btn = 
     .aria-label = Sumažinti
     .tooltip = Sumažinti
 zen-panel-ui-gradient-generator-custom-color = Pasirinktinė spalva
-zen-panel-ui-gradient-generator-saved-message = Gradientas sėkmingai įrašytas.
 zen-copy-current-url-confirmation = Nukopijuotas dabartinis URL.
+zen-copy-current-url-as-markdown-confirmation = Nukopijuotas dabartinis URL kaip ženklinimas.
 zen-general-cancel-label = 
     .label = Atšaukti
 zen-general-confirm = 
@@ -38,10 +50,6 @@ zen-pinned-tab-replaced = Prisegtos kortelės URL pakeistas dabartiniu URL.
 zen-tabs-renamed = Kortelė sėkmingai pervadinta.
 zen-background-tab-opened-toast = Nauja fonos kortelė atverta.
 zen-workspace-renamed-toast = Darbo sritis sėkmingai pervadintas.
-zen-library-sidebar-workspaces = 
-    .label = Erdvės
-zen-library-sidebar-mods = 
-    .label = Modifikacijos
 zen-toggle-compact-mode-button = 
     .label = Kompaktinis režimas
     .tooltiptext = Perjungti kompaktinį režimą
@@ -61,6 +69,8 @@ zen-site-data-settings = Nustatymai
 zen-generic-manage = Tvarkyti
 zen-generic-more = Daugiau
 zen-generic-next = Sekantis
+zen-essentials-promo-label = Įtraukti į būtiniausius
+zen-essentials-promo-sublabel = Laikykite mėgstamas korteles vos nuo vienu paspaudimu
 # These labels will be used for the site data panel settings
 zen-site-data-setting-allow = Leidžiama
 zen-site-data-setting-block = Užblokuota
@@ -108,3 +118,9 @@ zen-sidebar-notification-updated-tooltip =
 zen-sidebar-notification-restart-safe-mode-label = Kažkas sugedo?
 zen-sidebar-notification-restart-safe-mode-tooltip = 
     .title = Paleisti iš naujo saugioje režime
+zen-window-sync-migration-dialog-title = Išlaikykite savo langus sinchronizuotus
+zen-window-sync-migration-dialog-message = „Zen“ dabar sinchronizuoja langus tame pačiame įrenginyje, todėl viename lange atlikti pakeitimai iš karto atsispindi ir kituose.
+zen-window-sync-migration-dialog-learn-more = Sužinoti daugiau
+zen-window-sync-migration-dialog-accept = Supratau
+zen-appmenu-new-blank-window = 
+    .label = Naujas tuščias langas

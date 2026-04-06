@@ -1,4 +1,5 @@
 diff --git a/browser/base/content/aboutDialog.js b/browser/base/content/aboutDialog.js
+index f6e1391baf12abb91c85a95107bb3923118746c0..cac04aa288e8a305d0c8b28e0c919abce87658e5 100644
 --- a/browser/base/content/aboutDialog.js
 +++ b/browser/base/content/aboutDialog.js
 @@ -52,7 +52,7 @@ function init() {
@@ -19,29 +20,7 @@ diff --git a/browser/base/content/aboutDialog.js b/browser/base/content/aboutDia
      versionIdKey += "-nightly";
      let buildID = Services.appinfo.appBuildID;
      let year = buildID.slice(0, 4);
-@@ -85,21 +85,6 @@ function init() {
-     versionAttributes
-   );
- 
--  // Show a release notes link if we have a URL.
--  let relNotesLink = document.getElementById("releasenotes");
--  let relNotesPrefType = Services.prefs.getPrefType(
--    "app.releaseNotesURL.aboutDialog"
--  );
--  if (relNotesPrefType != Services.prefs.PREF_INVALID) {
--    let relNotesURL = Services.urlFormatter.formatURLPref(
--      "app.releaseNotesURL.aboutDialog"
--    );
--    if (relNotesURL != "about:blank") {
--      relNotesLink.href = relNotesURL;
--      relNotesLink.hidden = false;
--    }
--  }
--
-   if (AppConstants.MOZ_UPDATER) {
-     gAppUpdater = new appUpdater({ buttonAutoFocus: true });
- 
-@@ -125,14 +110,6 @@ function init() {
+@@ -125,14 +125,6 @@ function init() {
        window.close();
      });
    if (AppConstants.MOZ_UPDATER) {

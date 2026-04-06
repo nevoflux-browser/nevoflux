@@ -2,10 +2,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-zen-panel-ui-current-profile-text = proffil cyfredol
-unified-extensions-description = Mae ychwanegiadau'n cael ei defnyddio er mwyn ychwanegu fwy o weithrediadau i { -brand-short-name }.
+zen-panel-ui-current-profile-text = y proffil cyfredol
+unified-extensions-description = Mae estyniadau'n cael ei defnyddio er mwyn ychwanegu fwy o swyddogaeth i { -brand-short-name }.
 tab-context-zen-reset-pinned-tab = 
-    .label = Ailosod Tab wedi'i Binio
+    .label =
+        { $isEssential ->
+            [true] Ailosod y Tab Hanfodol
+           *[false] Ailosod y Tab wedi'i Binio
+        }
     .accesskey = A
 tab-context-zen-add-essential = 
     .label = Ychwanegu at Hanfodion
@@ -15,8 +19,16 @@ tab-context-zen-remove-essential =
     .label = Dileu o'r Hanfodion
     .accesskey = D
 tab-context-zen-replace-pinned-url-with-current = 
-    .label = Ailosod URL wedi'i Binio gyda'r Cyfredol
+    .label =
+        { $isEssential ->
+            [true] Amnewid URL Hanfodol gyda'r Cyfredol
+          *[false] Amnewid URL wedi'i binio gyda'r Cyfredol
+        }
     .accesskey = P
+tab-context-zen-edit-title = 
+    .label = Newid Label...
+tab-context-zen-edit-icon = 
+    .label = Newid Eicon...
 zen-themes-corrupted = Mae eich ffeil addasiadau { -brand-short-name } wedi'i llygru. Maen nhw wedi cael eu hailosod i'r thema rhagosodedig.
 zen-shortcuts-corrupted = Mae eich ffeil llwybr-byr { -brand-short-name } wedi'i llygru. Maen nhw wedi cael eu hailosod i'r llwybr byr rhagosodedig.
 # note: Do not translate the "<br/>" tags in the following string
@@ -28,8 +40,8 @@ pictureinpicture-minimize-btn =
     .aria-label = Lleihau
     .tooltip = Lleihau
 zen-panel-ui-gradient-generator-custom-color = Lliw Cyfaddas
-zen-panel-ui-gradient-generator-saved-message = Llwyddwyd i gadw'r graddiant!
 zen-copy-current-url-confirmation = Wedi copïo'r URL cyfredol!
+zen-copy-current-url-as-markdown-confirmation = Wedi copïo'r URL cyfredol fel Markdown!
 zen-general-cancel-label = 
     .label = Na
 zen-general-confirm = 
@@ -38,10 +50,6 @@ zen-pinned-tab-replaced = Mae URL y tab wedi'i binio wedi'i newid i'r URL gyfred
 zen-tabs-renamed = Mae'r tab wedi cael ei ailenwi'n llwyddiannus!
 zen-background-tab-opened-toast = Tab cefndir newydd wedi'i agor!
 zen-workspace-renamed-toast = Mae'r Man Gwaith wedi cael ei ailenwi'n llwyddiannus!
-zen-library-sidebar-workspaces = 
-    .label = Gofodau
-zen-library-sidebar-mods = 
-    .label = Modiau
 zen-toggle-compact-mode-button = 
     .label = Modd Cryno
     .tooltiptext = Togglo Modd Cryno
@@ -61,6 +69,8 @@ zen-site-data-settings = Gosodiadau
 zen-generic-manage = Rheoli
 zen-generic-more = Rhagor
 zen-generic-next = Nesaf
+zen-essentials-promo-label = Ychwanegu at Hanfodion
+zen-essentials-promo-sublabel = Cadwch eich hoff dabiau dim ond un clic i ffwrdd
 # These labels will be used for the site data panel settings
 zen-site-data-setting-allow = Caniatawyd
 zen-site-data-setting-block = Rhwystrwyd
@@ -108,3 +118,9 @@ zen-sidebar-notification-updated-tooltip =
 zen-sidebar-notification-restart-safe-mode-label = Rhywbeth wedi torri?
 zen-sidebar-notification-restart-safe-mode-tooltip = 
     .title = Ailgychwyn yn y Modd Diogel
+zen-window-sync-migration-dialog-title = Cadw Eich Ffenestr Wedi'u Cydweddu
+zen-window-sync-migration-dialog-message = Mae Zen bellach yn cydweddu ffenestri ar yr un ddyfais, felly mae newidiadau mewn un ffenestr yn cael eu dangos ar y lleill yn syth.
+zen-window-sync-migration-dialog-learn-more = Dysgu Rhagor
+zen-window-sync-migration-dialog-accept = Iawn
+zen-appmenu-new-blank-window = 
+    .label = Ffenestr wag newydd

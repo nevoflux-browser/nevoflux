@@ -1,8 +1,8 @@
 diff --git a/browser/components/urlbar/UrlbarPrefs.sys.mjs b/browser/components/urlbar/UrlbarPrefs.sys.mjs
-index 0cc0db4889d66872bce2aa775a79a4c68e8cec51..604106e328843b3a6eb0922cc8663474ddb008f4 100644
+index ec7b7eeee7999aba76286e84808ed09ffc6df463..12bfafdc7e34c5d6345579cd0aaf515a19d82b31 100644
 --- a/browser/components/urlbar/UrlbarPrefs.sys.mjs
 +++ b/browser/components/urlbar/UrlbarPrefs.sys.mjs
-@@ -763,6 +763,7 @@ function makeResultGroups({ showSearchSuggestionsFirst }) {
+@@ -760,6 +760,7 @@ function makeDefaultResultGroups({ showSearchSuggestionsFirst }) {
     */
    let rootGroup = {
      children: [

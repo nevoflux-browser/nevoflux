@@ -1,31 +1,31 @@
 diff --git a/browser/themes/shared/urlbar-searchbar.css b/browser/themes/shared/urlbar-searchbar.css
-index 45a87b96db14f64e0d8a3a3aae07f76c8f7e765f..d75f61cb2d27205aa2c47cf902d38e26098fbf2c 100644
+index cbbf55f31ae5e456401172f79ddbbe41256025a4..dc471dfe30dedf7c4917322a5b2257a9ec9c4f90 100644
 --- a/browser/themes/shared/urlbar-searchbar.css
 +++ b/browser/themes/shared/urlbar-searchbar.css
-@@ -6,7 +6,7 @@
- 
- :root {
-   --urlbar-container-min-width: 310px;
--  --urlbar-container-padding: 1px;
+@@ -10,7 +10,7 @@
+   /* Usually we wouldn't need snapping border widths manually, but we use this
+    * for other layout calculations too */
+   --urlbar-container-border-width: max(env(hairline), round(down, 1px, env(hairline)));
+-  --urlbar-container-padding: round(up, 1px, env(hairline));
 +  --urlbar-container-padding: 2px;
+   --urlbar-container-border-padding: calc(var(--urlbar-container-border-width) + var(--urlbar-container-padding));
    --urlbar-margin-inline: 5px;
    --urlbar-padding-block: 4px;
- 
-@@ -48,7 +48,7 @@
- #urlbar[usertyping] > .urlbar-input-container > #page-action-buttons > #urlbar-zoom-button,
- .urlbar:is(:not([usertyping]), :not([focused])) > .urlbar-input-container > .urlbar-go-button,
- .urlbar-revert-button-container {
+@@ -55,7 +55,7 @@ toolbar[inactive="true"] .urlbar,
+ .urlbar:not([usertyping]) > .urlbar-input-container > .urlbar-go-button,
+ .urlbar:not(#searchbar-new, [focused]) > .urlbar-input-container > .urlbar-go-button,
+ #urlbar-revert-button-container {
 -  display: none;
 +  display: none !important;
  }
  
- /* When rich suggestions are enabled the urlbar identity icon is given extra padding to
-@@ -320,10 +320,14 @@
+ /* Document Picture-in-Picture API window */
+@@ -333,10 +333,14 @@ toolbar[inactive="true"] .urlbar,
  
  .urlbar[breakout][breakout-extend] {
    height: auto;
 +  align-items: center;
-+  :root:not([zen-single-toolbar='true']) {
++  :root:not([zen-single-toolbar='true']) & {
    margin-left: calc(-1 * var(--urlbar-margin-inline));
 +  }
    width: calc(var(--urlbar-width) + 2 * var(--urlbar-margin-inline));

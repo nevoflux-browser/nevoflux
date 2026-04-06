@@ -15,7 +15,7 @@ zen-toolbar-context-compact-mode-just-tabs =
 zen-toolbar-context-compact-mode-just-toolbar = 
     .label = הסתרת סרגל
 zen-toolbar-context-compact-mode-hide-both = 
-    .label = הסתרת שניהם
+    .label = הסתרת שני הסרגלים
     .accesskey = י
 zen-toolbar-context-new-folder = 
     .label = תיקייה חדשה
@@ -36,4 +36,9 @@ tabbrowser-reset-pin-button =
             [one] איפוס והצמדת לשונית
            *[other] איפוס והצמדת { $tabCount } לשוניות
         }
-tab-reset-pin-label = חזרה לכתובת המוצמדת
+zen-tab-sublabel =
+    { $tabSubtitle ->
+        [zen-default-pinned] Back to pinned url
+        [zen-default-pinned-cmd] Separate from pinned tab
+       *[other] { $tabSubtitle }
+    }
