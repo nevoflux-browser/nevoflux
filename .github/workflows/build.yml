@@ -322,6 +322,19 @@ jobs:
       profile-data-path-archive: nevoflux.win64-pgo-stage-1.zip
       release-branch: ${{ inputs.update_branch }}
 
+  linux:
+    name: Linux build
+    uses: ./.github/workflows/linux-release-build.yml
+    permissions:
+      contents: write
+    secrets: inherit
+    needs: [build-data, buildid]
+    with:
+      build-version: ${{ needs.build-data.outputs.version }}
+      release-branch: ${{ inputs.update_branch }}
+      MOZ_BUILD_DATE: ${{needs.buildid.outputs.buildids}}
+      use-sccache: ${{ inputs.use-sccache }}
+
   mac-x86_64:
     name: macOS build (x86_64)
     uses: ./.github/workflows/macos-x86_64-release-build.yml
