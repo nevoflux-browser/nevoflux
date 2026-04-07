@@ -238,8 +238,8 @@ jobs:
         continue-on-error: true
         run: |
           export SURFER_PLATFORM="linux"
-          if [[ -n ${{ inputs.MOZ_BUILD_DATE }} ]];then
-            export MOZ_BUILD_DATE=${{ inputs.MOZ_BUILD_DATE }}
+          if [[ -n "${{ inputs.MOZ_BUILD_DATE }}" ]]; then
+            export MOZ_BUILD_DATE="${{ inputs.MOZ_BUILD_DATE }}"
           fi
           bash .github/workflows/src/release-build.sh
 
