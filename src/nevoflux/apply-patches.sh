@@ -117,18 +117,20 @@ if [ -d "${NEVOFLUX_DIR}/root-overlays" ]; then
   fi
 fi
 
-# 3b. Replace symlinks with real files in engine/browser/base/content/
+# 3b. Ensure inc.xhtml files in engine/browser/base/content/ are real files.
 #     Firefox's preprocessor does not follow symlinks when expanding #include
-#     directives, causing zen-assets.inc.xhtml etc. to be silently skipped
-#     during build. Replace symlinks with copies of their targets.
+#     directives. surfer import creates symlinks (engine/ → src/) but on some
+#     CI environments these may be copies with stale content. Force-copy from
+#     src/browser/base/content/ to ensure the preprocessor can read them.
 if [ -d "${ENGINE_DIR}/browser/base/content" ]; then
-  for f in "${ENGINE_DIR}"/browser/base/content/*.inc.xhtml; do
-    if [ -L "$f" ]; then
-      target=$(readlink "$f")
-      if [ -f "$target" ]; then
-        cp "$target" "$f.tmp" && rm "$f" && mv "$f.tmp" "$f"
-        echo "  Replaced symlink with file: $(basename "$f")"
-      fi
+  SRC_BROWSER_CONTENT="${ROOT_DIR}/src/browser/base/content"
+  for f in "${SRC_BROWSER_CONTENT}"/*.inc.xhtml; do
+    if [ -f "$f" ]; then
+      basename_f="$(basename "$f")"
+      engine_f="${ENGINE_DIR}/browser/base/content/${basename_f}"
+      rm -f "${engine_f}"
+      cp "$f" "${engine_f}"
+      echo "  Copied inc.xhtml: ${basename_f}"
     fi
   done
 fi
