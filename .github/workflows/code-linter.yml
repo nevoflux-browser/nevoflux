@@ -42,7 +42,7 @@ jobs:
         run: npm ci
 
       - name: Lint
-        run: npm run lint
+        run: npx eslint src/zen/ src/nevoflux/ scripts/ --no-error-on-unmatched-pattern
 
       - name: Check for Rust changes
         id: rust-changes
