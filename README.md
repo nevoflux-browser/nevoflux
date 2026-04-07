@@ -47,7 +47,7 @@
   <a href="#contributing">Contributing</a>
 </p>
 
-- Currently built on Firefox `149.0`
+- Currently built on Zen Browser `1.19.6` and Firefox `149.0`
 
 ---
 
