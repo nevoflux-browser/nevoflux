@@ -256,6 +256,28 @@ jobs:
         run: |
           rm -rf ~/.zen-keys
 
+      - name: Inject distribution files into package
+        run: |
+          set -ex
+          # Extract tar.xz, inject distribution/, repack
+          TARXZ=$(ls dist/nevoflux-*.tar.xz)
+          TMPDIR=$(mktemp -d)
+          tar -xJf "$TARXZ" -C "$TMPDIR"
+          # Find the top-level directory inside the archive (e.g., "nevoflux")
+          TOP=$(ls "$TMPDIR")
+          if [ -d "build/AppDir/distribution" ]; then
+            cp -r build/AppDir/distribution "$TMPDIR/$TOP/distribution"
+            echo "Distribution contents injected:"
+            find "$TMPDIR/$TOP/distribution" -type f | head -20
+          else
+            echo "::warning::No distribution directory found"
+          fi
+          # Repack
+          rm -f "$TARXZ"
+          tar -cJf "$TARXZ" -C "$TMPDIR" "$TOP"
+          rm -rf "$TMPDIR"
+          echo "Repacked: $(ls -lh "$TARXZ")"
+
       - name: Rename artifacts
         run: |
           mv dist/nevoflux-*.tar.xz "nevoflux.linux-${{ matrix.arch }}.tar.xz"
