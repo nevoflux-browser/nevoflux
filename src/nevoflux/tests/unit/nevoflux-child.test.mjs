@@ -1094,32 +1094,22 @@ class MockNevofluxChild {
   }
 
   type({ selector, text }) {
-    const doc = this.doc;
-    if (!doc) {
-      return {
-        success: false,
-        error: { code: 5001, message: 'No document available', recoverable: false },
-      };
-    }
-
-    const el = doc.querySelector(selector);
-    if (!el) {
-      return {
-        success: false,
-        error: { code: 1001, message: 'Element not found', recoverable: true },
-      };
-    }
-
-    try {
-      el.focus();
-      for (const char of text) {
-        el.value += char;
-        el.dispatchEvent(new this.contentWindow.Event('input', { bubbles: true }));
+    const el = this.doc.querySelector(selector);
+    if (!el) return { success: false, error: { code: 1001, message: 'Element not found', recoverable: true } };
+    const tag = (el.tagName || '').toLowerCase();
+    const isStandardInput = tag === 'input' || tag === 'textarea';
+    if (isStandardInput) {
+      for (const ch of String(text)) {
+        const current = el.value ?? '';
+        el.value = current + ch;
       }
       return { success: true };
-    } catch (e) {
-      return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
     }
+    for (const ch of String(text)) {
+      const r = this.paste({ selector, text: ch });
+      if (!r.success) return r;
+    }
+    return { success: true };
   }
 
   fill({ selector, text }) {
@@ -2309,6 +2299,38 @@ describe('NevofluxChild — fillRichText method', () => {
     const r = child.fillRichText({ selector: '#missing', text: 'hi' });
     expect(r.success).toBe(false);
     expect(r.error.code).toBe(1001);
+  });
+});
+
+describe('NevofluxChild — type() undefined-prefix regression', () => {
+  let child;
+  beforeEach(() => {
+    child = new MockNevofluxChild();
+  });
+
+  it('does not produce "undefined" prefix when typing into an input', () => {
+    const doc = child.doc;
+    const input = doc.createElement('input');
+    input.id = 'tgt';
+    input.value = '';  // explicitly empty
+    doc.body.appendChild(input);
+    doc._registerElementById?.('tgt', input);
+
+    child.type({ selector: '#tgt', text: 'ABC' });
+    expect(input.value).toBe('ABC');
+    expect(input.value.startsWith('undefined')).toBe(false);
+  });
+
+  it('handles value that was externally set to undefined', () => {
+    const doc = child.doc;
+    const input = doc.createElement('input');
+    input.id = 'tgt2';
+    input.value = undefined;  // simulate the old bug condition
+    doc.body.appendChild(input);
+    doc._registerElementById?.('tgt2', input);
+
+    child.type({ selector: '#tgt2', text: 'X' });
+    expect(input.value).toBe('X');
   });
 });
 

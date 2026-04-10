@@ -2326,71 +2326,47 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   type({ selector, text }) {
-    console.log(
-      '[NevofluxChild.type] Starting type, selector:',
-      selector,
-      'text length:',
-      text?.length
-    );
-    const doc = this.currentDoc;
-    const win = this.currentWin;
+    const doc = this.currentDoc || this.doc;
+    const win = this.currentWin || this.contentWindow;
     if (!doc || !win) {
-      console.log('[NevofluxChild.type] No doc/win available');
-      return {
-        success: false,
-        error: { code: 5001, message: 'No document/window available', recoverable: false },
-      };
+      return { success: false, error: { code: 5001, message: 'No document or window available', recoverable: false } };
     }
 
     const el = doc.querySelector(selector);
-    console.log('[NevofluxChild.type] Element found:', !!el, 'tagName:', el?.tagName);
     if (!el) {
-      return {
-        success: false,
-        error: { code: 1001, message: 'Element not found', recoverable: true },
-      };
+      return { success: false, error: { code: 1001, message: 'Element not found', recoverable: true } };
     }
 
-    try {
-      // Focus the element first
-      el.focus();
-      console.log('[NevofluxChild.type] Focused element');
+    try { el.focus(); } catch (e) { /* continue */ }
 
-      // Try to use windowUtils for real keyboard simulation
-      const domUtils = win.windowUtils;
-      console.log(
-        '[NevofluxChild.type] domUtils available:',
-        !!domUtils,
-        'sendKeyEvent:',
-        typeof domUtils?.sendKeyEvent
-      );
+    const tag = (el.tagName || '').toLowerCase();
+    const isStandardInput = tag === 'input' || tag === 'textarea';
 
-      if (domUtils && typeof domUtils.sendKeyEvent === 'function') {
-        // Use Firefox's privileged API for real keyboard events
-        console.log('[NevofluxChild.type] Using windowUtils.sendKeyEvent');
-        for (const char of text) {
-          const charCode = char.charCodeAt(0);
-          // sendKeyEvent(type, keyCode, charCode, modifiers, aAdditionalFlags)
-          // keyCode=0 means use charCode, modifiers=0 means no modifiers
-          domUtils.sendKeyEvent('keydown', 0, charCode, 0);
-          domUtils.sendKeyEvent('keypress', 0, charCode, 0);
-          domUtils.sendKeyEvent('keyup', 0, charCode, 0);
+    if (isStandardInput) {
+      try {
+        for (const ch of String(text)) {
+          // FIX: never produces "undefined" prefix. el.value ?? '' covers the case
+          // where someone set value to undefined externally.
+          const current = el.value ?? '';
+          el.value = current + ch;
+          el.dispatchEvent(new win.InputEvent('input', {
+            bubbles: true,
+            inputType: 'insertText',
+            data: ch,
+          }));
         }
-        console.log('[NevofluxChild.type] Finished typing via sendKeyEvent');
-      } else {
-        // Fallback: direct value manipulation
-        console.log('[NevofluxChild.type] Using fallback value manipulation');
-        for (const char of text) {
-          el.value += char;
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-        }
-        console.log('[NevofluxChild.type] Finished typing via value manipulation');
+        el.dispatchEvent(new win.Event('change', { bubbles: true }));
+      } catch (e) {
+        return { success: false, error: { code: 5001, message: e.message, recoverable: false } };
       }
-    } catch (e) {
-      console.error('[NevofluxChild.type] Error:', e.message, e.stack);
-      return { success: false, error: { code: 5001, message: String(e), recoverable: false } };
+      return { success: true };
     }
 
+    // contentEditable branch — per-character paste preserving "append" semantics
+    for (const ch of String(text)) {
+      const r = this.paste({ selector, text: ch });
+      if (!r.success) return r;
+    }
     return { success: true };
   }
 
