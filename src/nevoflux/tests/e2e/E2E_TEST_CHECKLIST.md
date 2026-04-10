@@ -211,3 +211,67 @@ runAllTests();
 - All tests use `null` for tabId to target the active tab
 - Some tests may require visual verification
 - Network tests may need actual network requests to fully validate
+
+---
+
+## 20. Browser Input Actor Primitives (PR #1)
+
+Open each fixture HTML page from `fixtures/editors/` in the browser
+and verify the commands below via browser console (Ctrl+Shift+J).
+
+### 20.1 Standard Input (fixtures/editors/standard-input.html)
+
+| Test | Command | Expected | Status |
+|---|---|---|---|
+| probe input | `await browser.nevoflux.probe(null, '#tgt-input')` | `result.tag === 'input'`, `has_value_property === true`, `is_content_editable === false` | [ ] |
+| fill input | `await browser.nevoflux.fill(null, '#tgt-input', 'Hello')` | `success: true`; input value becomes "Hello" | [ ] |
+| type input | `await browser.nevoflux.type(null, '#tgt-input', ' World')` | Final value "Hello World" (no "undefined" prefix) | [ ] |
+| fill textarea | `await browser.nevoflux.fill(null, '#tgt-textarea', 'Multi\nline')` | Textarea shows the multiline text | [ ] |
+
+### 20.2 Simple ContentEditable (simple-contenteditable.html)
+
+| Test | Command | Expected | Status |
+|---|---|---|---|
+| probe div | `await browser.nevoflux.probe(null, '#tgt')` | `is_content_editable === true`, `editor_framework === null` | [ ] |
+| fillRichText | `await browser.nevoflux.fillRichText(null, '#tgt', 'Hello world')` | Div shows "Hello world" | [ ] |
+| fill routes to fillRichText | `await browser.nevoflux.fill(null, '#tgt', 'Replaced')` | Div shows "Replaced" (not silent failure) | [ ] |
+| type appends | `await browser.nevoflux.type(null, '#tgt', '!!!')` | Div shows "Replaced!!!" | [ ] |
+| paste inserts | `await browser.nevoflux.paste(null, '#tgt', ' added')` | Div shows "Replaced!!! added" | [ ] |
+
+### 20.3 Draft.js (draft-js.html)
+
+| Test | Command | Expected | Status |
+|---|---|---|---|
+| probe editor | `await browser.nevoflux.probe(null, '.public-DraftEditor-content')` | `editor_framework === 'draft.js'`, `react_fiber_present === true` | [ ] |
+| fillRichText | `await browser.nevoflux.fillRichText(null, '.public-DraftEditor-content', 'Hello Draft')` | Editor shows "Hello Draft" | [ ] |
+| fill via top selector | `await browser.nevoflux.fill(null, '#root', 'Via root')` | Editor shows "Via root" (delegates to fillRichText) | [ ] |
+
+### 20.4 Lexical stub (lexical.html)
+
+| Test | Command | Expected | Status |
+|---|---|---|---|
+| probe | `await browser.nevoflux.probe(null, '#lex')` | `editor_framework === 'lexical'` | [ ] |
+| fillRichText | `await browser.nevoflux.fillRichText(null, '#lex', 'Lex text')` | Div shows "Lex text" | [ ] |
+
+### 20.5 ProseMirror stub (prosemirror.html)
+
+| Test | Command | Expected | Status |
+|---|---|---|---|
+| probe | `await browser.nevoflux.probe(null, '#pm')` | `editor_framework === 'prosemirror'` | [ ] |
+| fillRichText | `await browser.nevoflux.fillRichText(null, '#pm', 'PM text')` | Div shows "PM text" | [ ] |
+
+### 20.6 Slate stub (slate.html)
+
+| Test | Command | Expected | Status |
+|---|---|---|---|
+| probe | `await browser.nevoflux.probe(null, '#slate')` | `editor_framework === 'slate'` | [ ] |
+| fillRichText | `await browser.nevoflux.fillRichText(null, '#slate', 'Slate text')` | Div shows "Slate text" | [ ] |
+
+### 20.7 queryAll no-CSP regression
+
+On a strict-CSP site (e.g. https://x.com):
+
+| Test | Command | Expected | Status |
+|---|---|---|---|
+| queryAll on strict CSP | `await browser.nevoflux.queryAll(null, 'input[type="file"]')` | Returns `{success: true, result: {count: N, elements: [...]}}` — NOT a 9001 CSP error | [ ] |
+| query returns path_selector | Same command as above | Each element in `result.elements` has a non-empty `path_selector` field | [ ] |
