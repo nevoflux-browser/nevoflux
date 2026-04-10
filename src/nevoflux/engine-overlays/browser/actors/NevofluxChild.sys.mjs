@@ -423,6 +423,7 @@ export class NevofluxChild extends JSWindowActorChild {
       switchFrame: () => this.switchFrame(safeParams),
       frameMain: () => this.frameMain(safeParams),
       getMarkdown: () => this.getMarkdown(safeParams),
+      queryAll: () => this.queryAll(safeParams),
     };
 
     const handler = handlers[action];
@@ -5385,6 +5386,54 @@ export class NevofluxChild extends JSWindowActorChild {
         url: this.win.location.href,
         title: this.doc.title,
       },
+    };
+  }
+
+  // ========== Query Selection ==========
+
+  queryAll({ selector, limit = 50 }) {
+    if (!selector || typeof selector !== 'string') {
+      return {
+        success: false,
+        error: { code: 1007, message: 'Invalid selector: must be a non-empty string', recoverable: false },
+      };
+    }
+
+    const doc = this.currentDoc || this.doc;
+    if (!doc) {
+      return {
+        success: false,
+        error: { code: 5001, message: 'No document available', recoverable: false },
+      };
+    }
+
+    let matches;
+    try {
+      matches = doc.querySelectorAll(selector);
+    } catch (e) {
+      return {
+        success: false,
+        error: { code: 1007, message: `Invalid selector: ${e.message}`, recoverable: false },
+      };
+    }
+
+    const clamp = Math.max(1, Math.min(Number(limit) || 50, 500));
+    const results = [];
+    for (let i = 0; i < Math.min(matches.length, clamp); i++) {
+      const el = matches[i];
+      const rect = el.getBoundingClientRect();
+      results.push({
+        tag: (el.tagName || '').toLowerCase(),
+        id: el.id || null,
+        text: (el.textContent || '').substring(0, 100),
+        visible: rect.width > 0 && rect.height > 0,
+        path_selector: this._generatePathSelector(el),
+      });
+    }
+
+    return {
+      success: true,
+      result: { count: matches.length, elements: results },
     };
   }
 

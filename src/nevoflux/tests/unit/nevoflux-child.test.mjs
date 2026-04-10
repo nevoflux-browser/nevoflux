@@ -1183,6 +1183,34 @@ class MockNevofluxChild {
       error: { code: 4001, message: `Timeout waiting for ${selector}`, recoverable: true },
     };
   }
+
+  queryAll({ selector, limit = 50 }) {
+    if (!selector || typeof selector !== 'string') {
+      return { success: false, error: { code: 1007, message: 'Invalid selector', recoverable: false } };
+    }
+    const doc = this.doc;
+    let matches;
+    try {
+      matches = doc.querySelectorAll(selector);
+    } catch (e) {
+      return { success: false, error: { code: 1007, message: e.message, recoverable: false } };
+    }
+    const arr = Array.isArray(matches) ? matches : Array.from(matches || []);
+    const clamp = Math.max(1, Math.min(Number(limit) || 50, 500));
+    const results = [];
+    for (let i = 0; i < Math.min(arr.length, clamp); i++) {
+      const el = arr[i];
+      const rect = el.getBoundingClientRect?.() || { width: 0, height: 0 };
+      results.push({
+        tag: (el.tagName || '').toLowerCase(),
+        id: el.id || null,
+        text: (el.textContent || '').substring(0, 100),
+        visible: rect.width > 0 && rect.height > 0,
+        path_selector: this._generatePathSelector(el),
+      });
+    }
+    return { success: true, result: { count: arr.length, elements: results } };
+  }
 }
 
 // ========== TEST SUITES ==========
@@ -2162,6 +2190,26 @@ describe('NevofluxChild — _findInnermostEditable helper', () => {
     div.getAttribute = k => div.attributes.get(k) ?? null;
 
     expect(child._findInnermostEditable(div)).toBe(div);
+  });
+});
+
+describe('NevofluxChild — queryAll method', () => {
+  let child;
+  beforeEach(() => {
+    child = new MockNevofluxChild();
+  });
+
+  it('rejects missing selector', () => {
+    const r = child.queryAll({ selector: null });
+    expect(r.success).toBe(false);
+    expect(r.error.code).toBe(1007);
+  });
+
+  it('returns empty array when no matches', () => {
+    const r = child.queryAll({ selector: 'nonexistent' });
+    expect(r.success).toBe(true);
+    expect(r.result.count).toBe(0);
+    expect(r.result.elements.length).toBe(0);
   });
 });
 
