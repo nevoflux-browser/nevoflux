@@ -2734,7 +2734,9 @@ async function executeGetElementViaApi(tabId, params) {
 }
 
 /**
- * Query all elements via browser.nevoflux.eval()
+ * Query all elements matching a CSS selector.
+ * Routes via chrome-privileged browser.nevoflux.queryAll (not eval)
+ * to bypass page CSP and avoid selector injection.
  */
 async function executeQueryAllViaApi(tabId, params) {
   const { selector, limit = 50 } = params;
@@ -2745,27 +2747,14 @@ async function executeQueryAllViaApi(tabId, params) {
     };
   }
 
-  const script = `(function() {
-    const elements = document.querySelectorAll('${selector.replace(/'/g, "\\'")}');
-    const results = [];
-    for (let i = 0; i < Math.min(elements.length, ${limit}); i++) {
-      const el = elements[i];
-      const rect = el.getBoundingClientRect();
-      results.push({
-        tag: el.tagName.toLowerCase(),
-        id: el.id || null,
-        text: el.textContent?.substring(0, 100) || '',
-        visible: rect.width > 0 && rect.height > 0,
-      });
-    }
-    return { count: results.length, elements: results };
-  })()`;
-
   try {
-    const result = await browser.nevoflux.eval(tabId, script);
+    const result = await browser.nevoflux.queryAll(tabId, selector, { limit });
     return result.success !== undefined ? result : { success: true, result };
   } catch (error) {
-    return { success: false, error: { code: -1, message: error.message, recoverable: true } };
+    return {
+      success: false,
+      error: { code: -1, message: error.message, recoverable: true },
+    };
   }
 }
 
