@@ -1588,6 +1588,52 @@
         "description": "Set the sidebar panel width in pixels",
         "parameters": [{ "name": "width", "type": "integer" }],
         "returns": { "$ref": "ApiResult" }
+      },
+      {
+        "name": "probe",
+        "type": "function",
+        "async": "promise",
+        "description": "Probe an element and return its fingerprint",
+        "parameters": [
+          { "name": "tabId", "type": "integer", "optional": true },
+          { "name": "selector", "type": "string" },
+          { "name": "options", "type": "object", "optional": true, "additionalProperties": true }
+        ]
+      },
+      {
+        "name": "paste",
+        "type": "function",
+        "async": "promise",
+        "description": "Inject text into a contentEditable target via synthetic ClipboardEvent",
+        "parameters": [
+          { "name": "tabId", "type": "integer", "optional": true },
+          { "name": "selector", "type": "string" },
+          { "name": "text", "type": "string" },
+          { "name": "options", "type": "object", "optional": true, "additionalProperties": true }
+        ]
+      },
+      {
+        "name": "fillRichText",
+        "type": "function",
+        "async": "promise",
+        "description": "Replace contentEditable content with new text (clear + paste)",
+        "parameters": [
+          { "name": "tabId", "type": "integer", "optional": true },
+          { "name": "selector", "type": "string" },
+          { "name": "text", "type": "string" },
+          { "name": "options", "type": "object", "optional": true, "additionalProperties": true }
+        ]
+      },
+      {
+        "name": "queryAll",
+        "type": "function",
+        "async": "promise",
+        "description": "Query all elements matching a CSS selector; returns tag/id/text/visible/path_selector per match",
+        "parameters": [
+          { "name": "tabId", "type": "integer", "optional": true },
+          { "name": "selector", "type": "string" },
+          { "name": "options", "type": "object", "optional": true, "additionalProperties": true }
+        ]
       }
     ],
     "events": [
