@@ -916,6 +916,15 @@ class MockNevofluxChild {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  _escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   snapshot() {
     return { tree: '', refs: {} };
   }
@@ -1912,6 +1921,42 @@ describe('NevofluxChild - Frame Context Integration', () => {
     // Return to main
     child.frameMain();
     expect(child.exists({ selector: '#mainElement' })).toBe(true);
+  });
+});
+
+describe('NevofluxChild — _escapeHtml helper', () => {
+  let child;
+  beforeEach(() => {
+    child = new MockNevofluxChild();
+  });
+
+  it('escapes ampersand', () => {
+    expect(child._escapeHtml('a & b')).toBe('a &amp; b');
+  });
+
+  it('escapes less-than and greater-than', () => {
+    expect(child._escapeHtml('<div>')).toBe('&lt;div&gt;');
+  });
+
+  it('escapes double quote', () => {
+    expect(child._escapeHtml('say "hi"')).toBe('say &quot;hi&quot;');
+  });
+
+  it('escapes single quote', () => {
+    expect(child._escapeHtml("it's")).toBe('it&#39;s');
+  });
+
+  it('escapes all entities in a mixed string', () => {
+    expect(child._escapeHtml('<a href="x">y & z</a>'))
+      .toBe('&lt;a href=&quot;x&quot;&gt;y &amp; z&lt;/a&gt;');
+  });
+
+  it('returns empty string for empty input', () => {
+    expect(child._escapeHtml('')).toBe('');
+  });
+
+  it('returns unchanged string when no entities present', () => {
+    expect(child._escapeHtml('hello world')).toBe('hello world');
   });
 });
 

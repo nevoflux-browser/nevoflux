@@ -3783,6 +3783,17 @@ export class NevofluxChild extends JSWindowActorChild {
     });
   }
 
+  // ========== Editor Helpers (mirrored in MockNevofluxChild for unit tests) ==========
+
+  _escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   inferRole(el) {
     const roleMap = {
       A: 'link',
