@@ -9,7 +9,6 @@ in `../editors/`. Versions are pinned for determinism.
 | react-dom.production.min.js      | 18.2.0  | unpkg.com/react-dom@18.2.0 |
 | draft.min.js                     | 0.11.7  | unpkg.com/draft-js@0.11.7 |
 | draft.min.css                    | 0.11.7  | unpkg.com/draft-js@0.11.7 |
-| prosemirror.min.js               | browser 1.32.0 | unpkg.com/prosemirror-view-browser |
 
 ## Not yet vendored
 

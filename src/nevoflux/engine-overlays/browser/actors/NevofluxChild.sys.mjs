@@ -2340,6 +2340,9 @@ export class NevofluxChild extends JSWindowActorChild {
     try { el.focus(); } catch (e) { /* continue */ }
 
     const tag = (el.tagName || '').toLowerCase();
+    // NOTE: No typeof el.value check here (unlike fill()). This handles the
+    // edge case where something externally set .value = undefined on a real
+    // input element — the '?? ""' fallback below safely coerces to empty.
     const isStandardInput = tag === 'input' || tag === 'textarea';
 
     if (isStandardInput) {
@@ -2388,6 +2391,10 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     const tag = (el.tagName || '').toLowerCase();
+    // NOTE: isStandardInput requires typeof el.value === 'string' to guard
+    // against elements with broken .value property. This differs from type()
+    // which omits the typeof check — see type() for rationale (the undefined
+    // value regression test requires the looser check).
     const isStandardInput = (tag === 'input' || tag === 'textarea') && typeof el.value === 'string';
     const win = this.currentWin || this.contentWindow;
 
@@ -3920,7 +3927,7 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   _generatePathSelector(el) {
-    const doc = this.doc;
+    const doc = this.currentDoc || this.doc;
     if (!doc) return '';
     const parts = [];
     let cur = el;
