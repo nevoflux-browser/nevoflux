@@ -424,6 +424,7 @@ export class NevofluxChild extends JSWindowActorChild {
       frameMain: () => this.frameMain(safeParams),
       getMarkdown: () => this.getMarkdown(safeParams),
       queryAll: () => this.queryAll(safeParams),
+      probe: () => this.probe(safeParams),
     };
 
     const handler = handlers[action];
@@ -5434,6 +5435,120 @@ export class NevofluxChild extends JSWindowActorChild {
     return {
       success: true,
       result: { count: matches.length, elements: results },
+    };
+  }
+
+  // ========== Probe ==========
+
+  probe({ selector }) {
+    if (!selector || typeof selector !== 'string') {
+      return {
+        success: false,
+        error: { code: 1007, message: 'selector required', recoverable: false },
+      };
+    }
+
+    const doc = this.currentDoc || this.doc;
+    const win = this.currentWin || this.contentWindow;
+    if (!doc || !win) {
+      return {
+        success: false,
+        error: { code: 5001, message: 'No document or window available', recoverable: false },
+      };
+    }
+
+    const el = doc.querySelector(selector);
+    if (!el) {
+      return {
+        success: false,
+        error: { code: 1001, message: `Element not found: ${selector}`, recoverable: true },
+      };
+    }
+
+    const tag = (el.tagName || '').toLowerCase();
+    const hasValueProp = (tag === 'input' || tag === 'textarea') && typeof el.value === 'string';
+    const inputType = tag === 'input' ? (el.type || null) : null;
+
+    // contentEditable detection
+    let isCE = false;
+    let cEHost = null;
+    for (let cur = el; cur && cur !== doc; cur = cur.parentElement) {
+      if (typeof cur.getAttribute === 'function') {
+        const v = cur.getAttribute('contenteditable');
+        if (v === 'true' || v === '') {
+          isCE = true;
+          cEHost = cur;
+          break;
+        }
+      }
+    }
+
+    // If the element itself is the cE host, search for deeper innermost editable
+    const innermostEl = isCE ? this._findInnermostEditable(cEHost) : null;
+    const innermostSelector = innermostEl ? this._generatePathSelector(innermostEl) : null;
+
+    // Framework detection
+    const framework = this._detectEditorFramework(el);
+
+    // React fiber detection
+    let reactFiberPresent = false;
+    try {
+      reactFiberPresent = Object.keys(el).some(k => k.startsWith('__reactFiber'));
+    } catch (e) {
+      // accessing keys may throw on some XrayWrappers; default false
+    }
+
+    // Visibility + focusability
+    const rect = el.getBoundingClientRect();
+    const style = win.getComputedStyle ? win.getComputedStyle(el) : {};
+    const isVisible =
+      rect.width > 0 &&
+      rect.height > 0 &&
+      style.visibility !== 'hidden' &&
+      style.display !== 'none';
+
+    const tabindex = typeof el.getAttribute === 'function' ? el.getAttribute('tabindex') : null;
+    const nativelyFocusable = ['input', 'textarea', 'button', 'select', 'a'].includes(tag);
+    const isFocusable = nativelyFocusable || (tabindex !== null && Number(tabindex) >= 0);
+
+    // Shadow DOM depth
+    let shadowDepth = 0;
+    try {
+      let cur = el;
+      while (cur.getRootNode && cur.getRootNode() !== doc) {
+        const root = cur.getRootNode();
+        if (root && root.host) {
+          shadowDepth++;
+          cur = root.host;
+        } else {
+          break;
+        }
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    const insideIframe = win !== win.top;
+    const computedRole = typeof el.getAttribute === 'function' ? el.getAttribute('role') : null;
+
+    return {
+      success: true,
+      result: {
+        tag,
+        input_type: inputType,
+        has_value_property: hasValueProp,
+        is_content_editable: isCE,
+        disabled: !!el.disabled,
+        readonly: !!el.readOnly,
+        is_visible: isVisible,
+        is_focusable: isFocusable,
+        editor_framework: framework,
+        react_fiber_present: reactFiberPresent,
+        inside_iframe: insideIframe,
+        shadow_root_depth: shadowDepth,
+        innermost_editable_selector: innermostSelector,
+        computed_role: computedRole,
+      },
     };
   }
 

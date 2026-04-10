@@ -1211,6 +1211,36 @@ class MockNevofluxChild {
     }
     return { success: true, result: { count: arr.length, elements: results } };
   }
+
+  probe({ selector }) {
+    if (!selector) {
+      return { success: false, error: { code: 1007, message: 'selector required', recoverable: false } };
+    }
+    const doc = this.doc;
+    const el = doc.querySelector(selector);
+    if (!el) {
+      return { success: false, error: { code: 1001, message: `Element not found: ${selector}`, recoverable: true } };
+    }
+    return {
+      success: true,
+      result: {
+        tag: (el.tagName || '').toLowerCase(),
+        input_type: null,
+        has_value_property: false,
+        is_content_editable: false,
+        disabled: false,
+        readonly: false,
+        is_visible: true,
+        is_focusable: false,
+        editor_framework: null,
+        react_fiber_present: false,
+        inside_iframe: false,
+        shadow_root_depth: 0,
+        innermost_editable_selector: null,
+        computed_role: null,
+      },
+    };
+  }
 }
 
 // ========== TEST SUITES ==========
@@ -2210,6 +2240,25 @@ describe('NevofluxChild — queryAll method', () => {
     expect(r.success).toBe(true);
     expect(r.result.count).toBe(0);
     expect(r.result.elements.length).toBe(0);
+  });
+});
+
+describe('NevofluxChild — probe method', () => {
+  let child;
+  beforeEach(() => {
+    child = new MockNevofluxChild();
+  });
+
+  it('rejects missing selector', () => {
+    const r = child.probe({});
+    expect(r.success).toBe(false);
+    expect(r.error.code).toBe(1007);
+  });
+
+  it('returns element-not-found for unknown selector', () => {
+    const r = child.probe({ selector: '#definitely-not-there' });
+    expect(r.success).toBe(false);
+    expect(r.error.code).toBe(1001);
   });
 });
 
