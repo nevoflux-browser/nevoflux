@@ -3828,6 +3828,33 @@ export class NevofluxChild extends JSWindowActorChild {
     return parts.join(' > ');
   }
 
+  _findInnermostEditable(root) {
+    if (!root) return null;
+
+    const isEditable = (el) => {
+      if (!el || typeof el.getAttribute !== 'function') return false;
+      const v = el.getAttribute('contenteditable');
+      return v === 'true' || v === '';
+    };
+
+    const rootIsEditable = isEditable(root);
+    let deepest = rootIsEditable ? root : null;
+    let maxDepth = rootIsEditable ? 0 : -1;
+
+    const queue = [{ el: root, depth: 0 }];
+    while (queue.length > 0) {
+      const { el, depth } = queue.shift();
+      if (isEditable(el) && depth > maxDepth) {
+        deepest = el;
+        maxDepth = depth;
+      }
+      for (const child of el.children || []) {
+        queue.push({ el: child, depth: depth + 1 });
+      }
+    }
+    return deepest;
+  }
+
   inferRole(el) {
     const roleMap = {
       A: 'link',

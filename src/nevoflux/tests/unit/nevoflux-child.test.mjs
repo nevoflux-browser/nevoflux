@@ -966,6 +966,35 @@ class MockNevofluxChild {
     return String(s).replace(/[^\w-]/g, ch => `\\${ch}`);
   }
 
+  _findInnermostEditable(root) {
+    if (!root) return null;
+
+    const isEditable = (el) => {
+      if (!el || typeof el.getAttribute !== 'function') return false;
+      const v = el.getAttribute('contenteditable');
+      return v === 'true' || v === '';
+    };
+
+    const rootIsEditable = isEditable(root);
+
+    let deepest = rootIsEditable ? root : null;
+    const queue = [{ el: root, depth: 0 }];
+    let maxDepth = rootIsEditable ? 0 : -1;
+
+    while (queue.length > 0) {
+      const { el, depth } = queue.shift();
+      if (isEditable(el) && depth > maxDepth) {
+        deepest = el;
+        maxDepth = depth;
+      }
+      for (const child of el.children || []) {
+        queue.push({ el: child, depth: depth + 1 });
+      }
+    }
+
+    return deepest;
+  }
+
   snapshot() {
     return { tree: '', refs: {} };
   }
@@ -2059,6 +2088,74 @@ describe('NevofluxChild — _generatePathSelector helper', () => {
     const orphan = doc.createElement('div');
     // NOT appended to doc.body — element is detached
     expect(child._generatePathSelector(orphan)).toBe('');
+  });
+});
+
+describe('NevofluxChild — _findInnermostEditable helper', () => {
+  let child;
+  beforeEach(() => {
+    child = new MockNevofluxChild();
+  });
+
+  it('returns the root itself when no deeper editable exists', () => {
+    const doc = child.doc;
+    const div = doc.createElement('div');
+    div.attributes.set('contenteditable', 'true');
+    div.getAttribute = k => div.attributes.get(k) || null;
+
+    expect(child._findInnermostEditable(div)).toBe(div);
+  });
+
+  it('finds a deeper contenteditable child', () => {
+    const doc = child.doc;
+    const outer = doc.createElement('div');
+    outer.attributes.set('contenteditable', 'true');
+    outer.getAttribute = k => outer.attributes.get(k) || null;
+
+    const inner = doc.createElement('div');
+    inner.attributes.set('contenteditable', 'true');
+    inner.getAttribute = k => inner.attributes.get(k) || null;
+
+    outer.appendChild(inner);
+
+    expect(child._findInnermostEditable(outer)).toBe(inner);
+  });
+
+  it('descends through non-editable wrappers to reach innermost editable', () => {
+    const doc = child.doc;
+    const root = doc.createElement('div');
+    root.attributes.set('contenteditable', 'true');
+    root.getAttribute = k => root.attributes.get(k) || null;
+
+    const wrapper = doc.createElement('div');
+    wrapper.getAttribute = () => null;
+    wrapper.attributes = new Map();
+
+    const leaf = doc.createElement('div');
+    leaf.attributes.set('contenteditable', 'true');
+    leaf.getAttribute = k => leaf.attributes.get(k) || null;
+
+    wrapper.appendChild(leaf);
+    root.appendChild(wrapper);
+
+    expect(child._findInnermostEditable(root)).toBe(leaf);
+  });
+
+  it('returns null if passed a non-editable root with no editable descendants', () => {
+    const doc = child.doc;
+    const div = doc.createElement('div');
+    div.getAttribute = () => null;
+
+    expect(child._findInnermostEditable(div)).toBe(null);
+  });
+
+  it('accepts contenteditable="" as true (HTML attribute form)', () => {
+    const doc = child.doc;
+    const div = doc.createElement('div');
+    div.attributes.set('contenteditable', '');
+    div.getAttribute = k => div.attributes.get(k) ?? null;
+
+    expect(child._findInnermostEditable(div)).toBe(div);
   });
 });
 
