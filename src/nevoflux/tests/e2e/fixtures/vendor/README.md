@@ -9,6 +9,7 @@ in `../editors/`. Versions are pinned for determinism.
 | react-dom.production.min.js      | 18.2.0  | unpkg.com/react-dom@18.2.0 |
 | draft.min.js                     | 0.11.7  | unpkg.com/draft-js@0.11.7 |
 | draft.min.css                    | 0.11.7  | unpkg.com/draft-js@0.11.7 |
+| immutable.min.js                 | 3.8.2   | unpkg.com/immutable@3.8.2/dist/immutable.min.js (required by draft-js 0.11 — provides OrderedMap / Map / List used by EditorState) |
 
 ## Not yet vendored
 
