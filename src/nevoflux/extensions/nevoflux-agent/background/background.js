@@ -2053,6 +2053,17 @@ async function executeBrowserTool(request, caller = 'unknown') {
       case 'query_all':
         return await executeQueryAllViaApi(targetTabId, params);
 
+      // Browser input strategy engine (PR #1 Actor methods, dispatched by
+      // PR #2 daemon-side orchestration)
+      case 'probe':
+        return await executeProbeViaApi(targetTabId, params);
+
+      case 'paste':
+        return await executePasteViaApi(targetTabId, params);
+
+      case 'fillRichText':
+        return await executeFillRichTextViaApi(targetTabId, params);
+
       // Snapshot-based tools (element ID approach)
       case 'snapshot':
         return await executeSnapshotViaApi(targetTabId, params);
@@ -2749,6 +2760,81 @@ async function executeQueryAllViaApi(tabId, params) {
 
   try {
     const result = await browser.nevoflux.queryAll(tabId, selector, { limit });
+    return result.success !== undefined ? result : { success: true, result };
+  } catch (error) {
+    return {
+      success: false,
+      error: { code: -1, message: error.message, recoverable: true },
+    };
+  }
+}
+
+/**
+ * Probe an element and return its Fingerprint (PR #1 Actor method).
+ * Dispatched by PR #2 daemon-side orchestration inside browser_input /
+ * browser_probe tools, but also callable as a standalone single-call
+ * browser tool.
+ */
+async function executeProbeViaApi(tabId, params) {
+  const { selector } = params;
+  if (!selector) {
+    return {
+      success: false,
+      error: { code: -1, message: 'selector required', recoverable: false },
+    };
+  }
+
+  try {
+    const result = await browser.nevoflux.probe(tabId, selector);
+    return result.success !== undefined ? result : { success: true, result };
+  } catch (error) {
+    return {
+      success: false,
+      error: { code: -1, message: error.message, recoverable: true },
+    };
+  }
+}
+
+/**
+ * Paste text into a contentEditable target via synthetic ClipboardEvent +
+ * execCommand fallback (PR #1 Actor method). Dispatched by PR #2
+ * daemon-side orchestration.
+ */
+async function executePasteViaApi(tabId, params) {
+  const { selector, text } = params;
+  if (!selector || text === undefined || text === null) {
+    return {
+      success: false,
+      error: { code: -1, message: 'selector and text required', recoverable: false },
+    };
+  }
+
+  try {
+    const result = await browser.nevoflux.paste(tabId, selector, text);
+    return result.success !== undefined ? result : { success: true, result };
+  } catch (error) {
+    return {
+      success: false,
+      error: { code: -1, message: error.message, recoverable: true },
+    };
+  }
+}
+
+/**
+ * Replace contentEditable content with new text (clear + paste). PR #1
+ * Actor method, dispatched by PR #2 daemon-side orchestration.
+ */
+async function executeFillRichTextViaApi(tabId, params) {
+  const { selector, text } = params;
+  if (!selector || text === undefined || text === null) {
+    return {
+      success: false,
+      error: { code: -1, message: 'selector and text required', recoverable: false },
+    };
+  }
+
+  try {
+    const result = await browser.nevoflux.fillRichText(tabId, selector, text);
     return result.success !== undefined ? result : { success: true, result };
   } catch (error) {
     return {
