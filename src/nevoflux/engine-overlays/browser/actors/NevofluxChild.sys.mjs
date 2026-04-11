@@ -2461,7 +2461,30 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    // Construct DataTransfer in content realm
+    // Primary path: document.execCommand('insertText', ...)
+    //
+    // This is the universal insertion method for contentEditable. It works for:
+    // - Plain contentEditable (native browser inserts the text)
+    // - Draft.js / Lexical / ProseMirror / Slate (they listen to beforeinput/input
+    //   events which execCommand generates, and update their internal state)
+    //
+    // Why NOT synthetic ClipboardEvent as primary: dispatchEvent produces untrusted
+    // events (isTrusted === false). Firefox refuses to execute default actions for
+    // untrusted events, so plain contentEditable silently drops the paste. Only
+    // frameworks with explicit paste handlers see the synthetic event.
+    try {
+      const ok = doc.execCommand('insertText', false, String(text));
+      if (ok) {
+        return { success: true };
+      }
+    } catch (e) {
+      // Fall through to the synthetic event fallback
+    }
+
+    // Fallback: synthetic ClipboardEvent + DataTransfer
+    //
+    // Used only when execCommand returns false or throws. This is for rare editors
+    // that explicitly listen to 'paste' events but ignore 'beforeinput'.
     let dt;
     try {
       dt = new win.DataTransfer();
@@ -2474,7 +2497,6 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    // Dispatch synthetic paste event (constructor lives in content realm)
     try {
       const evt = new win.ClipboardEvent('paste', {
         bubbles: true,
@@ -2525,7 +2547,7 @@ export class NevofluxChild extends JSWindowActorChild {
       return { success: false, error: { code: 1002, message: `Focus threw: ${e.message}`, recoverable: true } };
     }
 
-    // Select all existing content
+    // Select all existing content so execCommand('insertText', ...) replaces it
     try {
       const selection = win.getSelection();
       const range = doc.createRange();
@@ -2533,10 +2555,24 @@ export class NevofluxChild extends JSWindowActorChild {
       selection.removeAllRanges();
       selection.addRange(range);
     } catch (e) {
-      // If Selection API fails, keep going — paste will overwrite at cursor
+      // If Selection API fails, keep going — paste delegation below will still run
     }
 
-    // Dispatch beforeinput(deleteContentBackward) so editors clear their state
+    // Primary path: execCommand('insertText', ...) with full selection = replace content.
+    // This works for plain contentEditable (native insertion replaces selected range)
+    // and for framework editors (they see a beforeinput(insertText) event with the
+    // existing content selected, and update their internal state accordingly).
+    try {
+      const ok = doc.execCommand('insertText', false, String(text));
+      if (ok) {
+        return { success: true };
+      }
+    } catch (e) {
+      // Fall through to the paste() fallback
+    }
+
+    // Fallback: dispatch beforeinput(deleteContentBackward) to nudge framework editors
+    // into clearing, then delegate to paste() which will try synthetic ClipboardEvent.
     try {
       const deleteEvt = new win.InputEvent('beforeinput', {
         bubbles: true,
@@ -2548,7 +2584,6 @@ export class NevofluxChild extends JSWindowActorChild {
       // Some browsers don't allow InputEvent dispatch; fall through
     }
 
-    // Now paste new content
     return this.paste({ selector, text });
   }
 
