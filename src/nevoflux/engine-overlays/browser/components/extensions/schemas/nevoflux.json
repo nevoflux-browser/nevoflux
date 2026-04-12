@@ -1625,6 +1625,19 @@
         ]
       },
       {
+        "name": "uploadFile",
+        "type": "function",
+        "async": "promise",
+        "description": "Upload a file to an input[type=file] element via localhost HTTP bridge",
+        "parameters": [
+          { "name": "tabId", "type": "integer", "optional": true },
+          { "name": "selector", "type": "string" },
+          { "name": "fileUrl", "type": "string" },
+          { "name": "fileName", "type": "string" },
+          { "name": "mimeType", "type": "string" }
+        ]
+      },
+      {
         "name": "queryAll",
         "type": "function",
         "async": "promise",

@@ -313,6 +313,22 @@ this.nevoflux = class extends ExtensionAPI {
           });
         },
 
+        async uploadFile(tabId, selector, fileUrl, fileName, mimeType) {
+          if (!selector || typeof selector !== 'string') {
+            return { success: false, error: { code: 9002, message: 'Missing or invalid required parameter: selector', recoverable: false } };
+          }
+          if (!fileUrl || typeof fileUrl !== 'string') {
+            return { success: false, error: { code: 9002, message: 'Missing or invalid required parameter: fileUrl', recoverable: false } };
+          }
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'uploadFile', {
+            selector,
+            fileUrl,
+            fileName: fileName || 'upload',
+            mimeType: mimeType || 'application/octet-stream',
+          });
+        },
+
         async queryAll(tabId, selector, options = {}) {
           if (!selector || typeof selector !== 'string') {
             return {

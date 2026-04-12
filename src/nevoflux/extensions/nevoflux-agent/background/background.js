@@ -962,6 +962,7 @@ class ChannelManager {
         'probe',
         'paste',
         'fillRichText',
+        'uploadFile',
       ]);
       if (DIRECT_ACTIONS.has(action)) {
         console.log(`[NevoFlux] Handling ${action} directly (bypassing sidebar)`);
@@ -2077,6 +2078,9 @@ async function executeBrowserTool(request, caller = 'unknown') {
       case 'fillRichText':
         return await executeFillRichTextViaApi(targetTabId, params);
 
+      case 'uploadFile':
+        return await executeUploadFileViaApi(targetTabId, params);
+
       // Snapshot-based tools (element ID approach)
       case 'snapshot':
         return await executeSnapshotViaApi(targetTabId, params);
@@ -2830,6 +2834,28 @@ async function executePasteViaApi(tabId, params) {
       success: false,
       error: { code: -1, message: error.message, recoverable: true },
     };
+  }
+}
+
+/**
+ * Upload a file to an input[type=file] element via localhost HTTP bridge.
+ */
+async function executeUploadFileViaApi(tabId, params) {
+  const { selector, fileUrl, fileName, mimeType } = params;
+  if (!selector || !fileUrl) {
+    return { success: false, error: { code: -1, message: 'selector and fileUrl required', recoverable: false } };
+  }
+  try {
+    const result = await browser.nevoflux.uploadFile(
+      tabId,
+      selector,
+      fileUrl,
+      fileName || 'upload',
+      mimeType || 'application/octet-stream'
+    );
+    return result.success !== undefined ? result : { success: true, result };
+  } catch (error) {
+    return { success: false, error: { code: -1, message: error.message, recoverable: true } };
   }
 }
 
