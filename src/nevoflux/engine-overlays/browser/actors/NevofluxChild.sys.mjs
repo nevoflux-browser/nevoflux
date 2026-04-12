@@ -427,6 +427,7 @@ export class NevofluxChild extends JSWindowActorChild {
       probe: () => this.probe(safeParams),
       paste: () => this.paste(safeParams),
       fillRichText: () => this.fillRichText(safeParams),
+      uploadFile: () => this.uploadFile(safeParams),
     };
 
     const handler = handlers[action];
@@ -2585,6 +2586,77 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     return this.paste({ selector, text });
+  }
+
+  /**
+   * Upload a file to an <input type="file"> element by fetching from
+   * the daemon's localhost HTTP server. (Spec §5.5)
+   *
+   * Uses chrome-privileged fetch() to bypass page CORS.
+   * Constructs File in content realm so the page's JS sees it.
+   */
+  async uploadFile({ selector, fileUrl, fileName, mimeType }) {
+    const el = this.doc.querySelector(selector);
+    if (!el) {
+      return {
+        success: false,
+        error: { code: 1001, message: `Element not found: ${selector}`, recoverable: true },
+      };
+    }
+    if (el.tagName !== 'INPUT' || el.type !== 'file') {
+      return {
+        success: false,
+        error: {
+          code: 1003,
+          message: `Target is not <input type="file">: <${el.tagName.toLowerCase()} type="${el.type || ''}">`,
+          recoverable: false,
+        },
+      };
+    }
+
+    let blob;
+    try {
+      // Chrome global fetch bypasses page CORS restrictions.
+      const response = await fetch(fileUrl);
+      if (!response.ok) {
+        return {
+          success: false,
+          error: { code: 1004, message: `Daemon returned HTTP ${response.status}`, recoverable: true },
+        };
+      }
+      blob = await response.blob();
+    } catch (e) {
+      return {
+        success: false,
+        error: { code: 1005, message: `Fetch failed: ${e.message}`, recoverable: true },
+      };
+    }
+
+    // Build File in content realm so the page's JS recognizes it.
+    try {
+      const arrayBuffer = await blob.arrayBuffer();
+      const uint8 = new this.contentWindow.Uint8Array(arrayBuffer);
+      const contentBlob = new this.contentWindow.Blob([uint8], { type: mimeType });
+      const file = new this.contentWindow.File([contentBlob], fileName, {
+        type: mimeType,
+        lastModified: Date.now(),
+      });
+
+      const dt = new this.contentWindow.DataTransfer();
+      dt.items.add(file);
+      el.files = dt.files;
+    } catch (e) {
+      return {
+        success: false,
+        error: { code: 1006, message: `Could not set files: ${e.message}`, recoverable: false },
+      };
+    }
+
+    // Dispatch change + input events to notify the page.
+    el.dispatchEvent(new this.contentWindow.Event('change', { bubbles: true }));
+    el.dispatchEvent(new this.contentWindow.Event('input', { bubbles: true }));
+
+    return { success: true, result: { size: blob.size } };
   }
 
   // ========== Wait ==========
