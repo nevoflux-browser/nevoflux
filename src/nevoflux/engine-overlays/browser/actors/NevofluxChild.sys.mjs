@@ -2548,21 +2548,23 @@ export class NevofluxChild extends JSWindowActorChild {
       return { success: false, error: { code: 1002, message: `Focus threw: ${e.message}`, recoverable: true } };
     }
 
-    // Select all existing content so execCommand('insertText', ...) replaces it
+    // Select all existing content via execCommand('selectAll').
+    //
+    // IMPORTANT: do NOT use the Selection API (win.getSelection + range.selectNodeContents)
+    // for this step. Framework editors like Draft.js maintain their own internal selection
+    // state and only sync it from execCommand calls, not from raw DOM Selection API
+    // manipulation. Using the Selection API causes Draft.js to think the cursor is collapsed,
+    // so the subsequent insertText appends instead of replacing.
     try {
-      const selection = win.getSelection();
-      const range = doc.createRange();
-      range.selectNodeContents(target);
-      selection.removeAllRanges();
-      selection.addRange(range);
+      doc.execCommand('selectAll', false, null);
     } catch (e) {
-      // If Selection API fails, keep going — paste delegation below will still run
+      // If selectAll fails, fall through — insertText will append instead of replace,
+      // which is degraded but not broken.
     }
 
     // Primary path: execCommand('insertText', ...) with full selection = replace content.
-    // This works for plain contentEditable (native insertion replaces selected range)
-    // and for framework editors (they see a beforeinput(insertText) event with the
-    // existing content selected, and update their internal state accordingly).
+    // Draft.js, Lexical, ProseMirror, and plain contentEditable all handle this correctly
+    // when selectAll was issued via execCommand above.
     try {
       const ok = doc.execCommand('insertText', false, String(text));
       if (ok) {
@@ -2572,17 +2574,13 @@ export class NevofluxChild extends JSWindowActorChild {
       // Fall through to the paste() fallback
     }
 
-    // Fallback: dispatch beforeinput(deleteContentBackward) to nudge framework editors
-    // into clearing, then delegate to paste() which will try synthetic ClipboardEvent.
+    // Fallback: execCommand('delete') to clear + paste() for insertion.
+    // This covers editors where insertText doesn't work but delete + synthetic
+    // ClipboardEvent does.
     try {
-      const deleteEvt = new win.InputEvent('beforeinput', {
-        bubbles: true,
-        cancelable: true,
-        inputType: 'deleteContentBackward',
-      });
-      target.dispatchEvent(deleteEvt);
+      doc.execCommand('delete', false, null);
     } catch (e) {
-      // Some browsers don't allow InputEvent dispatch; fall through
+      // If delete fails, paste() will append to existing content (degraded)
     }
 
     return this.paste({ selector, text });
