@@ -4504,6 +4504,15 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
+    // Execution log (spec §9.5): operational data for identifying
+    // high-frequency eval patterns that should be promoted to structured primitives.
+    console.log('[NevofluxChild.evalScript]', {
+      type: 'eval_invocation',
+      script_length: script.length,
+      script_head: script.substring(0, 100),
+      url: win?.location?.href,
+    });
+
     try {
       // Execute in page context via sandbox to bypass page CSP restrictions.
       // Uses content principal (not chrome) so no privilege escalation.
@@ -4543,12 +4552,17 @@ export class NevofluxChild extends JSWindowActorChild {
         type,
       };
     } catch (e) {
+      // Split CSP errors (9001, terminal) from runtime/syntax errors
+      // (9004, recoverable). LLMs can retry 9004 with a corrected
+      // script; 9001 means the site blocks eval entirely. (Spec §9.4)
+      const isCsp = /CSP|Content Security Policy|unsafe-eval|eval is disabled/i
+        .test(e.message || '');
       return {
         success: false,
         error: {
-          code: 9001,
+          code: isCsp ? 9001 : 9004,
           message: e.message,
-          recoverable: false,
+          recoverable: !isCsp,
         },
       };
     }
