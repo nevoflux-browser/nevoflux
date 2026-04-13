@@ -157,6 +157,68 @@ const eventBusSubscriptions = new Map(); // subscription_id → { source, tabId,
 const tabSubscriptions = new Map(); // tabId → Set<subscription_id>
 const pendingEventHistoryRequests = new Map(); // requestId → bridgeRequestId
 
+// EventBus Tab Discard Recovery (IndexedDB)
+const EVENTBUS_DB_NAME = 'nevoflux_eventbus';
+const EVENTBUS_STORE_NAME = 'subscriptions';
+const EVENTBUS_DB_VERSION = 1;
+
+function openEventBusDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(EVENTBUS_DB_NAME, EVENTBUS_DB_VERSION);
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(EVENTBUS_STORE_NAME)) {
+        db.createObjectStore(EVENTBUS_STORE_NAME, { keyPath: 'tabId' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function saveTabSubscriptions(tabId) {
+  const subs = tabSubscriptions.get(tabId);
+  if (!subs || subs.size === 0) return;
+  const specs = [];
+  for (const subId of subs) {
+    const sub = eventBusSubscriptions.get(subId);
+    if (sub) {
+      specs.push({ subscriptionId: subId, patterns: sub.patterns || [], source: sub.source });
+    }
+  }
+  if (specs.length === 0) return;
+  try {
+    const db = await openEventBusDB();
+    const tx = db.transaction(EVENTBUS_STORE_NAME, 'readwrite');
+    tx.objectStore(EVENTBUS_STORE_NAME).put({ tabId, specs, savedAt: Date.now() });
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
+    console.log(`[NevoFlux] Saved ${specs.length} EventBus subscriptions for discarded tab ${tabId}`);
+  } catch (err) {
+    console.error('[NevoFlux] Failed to save EventBus subscriptions:', err);
+  }
+}
+
+async function loadTabSubscriptions(tabId) {
+  try {
+    const db = await openEventBusDB();
+    const tx = db.transaction(EVENTBUS_STORE_NAME, 'readwrite');
+    const store = tx.objectStore(EVENTBUS_STORE_NAME);
+    const record = await new Promise((resolve, reject) => {
+      const req = store.get(tabId);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    if (record) {
+      store.delete(tabId);
+      return record.specs || [];
+    }
+    return [];
+  } catch (err) {
+    console.error('[NevoFlux] Failed to load EventBus subscriptions:', err);
+    return [];
+  }
+}
+
 // Cleanup stale pending agent commands after 30s
 setInterval(() => {
   const now = Date.now();
@@ -1574,6 +1636,17 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
 
           // Don't respond now — wait for events_response from agent
           return;
+        }
+
+        case 'events.recover': {
+          try {
+            const tabId = payload._tabId;
+            const specs = tabId ? await loadTabSubscriptions(tabId) : [];
+            result = { success: true, specs };
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+          }
+          break;
         }
 
         // ----- End EventBus bridge requests -----
@@ -5477,6 +5550,24 @@ browser.tabs.onActivated.addListener(tabEventListeners.onActivated);
 
 // Update tab context when tab URL, status, or favicon changes
 tabEventListeners.onUpdated = async (tabId, changeInfo, _tab) => {
+  // Save EventBus subscriptions when tab is discarded (memory-saving)
+  if (changeInfo.discarded === true) {
+    saveTabSubscriptions(tabId).catch((err) => {
+      console.error('[NevoFlux] Failed to save subs on discard:', err);
+    });
+    const subs = tabSubscriptions.get(tabId);
+    if (subs) {
+      for (const subId of subs) {
+        eventBusSubscriptions.delete(subId);
+        channelManager.sendToAgent({
+          type: MessageTypes.EVENTS_REQUEST,
+          payload: { action: 'unsubscribe', subscription_id: subId },
+        });
+      }
+      tabSubscriptions.delete(tabId);
+    }
+  }
+
   if (changeInfo.status === 'complete' || changeInfo.url || changeInfo.favIconUrl) {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
     if (tabs[0]?.id === tabId) {
