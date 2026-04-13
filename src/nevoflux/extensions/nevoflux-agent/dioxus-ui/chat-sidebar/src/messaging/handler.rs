@@ -115,6 +115,29 @@ fn handle_chat_message(ctx: AppContext, message: ChatMessage) {
             handle_plan_proposal(ctx, payload);
         }
 
+        // ========== EventBus messages ==========
+        ChatMessage::EventsResponse(response) => {
+            tracing::info!("[Sidebar] EventBus response: {:?}", response);
+            match response {
+                shared_protocol::EventBusResponse::Error { code, message } => {
+                    tracing::warn!("[Sidebar] EventBus error: {} - {}", code, message);
+                }
+                _ => {}
+            }
+        }
+
+        ChatMessage::EventsDelivery(delivery) => {
+            tracing::info!(
+                "[Sidebar] EventBus delivery: sub={}, topic={}",
+                delivery.subscription_id, delivery.event.topic
+            );
+            handle_event_delivery(ctx, delivery);
+        }
+
+        ChatMessage::EventsRequest(_) => {
+            tracing::warn!("[Sidebar] Received EventsRequest (unexpected direction)");
+        }
+
         // ========== Sidebar -> Agent messages (should not be received) ==========
         ChatMessage::ChatMessage(_) |
         ChatMessage::SkillCommand(_) |
@@ -224,6 +247,40 @@ async fn execute_browser_tool_and_respond(
     }
 
     tracing::debug!("execute_browser_tool_and_respond completed");
+}
+
+// ============================================
+// EventBus Handlers
+// ============================================
+
+fn handle_event_delivery(mut ctx: AppContext, delivery: shared_protocol::EventBusDelivery) {
+    let topic = &delivery.event.topic;
+
+    if topic.contains(":notification") {
+        let title = delivery.event.payload
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Notification")
+            .to_string();
+        let body = delivery.event.payload
+            .get("body")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        let mut notifications = ctx.event_notifications.write();
+        notifications.push(crate::context::EventNotification {
+            id: delivery.event.event_id.clone(),
+            title,
+            body,
+            topic: topic.clone(),
+            timestamp_ms: delivery.event.timestamp_ms,
+        });
+        let len = notifications.len();
+        if len > 20 {
+            notifications.drain(0..len - 20);
+        }
+    }
 }
 
 // ============================================

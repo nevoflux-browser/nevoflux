@@ -17,6 +17,15 @@ use crate::state::{
 use shared_protocol::ToolAuthRequest;
 use shared_protocol::ChatMode;
 
+#[derive(Debug, Clone)]
+pub struct EventNotification {
+    pub id: String,
+    pub title: String,
+    pub body: String,
+    pub topic: String,
+    pub timestamp_ms: u64,
+}
+
 /// Global application context
 ///
 /// Contains all shared state as Dioxus signals that can be read and written
@@ -73,6 +82,8 @@ pub struct AppContext {
     pub first_run: Signal<bool>,
     /// Whether a provider is configured in agent settings
     pub has_configured_provider: Signal<bool>,
+    /// EventBus notification toasts
+    pub event_notifications: Signal<Vec<EventNotification>>,
     /// Whether mock mode is enabled
     pub mock_enabled: bool,
 }
@@ -107,6 +118,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     let pending_tool_auth = use_signal(|| None::<ToolAuthRequest>);
     let avatar_url = use_signal(|| None::<String>);
     let minimized = use_signal(|| false);
+    let event_notifications = use_signal(Vec::new);
     let mut first_run = use_signal(|| false);
     let mut has_configured_provider = use_signal(|| false);
 
@@ -135,6 +147,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         pending_tool_auth,
         avatar_url,
         minimized,
+        event_notifications,
         first_run,
         has_configured_provider,
         mock_enabled,

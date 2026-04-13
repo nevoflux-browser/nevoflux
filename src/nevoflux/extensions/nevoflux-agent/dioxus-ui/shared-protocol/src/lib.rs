@@ -15,6 +15,7 @@
 pub mod common;
 pub mod chat;
 pub mod mcp;
+pub mod events;
 
 // Re-export common types
 pub use common::*;
@@ -39,6 +40,12 @@ pub use chat::{
     // Tool events & authorization
     ToolEvent, ToolEventStatus, ToolAuthRequest, AuthOption, AuthScope,
     ToolAuthResponsePayload, ThinkingEvent,
+};
+
+// Re-export EventBus types
+pub use events::{
+    BusEventPayload, DeliveryMode, EventBusDelivery, EventBusRequest, EventBusResponse,
+    HistoryQuery, PublishOptions, SubscribeOptions,
 };
 
 // Re-export MCP types

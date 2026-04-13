@@ -615,6 +615,14 @@ pub enum ChatMessage {
     PickFilesResponse(PickFilesResponsePayload),
     /// Plan proposal from agent
     PlanProposal(PlanProposalPayload),
+
+    // ========== EventBus ==========
+    /// EventBus request (Sidebar -> Agent)
+    EventsRequest(crate::events::EventBusRequest),
+    /// EventBus response (Agent -> Sidebar)
+    EventsResponse(crate::events::EventBusResponse),
+    /// EventBus delivery (Agent -> Sidebar)
+    EventsDelivery(crate::events::EventBusDelivery),
 }
 
 impl ChatMessage {
@@ -632,7 +640,8 @@ impl ChatMessage {
             Self::BrowserToolResponse(_) |
             Self::PickFilesRequest(_) |
             Self::PlanResponse(_) |
-            Self::ToolAuthResponse(_) => MessageDirection::ToAgent,
+            Self::ToolAuthResponse(_) |
+            Self::EventsRequest(_) => MessageDirection::ToAgent,
 
             // Agent → Sidebar
             Self::StreamChunk(_) |
@@ -645,7 +654,9 @@ impl ChatMessage {
             Self::SystemResponse(_) |
             Self::BrowserToolRequest(_) |
             Self::PickFilesResponse(_) |
-            Self::PlanProposal(_) => MessageDirection::ToSidebar,
+            Self::PlanProposal(_) |
+            Self::EventsResponse(_) |
+            Self::EventsDelivery(_) => MessageDirection::ToSidebar,
         }
     }
 
@@ -674,6 +685,9 @@ impl ChatMessage {
             Self::BrowserToolRequest(p) => Some(&p.session_id),
             Self::PickFilesResponse(_) => None,
             Self::PlanProposal(_) => None,
+            Self::EventsRequest(_) => None,
+            Self::EventsResponse(_) => None,
+            Self::EventsDelivery(_) => None,
         }
     }
 }

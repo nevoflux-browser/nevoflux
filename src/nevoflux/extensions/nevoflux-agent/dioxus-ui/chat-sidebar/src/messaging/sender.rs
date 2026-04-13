@@ -907,6 +907,61 @@ pub fn forward_browser_tool_request_sync(
     crate::messaging::bridge::send_message_sync(&message)
 }
 
+// ============================================
+// EventBus Messages
+// ============================================
+
+pub async fn send_events_subscribe(
+    patterns: Vec<String>,
+    replay_sticky: bool,
+    buffer_size: usize,
+) -> Result<(), String> {
+    let request = serde_json::json!({
+        "type": "bg:events_subscribe",
+        "patterns": patterns,
+        "replay_sticky": replay_sticky,
+        "buffer_size": buffer_size,
+    });
+    let js_value = to_js_value(&request)
+        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    JsFuture::from(runtime_send_message(js_value))
+        .await
+        .map_err(|e| format!("Send failed: {:?}", e))?;
+    Ok(())
+}
+
+pub async fn send_events_unsubscribe(subscription_id: &str) -> Result<(), String> {
+    let request = serde_json::json!({
+        "type": "bg:events_unsubscribe",
+        "subscription_id": subscription_id,
+    });
+    let js_value = to_js_value(&request)
+        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    JsFuture::from(runtime_send_message(js_value))
+        .await
+        .map_err(|e| format!("Send failed: {:?}", e))?;
+    Ok(())
+}
+
+pub async fn send_events_publish(
+    topic: &str,
+    data: serde_json::Value,
+    delivery: &str,
+) -> Result<(), String> {
+    let request = serde_json::json!({
+        "type": "bg:events_publish",
+        "topic": topic,
+        "data": data,
+        "delivery": delivery,
+    });
+    let js_value = to_js_value(&request)
+        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    JsFuture::from(runtime_send_message(js_value))
+        .await
+        .map_err(|e| format!("Send failed: {:?}", e))?;
+    Ok(())
+}
+
 /// Async sleep using JavaScript setTimeout
 pub async fn sleep_ms(ms: u32) {
     let promise = js_sys::Promise::new(&mut |resolve, _| {
