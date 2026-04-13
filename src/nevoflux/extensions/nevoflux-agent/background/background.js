@@ -157,6 +157,11 @@ const eventBusSubscriptions = new Map(); // subscription_id → { source, tabId,
 const tabSubscriptions = new Map(); // tabId → Set<subscription_id>
 const pendingEventHistoryRequests = new Map(); // requestId → bridgeRequestId
 
+// Canvas Tool Active Calls: call_id → { tabId, bridgeId, startTime }
+const activeToolCalls = new Map();
+// Canvas Tool pending list requests: requestId → bridgeId
+const pendingToolListRequests = new Map();
+
 // EventBus Tab Discard Recovery (IndexedDB)
 const EVENTBUS_DB_NAME = 'nevoflux_eventbus';
 const EVENTBUS_STORE_NAME = 'subscriptions';
@@ -1047,6 +1052,62 @@ class ChannelManager {
       return;
     }
 
+    // Handle Canvas Tool streaming events — route back to the calling iframe
+    if (msgType === 'canvas_tool_event') {
+      const callId = message.payload?.call_id;
+      const call = activeToolCalls.get(callId);
+      if (call && call.bridgeId) {
+        browser.nevoflux
+          .bridgePush(call.bridgeId, {
+            type: 'canvas:tool:event',
+            payload: message.payload,
+          })
+          .catch(() => {});
+      }
+    }
+
+    // Handle Canvas Tool invoke response — complete the bridge request
+    if (msgType === 'canvas_tool_invoke_response') {
+      const callId = message.payload?.call_id;
+      const call = activeToolCalls.get(callId);
+      if (call && call.bridgeId) {
+        browser.nevoflux
+          .bridgeRespond(call.bridgeId, {
+            success: message.payload.success,
+            ...message.payload,
+          })
+          .catch(() => {});
+        activeToolCalls.delete(callId);
+      }
+    }
+
+    // Handle Canvas Tool list response — route back to pending list requester
+    if (msgType === 'canvas_tool_list_response') {
+      const reqId = message.payload?.request_id;
+      const bridgeId = reqId ? pendingToolListRequests.get(reqId) : null;
+      if (bridgeId) {
+        pendingToolListRequests.delete(reqId);
+        browser.nevoflux
+          .bridgeRespond(bridgeId, {
+            success: true,
+            tools: message.payload?.tools || [],
+          })
+          .catch(() => {});
+        return;
+      }
+      // Fallback: try first pending request (agent may not echo request_id)
+      for (const [fallbackReqId, fallbackBridgeId] of pendingToolListRequests) {
+        pendingToolListRequests.delete(fallbackReqId);
+        browser.nevoflux
+          .bridgeRespond(fallbackBridgeId, {
+            success: true,
+            tools: message.payload?.tools || [],
+          })
+          .catch(() => {});
+        return;
+      }
+    }
+
     // Forward to canvas sessions.
     // Try matching by session_id in payload first; fall back to
     // _activeCanvasSessionId for messages that don't carry session_id
@@ -1650,6 +1711,63 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
         }
 
         // ----- End EventBus bridge requests -----
+
+        // ----- Canvas Tool bridge requests -----
+
+        case 'canvas.tool.invoke': {
+          try {
+            const callId = `call_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const { tool_name, params, timeout_ms } = payload;
+            const sourceTabId = payload._tabId || null;
+
+            activeToolCalls.set(callId, {
+              tabId: sourceTabId,
+              bridgeId: id,
+              startTime: Date.now(),
+            });
+
+            channelManager.sendToAgent({
+              type: 'canvas_tool_invoke',
+              payload: {
+                call_id: callId,
+                session_id: _activeCanvasSessionId || '',
+                tool_name,
+                params: params || {},
+                timeout_ms: timeout_ms || null,
+              },
+            });
+
+            result = { success: true, callId };
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+          }
+          break;
+        }
+
+        case 'canvas.tool.list': {
+          try {
+            const requestId = `tl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+            pendingToolListRequests.set(requestId, id);
+
+            channelManager.sendToAgent({
+              type: 'canvas_tool_list',
+              payload: {
+                request_id: requestId,
+                session_id: _activeCanvasSessionId || '',
+                category: payload.category || null,
+              },
+            });
+
+            // Don't respond now — wait for canvas_tool_list_response from agent
+            return;
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+          }
+          break;
+        }
+
+        // ----- End Canvas Tool bridge requests -----
 
         case 'getCache': {
           const key = payload?.key || 'nevoflux_last_status';
