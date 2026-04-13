@@ -2493,6 +2493,32 @@ async function executeNavigateViaApi(tabId, params) {
   try {
     let targetTabId = tabId;
 
+    // Smart tab reuse: before navigating, check if the target URL is
+    // already open in another tab. If so, activate that tab instead of
+    // navigating (which would lose the current page's state).
+    if (!newTab) {
+      try {
+        const hostname = new URL(url).hostname;
+        const existingTabs = await browser.tabs.query({ currentWindow: true });
+        const match = existingTabs.find((t) => {
+          try {
+            return t.url && new URL(t.url).hostname === hostname;
+          } catch {
+            return false;
+          }
+        });
+        if (match) {
+          await browser.tabs.update(match.id, { active: true });
+          return {
+            success: true,
+            result: { url: match.url, tab_id: match.id, activated_existing: true },
+          };
+        }
+      } catch {
+        // URL parse or query failed — fall through to normal navigate
+      }
+    }
+
     if (newTab) {
       // Open in a new tab instead of navigating the current one.
       const tab = await browser.tabs.create({ url, active: true });
