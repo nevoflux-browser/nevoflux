@@ -375,9 +375,6 @@ export class NevofluxChild extends JSWindowActorChild {
       return undefined;
     }
 
-    // ---------- Bridge push messages (streaming bridge:request results) ----------
-    // Used by canvas.tool.invoke so Started/Stdout/Stderr/Finished events from
-    // the daemon reach the SDK in the artifact iframe.
     if (name === 'bridge:push' && this._isNevofluxPage()) {
       const content = this.contentWindow;
       if (content) {
