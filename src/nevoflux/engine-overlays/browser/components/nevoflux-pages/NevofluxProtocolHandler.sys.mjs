@@ -11,6 +11,7 @@ const BUILTIN_ROUTES = {
   home: 'chrome://nevoflux/content/pages/home.html',
   settings: 'chrome://nevoflux/content/pages/settings.html',
   canvas: 'chrome://nevoflux/content/pages/canvas.html',
+  import: 'chrome://nevoflux/content/pages/canvas.html',
   history: 'chrome://nevoflux/content/pages/history.html',
   plan: 'chrome://nevoflux/content/pages/plan.html',
 };
@@ -64,6 +65,15 @@ export class NevofluxProtocolHandler {
           params.set('id', pathSegments[0]);
         }
         params.set('mode', pathSegments[1] || 'preview');
+        break;
+
+      case 'import':
+        // nevoflux://import/{share_id}
+        // -> canvas.html?share_id={share_id}&mode=import
+        if (pathSegments[0]) {
+          params.set('share_id', pathSegments[0]);
+        }
+        params.set('mode', 'import');
         break;
 
       case 'settings':
