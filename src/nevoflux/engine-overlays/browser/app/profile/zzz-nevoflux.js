@@ -18,6 +18,13 @@ pref('sidebar.maxWidth', 960);
 // Keep default (false) so the Zen sidebar stays on the left.
 pref('zen.tabs.vertical.right-side', false);
 
+// Allow bundled extensions in distribution/extensions/ to auto-install.
+pref('extensions.autoDisableScopes', 0);
+pref('extensions.installDistroAddons', true);
+pref('extensions.startupScanScopes', 15);
+pref('xpinstall.signatures.required', false);
+pref('extensions.logging.enabled', true);
+
 // NevoFlux Agent settings
 pref('extensions.nevoflux.sidebar.position', 'right');
 pref('extensions.nevoflux.sidebar.width', 500);
