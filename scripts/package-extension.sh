@@ -84,6 +84,52 @@ else
   echo "⚠ Warning: manifest.json not found at $MANIFEST, skipping version injection"
 fi
 
+# Recompute SRI hashes in wasm/chat-sidebar/index.html so the XPI always
+# ships with integrity attributes that match the files actually packaged.
+# If `dx bundle` wasn't run and committed wasm/ files drift from the
+# committed index.html, Firefox blocks them with "None of the sha384 hashes
+# in the integrity attribute match the content of the subresource".
+SIDEBAR_INDEX="$WASM_DIR/index.html"
+if [ -f "$SIDEBAR_INDEX" ]; then
+  cp "$SIDEBAR_INDEX" "$SIDEBAR_INDEX.bak"
+  echo "Refreshing SRI hashes in chat-sidebar/index.html..."
+  python3 - "$SIDEBAR_INDEX" "$WASM_DIR" <<'PYEOF'
+import base64, hashlib, pathlib, re, sys
+
+index_path = pathlib.Path(sys.argv[1])
+base_dir = pathlib.Path(sys.argv[2])
+html = index_path.read_text(encoding='utf-8')
+
+def sri(path: pathlib.Path) -> str:
+    digest = hashlib.sha384(path.read_bytes()).digest()
+    return 'sha384-' + base64.b64encode(digest).decode('ascii')
+
+# Replace integrity=... on any <link ... href=./path ...> whose referenced file
+# exists under WASM_DIR. Leaves tags without integrity attrs untouched.
+pattern = re.compile(
+    r'(<link[^>]*?\shref=)(["\']?)(\.\/[^\s"\'>]+)\2'
+    r'([^>]*?\sintegrity=)(["\']?)[^"\'>\s]+\5',
+    re.DOTALL,
+)
+missing = []
+def replace(m: re.Match) -> str:
+    href = m.group(3).lstrip('./')
+    target = base_dir / href
+    if not target.is_file():
+        missing.append(href)
+        return m.group(0)
+    return (
+        m.group(1) + m.group(2) + m.group(3) + m.group(2) +
+        m.group(4) + m.group(5) + sri(target) + m.group(5)
+    )
+
+new_html = pattern.sub(replace, html)
+index_path.write_text(new_html, encoding='utf-8')
+for missed in missing:
+    print(f'  warning: referenced file not found, integrity left stale: {missed}', file=sys.stderr)
+PYEOF
+fi
+
 # Create output directory
 mkdir -p "$BUILD_DIR"
 
@@ -115,6 +161,11 @@ echo "✓ Extension packaged: $BUILD_DIR/$XPI_NAME"
 # Restore original manifest.json to avoid dirtying git
 if [ -f "$MANIFEST.bak" ]; then
   mv "$MANIFEST.bak" "$MANIFEST"
+fi
+
+# Restore original chat-sidebar/index.html (SRI hashes were refreshed in place)
+if [ -f "$SIDEBAR_INDEX.bak" ]; then
+  mv "$SIDEBAR_INDEX.bak" "$SIDEBAR_INDEX"
 fi
 
 # Copy to engine directory if it exists

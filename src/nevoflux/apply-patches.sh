@@ -392,4 +392,11 @@ if [ -f "${ROOT_DIR}/scripts/copy_language_pack.py" ]; then
   python3 "${ROOT_DIR}/scripts/copy_language_pack.py" en-US
 fi
 
+# 17. Restore Zen git patches that were skipped by pre-import.sh
+for skip_file in $(find "${ROOT_DIR}/src" -name "*.nevoflux-skip" 2>/dev/null); do
+  original="${skip_file%.nevoflux-skip}"
+  mv "$skip_file" "$original"
+  echo "  Restored skipped patch: ${original#${ROOT_DIR}/}"
+done
+
 echo "All nevoflux patches applied successfully."
