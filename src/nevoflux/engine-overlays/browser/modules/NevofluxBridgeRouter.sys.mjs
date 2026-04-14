@@ -39,27 +39,52 @@ export const NevofluxBridgeRouter = {
   /**
    * Make a request (called by NevofluxParent).
    * Returns a Promise that resolves when background.js calls bridgeRespond.
+   *
+   * Optionally pass `onPush` to receive streaming push messages addressed to
+   * this request's id (e.g. canvas tool stdout/stderr/finished events). The
+   * subscription is auto-cleaned a grace period after the response arrives so
+   * trailing events still reach the caller.
    */
-  request(type, payload) {
+  request(type, payload, onPush) {
     if (!this._handler) {
       return Promise.reject(new Error('NevofluxBridgeRouter: no handler registered'));
     }
     const id = `br_${++this._counter}_${Date.now()}`;
+    let unsubPush = null;
+    if (typeof onPush === 'function') {
+      unsubPush = this.subscribe(id, onPush);
+    }
+    const cleanupPush = () => {
+      if (unsubPush) {
+        // Keep subscription alive briefly so trailing events (e.g. a Finished
+        // event arriving just after the InvokeResponse) still get forwarded.
+        setTimeout(unsubPush, this.PUSH_GRACE_MS);
+        unsubPush = null;
+      }
+    };
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this._pending.delete(id);
+        cleanupPush();
         reject(new Error(`Bridge request timeout: ${type}`));
       }, this.REQUEST_TIMEOUT_MS);
-      this._pending.set(id, { resolve, reject, timer });
+      this._pending.set(id, {
+        resolve: (v) => { cleanupPush(); resolve(v); },
+        reject: (e) => { cleanupPush(); reject(e); },
+        timer,
+      });
       try {
         this._handler(id, type, payload);
       } catch (e) {
         clearTimeout(timer);
         this._pending.delete(id);
+        cleanupPush();
         reject(e);
       }
     });
   },
+
+  PUSH_GRACE_MS: 5000,
 
   /**
    * Resolve a pending request (called by ext-nevoflux.js bridgeRespond).

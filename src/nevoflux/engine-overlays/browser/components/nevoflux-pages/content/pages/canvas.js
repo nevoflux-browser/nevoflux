@@ -2020,6 +2020,12 @@ window.addEventListener('NevofluxMessage', (event) => {
       '*'
     );
   }
+
+  // Bridge push messages → post raw msg into the artifact iframe so SDK
+  // listeners (e.g. canvas:tool:event, events:delivery) fire.
+  if (type === 'bridge:push' && detail.msg && Canvas._iframe?.contentWindow) {
+    Canvas._iframe.contentWindow.postMessage(detail.msg, '*');
+  }
 });
 
 document.addEventListener('DOMContentLoaded', () => Canvas.init());

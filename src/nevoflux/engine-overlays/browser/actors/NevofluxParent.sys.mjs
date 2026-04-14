@@ -173,8 +173,19 @@ export class NevofluxParent extends JSWindowActorParent {
 
       case 'bridge:request': {
         const { type, payload } = data;
+        const me = this;
+        // Forward any push messages addressed to this request's id back to
+        // the iframe via a `bridge:push` async message. Used by streaming
+        // bridge calls (e.g. canvas.tool.invoke emits stdout/stderr events).
+        const onPush = (msg) => {
+          try {
+            me.sendAsyncMessage('bridge:push', { msg });
+          } catch (_e) {
+            // Actor destroyed — silently ignore (router will clean up).
+          }
+        };
         try {
-          const result = await lazy.NevofluxBridgeRouter.request(type, payload);
+          const result = await lazy.NevofluxBridgeRouter.request(type, payload, onPush);
           return { success: true, data: result };
         } catch (e) {
           return { success: false, error: { code: 13001, message: e.message } };
