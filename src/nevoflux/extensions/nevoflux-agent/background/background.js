@@ -157,12 +157,87 @@ const eventBusSubscriptions = new Map(); // subscription_id → { source, tabId,
 const tabSubscriptions = new Map(); // tabId → Set<subscription_id>
 const pendingEventHistoryRequests = new Map(); // requestId → bridgeRequestId
 
-// Canvas Tool Active Calls: call_id → { tabId, bridgeId, startTime }
+// Canvas Tool Active Calls: call_id → { tabId, bridgeId, startTime, invocationId? }
+//   invocationId is bound on the first daemon event for FIFO matching
+//   (background.js generates call_id; daemon generates its own invocation_id;
+//   currently the protocol does not carry call_id through, so we pair them up
+//   by FIFO order of in-flight calls per session).
 const activeToolCalls = new Map();
 // Canvas Tool pending list requests: requestId → bridgeId
 const pendingToolListRequests = new Map();
 // Canvas Share pending requests: requestId → bridgeId
 const pendingShareRequests = new Map();
+
+/**
+ * Map a daemon `invocation_id` back to the background-generated `callId`.
+ *
+ * On the first event for a given invocation_id, claim the oldest activeToolCalls
+ * entry that hasn't been bound yet (FIFO). Subsequent events for the same
+ * invocation_id resolve via the cached binding.
+ *
+ * Returns null if no pending call can be paired (event for an unknown invocation).
+ */
+function mapInvocationToCall(invocationId) {
+  if (!invocationId) return null;
+  // Direct lookup if we already bound this invocation
+  for (const [callId, call] of activeToolCalls) {
+    if (call.invocationId === invocationId) return callId;
+  }
+  // First event for this invocation: claim the oldest unbound call (FIFO)
+  let oldestCallId = null;
+  let oldestTime = Infinity;
+  for (const [callId, call] of activeToolCalls) {
+    if (!call.invocationId && call.startTime < oldestTime) {
+      oldestTime = call.startTime;
+      oldestCallId = callId;
+    }
+  }
+  if (oldestCallId) {
+    activeToolCalls.get(oldestCallId).invocationId = invocationId;
+    return oldestCallId;
+  }
+  return null;
+}
+
+/**
+ * Translate a daemon CanvasToolEvent payload into the SDK's expected shape.
+ *
+ * Daemon protocol (rust enum, tag = "event"):
+ *   { event: "started", invocation_id, tool_name }
+ *   { event: "output",  invocation_id, stream: "stdout"|"stderr", data }
+ *   { event: "completed", invocation_id, success, duration_ms }
+ *   { event: "error", invocation_id, message }
+ *
+ * SDK expectation (skill / canvas.js _toolEventHandlers):
+ *   { event_type: "started"|"stdout"|"stderr"|"progress"|"finished"|"error",
+ *     call_id, ...variant-specific fields }
+ */
+function adaptCanvasToolEvent(daemonPayload, callId) {
+  const e = daemonPayload?.event;
+  const out = { call_id: callId };
+
+  if (e === 'started') {
+    out.event_type = 'started';
+    out.tool_name = daemonPayload.tool_name;
+  } else if (e === 'output') {
+    out.event_type = daemonPayload.stream === 'stderr' ? 'stderr' : 'stdout';
+    out.data = daemonPayload.data || '';
+  } else if (e === 'completed') {
+    out.event_type = 'finished';
+    out.success = daemonPayload.success;
+    out.duration_ms = daemonPayload.duration_ms;
+  } else if (e === 'error') {
+    out.event_type = 'error';
+    out.error = daemonPayload.message || daemonPayload.error;
+  } else {
+    // Pass through unknown event types so future protocol additions still work
+    out.event_type = e;
+    Object.assign(out, daemonPayload);
+    delete out.event;
+    delete out.invocation_id;
+  }
+  return out;
+}
 
 // EventBus Tab Discard Recovery (IndexedDB)
 const EVENTBUS_DB_NAME = 'nevoflux_eventbus';
@@ -1055,14 +1130,23 @@ class ChannelManager {
     }
 
     // Handle Canvas Tool streaming events — route back to the calling iframe
+    //
+    // Adapter (TODO: remove once protocol is aligned with SDK):
+    //   Daemon → SDK field translation
+    //   - daemon emits `invocation_id` (its own ID), SDK / activeToolCalls use background-generated `callId`
+    //   - daemon uses tag `event` with variants started/output/completed/error,
+    //     SDK expects `event_type` with started/stdout/stderr/progress/finished/error
+    //   - daemon's `Output` event carries a `stream` field ("stdout" | "stderr"),
+    //     SDK expects separate `stdout` / `stderr` event types with `data` only
     if (msgType === 'canvas_tool_event') {
-      const callId = message.payload?.call_id;
-      const call = activeToolCalls.get(callId);
+      const callId = mapInvocationToCall(message.payload?.invocation_id);
+      const call = callId ? activeToolCalls.get(callId) : null;
       if (call && call.bridgeId) {
+        const sdkPayload = adaptCanvasToolEvent(message.payload, callId);
         browser.nevoflux
           .bridgePush(call.bridgeId, {
             type: 'canvas:tool:event',
-            payload: message.payload,
+            payload: sdkPayload,
           })
           .catch(() => {});
       }
@@ -1070,13 +1154,28 @@ class ChannelManager {
 
     // Handle Canvas Tool invoke response — complete the bridge request
     if (msgType === 'canvas_tool_invoke_response') {
-      const callId = message.payload?.call_id;
-      const call = activeToolCalls.get(callId);
+      const callId = mapInvocationToCall(message.payload?.invocation_id);
+      const call = callId ? activeToolCalls.get(callId) : null;
       if (call && call.bridgeId) {
+        // Background.js already responded synchronously with { success: true, callId }
+        // when the bridge request first arrived. The iframe SDK is listening for events,
+        // not this response. Push it as a synthesized 'finished' event so the SDK's
+        // onEvent handler fires (which is what runTool helpers wait for).
+        const p = message.payload;
         browser.nevoflux
-          .bridgeRespond(call.bridgeId, {
-            success: message.payload.success,
-            ...message.payload,
+          .bridgePush(call.bridgeId, {
+            type: 'canvas:tool:event',
+            payload: {
+              event_type: 'finished',
+              call_id: callId,
+              success: p.success,
+              exit_code: p.exit_code ?? null,
+              stdout: p.stdout ?? '',
+              stderr: p.stderr ?? '',
+              error: p.error ?? null,
+              duration_ms: p.duration_ms ?? 0,
+              tool_name: p.tool_name ?? null,
+            },
           })
           .catch(() => {});
         activeToolCalls.delete(callId);
