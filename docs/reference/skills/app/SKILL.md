@@ -1,7 +1,7 @@
 ---
 name: app
-description: Build interactive Canvas apps and visual outputs using NevofluxSDK. Supports HTML single-page apps, React components, multi-file projects (bundled with esbuild), SVG graphics, Mermaid diagrams, and Markdown documents — all with persistent storage, browser control, and AI agent interaction. Use this skill whenever the user wants to create any visual app, dashboard, widget, tool, game, calculator, chart, diagram, data visualization, interactive UI, or any output that should be rendered visually — even if they don't say "canvas" or "artifact" explicitly.
-version: 1.1.0
+description: Build interactive Canvas apps and visual outputs using NevofluxSDK. Supports HTML single-page apps, React components, multi-file projects (bundled with esbuild), SVG graphics, Mermaid diagrams, and Markdown documents — all with persistent storage, browser control, AI agent interaction, event bus pub/sub, whitelisted CLI tool invocation (ffmpeg/git/fs/etc.), and end-to-end encrypted sharing. Use this skill whenever the user wants to create any visual app, dashboard, widget, tool, game, calculator, chart, diagram, data visualization, interactive UI, or any output that should be rendered visually — even if they don't say "canvas" or "artifact" explicitly.
+version: 1.2.0
 tags:
   - canvas
   - artifact
@@ -14,6 +14,13 @@ tags:
   - diagram
   - svg
   - mermaid
+  - events
+  - eventbus
+  - pubsub
+  - tool
+  - ffmpeg
+  - share
+  - collaboration
 enabled: true
 triggers:
   - dashboard
@@ -246,6 +253,133 @@ await NevofluxSDK.sidebar.notify(type, data); // Typed notification
 await NevofluxSDK.system.getInfo(); // Get browser/system info
 ```
 
+### Events (EventBus pub/sub)
+
+Publish and subscribe to events across sessions/canvases. Three delivery modes:
+
+- **ephemeral** — fire-and-forget, not retained
+- **sticky** — last value cached per topic, delivered to new subscribers immediately
+- **persistent** — written to SQLite (queryable via `history()`)
+
+Topic format: colon-separated segments matching `[a-zA-Z0-9_-]{1,64}`, max 8 segments (e.g. `"task:progress"`, `"session:abc:notification"`). Wildcards: `*` matches one segment (e.g. `"session:*:notification"`).
+
+```javascript
+// Subscribe (handler fires for every matching event)
+const sub = await NevofluxSDK.events.subscribe(
+  ['task:progress', 'session:*:notification'],
+  (event) => {
+    console.log(event.topic, event.payload);
+  },
+  { replaySticky: true, bufferSize: 256 }
+);
+// Later:
+await sub.unsubscribe();
+
+// Publish
+await NevofluxSDK.events.publish('task:progress', { percent: 42 });
+await NevofluxSDK.events.publish('config:theme', { mode: 'dark' }, { delivery: 'sticky' });
+await NevofluxSDK.events.publish('log:error', { msg: '...' }, {
+  delivery: { persistent: { ttlSecs: 3600 } }
+});
+
+// Query persistent history
+const { events } = await NevofluxSDK.events.history('log:error', {
+  limit: 100,
+  sinceMs: Date.now() - 3600_000,
+});
+
+// Wait for a single event (with timeout)
+const ready = await NevofluxSDK.events.waitFor('signal:ready', { timeoutMs: 30000 });
+
+// Recover subscriptions after tab discard (call on load if your app uses events)
+await NevofluxSDK.events.recover();
+```
+
+Permission matrix (topic prefix → who can publish / subscribe):
+
+| Prefix    | Publish        | Subscribe      |
+| --------- | -------------- | -------------- |
+| `task:*`  | daemon         | agent + daemon |
+| `agent:*` | agent + daemon | agent + daemon |
+| `ui:*`    | extension      | extension      |
+| `system:*`| daemon         | all            |
+| `mcp:*`   | mcp server     | agent + daemon |
+| `wasm:*`  | wasm plugin    | agent + daemon |
+
+Canvases publish as extensions, so use `ui:*` or unreserved topics for your own app events.
+
+### Canvas Tools (whitelisted CLI invocation)
+
+Invoke pre-configured CLI tools (ffmpeg, git, fs, ffprobe, ...) from canvas. Tools are defined in TOML files and must be enabled in settings. See `nevoflux://settings` → "Canvas Tools".
+
+```javascript
+// List available tools
+const { tools } = await NevofluxSDK.tool.list();
+// [{ name: "ffmpeg.trim", description, kind, args_mode, enabled, source }, ...]
+
+// Invoke with streaming events
+const result = await NevofluxSDK.tool.invoke('ffmpeg.trim', {
+  input: '$SESSION_DIR/in.mp4',
+  start: '00:00:10',
+  end: '00:00:20',
+  output: '$SESSION_DIR/out.mp4',
+}, {
+  timeoutMs: 120000,
+  onEvent: (event) => {
+    // event.event_type: "started" | "stdout" | "stderr" | "progress" | "finished" | "error"
+    if (event.event_type === 'stdout') appendLog(event.data);
+    if (event.event_type === 'progress') setProgress(event.progress);
+  },
+});
+// result = { callId, pending: true } — final response via events
+```
+
+Built-in tools (user/session overrides possible):
+
+| Tool           | Backend  | Purpose                              |
+| -------------- | -------- | ------------------------------------ |
+| `ffmpeg.trim`  | command  | Trim video/audio to time range        |
+| `ffmpeg.probe` | command  | Media metadata (duration/codecs)      |
+| `git`          | command  | Read-only git ops (status/log/diff)   |
+| `fs.read`      | internal | Read file from session directory      |
+
+Path params support `$SESSION_DIR` which expands to the canvas's sandboxed directory. Tools run with `Command::new` (no shell interpretation), 60-second default timeout, captured stdout/stderr.
+
+### Canvas Share (encrypted link sharing)
+
+Share artifacts as encrypted links. Content is encrypted client-side with Argon2id-derived AES-256-GCM key; the server only stores the ciphertext. Recipients need the URL AND password.
+
+```javascript
+// Share current/another artifact. Password is returned ONCE.
+const shared = await NevofluxSDK.share.share(artifactId, { ttlSecs: 2592000 }); // 30d default
+// {
+//   share_id: "8b3g4n36k8",
+//   share_url: "https://share.nevoflux.app/c/8b3g4n36k8",
+//   password: "1-6XG0-GEGA-N0ET",     // 64-bit entropy, 1-4-4-4 format
+//   expires_at: 1778742872,
+// }
+
+// IMPORTANT: show the password to the user immediately — we cannot recover it.
+// Use the helper to copy with 60-second auto-clear:
+await NevofluxSDK.share.copyPasswordWithAutoClear(shared.password, 60000);
+
+// Import a shared canvas (usually triggered by nevoflux://import/{share_id})
+const imported = await NevofluxSDK.share.import(shareId, password);
+// { artifact_id, artifact_name, artifact_type, imported_from_share_id }
+
+// List my active shares
+const { shares } = await NevofluxSDK.share.list();
+// [{ artifact_id, share_id, share_url, expires_at, view_count, created_at }, ...]
+
+// Extend TTL (requires owner — no explicit token needed; stored locally encrypted)
+const extended = await NevofluxSDK.share.extend(shareId, 3600);
+
+// Delete (revokes access immediately)
+await NevofluxSDK.share.delete(shareId);
+```
+
+If the canvas page loads with URL params `mode=import&share_id=xxx`, `window._nevofluxImportShareId` is set — your app can detect this and prompt the user for the password.
+
 ## HTML Template
 
 ```html
@@ -459,6 +593,129 @@ Use when the app needs AI features — analysis, generation, Q&A, or orchestrati
 </html>
 ```
 
+## Event-Driven App Template
+
+Use when multiple canvases or the sidebar need to coordinate (live dashboards, notifications, cross-tab state sync).
+
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Live Counter</title>
+    <style>
+      body { font-family: system-ui; padding: 20px; }
+      .value { font-size: 48px; font-weight: 600; color: #0066ff; }
+      .meta { color: #888; font-size: 12px; }
+      button { padding: 8px 16px; margin-right: 8px; border: none; border-radius: 6px;
+               background: #0066ff; color: #fff; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h2>Live Counter</h2>
+    <div class="value" id="value">0</div>
+    <div class="meta" id="meta">waiting for events...</div>
+    <button id="inc">+1</button>
+    <button id="reset">Reset</button>
+    <script>
+      const TOPIC = 'ui:counter:value';
+      const valueEl = document.getElementById('value');
+      const metaEl = document.getElementById('meta');
+
+      (async () => {
+        // Subscribe (replaySticky=true delivers the current value immediately)
+        const sub = await NevofluxSDK.events.subscribe([TOPIC], (event) => {
+          valueEl.textContent = event.payload.count;
+          metaEl.textContent = `from ${event.publisher} at ${new Date(event.timestamp_ms).toLocaleTimeString()}`;
+        });
+
+        document.getElementById('inc').addEventListener('click', async () => {
+          const current = parseInt(valueEl.textContent, 10) || 0;
+          await NevofluxSDK.events.publish(TOPIC, { count: current + 1 }, { delivery: 'sticky' });
+        });
+
+        document.getElementById('reset').addEventListener('click', async () => {
+          await NevofluxSDK.events.publish(TOPIC, { count: 0 }, { delivery: 'sticky' });
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('unload', () => sub.unsubscribe());
+      })();
+    </script>
+  </body>
+</html>
+```
+
+## Tool-Invoking App Template
+
+Use for apps that wrap CLI tools (video trim, git browser, file explorer).
+
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Video Trimmer</title>
+    <style>
+      body { font-family: system-ui; padding: 20px; max-width: 520px; }
+      input[type=text] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 6px; margin: 4px 0 12px; }
+      button { padding: 10px 20px; border: none; border-radius: 6px; background: #0066ff; color: #fff; cursor: pointer; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      #progress { width: 100%; height: 6px; background: #eee; border-radius: 3px; margin: 12px 0; }
+      #bar { height: 100%; background: #0066ff; border-radius: 3px; width: 0%; transition: width 0.2s; }
+      pre { background: #f5f5f5; padding: 12px; border-radius: 6px; font-size: 12px; max-height: 240px; overflow: auto; }
+    </style>
+  </head>
+  <body>
+    <h2>Video Trimmer (ffmpeg.trim)</h2>
+    <label>Input path</label>
+    <input id="in" value="$SESSION_DIR/video.mp4" />
+    <label>Start</label>
+    <input id="start" value="00:00:10" />
+    <label>End</label>
+    <input id="end" value="00:00:20" />
+    <label>Output path</label>
+    <input id="out" value="$SESSION_DIR/trimmed.mp4" />
+    <button id="run">Trim</button>
+    <div id="progress"><div id="bar"></div></div>
+    <pre id="log"></pre>
+    <script>
+      document.getElementById('run').addEventListener('click', async () => {
+        const btn = document.getElementById('run');
+        const log = document.getElementById('log');
+        const bar = document.getElementById('bar');
+        btn.disabled = true;
+        log.textContent = '';
+        bar.style.width = '0%';
+
+        try {
+          await NevofluxSDK.tool.invoke('ffmpeg.trim', {
+            input: document.getElementById('in').value,
+            start: document.getElementById('start').value,
+            end: document.getElementById('end').value,
+            output: document.getElementById('out').value,
+          }, {
+            timeoutMs: 120000,
+            onEvent: (e) => {
+              if (e.event_type === 'stderr' || e.event_type === 'stdout') {
+                log.textContent += e.data;
+                log.scrollTop = log.scrollHeight;
+              }
+              if (e.event_type === 'progress') bar.style.width = (e.progress * 100) + '%';
+              if (e.event_type === 'finished') { bar.style.width = '100%'; log.textContent += '\n[done]'; }
+              if (e.event_type === 'error') log.textContent += '\n[error] ' + e.error;
+            },
+          });
+        } catch (err) {
+          log.textContent += '\n[error] ' + (err.message || err);
+        }
+        btn.disabled = false;
+      });
+    </script>
+  </body>
+</html>
+```
+
 ## Multi-File Project Template
 
 Use for complex apps with multiple components and module imports. The canvas bundles files with esbuild.
@@ -493,3 +750,11 @@ Use for complex apps with multiple components and module imports. The canvas bun
 12. Use `sessionId` from a previous result to continue a multi-turn conversation
 13. `agent.chat()` attachments: use `{ name, mime_type, data }` for base64 images, `{ path }` for local files, `{ path, is_directory: true }` for directories
 14. Image `data` must be **base64 encoded** (no `data:` URI prefix) — use `btoa()` or `FileReader.readAsDataURL()` then strip the prefix
+15. **Events topics** are colon-separated, `[a-zA-Z0-9_-]{1,64}` per segment, max 8 segments. Don't use dots: `"task:progress"` not `"task.progress"`
+16. **Events `replaySticky: true`** (default) fires handler once per matching sticky event immediately on subscribe — handle accordingly
+17. **Events `publish()` with permission errors** return EventBusResponse::Error — wrap in try/catch. Canvases cannot publish to `task:*` or `system:*`
+18. **Canvas tools** use snake_case in params but dotted names in tool name (e.g. `ffmpeg.trim` not `ffmpeg_trim`). Check enabled state via `tool.list()` before invoking
+19. **Canvas tool `onEvent` callbacks** fire multiple times per invocation; the returned Promise resolves with `{ callId, pending: true }` early — the actual result arrives through events
+20. **Share password is shown once only** — do not re-request it. Display immediately, offer copy-with-auto-clear, warn the user to save it
+21. **Share URL domain** is `share.nevoflux.app` (not `.com`). Recipients open `nevoflux://import/{share_id}` which triggers the import flow in this canvas page
+22. **Share import requires both URL and password** — no "password recovery". Wrong password fails with decryption error
