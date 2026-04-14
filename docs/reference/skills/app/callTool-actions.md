@@ -5,13 +5,21 @@ Complete reference for `NevofluxSDK.callTool(action, params)`.
 All actions return `{ success: boolean, result?: object, error?: { code, message, recoverable } }`.
 Most actions accept an optional `tab_id` param to target a specific tab (defaults to active tab).
 
+**Naming convention**: most actions use `snake_case` (`get_markdown`, `list_tabs`). A few newer actions use `camelCase` and are called out in each table: `activateTab`, `fillRichText`, `uploadFile`. Match the exact casing shown.
+
+**Tab-independent actions** (don't require an open web tab): `web_fetch`, `web_search`, `ask_user`, `list_tabs`, `query_tabs`, `read_artifact`, `edit_artifact`, `canvas_render`, `cache_file`, `cache_tab_markdown`.
+
 ## Navigation
 
-| Action       | Params    | Result    |
-| ------------ | --------- | --------- |
-| `navigate`   | `{ url }` | `{ url }` |
-| `go_back`    | `{}`      | `{ url }` |
-| `go_forward` | `{}`      | `{ url }` |
+| Action        | Params                         | Result                                                                  |
+| ------------- | ------------------------------ | ----------------------------------------------------------------------- |
+| `navigate`    | `{ url, new_tab? }`            | `{ url, tab_id, new_tab }`                                              |
+| `activateTab` | `{ tab_id }`                   | `{ tab_id, url, title }`                                                |
+| `go_back`     | `{}`                           | `{ url }`                                                               |
+| `go_forward`  | `{}`                           | `{ url }`                                                               |
+
+- `new_tab`: `true` opens in a new tab, `false`/omitted navigates in place (falls back to any web tab if current tab isn't web)
+- `activateTab` (camelCase) switches focus to an existing tab — use with `tab_id` from `list_tabs`/`query_tabs`
 
 ## Interaction (selector-based)
 
@@ -29,6 +37,30 @@ Most actions accept an optional `tab_id` param to target a specific tab (default
 - `amount`: `"page"` (default) or pixel count
 - `modifiers`: array of `"Ctrl"`, `"Shift"`, `"Alt"`, `"Meta"`
 - All click/type/fill/key_press use **trusted events** (`isTrusted=true`), bypassing CSP restrictions
+
+## Rich Text / ContentEditable
+
+Use for rich text editors (Google Docs, Notion, ProseMirror, Slate, Lexical, etc.) where plain `type`/`fill` fails because the target is a `contenteditable` div, not a native input.
+
+| Action         | Params                 | Result                         |
+| -------------- | ---------------------- | ------------------------------ |
+| `paste`        | `{ selector, text }`   | `{ selector, pasted: true }`   |
+| `fillRichText` | `{ selector, text }`   | `{ selector, filled: true }`   |
+
+- `paste` inserts text at the current caret position via the clipboard/execCommand paste path — preserves existing content
+- `fillRichText` (camelCase) clears the element first, then pastes — the "replace all" variant
+- Both use privileged actor methods that bypass CSP clipboard restrictions
+
+## File Upload
+
+| Action       | Params                                          | Result                                  |
+| ------------ | ----------------------------------------------- | --------------------------------------- |
+| `uploadFile` | `{ selector, fileUrl, fileName?, mimeType? }`   | `{ selector, uploaded: true, fileName }` |
+
+- `uploadFile` (camelCase) attaches a file to an `<input type="file">` element. `fileUrl` is typically a result path from `cache_file` (e.g. `file:///tmp/cached/xxx.png`) or any URL the browser can fetch
+- `fileName` (optional): display name shown in the form (default `"upload"`)
+- `mimeType` (optional): MIME type hint (default `"application/octet-stream"`)
+- Uses a localhost HTTP bridge + `mozSetFileArray` to work around Xray wrapper issues with `DataTransfer`
 
 ## Interaction (ID-based, after snapshot)
 

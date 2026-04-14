@@ -129,22 +129,28 @@ Use app-specific key prefixes (e.g. `todo:items`, `dashboard:config`) to avoid c
 await NevofluxSDK.callTool(action, params);
 ```
 
-Action names use **snake_case**. Common actions:
+Most action names use **snake_case**; a few use camelCase (flagged below). Common actions:
 
-| Action         | Params                      | Purpose                       |
-| -------------- | --------------------------- | ----------------------------- |
-| `navigate`     | `{ url }`                   | Navigate browser tab          |
-| `get_markdown` | `{}`                        | Get page content as markdown  |
-| `screenshot`   | `{}`                        | Capture page screenshot       |
-| `list_tabs`    | `{}`                        | List all open tabs            |
-| `query_tabs`   | `{ url?, title?, active? }` | Filter tabs                   |
-| `get_elements` | `{}`                        | Get interactive page elements |
-| `click`        | `{ selector }`              | Click element                 |
-| `type`         | `{ selector, text }`        | Type into element             |
-| `web_search`   | `{ query }`                 | Search the web                |
-| `web_fetch`    | `{ url }`                   | Fetch URL content             |
-| `eval_js`      | `{ code }`                  | Run JS in active browser tab  |
-| `ask_user`     | `{ question, options? }`    | Prompt user in sidebar        |
+| Action          | Params                                        | Purpose                                      |
+| --------------- | --------------------------------------------- | -------------------------------------------- |
+| `navigate`      | `{ url, new_tab? }`                           | Navigate (optionally open new tab)           |
+| `activateTab`   | `{ tab_id }`                                  | Switch focus to existing tab (camelCase)     |
+| `get_markdown`  | `{}`                                          | Get page content as markdown                 |
+| `screenshot`    | `{}`                                          | Capture page screenshot                      |
+| `list_tabs`     | `{}`                                          | List all open tabs                           |
+| `query_tabs`    | `{ url?, title?, active? }`                   | Filter tabs                                  |
+| `get_elements`  | `{}`                                          | Get interactive page elements (alias)        |
+| `snapshot`      | `{}`                                          | Full a11y tree + element refs for `*_by_id`  |
+| `click`         | `{ selector }`                                | Click element                                |
+| `type`          | `{ selector, text }`                          | Type into element                            |
+| `fill`          | `{ selector, value }`                         | Fill native input                            |
+| `paste`         | `{ selector, text }`                          | Insert into contenteditable at caret         |
+| `fillRichText`  | `{ selector, text }`                          | Clear + fill contenteditable (camelCase)     |
+| `uploadFile`    | `{ selector, fileUrl, fileName?, mimeType? }` | Attach file to `<input type=file>` (camelCase)|
+| `web_search`    | `{ query }`                                   | Search the web                               |
+| `web_fetch`     | `{ url }`                                     | Fetch URL content                            |
+| `eval_js`       | `{ code }`                                    | Run JS in active browser tab                 |
+| `ask_user`      | `{ question, options? }`                      | Prompt user in sidebar                       |
 
 Full action reference: load auxiliary file `callTool-actions.md`.
 
@@ -742,7 +748,7 @@ Use for complex apps with multiple components and module imports. The canvas bun
 4. **HTML apps**: All JS/CSS must be inline — external URLs (CDN, unpkg, etc.) are blocked by the sandbox
 5. **React apps**: Use `content_type: "react"` and output ONLY JSX — no `<html>` wrappers or `<script>` tags
 6. **Project apps**: File paths must start with `/`. Always provide an `entry` pointing to the root component
-7. Action names are **snake_case**: `get_markdown`, `list_tabs`, not camelCase
+7. Action names are mostly **snake_case** (`get_markdown`, `list_tabs`) with a few camelCase exceptions: `activateTab`, `fillRichText`, `uploadFile`. Match the exact casing shown in the action tables
 8. `callTool` returns `{ success, result, error }` — always check `success` first
 9. MCP tools cannot be called directly — use `NevofluxSDK.agent.chat()` to ask the agent
 10. `agent.chat()` resolves only after the agent finishes — use `onStream` callback for real-time output
@@ -758,3 +764,7 @@ Use for complex apps with multiple components and module imports. The canvas bun
 20. **Share password is shown once only** — do not re-request it. Display immediately, offer copy-with-auto-clear, warn the user to save it
 21. **Share URL domain** is `share.nevoflux.app` (not `.com`). Recipients open `nevoflux://import/{share_id}` which triggers the import flow in this canvas page
 22. **Share import requires both URL and password** — no "password recovery". Wrong password fails with decryption error
+23. **Rich text editors** (Google Docs, Notion, ProseMirror, Lexical): `type`/`fill` often fail because target is `contenteditable`. Use `paste` to insert at caret or `fillRichText` to replace all content
+24. **`navigate` without `new_tab`** reuses the current tab or falls back to any existing web tab. If you always want a fresh tab, pass `{ url, new_tab: true }`
+25. **`uploadFile` `fileUrl`** is typically obtained from `cache_file` (returns a `file_path` usable as URL). Pass the file URL, not the raw bytes
+26. **`activateTab` vs `navigate`**: use `activateTab({ tab_id })` to switch focus to an already-open tab, `navigate` to change the URL. Combine with `query_tabs` to find the target tab id first
