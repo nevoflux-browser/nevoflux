@@ -1,7 +1,7 @@
 ---
 name: app
 description: Build interactive Canvas apps and visual outputs using NevofluxSDK. Supports HTML single-page apps, React components, multi-file projects (bundled with esbuild), SVG graphics, Mermaid diagrams, and Markdown documents — all with persistent storage, browser control, AI agent interaction, event bus pub/sub, whitelisted CLI tool invocation (ffmpeg/git/fs/etc.), and end-to-end encrypted sharing. Use this skill whenever the user wants to create any visual app, dashboard, widget, tool, game, calculator, chart, diagram, data visualization, interactive UI, or any output that should be rendered visually — even if they don't say "canvas" or "artifact" explicitly.
-version: 1.2.1
+version: 1.2.2
 tags:
   - canvas
   - artifact
@@ -386,13 +386,113 @@ Pass `free` args via the options object, not the params object — `NevofluxSDK.
 
 #### When the tool you need isn't registered
 
-If `tool.list()` doesn't include what you need, options:
+**Never call `tool.invoke()` on an unregistered tool and hope it works** — the call will fail with `Tool not found: <name>` and your canvas will look broken. Always handle this gracefully.
 
-- Ask the user to add a TOML file to `~/.config/nevoflux/canvas-tools/` (user can do this in settings UI)
-- Delegate to the agent via `NevofluxSDK.agent.chat('run bash command: ...')` — agent has access to broader tool set (MCP Bash, etc.) under its own permission model
-- For file reading/writing, prefer `NevofluxSDK.storage.*` (safer, no external process) or `fs.read` (if registered)
+**Decision flow** when building a canvas that needs a CLI tool:
+
+1. **Check first** — call `tool.list()` and verify `{ name, enabled: true }` for each tool you need.
+2. **If missing or disabled, show the user a prompt** with:
+   - Which tool is needed
+   - Why the canvas needs it
+   - Exactly what to add to the whitelist (copy-pasteable TOML block)
+   - A button that opens `nevoflux://settings` (or calls `NevofluxSDK.callTool('navigate', { url: 'nevoflux://settings', new_tab: true })`)
+   - A "Retry" button that re-runs `tool.list()` and resumes
+3. **Alternative: offer a fallback** via `agent.chat()` for one-off needs (still informs the user that a shell command will run with the agent's broader permissions).
 
 **Don't attempt**: `NevofluxSDK.callTool('bash', ...)` — `bash` is NOT a browser action. `callTool` only dispatches browser-side operations (navigate/click/screenshot/eval_js/web_fetch). It cannot run shell commands.
+
+#### Missing-tool UX pattern (reusable)
+
+Wrap any tool call with a `ensureTool()` helper. It shows the registration instructions on miss and re-checks after the user adds the TOML:
+
+```html
+<div id="tool-gate" hidden>
+  <h3>⚠️ Tool required: <code id="gate-name"></code></h3>
+  <p id="gate-why"></p>
+  <p>Add this TOML file to <code>~/.config/nevoflux/canvas-tools/</code>:</p>
+  <pre id="gate-toml"></pre>
+  <button id="gate-open-settings">Open Settings</button>
+  <button id="gate-retry">I've added it — Retry</button>
+  <button id="gate-delegate">Use agent instead</button>
+</div>
+
+<script>
+async function ensureTool(name, { why, sampleToml, onReady, onFallback }) {
+  async function check() {
+    const { tools } = await NevofluxSDK.tool.list();
+    return tools.find(t => t.name === name && t.enabled);
+  }
+
+  const tool = await check();
+  if (tool) { onReady(tool); return; }
+
+  // Not available — show gate
+  const gate = document.getElementById('tool-gate');
+  document.getElementById('gate-name').textContent = name;
+  document.getElementById('gate-why').textContent = why;
+  document.getElementById('gate-toml').textContent = sampleToml;
+  gate.hidden = false;
+
+  document.getElementById('gate-open-settings').onclick = () => {
+    NevofluxSDK.callTool('navigate', { url: 'nevoflux://settings', new_tab: true });
+  };
+  document.getElementById('gate-retry').onclick = async () => {
+    const now = await check();
+    if (now) { gate.hidden = true; onReady(now); }
+    else alert('Still not found. Did you save the TOML and enable it in settings?');
+  };
+  document.getElementById('gate-delegate').onclick = () => {
+    gate.hidden = true;
+    onFallback?.();
+  };
+}
+
+// Usage:
+await ensureTool('ffmpeg.trim', {
+  why: 'Needed to trim the uploaded video to the selected range.',
+  sampleToml: `# ~/.config/nevoflux/canvas-tools/ffmpeg-trim.toml
+name = "ffmpeg.trim"
+description = "Trim a media file to a time range"
+kind = "command"
+binary = "ffmpeg"
+args_mode = "template"
+args = ["-y", "-i", "{input}", "-ss", "{start}", "-to", "{end}", "-c", "copy", "{output}"]
+
+[params.input]
+type = "path"
+within = "$SESSION_DIR"
+must_exist = true
+extension = ["mp4", "mkv", "mov", "webm", "mp3", "wav"]
+
+[params.start]
+type = "duration"
+min = 0.0
+max = 86400.0
+
+[params.end]
+type = "duration"
+min = 0.0
+max = 86400.0
+
+[params.output]
+type = "path"
+within = "$SESSION_DIR"
+
+[constraints]
+timeout_seconds = 120
+cwd = "$SESSION_DIR"
+`,
+  onReady: (tool) => runTrim(tool),
+  onFallback: () => {
+    NevofluxSDK.agent.chat('Please run ffmpeg.trim with these args: ...');
+  },
+});
+</script>
+```
+
+**When to generate this gate automatically**: if the canvas's core functionality depends on a tool (e.g. video editor → `ffmpeg.trim`), include the gate up front. If the tool is optional (e.g. "also run this git command"), check on-demand when the button is clicked.
+
+**Never silently skip** the feature when the tool is missing — always explain what's happening so the user can take action.
 
 #### Tool invocation decision table
 
@@ -818,10 +918,11 @@ Use for complex apps with multiple components and module imports. The canvas bun
 20. **Canvas tools** use snake_case in params but dotted names in tool name (e.g. `ffmpeg.trim` not `ffmpeg_trim`). Always call `tool.list()` first and verify the tool exists + is enabled before invoking — don't assume
 21. **Canvas tool `onEvent` callbacks** fire multiple times per invocation; the returned Promise resolves with `{ callId, pending: true }` early — the actual result arrives through events, not the Promise value
 22. **Free-mode tool args** go in the third argument (options), not the params object: `tool.invoke('git', {}, { args: ['status', '--short'], onEvent })`. Template-mode tools put values in the params (second arg)
-23. **Share password is shown once only** — do not re-request it. Display immediately, offer copy-with-auto-clear, warn the user to save it
-24. **Share URL domain** is `share.nevoflux.app` (not `.com`). Recipients open `nevoflux://import/{share_id}` which triggers the import flow in this canvas page
-25. **Share import requires both URL and password** — no "password recovery". Wrong password fails with decryption error
-26. **Rich text editors** (Google Docs, Notion, ProseMirror, Lexical): `type`/`fill` often fail because target is `contenteditable`. Use `paste` to insert at caret or `fillRichText` to replace all content
-27. **`navigate` without `new_tab`** reuses the current tab or falls back to any existing web tab. If you always want a fresh tab, pass `{ url, new_tab: true }`
-28. **`uploadFile` `fileUrl`** is typically obtained from `cache_file` (returns a `file_path` usable as URL). Pass the file URL, not the raw bytes
-29. **`activateTab` vs `navigate`**: use `activateTab({ tab_id })` to switch focus to an already-open tab, `navigate` to change the URL. Combine with `query_tabs` to find the target tab id first
+23. **Unregistered tools must be handled gracefully.** When `tool.list()` shows the needed tool is missing or disabled, **do not silently fail or throw**. Show the user (a) which tool is needed, (b) why, (c) a copy-pasteable TOML block for `~/.config/nevoflux/canvas-tools/`, (d) a button to open `nevoflux://settings`, (e) a Retry button that re-checks. See the "Missing-tool UX pattern" in the Canvas Tools section for a reusable template
+24. **Share password is shown once only** — do not re-request it. Display immediately, offer copy-with-auto-clear, warn the user to save it
+25. **Share URL domain** is `share.nevoflux.app` (not `.com`). Recipients open `nevoflux://import/{share_id}` which triggers the import flow in this canvas page
+26. **Share import requires both URL and password** — no "password recovery". Wrong password fails with decryption error
+27. **Rich text editors** (Google Docs, Notion, ProseMirror, Lexical): `type`/`fill` often fail because target is `contenteditable`. Use `paste` to insert at caret or `fillRichText` to replace all content
+28. **`navigate` without `new_tab`** reuses the current tab or falls back to any existing web tab. If you always want a fresh tab, pass `{ url, new_tab: true }`
+29. **`uploadFile` `fileUrl`** is typically obtained from `cache_file` (returns a `file_path` usable as URL). Pass the file URL, not the raw bytes
+30. **`activateTab` vs `navigate`**: use `activateTab({ tab_id })` to switch focus to an already-open tab, `navigate` to change the URL. Combine with `query_tabs` to find the target tab id first
