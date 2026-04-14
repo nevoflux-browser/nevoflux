@@ -316,6 +316,218 @@
       #viewport, .canvas-viewport { width: 100% !important; margin: 0 !important; padding: 0 !important; }
       iframe { border: none !important; width: 100% !important; height: auto !important; }
     }
+
+    /* Share/Import Dialogs */
+    .nevoflux-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .nevoflux-modal[hidden] { display: none; }
+    .nevoflux-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+    }
+    .nevoflux-modal-content {
+      position: relative;
+      background: var(--nevoflux-surface, var(--nevoflux-bg-secondary, #1a1a24));
+      color: var(--nevoflux-text-primary, var(--nevoflux-text, #e0e0e8));
+      border: 1px solid var(--nevoflux-border, #2a2a3a);
+      border-radius: 12px;
+      padding: 32px;
+      max-width: 480px;
+      width: 90%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+    .nevoflux-modal-close {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: transparent;
+      border: none;
+      color: var(--nevoflux-text-secondary, #888);
+      font-size: 24px;
+      cursor: pointer;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+    }
+    .nevoflux-modal-close:hover { background: rgba(255, 255, 255, 0.05); }
+    .nevoflux-modal h2 { margin: 0 0 16px 0; font-size: 20px; }
+    .share-step, .import-step { display: block; }
+    .share-step[hidden], .import-step[hidden] { display: none; }
+    .share-warning {
+      background: rgba(251, 191, 36, 0.12);
+      border: 1px solid rgba(251, 191, 36, 0.3);
+      color: #fbbf24;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    .share-error, .import-error {
+      background: rgba(248, 113, 113, 0.12);
+      border: 1px solid rgba(248, 113, 113, 0.3);
+      color: #f87171;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    .import-success {
+      background: rgba(74, 222, 128, 0.12);
+      border: 1px solid rgba(74, 222, 128, 0.3);
+      color: #4ade80;
+      padding: 12px 16px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+    .share-field {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+    .share-field input {
+      flex: 1;
+      background: var(--nevoflux-bg, #12121a);
+      border: 1px solid var(--nevoflux-border, #2a2a3a);
+      color: inherit;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-family: ui-monospace, monospace;
+      font-size: 14px;
+    }
+    .share-field input.share-password { letter-spacing: 0.5px; }
+    .share-notice {
+      background: rgba(99, 102, 241, 0.1);
+      border-left: 3px solid #6366f1;
+      padding: 10px 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+      color: var(--nevoflux-text-secondary, #a0a0a8);
+    }
+    .share-info, .import-info {
+      font-size: 14px;
+      color: var(--nevoflux-text-secondary, #a0a0a8);
+      margin-bottom: 16px;
+    }
+    .share-actions, .import-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 20px;
+    }
+    .nevoflux-modal label {
+      display: block;
+      font-size: 12px;
+      color: var(--nevoflux-text-secondary, #a0a0a8);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .nevoflux-modal input[type="text"] {
+      width: 100%;
+      background: var(--nevoflux-bg, #12121a);
+      border: 1px solid var(--nevoflux-border, #2a2a3a);
+      color: inherit;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-family: ui-monospace, monospace;
+      font-size: 14px;
+      margin-bottom: 16px;
+      box-sizing: border-box;
+    }
+    .nevoflux-btn-primary, .nevoflux-btn-secondary {
+      padding: 10px 20px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    .nevoflux-btn-primary {
+      background: #6366f1;
+      color: #fff;
+    }
+    .nevoflux-btn-primary:hover { background: #4f46e5; }
+    .nevoflux-btn-secondary {
+      background: var(--nevoflux-surface-hover, var(--nevoflux-bg-tertiary, #2a2a3a));
+      color: var(--nevoflux-text-primary, var(--nevoflux-text, #e0e0e8));
+    }
+    .nevoflux-btn-secondary:hover { background: var(--nevoflux-border, #3a3a4a); }
+    .nevoflux-spinner {
+      display: block;
+      width: 32px;
+      height: 32px;
+      border: 3px solid var(--nevoflux-border, #2a2a3a);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      margin: 20px auto;
+      animation: nevoflux-spin 0.8s linear infinite;
+    }
+    @keyframes nevoflux-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Canvas Management List */
+    #nevoflux-canvas-list {
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+    .canvas-list-filters {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .filter-btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--nevoflux-border, #2a2a3a);
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .filter-btn.active {
+      background: #6366f1;
+      border-color: #6366f1;
+      color: #fff;
+    }
+    .canvas-list-item {
+      padding: 14px 16px;
+      background: var(--nevoflux-surface, var(--nevoflux-bg-secondary, #1a1a24));
+      border: 1px solid var(--nevoflux-border, #2a2a3a);
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .canvas-item-name {
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    .canvas-item-meta {
+      display: flex;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--nevoflux-text-secondary, #a0a0a8);
+    }
+    .status-badge {
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(99, 102, 241, 0.15);
+      color: #818cf8;
+    }
+    .status-badge.imported {
+      background: rgba(74, 222, 128, 0.15);
+      color: #4ade80;
+    }
   </style>
 </head>
 <body>
@@ -372,6 +584,121 @@
     </div>
     <div class="canvas-empty" id="empty-state" style="display:none">No artifact loaded</div>
   </div>
+
+  <!-- Canvas Management List View (shown when mode=list or no artifact id) -->
+  <div id="nevoflux-canvas-list" hidden>
+    <h1>My Canvases</h1>
+    <div class="canvas-list-filters">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="shared">Shared</button>
+      <button class="filter-btn" data-filter="imported">Imported</button>
+    </div>
+    <div id="canvas-list-items"></div>
+    <div id="canvas-list-empty" hidden>
+      <p>No canvases yet. Create one to get started.</p>
+    </div>
+  </div>
+
+  <!-- Share Canvas Dialog -->
+  <div id="nevoflux-share-dialog" class="nevoflux-modal" hidden>
+    <div class="nevoflux-modal-backdrop" data-close-dialog></div>
+    <div class="nevoflux-modal-content">
+      <button class="nevoflux-modal-close" data-close-dialog aria-label="Close">×</button>
+      <h2>Share Canvas</h2>
+
+      <div id="share-step-confirm" class="share-step">
+        <p>Share this canvas as an encrypted link. Anyone with the link and password can import it.</p>
+        <p><strong>TTL:</strong> 30 days (default)</p>
+        <button id="share-confirm-btn" class="nevoflux-btn-primary">Create Share Link</button>
+      </div>
+
+      <div id="share-step-loading" class="share-step" hidden>
+        <p>Encrypting and uploading... This may take a moment.</p>
+        <div class="nevoflux-spinner"></div>
+      </div>
+
+      <div id="share-step-result" class="share-step" hidden>
+        <div class="share-warning">
+          ⚠️ <strong>Save the password now.</strong> We cannot recover it later.
+        </div>
+
+        <label>Share URL</label>
+        <div class="share-field">
+          <input id="share-url-input" type="text" readonly>
+          <button id="share-copy-url-btn" class="nevoflux-btn-secondary">Copy URL</button>
+        </div>
+
+        <label>Password</label>
+        <div class="share-field">
+          <input id="share-password-input" type="text" readonly class="share-password">
+          <button id="share-copy-password-btn" class="nevoflux-btn-secondary">Copy Password</button>
+        </div>
+
+        <div id="share-clipboard-notice" class="share-notice" hidden>
+          Password copied to clipboard. It will be cleared in <span id="share-clear-countdown">60</span>s.
+        </div>
+
+        <p class="share-info"><strong>Expires:</strong> <span id="share-expires-date"></span></p>
+
+        <div class="share-actions">
+          <button class="nevoflux-btn-secondary" data-close-dialog>Done</button>
+        </div>
+      </div>
+
+      <div id="share-step-error" class="share-step" hidden>
+        <div class="share-error">
+          <strong>Failed to share:</strong> <span id="share-error-msg"></span>
+        </div>
+        <button class="nevoflux-btn-secondary" data-close-dialog>Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import Shared Canvas Dialog -->
+  <div id="nevoflux-import-dialog" class="nevoflux-modal" hidden>
+    <div class="nevoflux-modal-backdrop" data-close-dialog></div>
+    <div class="nevoflux-modal-content">
+      <button class="nevoflux-modal-close" data-close-dialog aria-label="Close">×</button>
+      <h2>Import Shared Canvas</h2>
+
+      <div id="import-step-prompt" class="import-step">
+        <p>Enter the password to decrypt and import this canvas.</p>
+        <p class="import-info"><strong>Share ID:</strong> <span id="import-share-id"></span></p>
+
+        <label for="import-password-input">Password</label>
+        <input id="import-password-input" type="text" placeholder="x-xxxx-xxxx-xxxx" autocomplete="off">
+
+        <div class="import-actions">
+          <button data-close-dialog class="nevoflux-btn-secondary">Cancel</button>
+          <button id="import-submit-btn" class="nevoflux-btn-primary">Import</button>
+        </div>
+      </div>
+
+      <div id="import-step-loading" class="import-step" hidden>
+        <p>Downloading and decrypting...</p>
+        <div class="nevoflux-spinner"></div>
+      </div>
+
+      <div id="import-step-success" class="import-step" hidden>
+        <div class="import-success">
+          ✓ Canvas imported successfully
+        </div>
+        <p><strong>Name:</strong> <span id="import-result-name"></span></p>
+        <button data-close-dialog class="nevoflux-btn-primary">Close</button>
+      </div>
+
+      <div id="import-step-error" class="import-step" hidden>
+        <div class="share-error">
+          <strong>Import failed:</strong> <span id="import-error-msg"></span>
+        </div>
+        <div class="import-actions">
+          <button id="import-retry-btn" class="nevoflux-btn-secondary">Try Again</button>
+          <button data-close-dialog class="nevoflux-btn-secondary">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="chrome://nevoflux/content/vendor/codemirror.min.js"></script>
   <script src="chrome://nevoflux/content/vendor/babel.min.js"></script>
   <script src="chrome://nevoflux/content/vendor/svelte-compiler.min.js"></script>

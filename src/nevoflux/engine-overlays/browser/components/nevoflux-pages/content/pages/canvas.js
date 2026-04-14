@@ -1994,3 +1994,258 @@ window.addEventListener('NevofluxMessage', (event) => {
 });
 
 document.addEventListener('DOMContentLoaded', () => Canvas.init());
+
+// =============================
+// Share Dialog + Import Dialog + Canvas List
+// =============================
+
+const ShareDialog = {
+  open() {
+    this._show('share');
+    this._showStep('share', 'confirm');
+  },
+
+  async confirm(artifactId) {
+    this._showStep('share', 'loading');
+    try {
+      const result = await NevofluxSDK.share.share(artifactId);
+      document.getElementById('share-url-input').value = result.share_url || '';
+      document.getElementById('share-password-input').value = result.password || '';
+      const expiresEl = document.getElementById('share-expires-date');
+      if (result.expires_at) {
+        expiresEl.textContent = new Date(result.expires_at * 1000).toLocaleDateString();
+      } else {
+        expiresEl.textContent = '';
+      }
+      this._showStep('share', 'result');
+    } catch (err) {
+      document.getElementById('share-error-msg').textContent =
+        (err && err.message) || String(err);
+      this._showStep('share', 'error');
+    }
+  },
+
+  copyUrl() {
+    const input = document.getElementById('share-url-input');
+    navigator.clipboard.writeText(input.value).catch(() => {});
+  },
+
+  copyPassword() {
+    const input = document.getElementById('share-password-input');
+    const password = input.value;
+    navigator.clipboard.writeText(password).then(() => {
+      const notice = document.getElementById('share-clipboard-notice');
+      const countdown = document.getElementById('share-clear-countdown');
+      notice.hidden = false;
+      let remaining = 60;
+      countdown.textContent = remaining;
+      if (this._clearInterval) clearInterval(this._clearInterval);
+      this._clearInterval = setInterval(() => {
+        remaining--;
+        countdown.textContent = remaining;
+        if (remaining <= 0) {
+          clearInterval(this._clearInterval);
+          this._clearInterval = null;
+          navigator.clipboard.writeText('').catch(() => {});
+          notice.hidden = true;
+        }
+      }, 1000);
+    }).catch(() => {});
+  },
+
+  _show(which) {
+    const el = document.getElementById(`nevoflux-${which}-dialog`);
+    if (el) el.hidden = false;
+  },
+
+  _close(which) {
+    const el = document.getElementById(`nevoflux-${which}-dialog`);
+    if (el) el.hidden = true;
+  },
+
+  _showStep(dialog, step) {
+    const steps = ['confirm', 'loading', 'result', 'error', 'prompt', 'success'];
+    steps.forEach((s) => {
+      const el = document.getElementById(`${dialog}-step-${s}`);
+      if (el) el.hidden = (s !== step);
+    });
+  },
+};
+
+const ImportDialog = {
+  _shareId: null,
+
+  open(shareId) {
+    this._shareId = shareId;
+    document.getElementById('import-share-id').textContent = shareId || '';
+    document.getElementById('import-password-input').value = '';
+    ShareDialog._show('import');
+    ShareDialog._showStep('import', 'prompt');
+  },
+
+  async submit() {
+    const password = document.getElementById('import-password-input').value.trim();
+    if (!password) return;
+
+    ShareDialog._showStep('import', 'loading');
+    try {
+      const result = await NevofluxSDK.share.import(this._shareId, password);
+      document.getElementById('import-result-name').textContent =
+        (result && (result.artifact_name || result.artifact_id)) || '(imported)';
+      ShareDialog._showStep('import', 'success');
+    } catch (err) {
+      document.getElementById('import-error-msg').textContent =
+        (err && err.message) || String(err);
+      ShareDialog._showStep('import', 'error');
+    }
+  },
+
+  retry() {
+    ShareDialog._showStep('import', 'prompt');
+  },
+};
+
+const CanvasList = {
+  _filter: 'all',
+  _shares: [],
+
+  async load() {
+    try {
+      const res = await NevofluxSDK.share.list();
+      this._shares = (res && res.shares) || [];
+      this._render();
+    } catch (err) {
+      console.error('[CanvasList] Failed to load:', err);
+      this._shares = [];
+      this._render();
+    }
+  },
+
+  setFilter(filter) {
+    this._filter = filter;
+    document.querySelectorAll('.canvas-list-filters .filter-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.filter === filter);
+    });
+    this._render();
+  },
+
+  _render() {
+    const container = document.getElementById('canvas-list-items');
+    const empty = document.getElementById('canvas-list-empty');
+    if (!container || !empty) return;
+
+    // Basic filter: 'shared' = all share entries; 'imported' = items flagged imported;
+    // 'all' = everything. Artifact-only entries not included (no artifact SDK list here).
+    let items = this._shares;
+    if (this._filter === 'shared') {
+      items = items.filter((s) => !s.imported);
+    } else if (this._filter === 'imported') {
+      items = items.filter((s) => !!s.imported);
+    }
+
+    if (!items || items.length === 0) {
+      container.innerHTML = '';
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+
+    const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
+    );
+
+    container.innerHTML = items.map((s) => {
+      const expires = s.expires_at
+        ? new Date(s.expires_at * 1000).toLocaleDateString()
+        : '—';
+      const views = s.view_count != null ? s.view_count : 0;
+      const name = s.artifact_name || s.artifact_id || s.share_id;
+      const badgeClass = s.imported ? 'status-badge imported' : 'status-badge shared';
+      const badgeLabel = s.imported ? '📥 Imported' : '🔗 Shared';
+      return `
+        <div class="canvas-list-item" data-share-id="${esc(s.share_id)}">
+          <div class="canvas-item-name">${esc(name)}</div>
+          <div class="canvas-item-meta">
+            <span class="${badgeClass}">${badgeLabel}</span>
+            <span>${esc(views)} views</span>
+            <span>Expires: ${esc(expires)}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+  },
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Close buttons for modals
+  document.querySelectorAll('[data-close-dialog]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const dialog = el.closest('.nevoflux-modal');
+      if (dialog) dialog.hidden = true;
+    });
+  });
+
+  // Share dialog buttons
+  const shareConfirmBtn = document.getElementById('share-confirm-btn');
+  if (shareConfirmBtn) {
+    shareConfirmBtn.addEventListener('click', () => {
+      const artifactId =
+        (Canvas && Canvas._artifactId) || window._nevofluxArtifactId;
+      if (artifactId) ShareDialog.confirm(artifactId);
+    });
+  }
+
+  const shareCopyUrl = document.getElementById('share-copy-url-btn');
+  if (shareCopyUrl) shareCopyUrl.addEventListener('click', () => ShareDialog.copyUrl());
+
+  const shareCopyPw = document.getElementById('share-copy-password-btn');
+  if (shareCopyPw) shareCopyPw.addEventListener('click', () => ShareDialog.copyPassword());
+
+  // Import dialog buttons
+  const importSubmit = document.getElementById('import-submit-btn');
+  if (importSubmit) importSubmit.addEventListener('click', () => ImportDialog.submit());
+
+  const importRetry = document.getElementById('import-retry-btn');
+  if (importRetry) importRetry.addEventListener('click', () => ImportDialog.retry());
+
+  // Enter submits the import password
+  const importPwInput = document.getElementById('import-password-input');
+  if (importPwInput) {
+    importPwInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        ImportDialog.submit();
+      }
+    });
+  }
+
+  // Canvas list: filter buttons
+  document.querySelectorAll('.canvas-list-filters .filter-btn').forEach((btn) => {
+    btn.addEventListener('click', () => CanvasList.setFilter(btn.dataset.filter));
+  });
+
+  // Decide which UI to show:
+  // 1. If URL is import mode -> show import dialog automatically
+  // 2. If no artifact id AND mode=list (or no id at all) -> show canvas list view
+  if (window._nevofluxImportShareId) {
+    ImportDialog.open(window._nevofluxImportShareId);
+  }
+
+  try {
+    const url = new URL(window.location.href);
+    const mode = (typeof NevofluxPage !== 'undefined' && NevofluxPage.getParam)
+      ? NevofluxPage.getParam('mode', '')
+      : (url.searchParams.get('mode') || '');
+    const hasArtifactId = !!(Canvas && Canvas._artifactId);
+    if (mode === 'list' || !hasArtifactId) {
+      const listEl = document.getElementById('nevoflux-canvas-list');
+      if (listEl) {
+        listEl.hidden = false;
+        CanvasList.load();
+      }
+    }
+  } catch (e) {
+    // ignore; list view is a progressive enhancement
+  }
+});
+
