@@ -2263,20 +2263,21 @@ this.nevoflux = class extends ExtensionAPI {
           NevofluxContentStore._loading = true;
           try {
             for (const entry of entries) {
-              if (entry.key && entry.value !== undefined) {
-                // Skip canvas artifact entries entirely during load.
-                // Canvas artifacts are session-specific — they're created by the
-                // streaming protocol (ARTIFACT_START/DELTA/COMPLETE) and the
-                // create_artifact tool call. Loading stale persisted data would
-                // overwrite correct data due to timing races.
-                if (entry.key.startsWith('canvas:')) {
-                  console.log(
-                    `[ext-nevoflux] contentStoreLoad: SKIPPING canvas entry ${entry.key} (type=${entry.value?.type}, state=${entry.value?.state})`
-                  );
-                  continue;
-                }
-                NevofluxContentStore.set(entry.key, entry.value);
+              if (!entry.key || entry.value === undefined) continue;
+
+              // Skip incomplete streaming artifacts: if a prior session crashed
+              // mid-stream, the persisted entry is a partial/broken artifact
+              // that should be re-streamed rather than loaded. Complete
+              // artifacts (state: 'complete' or unset) are loaded normally —
+              // write-through persistence keeps `config` authoritative.
+              if (entry.key.startsWith('canvas:') && entry.value?.state === 'streaming') {
+                console.log(
+                  `[ext-nevoflux] contentStoreLoad: SKIPPING streaming canvas entry ${entry.key}`
+                );
+                continue;
               }
+
+              NevofluxContentStore.set(entry.key, entry.value);
             }
           } finally {
             NevofluxContentStore._loading = false;
