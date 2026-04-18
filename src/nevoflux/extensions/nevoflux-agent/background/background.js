@@ -1157,57 +1157,37 @@ class ChannelManager {
       }
     }
 
-    if (msgType === 'canvas_tool_get_raw_response') {
+    // Canvas Tool CRUD responses. The daemon sets request_id on the envelope
+    // (envelope.request_id), not inside the payload — same as canvas_tool_list.
+    // We first try message.payload.request_id; if absent, fall back to
+    // claiming the oldest pending entry (matches the list-handler pattern).
+    const routeCanvasToolResponse = (msgType, map) => {
+      if (message.type !== msgType) return false;
       const reqId = message.payload?.request_id;
-      const bridgeId = reqId ? pendingToolGetRawRequests.get(reqId) : null;
+      let bridgeId = reqId ? map.get(reqId) : null;
+      let matchedReqId = reqId;
+      if (!bridgeId) {
+        const next = map.entries().next();
+        if (!next.done) {
+          [matchedReqId, bridgeId] = next.value;
+        }
+      }
       if (bridgeId) {
-        pendingToolGetRawRequests.delete(reqId);
-        const p = message.payload || {};
+        map.delete(matchedReqId);
+        // Send daemon's payload verbatim so the settings page reads
+        // inner.success, inner.toml_text, etc. without extra unwrapping.
+        const p = message.payload || { success: false, error: { code: 'unknown', message: 'empty payload' } };
         browser.nevoflux
-          .bridgeRespond(bridgeId, { success: true, data: p })
+          .bridgeRespond(bridgeId, p)
           .catch(() => {});
       }
-      return;
-    }
+      return true;
+    };
 
-    if (msgType === 'canvas_tool_save_response') {
-      const reqId = message.payload?.request_id;
-      const bridgeId = reqId ? pendingToolSaveRequests.get(reqId) : null;
-      if (bridgeId) {
-        pendingToolSaveRequests.delete(reqId);
-        const p = message.payload || {};
-        browser.nevoflux
-          .bridgeRespond(bridgeId, { success: true, data: p })
-          .catch(() => {});
-      }
-      return;
-    }
-
-    if (msgType === 'canvas_tool_delete_response') {
-      const reqId = message.payload?.request_id;
-      const bridgeId = reqId ? pendingToolDeleteRequests.get(reqId) : null;
-      if (bridgeId) {
-        pendingToolDeleteRequests.delete(reqId);
-        const p = message.payload || {};
-        browser.nevoflux
-          .bridgeRespond(bridgeId, { success: true, data: p })
-          .catch(() => {});
-      }
-      return;
-    }
-
-    if (msgType === 'canvas_tool_validate_response') {
-      const reqId = message.payload?.request_id;
-      const bridgeId = reqId ? pendingToolValidateRequests.get(reqId) : null;
-      if (bridgeId) {
-        pendingToolValidateRequests.delete(reqId);
-        const p = message.payload || {};
-        browser.nevoflux
-          .bridgeRespond(bridgeId, { success: true, data: p })
-          .catch(() => {});
-      }
-      return;
-    }
+    if (routeCanvasToolResponse('canvas_tool_get_raw_response', pendingToolGetRawRequests)) return;
+    if (routeCanvasToolResponse('canvas_tool_save_response', pendingToolSaveRequests)) return;
+    if (routeCanvasToolResponse('canvas_tool_delete_response', pendingToolDeleteRequests)) return;
+    if (routeCanvasToolResponse('canvas_tool_validate_response', pendingToolValidateRequests)) return;
 
     // Handle canvas share responses (share/import/extend/delete/list)
     const SHARE_RESPONSE_TYPES = [
