@@ -4300,3 +4300,39 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .nevo-event-toast { animation: none; }
 }
+
+/* ---------- My Canvas pin button (artifact_card.rs) ---------- */
+
+.artifact-card {
+  position: relative;
+}
+
+.artifact-pin-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: var(--nevo-radius-sm, 4px);
+  font-size: 14px;
+  line-height: 1;
+  color: var(--nevo-text-muted, #9ca3af);
+  transition: background-color var(--nevo-transition-fast, 0.1s ease), color var(--nevo-transition-fast, 0.1s ease);
+}
+
+.artifact-pin-btn:not(.pinned) {
+  cursor: pointer;
+}
+
+.artifact-pin-btn:not(.pinned):hover {
+  background: color-mix(in srgb, var(--nevo-primary, #1a6b6b) 15%, transparent);
+  color: var(--nevo-primary, #1a6b6b);
+}
+
+.artifact-pin-btn.pinned {
+  cursor: default;
+  color: var(--nevo-primary, #1a6b6b);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .artifact-pin-btn { transition: none; }
+}
