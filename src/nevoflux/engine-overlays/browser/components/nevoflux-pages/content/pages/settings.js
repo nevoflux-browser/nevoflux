@@ -10,6 +10,23 @@
  * Renders section-based settings UI with form controls. Settings are
  * persisted via ContentStore (config:{key} namespace) through the actor.
  */
+
+const NEW_TOOL_TEMPLATE = `# Canvas Tool definition — see docs/reference/skills/app/SKILL.md
+name = "my-tool"
+description = "One-line summary shown to the LLM and in the settings list."
+kind = "command"          # "command" | "internal"
+binary = "/usr/bin/echo"  # required when kind = "command"
+args_mode = "template"    # "template" | "free"
+args = ["{{message}}"]
+
+[params.message]
+type = "text"
+optional = false
+
+[constraints]
+timeout_seconds = 30
+`;
+
 const Settings = {
   _currentSection: 'general',
   _saveTimer: null,
@@ -2210,6 +2227,221 @@ const Settings = {
     if (countEl && this._canvasTools.length) {
       const enabledCount = this._canvasTools.filter((t) => t.enabled !== false).length;
       countEl.textContent = `${enabledCount} of ${this._canvasTools.length} tool${this._canvasTools.length !== 1 ? 's' : ''} enabled`;
+    }
+  },
+
+  _canvasToolEditorState: {
+    mode: null,           // 'new' | 'edit' | 'fork'
+    originalName: null,   // for edit mode — used as expected_name
+    editor: null,         // handle from _mountCanvasToolEditor
+    saving: false,
+  },
+
+  _mountCanvasToolEditor(initialText) {
+    const container = document.getElementById('canvas-tool-editor-cm');
+    container.innerHTML = '';
+
+    // Plain textarea for v1. CodeMirror integration can be added later.
+    const ta = document.createElement('textarea');
+    ta.value = initialText || '';
+    ta.spellcheck = false;
+    ta.style.cssText =
+      'width:100%;height:100%;min-height:380px;resize:none;border:0;outline:0;background:transparent;color:inherit;font:inherit;padding:12px 16px;box-sizing:border-box;';
+    container.appendChild(ta);
+
+    return {
+      getText: () => ta.value,
+      setText: (t) => {
+        ta.value = t;
+      },
+      focus: () => ta.focus(),
+    };
+  },
+
+  async _openCanvasToolEditor({ mode, name }) {
+    const modal = document.getElementById('canvas-tool-editor');
+    const title = document.getElementById('canvas-tool-editor-title');
+    const errorEl = document.getElementById('canvas-tool-editor-error');
+    errorEl.hidden = true;
+    errorEl.textContent = '';
+
+    let initial = NEW_TOOL_TEMPLATE;
+    if (mode === 'edit' || mode === 'fork') {
+      try {
+        const res = await NevofluxPage.sendQuery('bridge:request', {
+          type: 'canvas.tool.get_raw',
+          payload: { name },
+        });
+        const inner = res?.data || res;
+        if (!inner?.success) {
+          const code = inner?.error?.code;
+          if (code === 'not_found') {
+            await this._populateCanvasTools();
+            return;
+          }
+          throw new Error(inner?.error?.message || 'Failed to load tool');
+        }
+        initial = inner.toml_text || '';
+      } catch (e) {
+        console.error('get_raw failed:', e);
+        alert('Could not load the tool for editing.');
+        return;
+      }
+    }
+
+    title.textContent =
+      mode === 'new'
+        ? 'New Canvas Tool'
+        : mode === 'edit'
+        ? `Edit: ${name}`
+        : `Fork from builtin: ${name}`;
+
+    this._canvasToolEditorState = {
+      mode,
+      originalName: mode === 'edit' ? name : null,
+      editor: this._mountCanvasToolEditor(initial),
+      saving: false,
+    };
+
+    modal.hidden = false;
+    this._canvasToolEditorState.editor.focus();
+    this._bindCanvasToolEditorHandlers();
+  },
+
+  _closeCanvasToolEditor() {
+    const modal = document.getElementById('canvas-tool-editor');
+    modal.hidden = true;
+    this._canvasToolEditorState = { mode: null, originalName: null, editor: null, saving: false };
+  },
+
+  _bindCanvasToolEditorHandlers() {
+    const modal = document.getElementById('canvas-tool-editor');
+    if (modal._canvasToolBound) return;
+    modal._canvasToolBound = true;
+
+    modal.addEventListener('click', (ev) => {
+      const action = ev.target?.dataset?.action;
+      if (action === 'cancel') this._closeCanvasToolEditor();
+      if (action === 'save') this._saveCanvasTool();
+    });
+
+    document.addEventListener('keydown', (ev) => {
+      if (modal.hidden) return;
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        this._closeCanvasToolEditor();
+      } else if ((ev.ctrlKey || ev.metaKey) && ev.key === 's') {
+        ev.preventDefault();
+        this._saveCanvasTool();
+      }
+    });
+  },
+
+  _showCanvasToolEditorError(errorPayload) {
+    const errorEl = document.getElementById('canvas-tool-editor-error');
+    const code = errorPayload?.code || 'unknown';
+    const message = errorPayload?.message || 'Save failed';
+    errorEl.hidden = false;
+
+    if (code === 'name_conflict') {
+      errorEl.innerHTML = '';
+      const label = document.createElement('span');
+      label.textContent = `${message}. `;
+      errorEl.appendChild(label);
+      const match = /'([^']+)'/.exec(message);
+      const conflictName = match ? match[1] : null;
+      if (conflictName) {
+        const a = document.createElement('a');
+        a.textContent = 'Edit it instead';
+        a.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          this._closeCanvasToolEditor();
+          setTimeout(() => this._openCanvasToolEditor({ mode: 'edit', name: conflictName }), 0);
+        });
+        errorEl.appendChild(a);
+      }
+      return;
+    }
+
+    const label =
+      code === 'toml_parse'
+        ? `TOML syntax error: ${message}`
+        : code === 'validation'
+        ? `Invalid tool: ${message}`
+        : code === 'name_changed'
+        ? 'Renaming is not supported. Delete this tool and create a new one instead.'
+        : code === 'io'
+        ? `Could not save: ${message}`
+        : message;
+    errorEl.textContent = label;
+  },
+
+  async _saveCanvasTool() {
+    const state = this._canvasToolEditorState;
+    if (!state.editor || state.saving) return;
+
+    const saveBtn = document.querySelector(
+      '#canvas-tool-editor [data-action="save"]',
+    );
+    state.saving = true;
+    if (saveBtn) {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving\u2026';
+    }
+
+    try {
+      const toml_text = state.editor.getText();
+      const payload = { toml_text };
+      if (state.mode === 'edit' && state.originalName) {
+        payload.expected_name = state.originalName;
+      }
+      const res = await NevofluxPage.sendQuery('bridge:request', {
+        type: 'canvas.tool.save',
+        payload,
+      });
+      const inner = res?.data || res;
+      if (!inner?.success) {
+        this._showCanvasToolEditorError(inner?.error || { code: 'unknown', message: 'Save failed' });
+        return;
+      }
+      this._closeCanvasToolEditor();
+      await this._populateCanvasTools();
+    } catch (e) {
+      console.error('Save canvas tool failed:', e);
+      this._showCanvasToolEditorError({ code: 'io', message: e.message || String(e) });
+    } finally {
+      state.saving = false;
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+    }
+  },
+
+  _confirmDeleteCanvasTool(tool) {
+    const isOverride = !!tool.is_override;
+    const msg = isOverride
+      ? `Revert '${tool.name}' to its built-in definition? Your customizations will be lost.`
+      : `Delete canvas tool '${tool.name}'? The .toml file will be removed.`;
+    if (!window.confirm(msg)) return;
+    this._deleteCanvasTool(tool.name);
+  },
+
+  async _deleteCanvasTool(name) {
+    try {
+      const res = await NevofluxPage.sendQuery('bridge:request', {
+        type: 'canvas.tool.delete',
+        payload: { name },
+      });
+      const inner = res?.data || res;
+      if (!inner?.success) {
+        alert(`Delete failed: ${inner?.error?.message || 'unknown error'}`);
+        return;
+      }
+      await this._populateCanvasTools();
+    } catch (e) {
+      console.error('Delete canvas tool failed:', e);
+      alert(`Delete failed: ${e.message || e}`);
     }
   },
 
