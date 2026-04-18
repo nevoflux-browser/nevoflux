@@ -1205,6 +1205,128 @@
       color: var(--nevoflux-text-secondary);
       margin-bottom: var(--nevoflux-space-md);
     }
+
+    /* ── Canvas Tool editor modal ─────────────────── */
+    .canvas-tool-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 9000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .canvas-tool-modal[hidden] { display: none; }
+
+    .canvas-tool-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(2px);
+    }
+
+    .canvas-tool-modal-panel {
+      position: relative;
+      width: min(720px, 92vw);
+      max-height: 88vh;
+      background: var(--zen-branding-bg);
+      border: 1px solid var(--zen-colors-border);
+      border-radius: var(--zen-border-radius, 10px);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .canvas-tool-modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--zen-space-md, 12px) var(--zen-space-lg, 16px);
+      border-bottom: 1px solid var(--zen-colors-border);
+    }
+    .canvas-tool-modal-header h3 { margin: 0; font-size: 15px; }
+
+    .canvas-tool-modal-close {
+      background: transparent;
+      border: 0;
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px 8px;
+    }
+
+    .canvas-tool-modal-editor {
+      flex: 1 1 auto;
+      min-height: 380px;
+      max-height: 60vh;
+      overflow: auto;
+      border-bottom: 1px solid var(--zen-colors-border);
+      font-family: ui-monospace, Consolas, "SF Mono", monospace;
+      font-size: 13px;
+    }
+
+    .canvas-tool-modal-error {
+      padding: 10px 16px;
+      background: color-mix(in srgb, #e04444 12%, transparent);
+      color: color-mix(in srgb, #e04444 90%, var(--zen-branding-bg-reverse));
+      border-top: 1px solid color-mix(in srgb, #e04444 30%, transparent);
+      font-size: 13px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+    .canvas-tool-modal-error a {
+      color: inherit;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    .canvas-tool-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: var(--zen-space-md, 12px) var(--zen-space-lg, 16px);
+    }
+
+    .canvas-tool-modal-button {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--zen-colors-border);
+      background: transparent;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .canvas-tool-modal-button.primary {
+      background: color-mix(in srgb, var(--zen-primary-color) 30%, var(--zen-branding-bg-reverse) 70%);
+      color: var(--zen-branding-bg);
+      border-color: transparent;
+    }
+    .canvas-tool-modal-button:disabled { opacity: 0.5; cursor: wait; }
+
+    /* New-Tool button + row-action buttons */
+    .canvas-tools-new-button {
+      margin-left: auto;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--zen-colors-border);
+      background: transparent;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .canvas-tool-row-action {
+      padding: 2px 8px;
+      margin-right: 4px;
+      border-radius: 4px;
+      border: 1px solid var(--zen-colors-border);
+      background: transparent;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .canvas-tool-row-action:hover { background: var(--zen-colors-tertiary); }
+
+    /* overridden badge variant */
+    .canvas-tool-source.overridden {
+      background: color-mix(in srgb, var(--zen-primary-color) 25%, transparent);
+      color: var(--zen-branding-bg-reverse);
+    }
   </style>
 </head>
 <body>
@@ -1223,6 +1345,22 @@
     </div>
   </main>
   <div class="save-indicator" id="save-indicator">Saved</div>
+  <!-- Canvas Tool editor modal -->
+  <div id="canvas-tool-editor" class="canvas-tool-modal" hidden aria-modal="true" role="dialog" aria-labelledby="canvas-tool-editor-title">
+    <div class="canvas-tool-modal-backdrop" data-action="cancel"></div>
+    <div class="canvas-tool-modal-panel">
+      <header class="canvas-tool-modal-header">
+        <h3 id="canvas-tool-editor-title">New Canvas Tool</h3>
+        <button type="button" class="canvas-tool-modal-close" data-action="cancel" aria-label="Close">×</button>
+      </header>
+      <div id="canvas-tool-editor-cm" class="canvas-tool-modal-editor"></div>
+      <div id="canvas-tool-editor-error" class="canvas-tool-modal-error" role="alert" hidden></div>
+      <footer class="canvas-tool-modal-footer">
+        <button type="button" class="canvas-tool-modal-button" data-action="cancel">Cancel</button>
+        <button type="button" class="canvas-tool-modal-button primary" data-action="save">Save</button>
+      </footer>
+    </div>
+  </div>
   <script src="chrome://nevoflux/content/pages/common.js"></script>
   <script src="chrome://nevoflux/content/pages/settings.js"></script>
 </body>

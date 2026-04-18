@@ -1932,10 +1932,25 @@ const Settings = {
       'Canvas tools extend your agent with custom capabilities. Enable or disable tools to control which ones the agent can use.';
     group.appendChild(desc);
 
+    // Header row: count + New button
+    const headerRow = document.createElement('div');
+    headerRow.style.display = 'flex';
+    headerRow.style.alignItems = 'center';
+    headerRow.style.marginBottom = '8px';
+
     const countEl = document.createElement('div');
     countEl.className = 'canvas-tools-count';
     countEl.id = 'canvas-tools-count';
-    group.appendChild(countEl);
+    headerRow.appendChild(countEl);
+
+    const newBtn = document.createElement('button');
+    newBtn.type = 'button';
+    newBtn.className = 'canvas-tools-new-button';
+    newBtn.textContent = '+ New Canvas Tool';
+    newBtn.addEventListener('click', () => this._openCanvasToolEditor({ mode: 'new' }));
+    headerRow.appendChild(newBtn);
+
+    group.appendChild(headerRow);
 
     const list = document.createElement('div');
     list.className = 'canvas-tools-list';
@@ -1985,10 +2000,13 @@ const Settings = {
     name.textContent = tool.name || 'Unnamed tool';
     nameRow.appendChild(name);
 
+    // Badge: prefer `overridden` when is_override is true
+    const originSource = tool.origin_source || tool.source || 'unknown';
+    const badgeKey = tool.is_override ? 'overridden' : originSource.toLowerCase();
+    const badgeText = tool.is_override ? 'overridden' : originSource;
     const sourceBadge = document.createElement('span');
-    const sourceKey = (tool.source || 'unknown').toLowerCase();
-    sourceBadge.className = `canvas-tool-source ${sourceKey}`;
-    sourceBadge.textContent = tool.source || 'unknown';
+    sourceBadge.className = `canvas-tool-source ${badgeKey}`;
+    sourceBadge.textContent = badgeText;
     nameRow.appendChild(sourceBadge);
 
     info.appendChild(nameRow);
@@ -2005,15 +2023,49 @@ const Settings = {
     const parts = [];
     if (tool.kind) parts.push(tool.kind);
     if (tool.args_mode) parts.push(`args: ${tool.args_mode}`);
-    if (parts.length) meta.textContent = parts.join(' \u2022 ');
-    if (parts.length) info.appendChild(meta);
+    if (parts.length) {
+      meta.textContent = parts.join(' \u2022 ');
+      info.appendChild(meta);
+    }
 
     item.appendChild(info);
 
-    // Right: toggle
+    // Right: action buttons + enable toggle
     const actions = document.createElement('div');
     actions.className = 'canvas-tool-actions';
 
+    const src = (tool.origin_source || tool.source || '').toLowerCase();
+    const isOverride = !!tool.is_override;
+
+    if (src === 'user') {
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'canvas-tool-row-action';
+      editBtn.textContent = 'Edit';
+      editBtn.addEventListener('click', () =>
+        this._openCanvasToolEditor({ mode: 'edit', name: tool.name }),
+      );
+      actions.appendChild(editBtn);
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'canvas-tool-row-action';
+      delBtn.textContent = isOverride ? 'Revert' : 'Delete';
+      delBtn.addEventListener('click', () => this._confirmDeleteCanvasTool(tool));
+      actions.appendChild(delBtn);
+    } else if (src === 'builtin') {
+      const forkBtn = document.createElement('button');
+      forkBtn.type = 'button';
+      forkBtn.className = 'canvas-tool-row-action';
+      forkBtn.textContent = 'Fork to edit';
+      forkBtn.addEventListener('click', () =>
+        this._openCanvasToolEditor({ mode: 'fork', name: tool.name }),
+      );
+      actions.appendChild(forkBtn);
+    }
+    // Session tools: no buttons.
+
+    // Enable/disable toggle (unchanged)
     const toggle = document.createElement('label');
     toggle.className = 'mcp-toggle';
     const toggleInput = document.createElement('input');
@@ -2026,7 +2078,6 @@ const Settings = {
         this._canvasTools[index].enabled = enabled;
       } catch (e) {
         console.error('Failed to toggle canvas tool:', e);
-        // Revert toggle on error
         toggleInput.checked = !enabled;
       }
     });
