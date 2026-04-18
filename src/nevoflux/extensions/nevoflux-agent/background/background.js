@@ -191,6 +191,11 @@ const pendingToolGetRawRequests = new Map();   // requestId → bridgeId
 const pendingToolSaveRequests = new Map();
 const pendingToolDeleteRequests = new Map();
 const pendingToolValidateRequests = new Map();
+// Canvas Persist pending requests: requestId → bridgeId
+const pendingPersistListRequests = new Map();
+const pendingPersistSaveRequests = new Map();
+const pendingPersistRenameRequests = new Map();
+const pendingPersistDeleteRequests = new Map();
 // Canvas Share pending requests: requestId → bridgeId
 const pendingShareRequests = new Map();
 
@@ -1189,6 +1194,11 @@ class ChannelManager {
     if (routeCanvasToolResponse('canvas_tool_delete_response', pendingToolDeleteRequests)) return;
     if (routeCanvasToolResponse('canvas_tool_validate_response', pendingToolValidateRequests)) return;
 
+    if (routeCanvasToolResponse('canvas_persist_list_response', pendingPersistListRequests)) return;
+    if (routeCanvasToolResponse('canvas_persist_save_response', pendingPersistSaveRequests)) return;
+    if (routeCanvasToolResponse('canvas_persist_rename_response', pendingPersistRenameRequests)) return;
+    if (routeCanvasToolResponse('canvas_persist_delete_response', pendingPersistDeleteRequests)) return;
+
     // Handle canvas share responses (share/import/extend/delete/list)
     const SHARE_RESPONSE_TYPES = [
       'canvas_share_response',
@@ -2115,6 +2125,73 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
         }
 
         // ----- End Canvas Tool bridge requests -----
+
+        // ----- Canvas Persist bridge requests -----
+
+        case 'canvas.persist.list': {
+          try {
+            const requestId = `pl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            pendingPersistListRequests.set(requestId, id);
+            channelManager.sendToAgent({
+              type: 'canvas_persist_list',
+              payload: {
+                request_id: requestId,
+                ...(payload || {}),
+              },
+            });
+            return;
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+            break;
+          }
+        }
+
+        case 'canvas.persist.save': {
+          try {
+            const requestId = `psv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            pendingPersistSaveRequests.set(requestId, id);
+            channelManager.sendToAgent({
+              type: 'canvas_persist_save',
+              payload: { request_id: requestId, ...(payload || {}) },
+            });
+            return;
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+            break;
+          }
+        }
+
+        case 'canvas.persist.rename': {
+          try {
+            const requestId = `prn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            pendingPersistRenameRequests.set(requestId, id);
+            channelManager.sendToAgent({
+              type: 'canvas_persist_rename',
+              payload: { request_id: requestId, ...(payload || {}) },
+            });
+            return;
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+            break;
+          }
+        }
+
+        case 'canvas.persist.delete': {
+          try {
+            const requestId = `pdl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            pendingPersistDeleteRequests.set(requestId, id);
+            channelManager.sendToAgent({
+              type: 'canvas_persist_delete',
+              payload: { request_id: requestId, ...(payload || {}) },
+            });
+            return;
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+            break;
+          }
+        }
+
+        // ----- End Canvas Persist bridge requests -----
 
         // ----- Canvas Share bridge requests -----
 
