@@ -5,6 +5,7 @@
 //! Artifact card component for displaying canvas artifacts in chat
 
 use dioxus::prelude::*;
+use crate::context::use_app_context;
 use crate::state::{Message, MessageContent, ArtifactState};
 
 /// Artifact card component displaying a canvas artifact preview
@@ -17,6 +18,11 @@ pub fn ArtifactCard(message: Message) -> Element {
 
     let is_streaming = data.state == ArtifactState::Streaming;
     let artifact_id = data.id.clone();
+    let artifact_id_for_pin = data.id.clone();
+    let is_persistent = data.is_persistent;
+
+    // Access the messages signal so the pin handler can flip is_persistent locally.
+    let ctx = use_app_context();
 
     let handle_click = move |_| {
         let id = artifact_id.clone();
@@ -60,6 +66,36 @@ pub fn ArtifactCard(message: Message) -> Element {
                 span { class: "artifact-icon", "{type_icon}" }
                 span { class: "artifact-title", "{data.title}" }
                 span { class: "artifact-type-badge", "{type_label}" }
+
+                // Pin button: outline when unpinned (clickable), filled when already saved.
+                if is_persistent {
+                    // Already in My Canvas — non-interactive filled pin.
+                    span {
+                        class: "artifact-pin-btn pinned",
+                        title: "Already in My Canvas",
+                        role: "img",
+                        aria_label: "Saved to My Canvas",
+                        "\u{1F4CD}" // filled location pin emoji
+                    }
+                } else if !is_streaming {
+                    // Not yet saved and artifact is complete — show outline pin.
+                    button {
+                        class: "artifact-pin-btn",
+                        title: "Save to My Canvas",
+                        aria_label: "Save to My Canvas",
+                        // stop_propagation prevents the parent div's onclick (open canvas)
+                        // from firing when the user clicks the pin button.
+                        onclick: move |evt| {
+                            evt.stop_propagation();
+                            let canvas_id = artifact_id_for_pin.clone();
+                            let messages_signal = ctx.messages;
+                            spawn(async move {
+                                crate::messaging::send_save_to_my_canvas(canvas_id, messages_signal).await;
+                            });
+                        },
+                        "\u{1F4CC}" // outline pushpin emoji
+                    }
+                }
             }
 
             div { class: "artifact-footer",

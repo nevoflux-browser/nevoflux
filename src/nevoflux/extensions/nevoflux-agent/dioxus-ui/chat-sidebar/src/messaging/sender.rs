@@ -547,6 +547,9 @@ pub struct ArtifactStartPayload {
     pub content_type: Option<String>,
     #[serde(default)]
     pub title: Option<String>,
+    /// Whether this artifact is already saved to My Canvas
+    #[serde(default)]
+    pub is_persistent: bool,
 }
 
 /// Artifact delta payload
@@ -565,6 +568,9 @@ pub struct ArtifactCompletePayload {
     pub final_code: Option<String>,
     #[serde(default)]
     pub title: Option<String>,
+    /// Whether this artifact is already saved to My Canvas
+    #[serde(default)]
+    pub is_persistent: bool,
 }
 
 /// AskUser request payload from background.js
@@ -694,6 +700,94 @@ pub async fn send_open_artifact(id: &str) -> Result<(), String> {
         .await
         .map_err(|e| format!("Send failed: {:?}", e))?;
     Ok(())
+}
+
+// ============================================
+// Canvas Persist Save (pin to My Canvas)
+// ============================================
+
+/// Response from bg:canvas_persist_save
+#[derive(serde::Deserialize)]
+struct CanvasPersistSaveResponse {
+    success: bool,
+    #[serde(default)]
+    persisted_at: Option<i64>,
+    #[serde(default)]
+    error: Option<serde_json::Value>,
+}
+
+/// Send canvas.persist.save via background.js and handle the response.
+///
+/// On success: flips is_persistent = true on the matching ArtifactData in the
+/// messages signal (via mark_artifact_persistent).
+/// On not_found error: logs a console warning telling the user the canvas is gone.
+/// On other error: logs a console error.
+pub async fn send_save_to_my_canvas(canvas_id: String, messages: dioxus::prelude::Signal<Vec<crate::state::Message>>) {
+    use dioxus::prelude::WritableExt;
+    let mut messages = messages;
+    let request = serde_json::json!({
+        "type": "bg:canvas_persist_save",
+        "payload": { "canvas_id": canvas_id }
+    });
+
+    let js_value = match to_js_value(&request) {
+        Ok(v) => v,
+        Err(e) => {
+            web_sys::console::error_1(
+                &format!("[Sidebar] Failed to serialize canvas.persist.save: {:?}", e).into(),
+            );
+            return;
+        }
+    };
+
+    let response_js = match JsFuture::from(runtime_send_message(js_value)).await {
+        Ok(v) => v,
+        Err(e) => {
+            web_sys::console::error_1(
+                &format!("[Sidebar] canvas.persist.save send failed: {:?}", e).into(),
+            );
+            return;
+        }
+    };
+
+    // Parse response
+    let response: CanvasPersistSaveResponse = match from_js_value(response_js) {
+        Ok(r) => r,
+        Err(e) => {
+            web_sys::console::error_1(
+                &format!("[Sidebar] canvas.persist.save bad response: {}", e).into(),
+            );
+            return;
+        }
+    };
+
+    if response.success {
+        tracing::info!("[Sidebar] Canvas {} saved to My Canvas (persisted_at={:?})", canvas_id, response.persisted_at);
+        // Flip local state so the pin button becomes filled immediately.
+        messages.with_mut(|msgs| {
+            crate::state::Message::mark_artifact_persistent(msgs, &canvas_id);
+        });
+    } else {
+        // Inspect error code to distinguish not_found from other failures.
+        let code = response.error.as_ref()
+            .and_then(|e| e.get("code"))
+            .and_then(|c| c.as_str().map(String::from)
+                .or_else(|| c.as_i64().map(|n| n.to_string())));
+        let msg = response.error.as_ref()
+            .and_then(|e| e.get("message"))
+            .and_then(|m| m.as_str())
+            .unwrap_or("unknown error");
+
+        if code.as_deref() == Some("not_found") {
+            web_sys::console::warn_1(
+                &format!("[Sidebar] Canvas {} no longer exists — cannot pin to My Canvas", canvas_id).into(),
+            );
+        } else {
+            web_sys::console::error_1(
+                &format!("[Sidebar] canvas.persist.save failed (code={:?}): {}", code, msg).into(),
+            );
+        }
+    }
 }
 
 // ============================================

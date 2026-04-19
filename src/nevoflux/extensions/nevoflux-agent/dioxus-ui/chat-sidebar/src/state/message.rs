@@ -118,6 +118,8 @@ pub struct ArtifactData {
     pub content_type: String,
     /// Current state
     pub state: ArtifactState,
+    /// Whether this artifact is already saved to My Canvas
+    pub is_persistent: bool,
 }
 
 /// Message delivery status
@@ -259,7 +261,13 @@ impl Message {
     }
 
     /// Create an artifact message
-    pub fn artifact(id: impl Into<String>, title: impl Into<String>, content_type: impl Into<String>, state: ArtifactState) -> Self {
+    pub fn artifact(
+        id: impl Into<String>,
+        title: impl Into<String>,
+        content_type: impl Into<String>,
+        state: ArtifactState,
+        is_persistent: bool,
+    ) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             role: MessageRole::Assistant,
@@ -268,12 +276,25 @@ impl Message {
                 title: title.into(),
                 content_type: content_type.into(),
                 state,
+                is_persistent,
             }),
             attachments: Vec::new(),
             tool_calls: Vec::new(),
             timestamp: js_sys::Date::now() as u64,
             status: MessageStatus::Sent,
             is_live: false,
+        }
+    }
+
+    /// Flip is_persistent to true on all Artifact messages matching the given canvas_id.
+    /// Called after a successful canvas.persist.save response.
+    pub fn mark_artifact_persistent(messages: &mut Vec<Message>, canvas_id: &str) {
+        for msg in messages.iter_mut() {
+            if let MessageContent::Artifact(ref mut data) = msg.content {
+                if data.id == canvas_id {
+                    data.is_persistent = true;
+                }
+            }
         }
     }
 

@@ -128,13 +128,7 @@ const Settings = {
     container.appendChild(this._renderLLMSection());
     container.appendChild(this._renderMcpSection());
     container.appendChild(this._renderCanvasToolsSection());
-    container.appendChild(
-      this._renderPlaceholderSection(
-        'plugins',
-        'Plugins',
-        'Plugin management will be available in a future update.'
-      )
-    );
+    container.appendChild(this._renderMyCanvasSection());
     container.appendChild(this._renderShortcutsSection());
   },
 
@@ -2445,6 +2439,292 @@ const Settings = {
     }
   },
 
+  // ── My Canvas Section ────────────────────────────────────
+
+  _renderMyCanvasSection() {
+    const section = this._createSection('my-canvas', 'My Canvas');
+    const group = this._createGroup('My Canvas');
+
+    const desc = document.createElement('p');
+    desc.className = 'section-desc';
+    desc.textContent =
+      'Canvas artifacts you have saved from chat sessions or imported via shared links.';
+    group.appendChild(desc);
+
+    // Toolbar: search + filters
+    const toolbar = document.createElement('div');
+    toolbar.className = 'my-canvas-toolbar';
+
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.id = 'my-canvas-search';
+    search.placeholder = 'Search';
+    toolbar.appendChild(search);
+
+    const typeFilter = document.createElement('select');
+    typeFilter.id = 'my-canvas-type-filter';
+    [
+      ['', 'All types'],
+      ['text/html', 'HTML'],
+      ['text/markdown', 'Markdown'],
+      ['image/svg+xml', 'SVG'],
+      ['application/json', 'JSON'],
+      ['project', 'Project'],
+    ].forEach(([val, label]) => {
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = label;
+      typeFilter.appendChild(opt);
+    });
+    toolbar.appendChild(typeFilter);
+
+    const sourceFilter = document.createElement('select');
+    sourceFilter.id = 'my-canvas-source-filter';
+    [
+      ['', 'All sources'],
+      ['created', 'From sessions'],
+      ['imported', 'Imported'],
+    ].forEach(([val, label]) => {
+      const opt = document.createElement('option');
+      opt.value = val;
+      opt.textContent = label;
+      sourceFilter.appendChild(opt);
+    });
+    toolbar.appendChild(sourceFilter);
+
+    group.appendChild(toolbar);
+
+    // List container
+    const list = document.createElement('div');
+    list.id = 'my-canvas-list';
+    list.className = 'my-canvas-list';
+    group.appendChild(list);
+
+    // Empty state
+    const empty = document.createElement('div');
+    empty.id = 'my-canvas-empty';
+    empty.className = 'my-canvas-empty';
+    empty.hidden = true;
+    empty.textContent =
+      "You haven't saved any Canvas yet. Click the pin on a Canvas card in chat to save it here, or open a shared Canvas link to import.";
+    group.appendChild(empty);
+
+    section.appendChild(group);
+    return section;
+  },
+
+  async _loadMyCanvas() {
+    const search = document.getElementById('my-canvas-search')?.value || undefined;
+    const typeFilter = document.getElementById('my-canvas-type-filter')?.value || undefined;
+    const sourceFilter = document.getElementById('my-canvas-source-filter')?.value || undefined;
+
+    try {
+      const resp = await NevofluxPage.sendQuery('bridge:request', {
+        type: 'canvas.persist.list',
+        payload: {
+          search: search || undefined,
+          type_filter: typeFilter || undefined,
+          source_filter: sourceFilter || undefined,
+          sort: 'updated_at',
+          limit: 100,
+        },
+      });
+
+      const data = this._unwrapMyCanvasResponse(resp);
+      const items = data.items || [];
+      this._renderMyCanvasList(items);
+    } catch (e) {
+      console.warn('Failed to load My Canvas:', e);
+      this._renderMyCanvasList([]);
+    }
+  },
+
+  _unwrapMyCanvasResponse(resp) {
+    // Mirror the unwrap pattern from canvas.tool bridge calls (commit 94187b3ae):
+    // sendQuery returns { success, data } where data is the native response.
+    if (resp && resp.success && resp.data) return resp.data;
+    if (resp && typeof resp === 'object' && 'items' in resp) return resp;
+    return resp || {};
+  },
+
+  _renderMyCanvasList(items) {
+    const list = document.getElementById('my-canvas-list');
+    const empty = document.getElementById('my-canvas-empty');
+    if (!list || !empty) return;
+    list.innerHTML = '';
+    if (!items.length) {
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+    for (const item of items) {
+      list.appendChild(this._renderMyCanvasRow(item));
+    }
+  },
+
+  _renderMyCanvasRow(item) {
+    const row = document.createElement('div');
+    row.className = 'my-canvas-row';
+    row.dataset.canvasId = item.id;
+
+    const when = new Date(
+      (item.updated_at || item.persisted_at || 0) * 1000
+    ).toLocaleString();
+    const sourceText =
+      item.source?.kind === 'imported'
+        ? `Imported (${item.source.share_id})`
+        : 'From session';
+
+    const body = document.createElement('div');
+    body.className = 'my-canvas-row-body';
+
+    const title = document.createElement('div');
+    title.className = 'my-canvas-row-title';
+    title.textContent = item.title || 'Untitled Canvas';
+    body.appendChild(title);
+
+    const meta = document.createElement('div');
+    meta.className = 'my-canvas-row-meta';
+
+    const typeSpan = document.createElement('span');
+    typeSpan.className = 'mc-type';
+    typeSpan.textContent = item.content_type || '';
+    meta.appendChild(typeSpan);
+
+    meta.appendChild(document.createTextNode(' \u00b7 '));
+
+    const updatedSpan = document.createElement('span');
+    updatedSpan.className = 'mc-updated';
+    updatedSpan.textContent = `edited ${when}`;
+    meta.appendChild(updatedSpan);
+
+    meta.appendChild(document.createTextNode(' \u00b7 '));
+
+    const sourceSpan = document.createElement('span');
+    sourceSpan.className = 'mc-source';
+    sourceSpan.textContent = sourceText;
+    meta.appendChild(sourceSpan);
+
+    body.appendChild(meta);
+    row.appendChild(body);
+
+    const actions = document.createElement('div');
+    actions.className = 'my-canvas-row-actions';
+
+    const openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'mc-open';
+    openBtn.textContent = 'Open';
+    openBtn.addEventListener('click', () => this._openMyCanvasTab(item.id));
+    actions.appendChild(openBtn);
+
+    const renameBtn = document.createElement('button');
+    renameBtn.type = 'button';
+    renameBtn.className = 'mc-rename';
+    renameBtn.textContent = 'Rename';
+    renameBtn.addEventListener('click', () => {
+      this._beginRename(row, item);
+    });
+    actions.appendChild(renameBtn);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.type = 'button';
+    deleteBtn.className = 'mc-delete mc-delete--danger';
+    deleteBtn.textContent = 'Delete';
+    deleteBtn.addEventListener('click', () => {
+      this._confirmDelete(item);
+    });
+    actions.appendChild(deleteBtn);
+
+    row.appendChild(actions);
+    return row;
+  },
+
+  _openMyCanvasTab(canvasId) {
+    window.open(`nevoflux://canvas/${canvasId}`, '_blank');
+  },
+
+  _beginRename(row, item) {
+    const titleEl = row.querySelector('.my-canvas-row-title');
+    if (!titleEl) return;
+    const current = item.title || '';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'mc-rename-input';
+    input.value = current;
+    titleEl.replaceWith(input);
+    input.focus();
+    input.select();
+
+    let committed = false;
+    const commit = async () => {
+      if (committed) return;
+      committed = true;
+      const next = input.value.trim();
+      if (!next || next === current) {
+        // Unchanged or empty — just refresh to restore the span.
+        this._loadMyCanvas();
+        return;
+      }
+      const resp = await NevofluxPage.sendQuery('bridge:request', {
+        type: 'canvas.persist.rename',
+        payload: { canvas_id: item.id, new_title: next },
+      });
+      const data = this._unwrapMyCanvasResponse(resp);
+      if (!data || data.success === false) {
+        const msg = data && data.error && data.error.message ? data.error.message : 'Rename failed';
+        window.alert(msg);
+      }
+      this._loadMyCanvas();
+    };
+    const cancel = () => {
+      if (committed) return;
+      committed = true;
+      this._loadMyCanvas();
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+    });
+    input.addEventListener('blur', commit);
+  },
+
+  async _confirmDelete(item) {
+    const title = item.title || 'Untitled';
+    const ok = window.confirm(
+      `Delete "${title}" from My Canvas?\n\nThis cannot be undone.`
+    );
+    if (!ok) return;
+
+    const resp = await NevofluxPage.sendQuery('bridge:request', {
+      type: 'canvas.persist.delete',
+      payload: { canvas_id: item.id },
+    });
+    const data = this._unwrapMyCanvasResponse(resp);
+    if (!data || data.success === false) {
+      const msg = data && data.error && data.error.message ? data.error.message : 'Delete failed';
+      window.alert(msg);
+      return;
+    }
+    this._loadMyCanvas();
+  },
+
+  _bindMyCanvasControls() {
+    let debounceTimer;
+    const debouncedLoad = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => this._loadMyCanvas(), 250);
+    };
+    for (const id of ['my-canvas-search', 'my-canvas-type-filter', 'my-canvas-source-filter']) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      el.addEventListener('input', debouncedLoad);
+      el.addEventListener('change', debouncedLoad);
+    }
+  },
+
   _renderPlaceholderSection(id, title, message) {
     const section = this._createSection(id, title);
     const group = this._createGroup(title);
@@ -2531,10 +2811,12 @@ const Settings = {
       }
     }
 
-    // Populate MCP server cards, LLM providers, and canvas tools
+    // Populate MCP server cards, LLM providers, canvas tools, and My Canvas
     this._populateMcpServers();
     this._populateLlmProviders();
     this._populateCanvasTools();
+    this._bindMyCanvasControls();
+    this._loadMyCanvas();
     this._loadMdFiles();
   },
 

@@ -1220,11 +1220,17 @@ fn handle_session_resolve_response(mut ctx: AppContext, data: serde_json::Value)
                         .and_then(|v| v.as_u64())
                         .unwrap_or(0) * 1000;
 
+                    // Read is_persistent from the session response if provided.
+                    let is_persistent = art_json.get("is_persistent")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+
                     let mut art_msg = Message::artifact(
                         id.to_string(),
                         title.to_string(),
                         content_type,
                         ArtifactState::Complete,
+                        is_persistent,
                     );
                     art_msg.timestamp = ts;
                     artifacts_with_ts.push((ts, art_msg));
@@ -1450,6 +1456,7 @@ fn handle_artifact_start(mut ctx: AppContext, payload: crate::messaging::sender:
         title,
         content_type,
         ArtifactState::Streaming,
+        payload.is_persistent,
     ));
 }
 
@@ -1469,6 +1476,12 @@ fn handle_artifact_complete(mut ctx: AppContext, payload: crate::messaging::send
                     data.state = ArtifactState::Complete;
                     if let Some(ref title) = payload.title {
                         data.title = title.clone();
+                    }
+                    // ArtifactComplete may carry the authoritative is_persistent
+                    // flag (e.g. for artifacts loaded from a resumed session that
+                    // were already saved to My Canvas).
+                    if payload.is_persistent {
+                        data.is_persistent = true;
                     }
                     break;
                 }
