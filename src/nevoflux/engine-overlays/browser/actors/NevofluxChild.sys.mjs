@@ -6161,10 +6161,124 @@ export class NevofluxChild extends JSWindowActorChild {
       { defineAs: 'notify' }
     );
 
+    // -- canvasVideo namespace ------------------------------------------------
+    // Internal pages at nevoflux://render/<job_id> use this to drive the
+    // page-driven render loop. Actor-addressed calls (registerJob/drawFrame/
+    // unregisterJob) touch NevofluxParent directly; daemon-addressed calls
+    // (getComposition/forwardFrameChunk/reportDone/reportFailed) flow through
+    // the standard bridge:request path.
+    const canvasVideoNs = Cu.cloneInto({}, content);
+
+    Cu.exportFunction(
+      function registerJob(jobId) {
+        return actor
+          .sendQuery('canvasVideo:registerJob', { job_id: jobId })
+          .then((res) => Cu.cloneInto(res, content));
+      },
+      canvasVideoNs,
+      { defineAs: 'registerJob' }
+    );
+
+    Cu.exportFunction(
+      function unregisterJob(jobId) {
+        return actor
+          .sendQuery('canvasVideo:unregisterJob', { job_id: jobId })
+          .then((res) => Cu.cloneInto(res, content));
+      },
+      canvasVideoNs,
+      { defineAs: 'unregisterJob' }
+    );
+
+    Cu.exportFunction(
+      function drawFrame(jobId, width, height) {
+        return actor
+          .sendQuery('canvasVideo:drawFrame', {
+            job_id: jobId,
+            width,
+            height,
+          })
+          .then((res) => Cu.cloneInto(res, content));
+      },
+      canvasVideoNs,
+      { defineAs: 'drawFrame' }
+    );
+
+    Cu.exportFunction(
+      function getComposition(jobId) {
+        return actor
+          .sendQuery('bridge:request', {
+            type: 'canvas.video.get_composition',
+            payload: { job_id: jobId },
+          })
+          .then((res) => {
+            const val = res && res.success ? res.data : res;
+            return Cu.cloneInto(val, content);
+          });
+      },
+      canvasVideoNs,
+      { defineAs: 'getComposition' }
+    );
+
+    Cu.exportFunction(
+      function forwardFrameChunk(payload) {
+        // Fire-and-forget push of a single chunk to the daemon via the
+        // bridge's send_to_agent escape hatch.
+        return actor
+          .sendQuery('bridge:request', {
+            type: 'send_to_agent',
+            payload: {
+              type: 'canvas_video_frame_chunk',
+              payload,
+            },
+          })
+          .then((res) => Cu.cloneInto(res, content));
+      },
+      canvasVideoNs,
+      { defineAs: 'forwardFrameChunk' }
+    );
+
+    Cu.exportFunction(
+      function reportDone(jobId, framesEmitted) {
+        return actor
+          .sendQuery('bridge:request', {
+            type: 'send_to_agent',
+            payload: {
+              type: 'canvas_video_render_done',
+              payload: { job_id: jobId, frames_emitted: framesEmitted || 0 },
+            },
+          })
+          .then((res) => Cu.cloneInto(res, content));
+      },
+      canvasVideoNs,
+      { defineAs: 'reportDone' }
+    );
+
+    Cu.exportFunction(
+      function reportFailed(jobId, error) {
+        return actor
+          .sendQuery('bridge:request', {
+            type: 'send_to_agent',
+            payload: {
+              type: 'canvas_video_render_failed',
+              payload: { job_id: jobId, error: String(error || 'unknown') },
+            },
+          })
+          .then((res) => Cu.cloneInto(res, content));
+      },
+      canvasVideoNs,
+      { defineAs: 'reportFailed' }
+    );
+
     // -- assemble bridge object and expose on window ------------------------
     const bridge = Cu.cloneInto({}, content);
     Object.defineProperty(bridge, 'callTool', {
       value: callToolFn,
+      writable: false,
+      enumerable: true,
+      configurable: false,
+    });
+    Object.defineProperty(bridge, 'canvasVideo', {
+      value: canvasVideoNs,
       writable: false,
       enumerable: true,
       configurable: false,

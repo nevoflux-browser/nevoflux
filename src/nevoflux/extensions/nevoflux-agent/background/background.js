@@ -4,14 +4,6 @@
 
 'use strict';
 
-import {
-  handleOpen as canvasVideoHandleOpen,
-  handleLoad as canvasVideoHandleLoad,
-  handleSeek as canvasVideoHandleSeek,
-  handleClose as canvasVideoHandleClose,
-  installRuntimeListener as canvasVideoInstallListener,
-} from './canvas-video-handlers.js';
-
 // Immediate debug log to verify script is loading
 console.log('[NevoFlux] Background script starting...');
 
@@ -211,6 +203,8 @@ const pendingPersistDeleteRequests = new Map();
 const sidebarPersistSaveRequests = new Map();
 // Canvas Share pending requests: requestId → bridgeId
 const pendingShareRequests = new Map();
+// Canvas Video composition fetch: requestId → bridgeId
+const pendingGetCompositionRequests = new Map();
 
 // Note: as of protocol alignment (Plan B), the daemon now echoes our `call_id`
 // in events and uses `event_type` discriminator with stdout/stderr/progress/
@@ -1207,6 +1201,8 @@ class ChannelManager {
     if (routeCanvasToolResponse('canvas_tool_delete_response', pendingToolDeleteRequests)) return;
     if (routeCanvasToolResponse('canvas_tool_validate_response', pendingToolValidateRequests)) return;
 
+    if (routeCanvasToolResponse('canvas_video_get_composition_response', pendingGetCompositionRequests)) return;
+
     if (routeCanvasToolResponse('canvas_persist_list_response', pendingPersistListRequests)) return;
     // Route canvas_persist_save_response back to sidebar (bg:canvas_persist_save callers) BEFORE bridge router.
     if (message.type === 'canvas_persist_save_response') {
@@ -1255,20 +1251,6 @@ class ChannelManager {
         pendingShareRequests.delete(requestId);
         break;
       }
-    }
-
-    // --- canvas.video.* push routing ---
-    if (msgType === 'canvas_video_open') {
-      return await canvasVideoHandleOpen(message.payload);
-    }
-    if (msgType === 'canvas_video_load') {
-      return await canvasVideoHandleLoad(message.payload);
-    }
-    if (msgType === 'canvas_video_seek') {
-      return await canvasVideoHandleSeek(message.payload);
-    }
-    if (msgType === 'canvas_video_close') {
-      return await canvasVideoHandleClose(message.payload);
     }
 
     // Daemon error responses: when a canvas_share/import/extend/delete fails,
@@ -1474,7 +1456,6 @@ class ChannelManager {
 // =============================================================================
 
 const channelManager = new ChannelManager();
-canvasVideoInstallListener((m) => channelManager.sendToAgent(m));
 
 // =============================================================================
 // Sidebar Communication
@@ -2339,6 +2320,22 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
           const stored = await browser.storage.local.get(key);
           result = { success: true, data: stored[key] || null };
           break;
+        }
+
+        case 'canvas.video.get_composition': {
+          try {
+            const requestId = `cvgc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            pendingGetCompositionRequests.set(requestId, id);
+            channelManager.sendToAgent({
+              type: 'canvas_video_get_composition',
+              payload: { request_id: requestId, ...(payload || {}) },
+            });
+            // Defer respond until canvas_video_get_composition_response arrives.
+            return;
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+            break;
+          }
         }
 
         default:
