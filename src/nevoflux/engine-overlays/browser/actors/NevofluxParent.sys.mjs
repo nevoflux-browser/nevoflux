@@ -55,6 +55,9 @@ export class NevofluxParent extends JSWindowActorParent {
       }
       this._eventChannelUnsubs = null;
     }
+
+    // Drop any canvas_video job registrations tied to this actor.
+    this._canvasVideoJobs = null;
   }
 
   _setupDialogObserver() {
@@ -96,6 +99,106 @@ export class NevofluxParent extends JSWindowActorParent {
         return this.acceptDialog(data?.text);
       case 'dialogDismiss':
         return this.dismissDialog();
+
+      case 'canvasVideo:registerJob': {
+        const jobId = data?.job_id;
+        if (!jobId || typeof jobId !== 'string') {
+          return { ok: false, error: 'job_id required' };
+        }
+        if (!this._canvasVideoJobs) {
+          this._canvasVideoJobs = new Map();
+        }
+        if (!this._canvasVideoJobs.has(jobId)) {
+          this._canvasVideoJobs.set(jobId, { created_at: Date.now() });
+        }
+        return { ok: true };
+      }
+
+      case 'canvasVideo:unregisterJob': {
+        const jobId = data?.job_id;
+        if (this._canvasVideoJobs && jobId) {
+          this._canvasVideoJobs.delete(jobId);
+        }
+        return { ok: true };
+      }
+
+      case 'canvasVideo:drawFrame': {
+        const jobId = data?.job_id;
+        if (!jobId || !this._canvasVideoJobs?.has(jobId)) {
+          return { ok: false, error: `job ${jobId} not registered` };
+        }
+        const width = Math.max(1, Math.min(4096, data?.width || 1920));
+        const height = Math.max(1, Math.min(4096, data?.height || 1080));
+        try {
+          // Composition lives in the first child iframe of the render page.
+          const children = this.browsingContext.children || [];
+          if (!children[0]) {
+            return { ok: false, error: 'no composition iframe in render page' };
+          }
+          const childBc = children[0];
+
+          // Child WGP is populated asynchronously when the iframe loads
+          // in a separate process (spike data: typically <50 ms, up to 3 s).
+          let childWgp = childBc.currentWindowGlobal;
+          const pollStart = Date.now();
+          for (let i = 0; i < 60 && !childWgp; i++) {
+            await new Promise((r) => setTimeout(r, 50));
+            childWgp = childBc.currentWindowGlobal;
+          }
+          const pollMs = Date.now() - pollStart;
+          if (!childWgp) {
+            return { ok: false, error: `composition WGP null after ${pollMs} ms` };
+          }
+
+          const t0 = Date.now();
+          const bitmap = await childWgp.drawSnapshot(
+            new DOMRect(0, 0, width, height),
+            1,
+            'transparent'
+          );
+          const drawMs = Date.now() - t0;
+
+          // hiddenDOMWindow is unavailable on Linux — use the most-recent
+          // browser window's document to allocate an offscreen canvas.
+          const browserWin = Services.wm.getMostRecentWindow('navigator:browser');
+          if (!browserWin) {
+            if (typeof bitmap.close === 'function') bitmap.close();
+            return { ok: false, error: 'no navigator:browser window' };
+          }
+          const doc = browserWin.document;
+          const canvas = doc.createElementNS(
+            'http://www.w3.org/1999/xhtml',
+            'html:canvas'
+          );
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(bitmap, 0, 0);
+          if (typeof bitmap.close === 'function') {
+            bitmap.close();
+          }
+
+          const blob = await new Promise((resolve) =>
+            canvas.toBlob(resolve, 'image/png')
+          );
+          if (!blob) {
+            return { ok: false, error: 'canvas.toBlob returned null' };
+          }
+          const buf = await blob.arrayBuffer();
+
+          return {
+            ok: true,
+            pollMs,
+            drawMs,
+            size: buf.byteLength,
+            bytes: new Uint8Array(buf),
+            width,
+            height,
+          };
+        } catch (e) {
+          return { ok: false, error: String(e && e.message ? e.message : e) };
+        }
+      }
 
       case 'contentStore:get': {
         const { key } = data;
