@@ -1056,6 +1056,25 @@ pub async fn send_events_publish(
     Ok(())
 }
 
+/// Request cancellation of a running canvas_video render job. Wraps a
+/// `canvas_video_render_cancel` envelope and sends via the existing
+/// bg:send_to_agent path — no new bridge type required.
+pub async fn send_canvas_video_cancel(job_id: &str) -> Result<(), String> {
+    let request = serde_json::json!({
+        "type": "bg:send_to_agent",
+        "payload": {
+            "type": "canvas_video_render_cancel",
+            "payload": { "job_id": job_id }
+        }
+    });
+    let js_value = to_js_value(&request)
+        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    JsFuture::from(runtime_send_message(js_value))
+        .await
+        .map_err(|e| format!("Send failed: {:?}", e))?;
+    Ok(())
+}
+
 /// Async sleep using JavaScript setTimeout
 pub async fn sleep_ms(ms: u32) {
     let promise = js_sys::Promise::new(&mut |resolve, _| {
