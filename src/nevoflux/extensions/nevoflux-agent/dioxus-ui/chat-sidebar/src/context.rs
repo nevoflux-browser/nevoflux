@@ -84,6 +84,8 @@ pub struct AppContext {
     pub has_configured_provider: Signal<bool>,
     /// EventBus notification toasts
     pub event_notifications: Signal<Vec<EventNotification>>,
+    /// Active render jobs keyed by job_id, populated from jobs:render:* EventBus deliveries
+    pub render_jobs: Signal<std::collections::HashMap<String, crate::state::RenderJobEntry>>,
     /// Whether mock mode is enabled
     pub mock_enabled: bool,
 }
@@ -119,6 +121,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     let avatar_url = use_signal(|| None::<String>);
     let minimized = use_signal(|| false);
     let event_notifications = use_signal(Vec::new);
+    let render_jobs = use_signal(std::collections::HashMap::new);
     let mut first_run = use_signal(|| false);
     let mut has_configured_provider = use_signal(|| false);
 
@@ -148,6 +151,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         avatar_url,
         minimized,
         event_notifications,
+        render_jobs,
         first_run,
         has_configured_provider,
         mock_enabled,

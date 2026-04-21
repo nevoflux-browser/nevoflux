@@ -14,6 +14,7 @@ mod mcp;
 mod ask_user;
 mod file_picker;
 mod tools;
+pub mod render_job;
 
 pub use session::*;
 pub use message::*;
@@ -25,6 +26,7 @@ pub use mcp::*;
 pub use ask_user::*;
 pub use file_picker::*;
 pub use tools::*;
+pub use render_job::RenderJobEntry;
 
 /// Skill information for the skill selector
 #[derive(Debug, Clone, PartialEq)]
