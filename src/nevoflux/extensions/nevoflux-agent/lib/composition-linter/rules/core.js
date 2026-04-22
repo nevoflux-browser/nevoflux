@@ -41,15 +41,23 @@ function getInlineScriptSyntaxError(source) {
     new Function(source);
     return null;
   } catch (err) {
-    return err instanceof Error ? err.message : String(err);
+    const msg = err instanceof Error ? err.message : String(err);
+    // chrome:// contexts block Function() / eval via CSP; the rejection
+    // is not a syntax error in the script being linted. Treat as "cannot
+    // determine" and return null so the rule does not false-positive.
+    if (/\beval\b|\bFunction\b|not allowed in.*Parent Process|System Context/i.test(msg)) {
+      return null;
+    }
+    return msg;
   }
 }
 
 // ── Regex constants (ported verbatim from upstream utils.ts) ───────────────
 
 const TIMELINE_REGISTRY_INIT_PATTERN =
-  /window\.__timelines\s*=\s*window\.__timelines\s*\|\|\s*\{\}|window\.__timelines\s*=\s*\{\}|window\.__timelines\s*\?\?=\s*\{\}/i;
-const TIMELINE_REGISTRY_ASSIGN_PATTERN = /window\.__timelines\[[^\]]+\]\s*=/i;
+  /window\.__timelines\s*=\s*window\.__timelines\s*\|\|\s*(?:\{\}|\[\])|window\.__timelines\s*=\s*(?:\{\}|\[\])|window\.__timelines\s*\?\?=\s*(?:\{\}|\[\])/i;
+const TIMELINE_REGISTRY_ASSIGN_PATTERN =
+  /window\.__timelines\[[^\]]+\]\s*=|window\.__timelines\.push\s*\(/i;
 const INVALID_SCRIPT_CLOSE_PATTERN = /<script[^>]*>[\s\S]*?<\s*\/\s*script(?!>)/i;
 
 // ── core rule: root_missing_composition_id + root_missing_dimensions ────────
@@ -184,6 +192,10 @@ function ruleInvalidInlineScriptSyntax(ctx, report) {
     if (script.getAttribute('src')) continue;
     const type = script.getAttribute('type') || '';
     if (/application\/json/i.test(type)) continue;
+    // Skip ES modules: `import` declarations are module-level syntax and are
+    // not valid inside new Function(), so parsing them would always throw a
+    // SyntaxError even for perfectly valid module scripts.
+    if (/module/i.test(type)) continue;
 
     const content = script.textContent || '';
     const syntaxError = getInlineScriptSyntaxError(content);

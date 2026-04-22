@@ -1,5 +1,5 @@
 {
-  "errors": ["comp/missing-timeline-registry"],
+  "errors": [],
   "warnings": ["comp/root-composition-missing-data-start"],
   "infos": ["comp/external-script-dependency", "nf/ready-promises"]
 }

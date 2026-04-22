@@ -402,7 +402,11 @@ function ruleMissingGsapScript(ctx, report) {
 
   const hasGsapSrc = ctx.scripts.some(s => {
     const src = s.getAttribute('src') || '';
-    return /gsap/i.test(src);
+    if (/gsap/i.test(src)) return true;
+    // ES module: `import ... from 'https://esm.sh/gsap...'` or similar
+    const content = s.textContent || '';
+    if (/import\s+[^;]*\bfrom\s+['"][^'"]*gsap[^'"]*['"]/i.test(content)) return true;
+    return false;
   });
 
   // Detect GSAP bundled inline (no src).
