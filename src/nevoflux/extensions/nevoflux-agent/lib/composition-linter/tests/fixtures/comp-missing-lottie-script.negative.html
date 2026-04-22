@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+  <div id="stage" data-width="640" data-height="360" data-duration="5" data-fps="30">
+    <!-- BAD: composition uses the Lottie API in an inline script but does not
+         load a Lottie library via an external <script src="..."> tag. -->
+    <div id="lottie-container" style="width:300px;height:300px;"></div>
+    <script>
+      var anim = lottie.loadAnimation({
+        container: document.getElementById('lottie-container'),
+        renderer: 'svg',
+        loop: true,
+        autoplay: true,
+        path: 'assets/animation.json'
+      });
+    </script>
+  </div>
+</body>
+</html>

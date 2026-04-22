@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+  <div id="stage" data-width="640" data-height="360" data-duration="5" data-fps="30">
+    <!-- BAD: composition creates a Three.js scene in an inline script but does
+         not load the Three.js library via an external <script src="..."> tag. -->
+    <canvas id="gl-canvas"></canvas>
+    <script>
+      const scene    = new THREE.Scene();
+      const camera   = new THREE.PerspectiveCamera(75, 640 / 360, 0.1, 1000);
+      const renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('gl-canvas') });
+      renderer.setSize(640, 360);
+
+      const geometry = new THREE.BoxGeometry();
+      const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+      const cube     = new THREE.Mesh(geometry, material);
+      scene.add(cube);
+
+      camera.position.z = 5;
+      renderer.render(scene, camera);
+    </script>
+  </div>
+</body>
+</html>
