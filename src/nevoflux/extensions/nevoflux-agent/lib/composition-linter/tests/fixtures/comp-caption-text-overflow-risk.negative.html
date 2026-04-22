@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8">
+<style>
+  body { margin: 0; background: #000; }
+  #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+
+  /* BAD: white-space: nowrap without max-width — long caption phrases will
+     extend past the composition edge and get clipped off-screen. */
+  .caption-group {
+    position: absolute;
+    white-space: nowrap;
+    font-size: 48px;
+    color: #fff;
+  }
+  /* A second selector also missing max-width */
+  .caption-text {
+    display: inline-block;
+    white-space: nowrap;
+    font-weight: bold;
+  }
+</style>
+</head>
+<body>
+  <div id="stage" data-width="1920" data-height="1080" data-duration="10" data-fps="30">
+    <div class="caption-group" id="cg-0"></div>
+    <div class="caption-group" id="cg-1"></div>
+  </div>
+<script src="https://esm.sh/gsap@3/dist/gsap.min.js"></script>
+<script>
+  var TRANSCRIPT = [
+    { "text": "Hello world", "start": 0, "end": 2 },
+    { "text": "This is a very long caption line that might overflow", "start": 2, "end": 5 }
+  ];
+
+  const tl = gsap.timeline();
+  TRANSCRIPT.forEach(function(group, i) {
+    const groupEl = document.getElementById('cg-' + i);
+    groupEl.textContent = group.text;
+    tl.to(groupEl, { opacity: 1, duration: 0.3 }, group.start);
+    tl.to(groupEl, { opacity: 0, duration: 0.3 }, group.end - 0.3);
+    tl.set(groupEl, { opacity: 0, visibility: 'hidden' }, group.end);
+  });
+  window.__timelines = window.__timelines || {};
+  window.__timelines["comp-caption-text-overflow-risk.negative.html"] = tl;
+</script>
+</body>
+</html>

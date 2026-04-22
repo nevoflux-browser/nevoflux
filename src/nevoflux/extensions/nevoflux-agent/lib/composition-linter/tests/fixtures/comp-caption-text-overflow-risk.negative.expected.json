@@ -1,0 +1,12 @@
+{
+  "errors": [
+    "comp/timeline-id-mismatch"
+  ],
+  "warnings": [
+    "comp/caption-text-overflow-risk",
+    "comp/caption-text-overflow-risk"
+  ],
+  "infos": [
+    "comp/external-script-dependency"
+  ]
+}
