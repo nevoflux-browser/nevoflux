@@ -2,7 +2,8 @@
   "errors": [
     "comp/self-closing-media-tag",
     "comp/self-closing-media-tag",
-    "comp/video-missing-muted"
+    "comp/video-missing-muted",
+    "nf/single-audio"
   ],
   "warnings": [],
   "infos": [

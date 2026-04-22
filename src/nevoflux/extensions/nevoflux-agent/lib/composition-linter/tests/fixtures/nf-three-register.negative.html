@@ -1,0 +1,11 @@
+<!doctype html>
+<html><body>
+  <div id="stage" data-width="640" data-height="360" data-duration="5" data-fps="30"
+       data-composition-id="test"></div>
+  <script src="https://esm.sh/three@0.160"></script>
+  <script src="https://esm.sh/gsap@3.13"></script>
+  <script>
+    window.__timelines = window.__timelines || [];
+    const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true });
+  </script>
+</body></html>

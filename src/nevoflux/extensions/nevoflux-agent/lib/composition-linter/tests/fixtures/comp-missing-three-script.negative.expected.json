@@ -1,5 +1,5 @@
 {
-  "errors": ["comp/missing-three-script"],
-  "warnings": [],
+  "errors": ["comp/missing-three-script", "nf/three-renderer"],
+  "warnings": ["nf/three-register"],
   "infos": []
 }

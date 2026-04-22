@@ -1,0 +1,5 @@
+{
+  "errors": ["comp/missing-timeline-registry"],
+  "warnings": ["comp/root-composition-missing-data-start", "nf/mixer-settime"],
+  "infos": ["comp/external-script-dependency", "comp/external-script-dependency"]
+}

@@ -1,1 +1,1 @@
-{ "errors": ["comp/gsap-infinite-repeat"], "warnings": [], "infos": ["comp/external-script-dependency"] }
+{ "errors": ["comp/gsap-infinite-repeat"], "warnings": ["nf/cdn-whitelist"], "infos": ["comp/external-script-dependency"] }
