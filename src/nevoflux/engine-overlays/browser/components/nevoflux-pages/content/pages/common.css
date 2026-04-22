@@ -219,3 +219,51 @@ body {
     transition: none;
   }
 }
+
+/* ── Composition header strip ─────────────────────────────── */
+.composition-header {
+  display: flex; align-items: center;
+  padding: 4px 12px;
+  font: 12px system-ui; color: var(--zen-text-muted, #aaa);
+  background: var(--zen-colors-tertiary, #1b1b1b);
+  border-bottom: 1px solid var(--zen-colors-border, #333);
+}
+.composition-header[hidden] { display: none; }
+.composition-header-spacer { flex: 1; }
+.composition-header button {
+  padding: 2px 10px; font: 12px system-ui;
+  background: color-mix(in srgb, AccentColor 30%, transparent 70%);
+  color: var(--zen-branding-bg, #000);
+  border: none; border-radius: 4px; cursor: pointer;
+}
+
+/* ── Composition lint panel ───────────────────────────────── */
+.composition-lint-panel {
+  max-height: 160px; overflow-y: auto;
+  font: 12px system-ui;
+  background: var(--zen-colors-tertiary, #1b1b1b);
+  border-top: 1px solid var(--zen-colors-border, #333);
+}
+.composition-lint-panel[hidden] { display: none; }
+.composition-lint-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--zen-colors-border, #333);
+}
+.composition-lint-spacer { flex: 1; }
+.composition-lint-list { list-style: none; margin: 0; padding: 0; }
+.composition-lint-list li {
+  padding: 4px 12px; cursor: pointer;
+  border-bottom: 1px solid color-mix(in srgb, var(--zen-colors-border,#333) 50%, transparent);
+}
+.composition-lint-list li:hover { background: color-mix(in srgb, AccentColor 8%, transparent 92%); }
+.composition-lint-list .severity-error   { color: #e74c3c; }
+.composition-lint-list .severity-warning { color: #f1c40f; }
+.composition-lint-list .severity-info    { color: #7ab8ff; }
+.composition-lint-list .fix-hint { display: block; color: var(--zen-text-muted,#888); font-style: italic; }
+.composition-lint-list .empty { padding: 8px 12px; color: var(--zen-text-muted,#888); }
+.composition-line-pulse { animation: composition-line-pulse 1s ease-out 1; }
+@keyframes composition-line-pulse {
+  0%   { background-color: color-mix(in srgb, AccentColor 35%, transparent 65%); }
+  100% { background-color: transparent; }
+}

@@ -926,6 +926,24 @@
       </button>
     </div>
   </div>
+  <!-- Composition header strip — hidden for non-composition artifacts -->
+  <div id="composition-header" class="composition-header" hidden>
+    <span id="composition-header-spec"></span>
+    <span class="composition-header-spacer"></span>
+    <button id="composition-header-render" type="button">Render</button>
+  </div>
+
+  <!-- Composition lint panel — populated by Task 26 -->
+  <div id="composition-lint-panel" class="composition-lint-panel" hidden>
+    <div class="composition-lint-header">
+      <span id="composition-lint-counts">0 errors · 0 warnings · 0 infos</span>
+      <span class="composition-lint-spacer"></span>
+      <button id="composition-lint-toggle" type="button" aria-expanded="true">▼</button>
+      <button id="composition-lint-run" type="button">Lint now</button>
+    </div>
+    <ul id="composition-lint-list" class="composition-lint-list"></ul>
+  </div>
+
   <div class="canvas-viewport" id="viewport">
     <div class="canvas-loading" id="loading-state">
       <svg class="spinner" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

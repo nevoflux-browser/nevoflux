@@ -22,6 +22,57 @@ const Canvas = {
   // persistent push channel opened during subscribe.
   _eventChannels: new Map(),
 
+  // ── Composition Detection ────────────────────────────────
+
+  /**
+   * Returns true when the loaded artifact is a video composition
+   * (has files['composition.meta.json'] with kind === 'composition').
+   * Caches parsed meta in this._compositionMeta as a side-effect.
+   */
+  isComposition() {
+    const a = this._artifact;
+    if (!a || !a.files || !a.files['composition.meta.json']) return false;
+    try {
+      const meta = JSON.parse(a.files['composition.meta.json']);
+      this._compositionMeta = meta;
+      return !!(meta && meta.kind === 'composition');
+    } catch {
+      this._compositionMeta = null;
+      return false;
+    }
+  },
+
+  /**
+   * Populate and show (or hide) the composition header strip.
+   * Safe to call at any time — no-ops if the DOM element is missing.
+   */
+  _renderCompositionHeader() {
+    const hdr = document.getElementById('composition-header');
+    if (!hdr) return;
+    if (!this.isComposition()) { hdr.hidden = true; return; }
+    hdr.hidden = false;
+    const meta = this._compositionMeta;
+    const spec = (meta && meta.spec) || {};
+    const tpl = (meta && meta.origin && meta.origin.template) || 'custom';
+    const specEl = document.getElementById('composition-header-spec');
+    if (specEl) {
+      specEl.textContent =
+        `${spec.width}×${spec.height} · ${spec.duration_sec}s · ${spec.fps}fps · ${tpl}`;
+    }
+    const btn = document.getElementById('composition-header-render');
+    if (btn) {
+      btn.onclick = () => {
+        try {
+          parent.postMessage({
+            _nevoflux: true,
+            type: 'canvas-composition-render-request',
+            payload: { composition_id: this._artifactId },
+          }, '*');
+        } catch (_) {}
+      };
+    }
+  },
+
   // SDK script injected into every srcdoc iframe for postMessage bridge
   _SDK_SCRIPT: `<script>
 (function() {
@@ -1254,6 +1305,9 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
     this._artifact = artifact;
     this._hideLoading();
 
+    // Show/hide composition header strip whenever artifact changes
+    this._renderCompositionHeader();
+
     // Update toolbar
     document.getElementById('artifact-title').textContent = artifact.title || 'Untitled';
     document.title = artifact.title || 'Canvas';
@@ -1793,6 +1847,10 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
     container.appendChild(previewPane);
     viewport.appendChild(selectorBar);
     viewport.appendChild(container);
+
+    // Refresh composition header strip (placed outside #viewport so it
+    // survives viewport.innerHTML = '' on mode switches).
+    this._renderCompositionHeader();
 
     let currentPath = files[0];
 
