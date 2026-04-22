@@ -73,6 +73,116 @@ const Canvas = {
     }
   },
 
+  // ── Composition Lint Panel ──────────────────────────────
+
+  async _runCompositionLint(reason /* 'load' | 'save' | 'manual' */) {
+    if (!this.isComposition()) return;
+    const html = (this._artifact.files && this._artifact.files['index.html'])
+      || this._artifact.content
+      || '';
+    const panel = document.getElementById('composition-lint-panel');
+    const counts = document.getElementById('composition-lint-counts');
+    const list   = document.getElementById('composition-lint-list');
+    if (!panel || !counts || !list) return;
+    panel.hidden = false;
+    if (reason === 'load') counts.textContent = 'Linting…';
+    let report;
+    try {
+      if (!this._linter) {
+        this._linter = await import(
+          'chrome://nevoflux/content/vendor/composition-linter/index.js'
+        );
+      }
+      report = this._linter.lint(html, { composition_id: this._artifactId });
+    } catch (err) {
+      console.warn('[canvas] lint failed:', err);
+      report = null;
+    }
+    if (!report) {
+      counts.textContent = 'Lint unavailable';
+      list.innerHTML = '<li class="empty">Lint module failed to load.</li>';
+      return;
+    }
+    counts.textContent =
+      `${report.errors.length} errors · ${report.warnings.length} warnings · ${report.infos.length} infos`;
+    const all = [
+      ...report.errors.map(i => ({ ...i, _sev: 'error' })),
+      ...report.warnings.map(i => ({ ...i, _sev: 'warning' })),
+      ...report.infos.map(i => ({ ...i, _sev: 'info' })),
+    ];
+    if (all.length === 0) {
+      list.innerHTML = '<li class="empty">No issues — composition is lint-clean ✓</li>';
+      return;
+    }
+    list.innerHTML = '';
+    for (const issue of all) {
+      const li = document.createElement('li');
+      li.className = `severity-${issue._sev}`;
+      const loc = (issue.line != null) ? ` (line ${issue.line})` : '';
+      const icon = issue._sev === 'error' ? '✖' : issue._sev === 'warning' ? '⚠' : 'ℹ';
+      li.textContent = `${icon} ${issue.rule_id}${loc}  ${issue.message}`;
+      if (issue.fix_hint) {
+        const hint = document.createElement('span');
+        hint.className = 'fix-hint';
+        hint.textContent = issue.fix_hint;
+        li.appendChild(hint);
+      }
+      if (issue.line != null) {
+        li.addEventListener('click', () => this._jumpToLine(issue.line));
+      }
+      list.appendChild(li);
+    }
+  },
+
+  _jumpToLine(line) {
+    if (!this._cmView) return;
+    try {
+      const doc = this._cmView.state.doc;
+      if (line < 1 || line > doc.lines) return;
+      const pos = doc.line(line).from;
+      this._cmView.dispatch({
+        selection: { anchor: pos },
+      });
+      // Best-effort scroll-into-view — depends on CodeMirror version.
+      try {
+        if (typeof this._cmView.dispatch === 'function'
+            && typeof window.EditorView !== 'undefined'
+            && typeof window.EditorView.scrollIntoView === 'function') {
+          this._cmView.dispatch({
+            effects: window.EditorView.scrollIntoView(pos, { y: 'center' }),
+          });
+        }
+      } catch (_) {}
+      // Pulse animation on the active line (best-effort CSS hook).
+      const el = this._cmView.dom && this._cmView.dom.querySelector('.cm-activeLine');
+      if (el) {
+        el.classList.add('composition-line-pulse');
+        setTimeout(() => el.classList.remove('composition-line-pulse'), 1100);
+      }
+    } catch (_) {}
+  },
+
+  _wireCompositionLintPanel() {
+    // Idempotent — safe to call multiple times (events removed + re-added).
+    const toggle = document.getElementById('composition-lint-toggle');
+    const runBtn = document.getElementById('composition-lint-run');
+    const list = document.getElementById('composition-lint-list');
+    if (toggle && !toggle._wired) {
+      toggle._wired = true;
+      toggle.addEventListener('click', (e) => {
+        const btn = e.currentTarget;
+        const expanded = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', String(!expanded));
+        if (list) list.hidden = expanded;
+        btn.textContent = expanded ? '▶' : '▼';
+      });
+    }
+    if (runBtn && !runBtn._wired) {
+      runBtn._wired = true;
+      runBtn.addEventListener('click', () => this._runCompositionLint('manual'));
+    }
+  },
+
   // SDK script injected into every srcdoc iframe for postMessage bridge
   _SDK_SCRIPT: `<script>
 (function() {
@@ -1307,6 +1417,15 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
 
     // Show/hide composition header strip whenever artifact changes
     this._renderCompositionHeader();
+    this._wireCompositionLintPanel();
+    if (this.isComposition()) {
+      // Debounce lint on save/streaming updates; 500ms matches the plan spec.
+      // On initial load (_onArtifactUpdate) we use 500ms uniformly so that
+      // rapid content-store subscription fires (streaming) coalesce.
+      clearTimeout(this._lintDebounce);
+      this._lintDebounce = setTimeout(
+        () => this._runCompositionLint('load'), 500);
+    }
 
     // Update toolbar
     document.getElementById('artifact-title').textContent = artifact.title || 'Untitled';
@@ -1851,6 +1970,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
     // Refresh composition header strip (placed outside #viewport so it
     // survives viewport.innerHTML = '' on mode switches).
     this._renderCompositionHeader();
+    this._wireCompositionLintPanel();
 
     let currentPath = files[0];
 
@@ -1869,6 +1989,10 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
           this._SDK_SCRIPT
         );
       }, 500);
+      // Debounced lint on every edit (500ms coalesces rapid keystrokes).
+      clearTimeout(this._lintDebounce);
+      this._lintDebounce = setTimeout(
+        () => this._runCompositionLint('save'), 500);
     };
 
     const loadFile = (path) => {
