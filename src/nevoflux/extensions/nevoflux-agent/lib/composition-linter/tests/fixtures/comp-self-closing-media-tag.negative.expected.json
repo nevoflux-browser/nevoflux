@@ -1,0 +1,11 @@
+{
+  "errors": [
+    "comp/self-closing-media-tag",
+    "comp/self-closing-media-tag",
+    "comp/video-missing-muted"
+  ],
+  "warnings": [],
+  "infos": [
+    "comp/timed-element-missing-visibility-hidden"
+  ]
+}

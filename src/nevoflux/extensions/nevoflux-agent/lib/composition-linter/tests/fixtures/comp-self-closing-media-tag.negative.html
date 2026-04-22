@@ -1,0 +1,12 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+  <div id="stage" data-width="640" data-height="360" data-duration="5" data-fps="30">
+    <!-- BAD: self-closing audio/video tags are invalid HTML — the browser leaves
+         them open, swallowing all subsequent elements as hidden fallback content. -->
+    <audio id="bg-music" src="assets/bg.mp3" data-start="0" data-duration="5" />
+    <video id="hero" src="assets/hero.mp4" data-start="0" data-duration="5" muted />
+  </div>
+</body>
+</html>
