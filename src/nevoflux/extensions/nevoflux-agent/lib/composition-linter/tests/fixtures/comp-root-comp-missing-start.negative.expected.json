@@ -1,1 +1,1 @@
-{ "errors": [], "warnings": ["comp/root-composition-missing-data-start"], "infos": [] }
+{ "errors": ["comp/missing-gsap-script"], "warnings": ["comp/root-composition-missing-data-start"], "infos": [] }
