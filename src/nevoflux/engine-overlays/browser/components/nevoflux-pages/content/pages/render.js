@@ -124,6 +124,30 @@ async function runRenderLoop() {
     throw new Error(`getComposition returned no html (got ${JSON.stringify(comp)})`);
   }
 
+  // P3: pre-render composition lint gate. Runs the same module as the
+  // agent tool + canvas editor. A broken linter module (import fail or
+  // runtime throw) does NOT block the render — it's an advisory gate.
+  let lintReport = null;
+  try {
+    const mod = await import(
+      'chrome://nevoflux/content/vendor/composition-linter/index.js'
+    );
+    lintReport = mod.lint(comp.html, { composition_id: jobId });
+  } catch (err) {
+    console.warn('[render] lint gate unavailable, proceeding without it:', err);
+    lintReport = null;
+  }
+  if (lintReport && lintReport.errors.length > 0) {
+    const summary = lintReport.errors.slice(0, 3)
+      .map(e => `${e.rule_id}: ${e.message}`).join('; ');
+    const tail = lintReport.errors.length > 3
+      ? ` (+${lintReport.errors.length - 3} more)` : '';
+    const msg = `LintFailed: ${lintReport.errors.length} error(s): ${summary}${tail}`;
+    setStatus(msg);
+    await bridge().reportFailed(jobId, msg);
+    return;
+  }
+
   setStatus(`loading composition (${comp.width}×${comp.height}, ${comp.duration_sec}s @ ${comp.fps}fps)`);
   await loadComposition(comp.html, comp.width, comp.height);
 
