@@ -23,11 +23,13 @@ export function findNodeLineCol(raw, node) {
   } catch { return { line: null, col: null }; }
 }
 
-/** Whitelist test for CDN URLs per spec §5.3 nf/cdn-whitelist. */
+/** Whitelist test for CDN URLs per spec §5.3 nf/cdn-whitelist.
+ *  Version segments accept any `@<identifier>` (digits for semver like
+ *  `three@0.160`, or letter-prefixed like `three@r128`). */
 const CDN_WHITELIST = [
-  /^https:\/\/esm\.sh\/gsap(@\d|\/|$)/,
-  /^https:\/\/esm\.sh\/three(@\d|\/|$)/,
-  /^https:\/\/esm\.sh\/lottie-web(@\d|\/|$)/,
+  /^https:\/\/esm\.sh\/gsap(@[\w.-]+|\/|$)/,
+  /^https:\/\/esm\.sh\/three(@[\w.-]+|\/|$)/,
+  /^https:\/\/esm\.sh\/lottie-web(@[\w.-]+|\/|$)/,
 ];
 export function isCdnWhitelisted(url) {
   if (typeof url !== 'string') return false;
