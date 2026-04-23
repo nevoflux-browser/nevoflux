@@ -1075,6 +1075,25 @@ pub async fn send_canvas_video_cancel(job_id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Ask the daemon to play or reveal a rendered MP4 via the OS default app.
+/// `action` is "play" (opens in default video player) or "reveal"
+/// (opens containing folder, selecting the file on macOS/Windows).
+pub async fn send_canvas_video_reveal_path(path: &str, action: &str) -> Result<(), String> {
+    let request = serde_json::json!({
+        "type": "bg:send_to_agent",
+        "payload": {
+            "type": "canvas_video_reveal_path",
+            "payload": { "path": path, "action": action }
+        }
+    });
+    let js_value = to_js_value(&request)
+        .map_err(|e| format!("Serialize error: {:?}", e))?;
+    JsFuture::from(runtime_send_message(js_value))
+        .await
+        .map_err(|e| format!("Send failed: {:?}", e))?;
+    Ok(())
+}
+
 /// Async sleep using JavaScript setTimeout
 pub async fn sleep_ms(ms: u32) {
     let promise = js_sys::Promise::new(&mut |resolve, _| {

@@ -4422,6 +4422,24 @@ body {
   border-radius: var(--nevo-radius-sm);
 }
 
+.render-progress-card .reveal-btn {
+  padding: 4px 10px;
+  margin-right: 6px;
+  font: 12px system-ui;
+  background: color-mix(in srgb, AccentColor 22%, transparent 78%);
+  color: var(--nevo-text, #eee);
+  border: 1px solid color-mix(in srgb, AccentColor 45%, transparent 55%);
+  border-radius: var(--nevo-radius-sm, 4px);
+  cursor: pointer;
+}
+.render-progress-card .reveal-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, AccentColor 38%, transparent 62%);
+}
+.render-progress-card .reveal-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .render-progress-card .progress-fill { transition: none; }
 }

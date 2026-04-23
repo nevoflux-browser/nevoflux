@@ -10,7 +10,7 @@ use dioxus::prelude::*;
 use shared_protocol::RenderJobState;
 
 use crate::context::use_app_context;
-use crate::messaging::send_canvas_video_cancel;
+use crate::messaging::{send_canvas_video_cancel, send_canvas_video_reveal_path};
 
 /// If the last delivery for a running job was more than this many
 /// milliseconds ago we surface a soft "stalled" indicator in the UI.
@@ -93,9 +93,42 @@ pub fn RenderProgressCard(job_id: String) -> Element {
         }
         RenderJobState::Succeeded => {
             let path = entry.output_path.clone().unwrap_or_default();
+            let path_play = path.clone();
+            let path_reveal = path.clone();
+            let disabled = path.is_empty();
             rsx! {
                 div { class: "terminal-line succeeded",
                     code { class: "path-display", "{path}" }
+                }
+                div { class: "card-actions",
+                    button {
+                        class: "reveal-btn play-btn",
+                        disabled: disabled,
+                        title: "Open in default video player",
+                        onclick: move |_| {
+                            let p = path_play.clone();
+                            spawn(async move {
+                                if let Err(e) = send_canvas_video_reveal_path(&p, "play").await {
+                                    web_sys::console::warn_1(&format!("play failed: {}", e).into());
+                                }
+                            });
+                        },
+                        "\u{25B6} Play"
+                    }
+                    button {
+                        class: "reveal-btn folder-btn",
+                        disabled: disabled,
+                        title: "Open containing folder",
+                        onclick: move |_| {
+                            let p = path_reveal.clone();
+                            spawn(async move {
+                                if let Err(e) = send_canvas_video_reveal_path(&p, "reveal").await {
+                                    web_sys::console::warn_1(&format!("reveal failed: {}", e).into());
+                                }
+                            });
+                        },
+                        "\u{1F4C2} Open folder"
+                    }
                 }
             }
         }

@@ -69,8 +69,8 @@
     }, true); // capture phase
 })();
 
-import init, * as bindings from './chat-sidebar-1268c1abd812959d.js';
-const wasm = await init({ module_or_path: './chat-sidebar-1268c1abd812959d_bg.wasm' });
+import init, * as bindings from './chat-sidebar-d7bb51f7022beca9.js';
+const wasm = await init({ module_or_path: './chat-sidebar-d7bb51f7022beca9_bg.wasm' });
 
 
 window.wasmBindings = bindings;
