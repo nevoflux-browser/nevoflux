@@ -1,0 +1,101 @@
+<!--
+  component: caption-bouncy
+  purpose: 弹跳入场的逐词字幕（TikTok/活力风）
+  best for: 9:16 竖屏、配合 kokoro af 活力播报
+
+  AGENT INTEGRATION:
+  1. 文本拆词：空格分词（英文）或按字符（中文）
+  2. 单 clip 容器控制整段
+  3. stagger 固定 0.08s；要更快用 caption-typewriter
+
+  VISUAL: per-word scale 0.4→1.0 with back.out(2), stagger 0.08s, big bold pinned bottom-center.
+
+  CONSTRAINTS:
+  - 文本 5-15 个词/字符（太少失去节奏，太多溢出 stage）
+  - 不用于 16:9 正式商务场景（风格不符）
+
+  attribution: Ported from HyperFrames (Apache 2.0, v0.4.4). See LICENSE-NOTICE.md.
+-->
+
+<style>
+  .caption-bouncy {
+    position: absolute;
+    bottom: var(--aspect-safe_bottom, 160px);
+    left: 0;
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: flex-end;
+    gap: 0 16px;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .caption-bouncy .word {
+    font-family: var(--typography-hero-family, 'Inter, sans-serif');
+    font-weight: var(--typography-hero-weight, 800);
+    font-size: 72px;
+    line-height: 1.15;
+    color: var(--color-foreground, #fff);
+    display: inline-block;
+    transform-origin: center bottom;
+    text-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.55),
+      0 1px 3px rgba(0, 0, 0, 0.8);
+  }
+  .caption-bouncy .word.word-accent {
+    color: var(--color-accent, #ff8c42);
+  }
+</style>
+
+<!-- AGENT: set data-start / data-duration to match TTS clip;
+     split text into <span class="word">...</span> on whitespace;
+     optionally add class="word-accent" to emphasised words -->
+<div class="clip caption-bouncy"
+     data-start="1.0"
+     data-duration="3.0"
+     data-track-index="20">
+  <span class="word">Every</span>
+  <span class="word">word</span>
+  <span class="word word-accent">bounces</span>
+  <span class="word">in</span>
+  <span class="word">with</span>
+  <span class="word">energy</span>
+</div>
+
+<script type="module">
+  import { gsap } from 'https://esm.sh/gsap@3.13';
+
+  const container = document.querySelector('.caption-bouncy');
+  const words = Array.from(container.querySelectorAll('.word'));
+  const duration = parseFloat(container.dataset.duration ?? '3');
+  const STAGGER = 0.08;
+  const BOUNCE_DUR = 0.45;
+  const ease = 'back.out(2)';
+
+  const tl = gsap.timeline({ paused: true });
+
+  // Container fade-in
+  tl.to(container, { opacity: 1, duration: 0.15, ease: 'power1.out' }, 0);
+
+  // Per-word bounce entrance — stagger 0.08s each
+  tl.fromTo(
+    words,
+    { scale: 0.4, opacity: 0 },
+    {
+      scale: 1,
+      opacity: 1,
+      duration: BOUNCE_DUR,
+      ease,
+      stagger: STAGGER,
+    },
+    0,
+  );
+
+  // Container fade-out
+  const holdEnd = Math.max(duration - 0.25, words.length * STAGGER + BOUNCE_DUR + 0.1);
+  tl.to(container, { opacity: 0, duration: 0.25, ease: 'power2.in' }, holdEnd);
+
+  window.__timelines = window.__timelines || [];
+  window.__timelines.push(tl);
+</script>
