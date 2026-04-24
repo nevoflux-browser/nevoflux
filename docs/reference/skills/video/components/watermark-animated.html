@@ -1,0 +1,132 @@
+<!--
+  component: watermark-animated
+  purpose: 角标品牌印记 / Corner-pinned brand watermark (fade-in + hold + fade-out)
+  best for: 整段品牌露出 / 片尾归属
+
+  AGENT INTEGRATION:
+  1. data-corner: "bottom-right" (default) | "bottom-left" | "top-left" | "top-right"
+  2. data-duration ≥ 2s (入场+出场 占比过大 if shorter)
+  3. <span class="watermark-animated-text"> 可替换为 <img src="assets/logo.png">
+
+  VISUAL:
+  - 指定角落，safe_zone 对齐
+  - y:20→0 淡入 0.6s
+  - hold (duration - 1.2s)
+  - y:0→20 淡出 0.6s
+
+  CONSTRAINTS:
+  - data-duration ≥ 2s
+  - 不覆盖 data-track-index = 50 (最顶层)
+  - 若四角同时放 4 个 watermark，data-start 错位以避免视觉紧凑
+-->
+
+<style>
+  .watermark-animated {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 50;
+  }
+
+  .watermark-animated-content {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-md, 8px) var(--space-lg, 16px);
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: var(--rounded-md, 8px);
+  }
+
+  .watermark-animated-text {
+    color: var(--color-foreground, #fff);
+    font-family: var(--typography-body-family, 'Inter, sans-serif');
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+
+  .watermark-animated-content img {
+    max-height: 32px;
+    max-width: 120px;
+    display: block;
+  }
+</style>
+
+<!-- AGENT: set data-corner; replace <span> with logo text or <img src="assets/logo.png"> -->
+<div class="clip watermark-animated"
+     data-start="0"
+     data-duration="3"
+     data-track-index="50"
+     data-corner="bottom-right">
+  <div class="watermark-animated-content">
+    <span class="watermark-animated-text">BRAND NAME</span>
+  </div>
+</div>
+
+<script type="module">
+  import { gsap } from 'https://esm.sh/gsap@3.13';
+
+  const root = document.querySelector('.watermark-animated');
+  const content = root.querySelector('.watermark-animated-content');
+
+  // Read corner and duration from data attributes.
+  const corner = root.dataset.corner || 'bottom-right';
+  const duration = parseFloat(root.dataset.duration || 3);
+
+  // Position content based on corner value.
+  const positionMap = {
+    'bottom-right': {
+      bottom: 'var(--aspect-safe_bottom, 160px)',
+      right: 'var(--aspect-safe_sides, 80px)',
+      top: 'auto',
+      left: 'auto',
+    },
+    'bottom-left': {
+      bottom: 'var(--aspect-safe_bottom, 160px)',
+      left: 'var(--aspect-safe_sides, 80px)',
+      top: 'auto',
+      right: 'auto',
+    },
+    'top-left': {
+      top: 'var(--aspect-safe_top, 120px)',
+      left: 'var(--aspect-safe_sides, 80px)',
+      bottom: 'auto',
+      right: 'auto',
+    },
+    'top-right': {
+      top: 'var(--aspect-safe_top, 120px)',
+      right: 'var(--aspect-safe_sides, 80px)',
+      bottom: 'auto',
+      left: 'auto',
+    },
+  };
+
+  const pos = positionMap[corner] || positionMap['bottom-right'];
+  Object.entries(pos).forEach(([key, val]) => {
+    content.style[key] = val;
+  });
+
+  const tl = gsap.timeline({ paused: true });
+
+  // Phase 1: fade in with y offset 0.6s (power2.out)
+  tl.fromTo(
+    content,
+    { y: 20, opacity: 0 },
+    { y: 0, opacity: 1, duration: 0.6, ease: 'power2.out', overwrite: 'auto' },
+    0
+  );
+
+  // Phase 2: hold (implicit — no tween needed)
+
+  // Phase 3: fade out with y offset 0.6s (power2.in) at position (duration - 0.6s)
+  tl.to(
+    content,
+    { y: 20, opacity: 0, duration: 0.6, ease: 'power2.in', overwrite: 'auto' },
+    duration - 0.6
+  );
+
+  window.__timelines = window.__timelines || [];
+  window.__timelines.push(tl);
+</script>
