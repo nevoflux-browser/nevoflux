@@ -561,9 +561,9 @@ const Canvas = {
   // Appended to _SDK_SCRIPT for composition-kind artifacts only; render mode
   // uses chrome://render which never executes this.
   _COMPOSITION_PREVIEW_FIT: `<style>
-html, body { overflow: hidden; margin: 0; }
-body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-#stage { transform-origin: center center; flex-shrink: 0; }
+html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100vh; }
+/* Remove #stage from flow so its 1920x1080 layout box doesn't push body taller than the iframe viewport. */
+#stage { position: absolute !important; left: 0 !important; top: 0 !important; transform-origin: 0 0; }
 </style>
 <script>
 (function() {
@@ -574,7 +574,10 @@ body { display: flex; align-items: center; justify-content: center; min-height: 
     var H = parseFloat(stage.dataset.height) || 1080;
     var scale = Math.min(window.innerWidth / W, window.innerHeight / H);
     if (!isFinite(scale) || scale <= 0) return;
-    stage.style.transform = 'scale(' + scale + ')';
+    // Center the (scaled) stage inside the viewport: translate first, then scale from origin (0,0).
+    var tx = (window.innerWidth  - W * scale) / 2;
+    var ty = (window.innerHeight - H * scale) / 2;
+    stage.style.transform = 'translate(' + tx + 'px, ' + ty + 'px) scale(' + scale + ')';
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', fitStage);
