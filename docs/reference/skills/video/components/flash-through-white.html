@@ -1,0 +1,73 @@
+<!--
+  component: flash-through-white
+  purpose: 白色闪光硬切转场 / White flash hard-cut transition
+  best for: 节奏卡点 / beat drop / 重点强调前的 cut
+
+  AGENT INTEGRATION:
+  1. 放在两个场景之间 (data-track-index=10)
+  2. data-start 对齐前一场景结束点（或 beat 时刻）
+  3. 颜色走 var(--color-foreground)；黑色底需切换 var(--color-background) 或自定义
+
+  VISUAL:
+  - 全屏白色覆盖层
+  - opacity 0 → 1 over 0.15s (power2.in)
+  - hold 0.05s
+  - 1 → 0 over 0.25s (power2.out)
+  - 总时长 0.45s
+
+  CONSTRAINTS:
+  - duration 固定 0.45s
+  - 单件（不接受 duration 覆盖；时长写死）
+  - 颜色可通过 --color-foreground 变量调整
+-->
+
+<style>
+  .flash-through-white {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .flash-through-white .flash-through-white-fill {
+    position: absolute;
+    inset: 0;
+    background: var(--color-foreground, #ffffff);
+    opacity: 0;
+  }
+</style>
+
+<!-- AGENT: 修改 data-start 对齐前一场景结束时间 -->
+<div class="clip flash-through-white"
+     data-start="0"
+     data-duration="0.45"
+     data-track-index="10">
+  <div class="flash-through-white-fill"></div>
+</div>
+
+<script type="module">
+  import { gsap } from 'https://esm.sh/gsap@3.13';
+
+  const tl = gsap.timeline({ paused: true });
+
+  // Phase 1: fade in to full white (0.15s, power2.in)
+  tl.fromTo(
+    '.flash-through-white .flash-through-white-fill',
+    { opacity: 0 },
+    { opacity: 1, duration: 0.15, ease: 'power2.in', overwrite: 'auto' },
+    0
+  );
+
+  // Phase 2: hold at full opacity (0.05s, no motion)
+  // (implicit delay from phase 1 end = 0.15s, then hold + phase 3 duration = 0.30s total)
+
+  // Phase 3: fade out from white (0.25s, power2.out)
+  // starts at 0.20s = 0.15s (fade in) + 0.05s (hold)
+  tl.to(
+    '.flash-through-white .flash-through-white-fill',
+    { opacity: 0, duration: 0.25, ease: 'power2.out', overwrite: 'auto' },
+    0.20
+  );
+
+  window.__timelines = window.__timelines || [];
+  window.__timelines.push(tl);
+</script>
