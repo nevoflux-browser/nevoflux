@@ -557,6 +557,34 @@ const Canvas = {
 })();
 </script>`,
 
+  // Preview-only: fit #stage into the iframe viewport with uniform scale.
+  // Appended to _SDK_SCRIPT for composition-kind artifacts only; render mode
+  // uses chrome://render which never executes this.
+  _COMPOSITION_PREVIEW_FIT: `<style>
+html, body { overflow: hidden; margin: 0; }
+body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+#stage { transform-origin: center center; flex-shrink: 0; }
+</style>
+<script>
+(function() {
+  function fitStage() {
+    var stage = document.querySelector('#stage');
+    if (!stage) return;
+    var W = parseFloat(stage.dataset.width) || 1920;
+    var H = parseFloat(stage.dataset.height) || 1080;
+    var scale = Math.min(window.innerWidth / W, window.innerHeight / H);
+    if (!isFinite(scale) || scale <= 0) return;
+    stage.style.transform = 'scale(' + scale + ')';
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', fitStage);
+  } else {
+    fitStage();
+  }
+  window.addEventListener('resize', fitStage);
+})();
+</script>`,
+
   init() {
     // window.location retains original nevoflux:// URL even though content
     // loads via chrome:// protocol handler rewrite.  The ID lives in the path:
@@ -1771,6 +1799,14 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
 
     this._updateStatus('Bundling...');
 
+    // Composition artifacts render at their native resolution (e.g., 1920x1080)
+    // which almost always exceeds the preview viewport. Inject a fit-to-viewport
+    // layer that scales #stage to fit while preserving aspect. Render mode uses
+    // a separate chrome://render page, so this does not touch capture output.
+    const sdkScript = this.isComposition()
+      ? this._SDK_SCRIPT + this._COMPOSITION_PREVIEW_FIT
+      : this._SDK_SCRIPT;
+
     const result = await CanvasRuntime.render(
       viewport,
       {
@@ -1778,7 +1814,7 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
         entry: artifact.entry,
         options: artifact.options,
       },
-      this._SDK_SCRIPT
+      sdkScript
     );
 
     if (result.success) {
