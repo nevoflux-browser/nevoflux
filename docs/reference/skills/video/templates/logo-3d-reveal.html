@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<!--
+  template: logo-3d-reveal
+  purpose: Three.js 3D logo 揭幕（minimal 版本）/ Minimal Three.js 3D logo reveal
+  best for: 品牌片头、logo 展示
+
+  AGENT INTEGRATION:
+  1. 替换 BoxGeometry 为用户 logo geometry（ExtrudeGeometry / TextGeometry / 自定义）
+  2. material.color 由 CSS var --color-primary 驱动
+  3. camera.position.z 调节远近（默认 4 → 2.5 dolly）
+  4. data-duration 推荐 4-8s
+
+  VISUAL:
+  - 1920×1080 黑背景
+  - Lit BoxGeometry 居中，2s dolly-in 从 z:4 → z:2.5
+  - 3s hold with slow rotation.y 2π
+  - 1s scale:1.2 + fade-out
+
+  CONSTRAINTS:
+  - WebGLRenderer 必须 preserveDrawingBuffer: true
+  - renderer 必须 push 到 window.__threeRenderers
+  - 不用 AnimationMixer；如需动画用 GSAP（兼容 render time clock）
+  - 固定 1920×1080 / 30fps / 6s
+
+  attribution: 无（原创；Three.js 模式遵循 canvas-render-determinism-spec.md）
+-->
+<html lang="zh">
+<head>
+  <meta charset="utf-8">
+  <script src="https://esm.sh/three@0.160"></script>
+  <script src="https://esm.sh/gsap@3.13"></script>
+  <style>
+    :root {
+      --color-background: #000000;
+      --color-primary:    #1a6b6b;
+    }
+
+    body {
+      margin: 0;
+      background: #000;
+      overflow: hidden;
+    }
+
+    #stage {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      background: var(--color-background, #000);
+      overflow: hidden;
+    }
+
+    #three-canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+<div id="stage"
+     data-composition-id="logo-3d-reveal"
+     data-width="1920"
+     data-height="1080"
+     data-duration="6"
+     data-fps="30"
+     data-bg="#000"
+     data-start="0">
+
+  <canvas id="three-canvas" class="clip"
+          data-start="0" data-duration="6" data-track-index="1"
+          width="1920" height="1080"></canvas>
+
+</div>
+
+<script>
+  // ── Scene & Camera ────────────────────────────────────────────────────────────
+  const canvas = document.getElementById('three-canvas');
+  const scene  = new THREE.Scene();
+
+  const bgHex = getComputedStyle(document.documentElement)
+    .getPropertyValue('--color-background')?.trim() || '#000000';
+  scene.background = new THREE.Color(bgHex);
+
+  const camera = new THREE.PerspectiveCamera(50, 1920 / 1080, 0.1, 100);
+  camera.position.set(0, 0, 4);
+
+  // ── Renderer — preserveDrawingBuffer REQUIRED (nf/three-renderer) ─────────────
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: true,
+    preserveDrawingBuffer: true,
+  });
+  renderer.setSize(1920, 1080);
+  renderer.setPixelRatio(1);
+
+  // ── Register renderer — REQUIRED (nf/three-register) ──────────────────────────
+  window.__threeRenderers = window.__threeRenderers || [];
+  window.__threeRenderers.push({ renderer, scene, camera });
+
+  // ── Geometry & Material ───────────────────────────────────────────────────────
+  // AGENT: swap BoxGeometry for ExtrudeGeometry / TextGeometry / custom logo mesh
+  const primaryHex = getComputedStyle(document.documentElement)
+    .getPropertyValue('--color-primary')?.trim() || '#1a6b6b';
+
+  const geometry = new THREE.BoxGeometry(1, 1, 1);
+  const material = new THREE.MeshStandardMaterial({
+    color:       new THREE.Color(primaryHex),
+    roughness:   0.3,
+    metalness:   0.6,
+    transparent: true,   // required so opacity tween works
+    opacity:     1,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  scene.add(mesh);
+
+  // ── Lighting ──────────────────────────────────────────────────────────────────
+  scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+  keyLight.position.set(3, 4, 5);
+  scene.add(keyLight);
+
+  // ── GSAP Timeline (paused — externally seek-driven via window.__nfRenderTime) ──
+  // No AnimationMixer; GSAP is seek-safe (nf/mixer-settime satisfied).
+  window.__timelines = window.__timelines || [];
+
+  const tl = gsap.timeline({ paused: true });
+
+  // 0 – 2s: camera dolly-in z:4 → z:2.5
+  tl.to(camera.position, {
+    z: 2.5,
+    duration: 2,
+    ease: 'power2.out',
+  }, 0);
+
+  // 0 – 5s: slow full rotation (2π) around Y
+  tl.to(mesh.rotation, {
+    y: Math.PI * 2,
+    duration: 5,
+    ease: 'power1.inOut',
+  }, 0);
+
+  // 5 – 6s: scale + fade-out
+  tl.to(mesh.scale, {
+    x: 1.2, y: 1.2, z: 1.2,
+    duration: 1,
+    ease: 'power2.in',
+  }, 5);
+  tl.to(material, {
+    opacity: 0,
+    duration: 1,
+    ease: 'power2.in',
+  }, 5);
+
+  window.__timelines.push(tl);
+</script>
+
+</body>
+</html>
