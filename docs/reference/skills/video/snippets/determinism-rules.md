@@ -46,6 +46,10 @@ const tl = gsap.timeline({ paused: true });
 tl.to(el, { rotation: 360, duration: 2 });
 window.__timelines = window.__timelines || [];
 window.__timelines.push(tl);
+
+// Auto-play in preview mode (no render driver present).
+// In render mode, __nfRenderTime is defined and drives tl.seek() externally.
+if (typeof window.__nfRenderTime === 'undefined') tl.play();
 ```
 
 ## Random & Clock
@@ -80,6 +84,7 @@ Render loop awaits all promises before frame capture.
 
 - **MUST use `gsap.timeline()` and push to `window.__timelines`** — the capture loop discovers timelines here
 - **MUST create timelines with `{ paused: true }`** — otherwise GSAP self-drives on RAF, breaking determinism
+- **SHOULD guard preview-mode auto-play with `if (typeof window.__nfRenderTime === 'undefined') tl.play();`** — otherwise the composition page shows a black/empty initial frame in the editor because nothing ever seeks the paused timeline
 - **MUST NOT use `ScrollTrigger`, `ScrollSmoother`, `Observer`, `Draggable`** — depends on user input (meaningless in render mode)
 - **MUST NOT use `repeat: -1` (infinite repeat)**  — architecture-level hard rule; calculate finite repeat count instead:
   ```javascript

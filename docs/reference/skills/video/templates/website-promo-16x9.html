@@ -319,6 +319,9 @@
   // tl.to('#scene-cta', { opacity: 0, duration: 0.5, ease: 'power2.in' }, 19.5);
 
   window.__timelines.push(tl);
+
+  // Auto-play in preview mode (no render driver present)
+  if (typeof window.__nfRenderTime === 'undefined') tl.play();
 </script>
 
 </body>

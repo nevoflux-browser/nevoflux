@@ -151,6 +151,9 @@
   }, 5);
 
   window.__timelines.push(tl);
+
+  // Auto-play in preview mode (no render driver present)
+  if (typeof window.__nfRenderTime === 'undefined') tl.play();
 </script>
 
 </body>
