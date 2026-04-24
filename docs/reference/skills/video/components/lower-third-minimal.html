@@ -1,0 +1,110 @@
+<!--
+  component: lower-third-minimal
+  purpose: 极简身份字幕，无底色 / Minimal sans-serif lower-third, no background fill
+  best for: 编辑风 / 纪录片风 / 轻量节目
+
+  AGENT INTEGRATION:
+  1. 填姓名（weight 500）+ 职位 + 细横线
+  2. 需深底（lightness < 40%）
+  3. data-duration 典型 3-5s
+
+  VISUAL: text + accent-color 1px rule; fade 0.3s + 8px y-slide; no colored band.
+  CONSTRAINTS: 深底（lightness < 40%）; weight 500-600; 姓名 ≤ 20 字，职位 ≤ 40 字
+
+  attribution: Ported from HyperFrames (Apache 2.0, v0.4.4). See
+    /ai/project/nevoflux/src/nevoflux/extensions/nevoflux-agent/lib/composition-linter/LICENSE-NOTICE.md
+-->
+<style>
+  .lower-third-minimal {
+    position: absolute;
+    left: var(--aspect-safe_sides, 80px);
+    bottom: var(--aspect-safe_bottom, 160px);
+    pointer-events: none;
+  }
+  .lower-third-minimal .lower-third-minimal-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm, 8px);
+  }
+  .lower-third-minimal .lower-third-minimal-name {
+    font-family: var(--typography-hero-family, 'Inter, sans-serif');
+    font-weight: var(--typography-hero-weight, 500);
+    font-size: 52px;
+    color: var(--color-foreground, #f5f5f7);
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 700px;
+  }
+  .lower-third-minimal .lower-third-minimal-rule {
+    width: 100%;
+    height: 1px;
+    background: var(--color-accent, #ff8c42);
+  }
+  .lower-third-minimal .lower-third-minimal-title {
+    font-family: var(--typography-body-family, 'Noto Sans SC', sans-serif);
+    font-weight: 400;
+    font-size: 30px;
+    color: var(--color-foreground, #f5f5f7);
+    opacity: 0.8;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 700px;
+  }
+</style>
+
+<!-- AGENT: 替换姓名 / 职位文本；调整 data-start / data-duration -->
+<div class="clip lower-third-minimal"
+     id="lower-third-minimal-1"
+     data-start="2.0"
+     data-duration="4.0"
+     data-track-index="15">
+  <div class="lower-third-minimal-content">
+    <div class="lower-third-minimal-name">姓名 / Name</div>
+    <div class="lower-third-minimal-rule"></div>
+    <div class="lower-third-minimal-title">职位 · 公司</div>
+  </div>
+</div>
+
+<script type="module">
+  import { gsap } from 'https://esm.sh/gsap@3.13';
+
+  const clip = document.querySelector('#lower-third-minimal-1');
+  const content = clip.querySelector('.lower-third-minimal-content');
+  const duration = parseFloat(clip.dataset.duration ?? '4');
+
+  const FADE_DUR  = 0.3;
+  const ease_in   = 'power2.out';
+  const ease_out  = 'power2.in';
+  // Hold time: total duration minus fade-in and fade-out
+  const hold = Math.max(0, duration - FADE_DUR * 2);
+
+  const tl = gsap.timeline({ paused: true });
+
+  // Fade in + 8px y-slide up
+  tl.fromTo(content,
+    { y: 8, opacity: 0 },
+    { y: 0, opacity: 1, duration: FADE_DUR, ease: ease_in }
+  );
+
+  // Hold
+  tl.to(content, { y: 0, opacity: 1, duration: hold });
+
+  // Fade out + 8px y-slide down
+  tl.to(content,
+    { y: 8, opacity: 0, duration: FADE_DUR, ease: ease_out }
+  );
+
+  window.__timelines = window.__timelines || [];
+  window.__timelines.push(tl);
+</script>
+<!--
+  VARIANT 提示：
+  - 单行版：删掉 lower-third-minimal-title + lower-third-minimal-rule 节点
+  - 右对齐版：把 left 改 right，text-align: right
+  - 双语版：在 name 后加第二行小字（opacity 0.65）
+  - 配合 caption-subtitle：lower-third track 15 < caption 20
+-->
