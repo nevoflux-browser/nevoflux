@@ -1,0 +1,108 @@
+<!--
+  component: annotation-arrow
+  purpose: SVG 注释箭头（画上）/ SVG annotation arrow (draws on)
+  best for: 指向产品特性 / UI 元素 / 截图重点
+
+  AGENT INTEGRATION:
+  1. data-from-x/y / data-to-x/y 用 stage 像素坐标 (0..1920 / 0..1080)
+  2. 箭头颜色走 var(--color-accent)
+  3. data-duration 典型 2-4s（含 0.6s draw-on + hold + 0.3s fade-out）
+
+  VISUAL:
+  - SVG polyline from (from-x, from-y) to (to-x, to-y) with arrowhead at to-
+  - Draws on with stroke-dasharray over 0.6s
+  - Holds, then fades out 0.3s at end
+
+  CONSTRAINTS:
+  - from 与 to 坐标不能重合
+  - 箭头长度 ≥ 80px
+  - data-duration ≥ 1.0s（0.6s draw + 0.3s fade + minimum hold）
+  - Only valid for 16:9 stage 1920×1080 (vertical compositions need viewBox swap)
+-->
+
+<style>
+  .annotation-arrow {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 8;
+  }
+  .annotation-arrow-svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .annotation-arrow-path {
+    stroke: var(--color-accent, #ff8c42);
+    stroke-width: 6;
+    fill: none;
+    stroke-linecap: round;
+  }
+</style>
+
+<!-- AGENT: set data-from-x/y + data-to-x/y in stage pixels (1920×1080); data-duration ≥ 1.0s -->
+<div class="clip annotation-arrow"
+     data-start="0"
+     data-duration="3"
+     data-track-index="8"
+     data-from-x="200" data-from-y="400"
+     data-to-x="800"   data-to-y="200">
+  <svg class="annotation-arrow-svg" viewBox="0 0 1920 1080" preserveAspectRatio="none">
+    <defs>
+      <marker id="annotation-arrowhead" markerWidth="12" markerHeight="12"
+              refX="10" refY="6" orient="auto">
+        <path d="M0,0 L12,6 L0,12 Z" fill="var(--color-accent, #ff8c42)"/>
+      </marker>
+    </defs>
+    <path class="annotation-arrow-path"
+          d="M200,400 L800,200"
+          marker-end="url(#annotation-arrowhead)"/>
+  </svg>
+</div>
+
+<script type="module">
+  import { gsap } from 'https://esm.sh/gsap@3.13';
+
+  const root = document.querySelector('.annotation-arrow');
+  const path = root.querySelector('.annotation-arrow-path');
+
+  // Read coords from data attributes and update the <path> d attribute.
+  const fx = parseFloat(root.dataset.fromX ?? 200);
+  const fy = parseFloat(root.dataset.fromY ?? 400);
+  const tx = parseFloat(root.dataset.toX   ?? 800);
+  const ty = parseFloat(root.dataset.toY   ?? 200);
+  path.setAttribute('d', `M${fx},${fy} L${tx},${ty}`);
+
+  // Stroke-dasharray draw-on: hide then reveal over 0.6s.
+  const len = path.getTotalLength();
+  path.style.strokeDasharray  = len;
+  path.style.strokeDashoffset = len;
+
+  const duration = parseFloat(root.dataset.duration ?? 3);
+  const drawDur  = 0.6;
+  const fadeDur  = 0.3;
+  const fadeStart = Math.max(drawDur, duration - fadeDur);
+
+  const tl = gsap.timeline({ paused: true });
+
+  // Phase 1: draw line on (stroke-dashoffset len → 0, 0.6s power2.out)
+  tl.to(path, {
+    strokeDashoffset: 0,
+    duration: drawDur,
+    ease: 'power2.out',
+    overwrite: 'auto',
+  }, 0);
+
+  // Phase 2: hold (implicit — no tween needed between draw and fade)
+
+  // Phase 3: fade out entire arrow over 0.3s at end
+  tl.to(root, {
+    opacity: 0,
+    duration: fadeDur,
+    ease: 'power2.in',
+    overwrite: 'auto',
+  }, fadeStart);
+
+  window.__timelines = window.__timelines || [];
+  window.__timelines.push(tl);
+</script>
