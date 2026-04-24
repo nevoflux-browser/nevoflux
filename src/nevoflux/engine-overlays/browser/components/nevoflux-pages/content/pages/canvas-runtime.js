@@ -14,7 +14,8 @@
  *
  * Assumes `VirtualFS` and `Bundler` are available as globals.
  */
-const _CanvasRuntime = {
+// eslint-disable-next-line no-unused-vars -- consumed by canvas.js across <script> tags in canvas.html
+const CanvasRuntime = {
   /** @type {string|null} The resolved entry point path. */
   _entry: null,
 

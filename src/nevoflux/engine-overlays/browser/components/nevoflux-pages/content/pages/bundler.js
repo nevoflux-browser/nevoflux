@@ -22,7 +22,8 @@
  *
  * Assumes `globalThis.Babel` and `VirtualFS` are available as globals.
  */
-const _Bundler = {
+// eslint-disable-next-line no-unused-vars -- consumed by canvas-runtime.js across <script> tags in canvas.html
+const Bundler = {
   /** @type {boolean} Whether Babel has been verified available. */
   _initialized: false,
 

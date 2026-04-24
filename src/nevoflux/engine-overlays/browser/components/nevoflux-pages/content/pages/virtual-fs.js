@@ -17,7 +17,8 @@
  *
  * All paths are stored and returned as absolute (starting with `/`).
  */
-const _VirtualFS = {
+// eslint-disable-next-line no-unused-vars -- consumed by canvas.js and canvas-runtime.js across <script> tags in canvas.html
+const VirtualFS = {
   /** @type {Map<string, string>} */
   _files: new Map(),
 
