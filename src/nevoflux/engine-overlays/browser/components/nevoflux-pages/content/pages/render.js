@@ -65,8 +65,11 @@ async function loadComposition(htmlText, widthPx, heightPx) {
   // signal that the composition has registered its timelines and is ready
   // to be seek-driven. 6s budget covers cold CDN + slow disk.
   const ready = new Promise((resolve) => {
+    let settled = false;
     const handler = (evt) => {
       if (evt.source === iframe.contentWindow && evt.data?.__nf_type === 'iframeReady') {
+        if (settled) return;
+        settled = true;
         window.removeEventListener('message', handler);
         console.log('[render.js] iframeReady tlCount=' + evt.data.tlCount + ' threeCount=' + evt.data.threeCount);
         resolve(evt.data);
@@ -74,6 +77,8 @@ async function loadComposition(htmlText, widthPx, heightPx) {
     };
     window.addEventListener('message', handler);
     setTimeout(() => {
+      if (settled) return;
+      settled = true;
       window.removeEventListener('message', handler);
       console.warn('[render.js] iframeReady timeout — proceeding anyway');
       resolve(null);
