@@ -59,19 +59,36 @@ async function loadComposition(htmlText, widthPx, heightPx) {
   iframe.style.width = widthPx + 'px';
   iframe.style.height = heightPx + 'px';
 
-  const loaded = new Promise((resolve) => {
-    iframe.addEventListener('load', () => resolve(), { once: true });
+  // Wait for the iframe-injected patches script to post 'iframeReady' once
+  // window.__timelines is populated. Cross-origin ESM imports (gsap from
+  // esm.sh) can finish AFTER iframe.load fires, so this is the only reliable
+  // signal that the composition has registered its timelines and is ready
+  // to be seek-driven. 6s budget covers cold CDN + slow disk.
+  const ready = new Promise((resolve) => {
+    const handler = (evt) => {
+      if (evt.source === iframe.contentWindow && evt.data?.__nf_type === 'iframeReady') {
+        window.removeEventListener('message', handler);
+        console.log('[render.js] iframeReady tlCount=' + evt.data.tlCount + ' threeCount=' + evt.data.threeCount);
+        resolve(evt.data);
+      }
+    };
+    window.addEventListener('message', handler);
+    setTimeout(() => {
+      window.removeEventListener('message', handler);
+      console.warn('[render.js] iframeReady timeout — proceeding anyway');
+      resolve(null);
+    }, 6000);
   });
+
   // Inject determinism patches as the first <script> inside the iframe's own
   // document. Reaching into iframe.contentWindow from chrome code is blocked
   // by the same-origin policy (srcdoc iframes run in a null-principal origin),
   // so we pre-process the HTML instead.
   iframe.srcdoc = withPatches(htmlText);
-  await loaded;
+  await ready;
 
-  // Give the iframe one rAF so its DOMContentLoaded handlers + any user
-  // bootstrap run. The composition itself is responsible for declaring
-  // timelines/GSAP tickers as paused in the patches script (which we inject).
+  // Two extra RAFs after ready to let GSAP apply any from-state and the
+  // compositor flush before the first capture.
   await new Promise((r) => window.requestAnimationFrame(r));
   await new Promise((r) => window.requestAnimationFrame(r));
 }
@@ -117,6 +134,19 @@ async function runRenderLoop() {
     setStatus('error: job_id missing from URL');
     return;
   }
+
+  // One-shot diagnostic: log the first few seekAck messages so we know the
+  // bridge fired and how many timelines were addressed.
+  let _firstAckLogged = false;
+  let _ackCount = 0;
+  window.addEventListener('message', (evt) => {
+    if (evt.data?.__nf_type !== 'seekAck') return;
+    _ackCount++;
+    if (!_firstAckLogged) {
+      _firstAckLogged = true;
+      console.log('[render.js] first seekAck t=' + evt.data.t + ' tlCount=' + evt.data.tlCount);
+    }
+  });
 
   setStatus(`fetching composition for job ${jobId}`);
   const comp = await bridge().getComposition(jobId);
@@ -199,6 +229,8 @@ async function runRenderLoop() {
     `[nevoflux.render] POC GATE drawSnapshot median=${finalMedian}ms ` +
       `n=${drawMsSamples.length} at ${comp.width}x${comp.height}`
   );
+
+  console.log('[render.js] total seekAck received: ' + _ackCount + ' / expected ' + totalFrames);
 
   setStatus(`reporting done (${totalFrames} frames)`);
   await bridge().reportDone(jobId, totalFrames);

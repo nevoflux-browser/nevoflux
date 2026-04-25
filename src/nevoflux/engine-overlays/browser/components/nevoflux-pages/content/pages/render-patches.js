@@ -91,11 +91,67 @@ export const PATCHES_SOURCE = `
       window.__nfRenderTime = d.seconds;
     } else if (d.__nf_type === 'seek') {
       var tls = window.__timelines || [];
+      window.__nfSeekCalls = (window.__nfSeekCalls || 0) + 1;
+      window.__nfSeekLastT = d.seconds;
+      window.__nfSeekTlCount = tls.length;
       for (var i = 0; i < tls.length; i++) {
         try { tls[i].seek(d.seconds); } catch (_) {}
       }
+      // Ack back to parent so render.js can verify delivery + capture state.
+      try {
+        parent.postMessage({
+          __nf_type: 'seekAck',
+          t: d.seconds,
+          tlCount: tls.length,
+          callNo: window.__nfSeekCalls,
+        }, '*');
+      } catch (_) {}
+      if (window.__nfSeekCalls === 1) {
+        console.log('[render-patches] first seek t=' + d.seconds + ' tls=' + tls.length);
+      }
     }
   });
+
+  // ── Composition-ready signal ──────────────────────────────────────────
+  //
+  // Render.js' iframe-load event resolves when the HTML is parsed + classic
+  // scripts done, but composition modules import GSAP from
+  // https://esm.sh/gsap (cross-origin ESM) which can finish AFTER load. If
+  // render starts iterating frames while __timelines is still empty, every
+  // tl.seek loop iterates 0 times and the 900 captured frames stay at
+  // initial opacity:0 state — the all-black-MP4 symptom.
+  //
+  // Wait until __timelines has at least one entry, OR a 5s safety budget
+  // expires, then post 'iframeReady' to parent. Render.js blocks on this
+  // before the frame loop.
+  function _signalReady() {
+    var tls = window.__timelines || [];
+    var threes = window.__threeRenderers || [];
+    try {
+      parent.postMessage({
+        __nf_type: 'iframeReady',
+        tlCount: tls.length,
+        threeCount: threes.length,
+      }, '*');
+    } catch (_) {}
+  }
+  function _waitForTimelines() {
+    var start = performance.now();
+    function poll() {
+      var tls = window.__timelines || [];
+      if (tls.length > 0 || performance.now() - start > 5000) {
+        _signalReady();
+        return;
+      }
+      setTimeout(poll, 50);
+    }
+    poll();
+  }
+  if (document.readyState === 'complete') {
+    _waitForTimelines();
+  } else {
+    window.addEventListener('load', _waitForTimelines);
+  }
 })();
 `;
 
