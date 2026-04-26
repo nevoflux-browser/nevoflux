@@ -1929,10 +1929,20 @@ this.nevoflux = class extends ExtensionAPI {
             `[ext-nevoflux] createArtifact: id=${id}, type=${type}, codeLen=${code?.length}, filesCount=${files ? Object.keys(files).length : 0}, entry=${entryPoint}, state=${state}`
           );
           const now = Date.now();
+          // Multi-file invariant: when files+entry are provided, content is the
+          // canonical entry-file contents — not the legacy `code` parameter.
+          // Without this, legacy callers passing both `code` and `files` (or
+          // neither) leave content out of sync with files[entry], which causes
+          // multi-file aware writers (canvas_apply_design_md, render driver)
+          // and content-only readers to diverge.
+          let resolvedContent = code || '';
+          if (files && entryPoint && files[entryPoint] != null) {
+            resolvedContent = files[entryPoint];
+          }
           const entry = {
             type: type || 'html',
             title: title || 'Untitled',
-            content: code || '',
+            content: resolvedContent,
             state: state || 'streaming',
             source: source || 'agent',
             permissions: permissions || [],
@@ -1973,12 +1983,34 @@ this.nevoflux = class extends ExtensionAPI {
           console.log(
             `[ext-nevoflux] updateArtifact: id=${id}, existingType=${existing.type}, newState=${state}, newType=${artifactType}, newCodeLen=${code?.length}, newFiles=${files ? Object.keys(files).length : 0}`
           );
-          if (code != null) existing.content = code;
           if (state != null) existing.state = state;
           if (title != null) existing.title = title;
           if (artifactType != null) existing.type = artifactType;
-          if (files != null) existing.files = files;
           if (entryPoint != null) existing.entry = entryPoint;
+          // Multi-file invariant: content must equal files[entry] for any
+          // artifact that has a files map. Enforce both directions of the
+          // dual-write at this single chokepoint so callers can keep using
+          // either {code} or {files} without manual synchronization.
+          //
+          //   files passed   → content := files[entry] (files wins)
+          //   code passed    → content := code; if multi-file, files[entry] := code
+          //   both passed    → files wins; content := files[entry]
+          if (files != null) {
+            existing.files = files;
+            const entryPath = existing.entry;
+            if (entryPath && files[entryPath] != null) {
+              existing.content = files[entryPath];
+            } else if (code != null) {
+              // No entry resolved from files — fall back to code.
+              existing.content = code;
+            }
+          } else if (code != null) {
+            existing.content = code;
+            if (existing.files && existing.entry) {
+              // Multi-file artifact: keep files[entry] in sync with code.
+              existing.files = { ...existing.files, [existing.entry]: code };
+            }
+          }
           existing.updatedAt = Date.now();
 
           NevofluxContentStore.set(`canvas:${id}`, existing);
@@ -2109,7 +2141,7 @@ this.nevoflux = class extends ExtensionAPI {
           };
         },
 
-        async editArtifact(id, oldStr, newStr) {
+        async editArtifact(id, oldStr, newStr, path) {
           const { NevofluxContentStore } = ChromeUtils.importESModule(
             'resource:///modules/NevofluxContentStore.sys.mjs'
           );
@@ -2131,8 +2163,16 @@ this.nevoflux = class extends ExtensionAPI {
             };
           }
 
-          const content = entry.content || '';
-          const count = content.split(oldStr).length - 1;
+          // Multi-file artifact: operate on files[path ?? entry] so this
+          // edit composes with canvas_apply_design_md and other multi-file
+          // aware writers without dual-write drift. See executeEditArtifact
+          // in background.js for the active path used by browser_edit_artifact.
+          const isMultiFile = entry.files && Object.keys(entry.files).length > 0;
+          const targetPath = isMultiFile ? path || entry.entry || 'index.html' : null;
+          const sourceContent = isMultiFile
+            ? (entry.files[targetPath] != null ? entry.files[targetPath] : '')
+            : (entry.content || '');
+          const count = sourceContent.split(oldStr).length - 1;
 
           if (count === 0) {
             return {
@@ -2156,11 +2196,20 @@ this.nevoflux = class extends ExtensionAPI {
             };
           }
 
-          entry.content = content.replace(oldStr, newStr);
+          const newSource = sourceContent.replace(oldStr, newStr);
+          if (isMultiFile) {
+            entry.files = { ...entry.files, [targetPath]: newSource };
+            // Maintain content := files[entry] invariant.
+            if (entry.entry && entry.files[entry.entry] != null) {
+              entry.content = entry.files[entry.entry];
+            }
+          } else {
+            entry.content = newSource;
+          }
           entry.updatedAt = Date.now();
           NevofluxContentStore.set(`canvas:${id}`, entry);
 
-          return { success: true, lines: entry.content.split('\n').length };
+          return { success: true, lines: newSource.split('\n').length };
         },
 
         async deleteArtifact(id) {

@@ -111,5 +111,45 @@ if (perfElapsed > PERF_BUDGET_MS) {
   pass++;
 }
 
+// --- Strict-mode test: narrowed warnings escalate to errors ---------------
+// Two GSAP tweens both target ".box" and animate the same property `x`
+// without overwrite:"auto". Default mode → comp/overlapping-gsap-tweens
+// emits a warning. Strict mode (daemon path) → same rule emits an error.
+const narrowedHtml = `<!doctype html>
+<html><head><style>
+.scene { position: relative; width: 640px; height: 360px; }
+.clip { position: absolute; visibility: hidden; }
+</style></head><body>
+<div id="stage" data-width="640" data-height="360" data-duration="5" data-fps="30"
+     data-composition-id="strict-fixture"></div>
+<div class="scene clip" data-start="0" data-duration="5">
+  <div class="box">a</div>
+</div>
+<script src="https://esm.sh/gsap@3.13"></script>
+<script>
+const tl = gsap.timeline();
+window.__timelines = window.__timelines || {};
+window.__timelines["strict-fixture"] = tl;
+tl.to(".box", { x: 100, duration: 1 });
+tl.to(".box", { x: 200, duration: 1 });
+</script></body></html>`;
+
+const ruleIds = (issues) => issues.map(i => i.rule_id);
+const lenient = lint(narrowedHtml, { composition_id: 'strict-fixture' });
+const strict  = lint(narrowedHtml, { composition_id: 'strict-fixture', strict: true });
+const lenientWarn = ruleIds(lenient.warnings).includes('comp/overlapping-gsap-tweens');
+const lenientErr  = ruleIds(lenient.errors).includes('comp/overlapping-gsap-tweens');
+const strictErr   = ruleIds(strict.errors).includes('comp/overlapping-gsap-tweens');
+const strictWarn  = ruleIds(strict.warnings).includes('comp/overlapping-gsap-tweens');
+if (lenientWarn && !lenientErr && strictErr && !strictWarn) {
+  console.log('  PASS strict-mode-escalates-narrowed-warnings');
+  pass++;
+} else {
+  console.error('  FAIL strict-mode-escalates-narrowed-warnings');
+  console.error(`    lenient: errors=${ruleIds(lenient.errors)}, warnings=${ruleIds(lenient.warnings)}`);
+  console.error(`    strict : errors=${ruleIds(strict.errors)}, warnings=${ruleIds(strict.warnings)}`);
+  fail++;
+}
+
 console.log(`\n${pass} pass, ${fail} fail`);
 if (fail) process.exit(1);

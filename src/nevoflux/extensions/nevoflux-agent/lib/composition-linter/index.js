@@ -2,7 +2,7 @@
 import { buildContext } from './context.js';
 import { push } from './utils.js';
 
-export const LINTER_VERSION = '0.1.0';
+export const LINTER_VERSION = '0.2.0';
 
 import compositionRules from './rules/composition.js';
 import coreRules        from './rules/core.js';

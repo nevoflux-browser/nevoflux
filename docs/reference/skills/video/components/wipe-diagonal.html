@@ -3,20 +3,99 @@
   purpose: 对角线 pixel-wipe 场景转场 / Diagonal pixel-wipe transition
   best for: 场景切换（32×18 像素网格，从左上到右下 stagger）
 
-  AGENT INTEGRATION:
-  1. 放在两个场景之间 (data-track-index=10)
-  2. data-start 与前一场景 data-start + data-duration 对齐
-  3. 色块取 var(--color-primary)；如要非品牌色，用 #hex override
+  AGENT INTEGRATION (READ THIS BEFORE COPYING):
+
+  1. 放在两个场景之间 (data-track-index=10)，data-start 与前一场景 data-start +
+     data-duration 对齐。data-duration 固定 0.6s。
+  2. 色块取 var(--color-primary)；如要非品牌色，用 #hex override。
+  3. **DO NOT push a separate tl to window.__timelines.** The render driver
+     (engine/.../pages/render-patches.js) seeks EVERY timeline with the master
+     video time. A standalone wipe timeline that's only 0.76s long gets seeked
+     past its end on every frame ≥ 0.76, leaving all pixels at scale:1 for the
+     entire visible window — you get a hard color flash, not a diagonal sweep.
+  4. **Correct integration**: append the pixel-grid build + tweens into the
+     host composition's MASTER tl, with each tween position offset by the
+     wipe's clip start time. **Stagger weight must be in PIXEL SPACE
+     (Manhattan distance from the top-left corner)** — see point 5 for the
+     pitfalls of grid-step weight `r+c` (only works when cells are square)
+     and normalized weight `wx+wy` (corner-to-corner uniform but front line
+     is too steep in non-square cells, perceptually a vertical curtain).
+
+     ```js
+     const wipeStart = <data-start of the wipe clip>;
+     const staggerBudget = 0.51;
+     const cellDuration = 0.25;
+
+     // Read stage dimensions so the stagger naturally adapts to any aspect.
+     const stage = document.getElementById('stage');
+     const stageW = parseFloat(stage.dataset.width);
+     const stageH = parseFloat(stage.dataset.height);
+     const cellW = stageW / COLS;
+     const cellH = stageH / ROWS;
+     const maxDist = (COLS - 1) * cellW + (ROWS - 1) * cellH;
+
+     // Initial state at master t=0 — pixels invisible.
+     tl.set(pixels, { scale: 0 }, 0);
+
+     // Sweep — Manhattan distance in PIXEL SPACE gives a true 45° wave
+     // front (slope -1) regardless of cell aspect. Top-left fires first;
+     // top-right fires before bottom-left if the stage is wider than tall;
+     // bottom-right is always last.
+     pixels.forEach((px) => {
+       const r = Number(px.dataset.row);
+       const c = Number(px.dataset.col);
+       const dist = c * cellW + r * cellH;
+       const delay = (dist / maxDist) * staggerBudget;
+       tl.to(px, { scale: 1, duration: cellDuration, ease: 'power2.out' },
+         wipeStart + delay);
+     });
+     ```
+
+     Use the host composition's existing `tl` reference (the one already in
+     `window.__timelines`). Do NOT create a second timeline for the wipe.
+
+  5. **Pixel grid build must record row + col separately** so the integration
+     code can compute the pixel-space distance per pixel. Don't bake `r+c`
+     into `dataset.staggerIndex` at build time — that pre-commits to the
+     broken square-cell weighting which produces a horizontal sweep in any
+     non-square cell layout:
+
+     ```js
+     for (let r = 0; r < ROWS; r++) {
+       for (let c = 0; c < COLS; c++) {
+         const px = document.createElement('div');
+         px.className = 'pixel';
+         px.dataset.row = r;
+         px.dataset.col = c;
+         container.appendChild(px);
+       }
+     }
+     ```
+
+  6. **Three weighting schemes — when each works:**
+
+     | Weight | Front slope (pixel) | 16:9 (60×60 cells) | 9:16 (33.75×106.67 cells) |
+     |---|---|---|---|
+     | `r + c` | -cellW/cellH | true 45° (cells square) ✓ | -3.16 (steep, looks like vertical curtain) ✗ |
+     | `(wx+wy)/2` | -1/aspect | corner-to-corner ✓ | -1.733 (still close to vertical) ✗ |
+     | **`c*cellW + r*cellH`** | **-1 always** | **true 45° ✓** | **true 45° ✓** |
+
+     Use option 3 (pixel-space Manhattan distance) for portable visual
+     45°-diagonal sweeps. The other two are kept here as anti-patterns to
+     warn against; they shipped historically and produced bug reports
+     2026-04-26.
 
   VISUAL:
   - 32×18 格阵列覆盖整个 stage
-  - 每格从 scale:0 弹到 scale:1，stagger 0.015s
+  - 每格从 scale:0 弹到 scale:1，stagger ≈ 0.015s/grid-step
   - 按 row+col 权重从左上扫到右下，持续 0.6s
 
   CONSTRAINTS:
   - duration 固定 0.6s（低于 0.4s 视觉不够饱满；高于 0.8s 节奏拖沓）
   - 网格尺寸固定 32×18（其他分辨率下比例会变形）
-  - 只用于 16:9 stage；9:16 请用 wipe-vertical（未提供）
+  - 用 aspect-normalized stagger（见 AGENT INTEGRATION §4-§5）才能在
+    任意 stage 比例下都得到真 45° 对角扫。不要用旧的 `r+c` 权重——
+    16:9 下偶然是对的（cell 正方），9:16 下塌成左→右横扫。
 
   attribution: Ported from HyperFrames (Apache 2.0, v0.4.4). See
     /ai/project/nevoflux/src/nevoflux/extensions/nevoflux-agent/lib/composition-linter/LICENSE-NOTICE.md
@@ -47,49 +126,56 @@
      data-track-index="10">
 </div>
 
-<script type="module">
-  import { gsap } from 'https://esm.sh/gsap@3.13';
+<!--
+  Reference snippet for the agent — DO NOT COPY VERBATIM into a host
+  composition. This builds a STANDALONE paused timeline and pushes it to
+  window.__timelines, which is incompatible with the seek-driven render
+  driver (see component header for the full explanation). Standalone use
+  inside a render-patches-driven iframe will produce a hard color flash
+  rather than the diagonal sweep.
 
+  When integrating this component into a composition, follow the recipe in
+  the AGENT INTEGRATION block above: append pixel-grid build + per-pixel
+  tweens onto the HOST'S existing master tl with positions offset by
+  `wipeStart`. Do not push a second timeline.
+
+  This block is left here as a layout reference (CSS + DOM shape) only.
+-->
+<script type="module">
+  // Pixel grid build — copy into the host composition's main <script>.
+  // Records row + col on each pixel; the host's tween loop then computes
+  // aspect-normalized stagger so the wave is a true 45° diagonal in any
+  // stage ratio (square cells, portrait cells, landscape cells alike).
   const COLS = 32;
   const ROWS = 18;
   const container = document.querySelector('.wipe-diagonal');
-
-  // Build pixel grid
   for (let r = 0; r < ROWS; r++) {
     for (let c = 0; c < COLS; c++) {
       const px = document.createElement('div');
       px.className = 'pixel';
-      // stagger delay weight: normalised (row+col) across the full grid
-      px.dataset.staggerIndex = r + c;
+      px.dataset.row = r;
+      px.dataset.col = c;
       container.appendChild(px);
     }
   }
-
-  const pixels = container.querySelectorAll('.pixel');
-
-  // Build stagger delays weighted by (row+col): top-left → bottom-right sweep
-  // Total stagger budget = 0.6s × 0.85 ≈ 0.51s  (leaves room for per-cell duration)
-  const maxIndex = (ROWS - 1) + (COLS - 1); // 49
-  const staggerBudget = 0.51;
-  const cellDuration = 0.25;
-  const ease = 'power2.out';
-
-  const tl = gsap.timeline({ paused: true });
-
-  // Set initial state: pixels invisible (scale 0)
-  tl.set(pixels, { scale: 0 });
-
-  // Sweep in: each pixel scales from 0 → 1, staggered by (row+col) weight
-  pixels.forEach((px) => {
-    const idx = Number(px.dataset.staggerIndex);
-    const delay = (idx / maxIndex) * staggerBudget;
-    tl.to(px, {
-      scale: 1,
-      duration: cellDuration,
-      ease,
-    }, delay);
-  });
-
-  window.__timelines = window.__timelines || [];
-  window.__timelines.push(tl);
+  // Stagger weights — applied via host composition's `tl`, NOT a new tl.
+  // const pixels = container.querySelectorAll('.pixel');
+  // const wipeStart = <data-start of the wipe clip element>;
+  // const staggerBudget = 0.51;
+  // const cellDuration = 0.25;
+  // const stage = document.getElementById('stage');
+  // const stageW = parseFloat(stage.dataset.width);
+  // const stageH = parseFloat(stage.dataset.height);
+  // const cellW = stageW / COLS;
+  // const cellH = stageH / ROWS;
+  // const maxDist = (COLS - 1) * cellW + (ROWS - 1) * cellH;
+  // tl.set(pixels, { scale: 0 }, 0);
+  // pixels.forEach((px) => {
+  //   const r = Number(px.dataset.row);
+  //   const c = Number(px.dataset.col);
+  //   const dist = c * cellW + r * cellH;  // pixel-space Manhattan from top-left
+  //   const delay = (dist / maxDist) * staggerBudget;
+  //   tl.to(px, { scale: 1, duration: cellDuration, ease: 'power2.out' },
+  //     wipeStart + delay);
+  // });
 </script>

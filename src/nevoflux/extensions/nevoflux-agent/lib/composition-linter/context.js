@@ -27,5 +27,6 @@ export function buildContext(html, opts = {}) {
     mediaElements,
     classes: [...classSet],
     composition_id: opts.composition_id,
+    strict: !!opts.strict,
   };
 }

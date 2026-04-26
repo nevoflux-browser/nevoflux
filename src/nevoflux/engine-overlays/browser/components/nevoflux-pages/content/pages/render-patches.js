@@ -185,7 +185,16 @@ export function withPatches(compositionHtml) {
   const patchTag =
     '<script>' + PATCHES_SOURCE + '</script>';
 
-  const headMatch = compositionHtml.match(/<head[^>]*>/i);
+  // The `\b` word boundary is critical: without it, `<head[^>]*>` greedily
+  // matches `<HEADLINE_LINE_1>` inside template HTML comments (e.g. the
+  // tiktok-hook AGENT USAGE block) because `<HEAD` + `LINE_1` + `>` satisfies
+  // the pattern. That caused the determinism patches (setRenderTime / seek
+  // bridge / clip windowing) to be injected mid-comment instead of after
+  // the real <head>, leaving the patches script un-executed. Symptom:
+  // render had no scene visibility windowing → all .clip elements remained
+  // visible simultaneously → the last DOM scene (#scene-3, accent color)
+  // covered the others, producing a single-color MP4.
+  const headMatch = compositionHtml.match(/<head\b[^>]*>/i);
   if (headMatch) {
     const insertAt = headMatch.index + headMatch[0].length;
     return (
@@ -195,7 +204,7 @@ export function withPatches(compositionHtml) {
     );
   }
 
-  const htmlMatch = compositionHtml.match(/<html[^>]*>/i);
+  const htmlMatch = compositionHtml.match(/<html\b[^>]*>/i);
   if (htmlMatch) {
     const insertAt = htmlMatch.index + htmlMatch[0].length;
     return (

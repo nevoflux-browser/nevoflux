@@ -1446,6 +1446,18 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
     this._artifact = artifact;
     this._hideLoading();
 
+    // If we're in edit mode and the user has NOT typed since the last
+    // load/save, refresh the CodeMirror buffer to match the externally
+    // updated file. Without this, the buffer goes stale relative to
+    // _artifact.files[currentPath] (e.g. after an LLM browser_edit_artifact)
+    // and the next file-switch / save would capture the stale buffer back
+    // and silently roll back the external edit. When dirty=true, the user
+    // is mid-typing and we leave the buffer alone; capture-on-save will
+    // win as the user's intent.
+    if (this._mode === 'edit' && this._editorRefreshFromArtifact && !this._editorIsDirty?.()) {
+      try { this._editorRefreshFromArtifact(); } catch (_e) {}
+    }
+
     // Show/hide composition header strip whenever artifact changes
     this._renderCompositionHeader();
     this._wireCompositionLintPanel();
@@ -2017,8 +2029,66 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
     const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const initialContent = this._artifact.files[currentPath] || '';
 
+    // Persist the current in-memory _artifact (including files map) to
+    // ContentStore. ContentStore.set() fans out via onContentStoreChanged →
+    // background.js → content_store.set system_command → daemon SQLite
+    // mirror_canvas_to_artifacts_table → artifacts.files updated. Without
+    // this, the only persistence path was _exitEditMode, which fires only
+    // when the user explicitly toggles out of edit mode — typing & walking
+    // away (or switching to the sidebar to talk to the agent) silently
+    // discarded the edits, so canvas_apply_design_md ran on the un-edited
+    // DESIGN.md and produced no visible change.
+    const persistNow = () => {
+      if (!this._artifactId || !this._artifact) return;
+      // Multi-file invariant: content must equal files[entry]. Without this
+      // normalization, a stale _artifact.content (e.g. snapshot taken before
+      // the LLM did edits via browser_edit_artifact, which only updated
+      // ContentStore but not this in-memory copy) would propagate via
+      // contentStore:set and roll back the LLM's edits in SQLite.
+      if (this._artifact.files && this._artifact.entry) {
+        const entryContent = this._artifact.files[this._artifact.entry];
+        if (entryContent != null) {
+          this._artifact.content = entryContent;
+        }
+      }
+      try {
+        NevofluxPage.sendMessage('contentStore:set', {
+          key: `canvas:${this._artifactId}`,
+          value: this._artifact,
+        });
+      } catch (e) {
+        console.warn('[Canvas] contentStore:set failed:', e);
+      }
+    };
+
+    // editorDirty tracks whether the user has modified the editor buffer
+    // since the last load/save. Without this, capturing the CodeMirror
+    // buffer on every loadFile / onSaveKey / _exitEditMode would silently
+    // ROLLBACK external edits: when the LLM does browser_edit_artifact
+    // while Canvas Editor is open, _onArtifactUpdate replaces this._artifact
+    // but does NOT refresh the CodeMirror buffer (which still shows the
+    // pre-LLM-edit content). A subsequent file-switch would then capture
+    // that stale buffer back into _artifact.files[currentPath], wiping
+    // the LLM's edit. Only capture the buffer when dirty=true.
+    let editorDirty = false;
+    // Expose currentPath + dirty + refresh hooks so _onArtifactUpdate can
+    // sync the CodeMirror buffer to externally-updated _artifact.files when
+    // the user has not been typing (dirty=false).
+    this._editorIsDirty = () => editorDirty;
+    this._editorCurrentPath = () => currentPath;
+    this._editorRefreshFromArtifact = () => {
+      if (!this._cmView || !window.CodeMirrorFactory) return;
+      const expected = this._artifact?.files?.[currentPath];
+      if (expected == null) return;
+      const cur = window.CodeMirrorFactory.getValue(this._cmView);
+      if (cur !== expected) {
+        window.CodeMirrorFactory.setValue(this._cmView, expected);
+      }
+    };
+
     let debounceTimer = null;
     const onEdit = (value) => {
+      editorDirty = true;
       this._artifact.files[currentPath] = value;
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(async () => {
@@ -2027,6 +2097,10 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
           { files: this._artifact.files, entry: this._artifact.entry },
           this._SDK_SCRIPT
         );
+        // Auto-save on edit pause — write-through to daemon SQLite so
+        // canvas_apply_design_md / canvas_render_video pick up the edit.
+        persistNow();
+        editorDirty = false;
       }, 500);
       // Debounced lint on every edit (500ms coalesces rapid keystrokes).
       clearTimeout(this._lintDebounce);
@@ -2035,10 +2109,15 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
     };
 
     const loadFile = (path) => {
-      // Save current file content first
-      if (this._cmView && window.CodeMirrorFactory) {
+      // Save current file content first (in memory + write-through),
+      // ONLY if the user actually typed since the last load/save —
+      // otherwise we'd capture a stale buffer that lags behind external
+      // updates (LLM edits via _onArtifactUpdate) and roll them back.
+      if (editorDirty && this._cmView && window.CodeMirrorFactory) {
         this._artifact.files[currentPath] = window.CodeMirrorFactory.getValue(this._cmView);
+        persistNow();
       }
+      editorDirty = false;
       currentPath = path;
       const content = this._artifact.files[path] || '';
       if (this._cmView && window.CodeMirrorFactory) {
@@ -2050,6 +2129,29 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
     };
 
     select.addEventListener('change', () => loadFile(select.value));
+
+    // Ctrl/Cmd+S — explicit save; bypasses debounce and gives immediate UX
+    // confirmation that the file is persisted.
+    const onSaveKey = (e) => {
+      const isSave = (e.key === 's' || e.key === 'S')
+        && (e.ctrlKey || e.metaKey)
+        && !e.shiftKey
+        && !e.altKey;
+      if (!isSave) return;
+      e.preventDefault();
+      // Capture only when the buffer is dirty; see loadFile rationale.
+      if (!editorDirty) return;
+      if (this._cmView && window.CodeMirrorFactory) {
+        this._artifact.files[currentPath] = window.CodeMirrorFactory.getValue(this._cmView);
+      } else {
+        const ta = document.getElementById('code-editor');
+        if (ta) this._artifact.files[currentPath] = ta.value;
+      }
+      persistNow();
+      editorDirty = false;
+    };
+    document.addEventListener('keydown', onSaveKey);
+    this._editSaveKeyHandler = onSaveKey;
 
     if (window.CodeMirrorFactory) {
       this._cmView = window.CodeMirrorFactory.create(editorPane, {
@@ -2089,16 +2191,34 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
   },
 
   _exitEditMode() {
-    // Save project files if in project edit mode
+    // Tear down the Ctrl/Cmd+S handler installed by _enterEditMode.
+    if (this._editSaveKeyHandler) {
+      document.removeEventListener('keydown', this._editSaveKeyHandler);
+      this._editSaveKeyHandler = null;
+    }
+    // Save project files if in project edit mode. Only capture the
+    // CodeMirror buffer when the user actually typed (editorDirty=true);
+    // otherwise we'd roll back any external _onArtifactUpdate that fired
+    // while the editor was open. See _enterEditMode for the dirty-flag
+    // design rationale.
     if (this._artifact?.files) {
       const select = document.getElementById('project-file-select');
-      if (select) {
+      const wasDirty = this._editorIsDirty?.() === true;
+      if (select && wasDirty) {
         // Save current file content
         if (this._cmView && window.CodeMirrorFactory) {
           this._artifact.files[select.value] = window.CodeMirrorFactory.getValue(this._cmView);
         } else {
           const ta = document.getElementById('code-editor');
           if (ta) this._artifact.files[select.value] = ta.value;
+        }
+        // Multi-file invariant: content := files[entry] before persist.
+        // See persistNow comment in _enterEditMode for rationale.
+        if (this._artifact.entry) {
+          const entryContent = this._artifact.files[this._artifact.entry];
+          if (entryContent != null) {
+            this._artifact.content = entryContent;
+          }
         }
         // Persist to ContentStore
         NevofluxPage.sendMessage('contentStore:set', {
@@ -2110,21 +2230,30 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
 
     const split = document.getElementById('edit-split');
     if (split) {
-      // Save edits back to ContentStore
+      // Save edits back to ContentStore. The multi-file (project) branch
+      // above already wrote files[currentPath] + persisted with the
+      // post-C invariant. Skip the legacy single-file content write here
+      // for multi-file artifacts: the editor buffer no longer represents
+      // the artifact's `content` (it represents one chosen file), so
+      // overwriting content with it would clobber the entry-file.
+      const isMultiFile =
+        this._artifact?.files && Object.keys(this._artifact.files).length > 0;
       let newContent = null;
-      if (this._cmView) {
-        newContent = window.CodeMirrorFactory.getValue(this._cmView);
-      } else {
-        const editor = document.getElementById('code-editor');
-        if (editor) newContent = editor.value;
-      }
+      if (!isMultiFile) {
+        if (this._cmView) {
+          newContent = window.CodeMirrorFactory.getValue(this._cmView);
+        } else {
+          const editor = document.getElementById('code-editor');
+          if (editor) newContent = editor.value;
+        }
 
-      if (newContent != null && this._artifact && newContent !== this._artifact.content) {
-        this._artifact.content = newContent;
-        NevofluxPage.sendMessage('contentStore:set', {
-          key: `canvas:${this._artifactId}`,
-          value: this._artifact,
-        });
+        if (newContent != null && this._artifact && newContent !== this._artifact.content) {
+          this._artifact.content = newContent;
+          NevofluxPage.sendMessage('contentStore:set', {
+            key: `canvas:${this._artifactId}`,
+            value: this._artifact,
+          });
+        }
       }
 
       // Destroy CodeMirror instance
@@ -2135,6 +2264,11 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(markdo
 
       split.remove();
     }
+    // Clean up editor refs after both branches have read editorIsDirty.
+    // _onArtifactUpdate will then skip its refresh-buffer fast path.
+    this._editorIsDirty = null;
+    this._editorCurrentPath = null;
+    this._editorRefreshFromArtifact = null;
   },
 
   _updateEditPreview(artifact) {

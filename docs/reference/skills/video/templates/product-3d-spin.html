@@ -26,10 +26,11 @@
   <script src="https://esm.sh/three@0.160"></script>
   <script src="https://esm.sh/gsap@3.13"></script>
   <style>
-    :root {
-      --color-background: #000000;
-      --color-primary:    #1a6b6b;
-    }
+    /* Brand layer is provided by the daemon-injected <style data-nf-* > block
+       at the top of <head>. DO NOT redeclare --color-* here with hardcoded
+       values — those would override the injected DESIGN.md values per CSS
+       cascade order. Consumers below carry inline fallbacks for the
+       no-injection (standalone preview) case. */
 
     body {
       margin: 0;

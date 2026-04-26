@@ -43,6 +43,23 @@ export function push(report, issue) {
   else report.infos.push(issue);
 }
 
+/**
+ * Push a "narrowed" issue — a warning emitted by a heuristic rule whose
+ * upstream definition is stricter (e.g. has access to timeline position
+ * data we don't reproduce here). When the linter runs with `strict: true`
+ * (set by the daemon's `canvas_lint_composition` path), narrowed warnings
+ * escalate to errors so the agent treats them as blocking.
+ *
+ * Outside strict mode (fixture tests, ad-hoc dev linting), narrowed issues
+ * stay as warnings — they are heuristics and false positives are tolerable.
+ */
+export function pushNarrowed(report, ctx, issue) {
+  const severity = ctx && ctx.strict && issue.severity === 'warning'
+    ? 'error'
+    : issue.severity;
+  push(report, { ...issue, severity });
+}
+
 /** Safe-ish text match — returns true if `text` contains `needle` outside comments. */
 export function textContains(text, needle) {
   const stripped = text

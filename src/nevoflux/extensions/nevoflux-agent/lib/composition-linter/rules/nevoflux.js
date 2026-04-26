@@ -136,7 +136,7 @@ function ruleSingleAudio(ctx, report) {
   const audios = ctx.doc.querySelectorAll('audio');
   const videos = ctx.doc.querySelectorAll('video');
   const ttsRefs = ctx.scripts.filter(s =>
-    /narration\.wav|tts_synthesize/.test(s.textContent || ''));
+    /narration\.(wav|mp3)|tts_synthesize/.test(s.textContent || ''));
   let sources = 0;
   if (audios.length > 0) sources++;
   if (videos.length > 0) sources++;

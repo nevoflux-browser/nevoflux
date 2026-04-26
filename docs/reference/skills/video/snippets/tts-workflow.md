@@ -6,7 +6,13 @@ tags: [tts, narration, kokoro, elevenlabs, workflow]
 
 # TTS 工作流 / TTS Workflow
 
-> **Note:** The TTS subsystem (`tts_synthesize_local`, `tts_synthesize_api`, `tts_transcribe` tools + the `nevoflux-tts` crate) is planned for Week 9–11 of the /video skill roadmap. This snippet documents the intended workflow for the agent to follow once TTS ships; for now, narration must be provided as pre-existing audio files by the user.
+> **Status (2026-04-26):**
+> - `tts_synthesize_api` (ElevenLabs HTTP) — **shipped** (P5b-1). Set `[tts.elevenlabs] api_key` in `~/.config/nevoflux/config.toml`.
+> - `tts_synthesize_local` (Kokoro ONNX) — **registered, returns ConfigMissing**. Inference ships with the `nevoflux-tts` crate milestone.
+> - `tts_transcribe` (Whisper ONNX) — **registered, returns ConfigMissing**. Ships alongside Kokoro.
+> - Audio mux (ffmpeg `-c:a aac`) — **shipped** (P5b-final). When a composition contains `narration.mp3` or `narration.wav` in its files map, the renderer mounts a tempfile and muxes it as the second input.
+>
+> Today's narrated-video flow: use `tts_synthesize_api` with `composition_id` set, then `canvas_render_video` — the audio lands in the output MP4. Once Kokoro/Whisper land, the local path becomes the default and `tts_transcribe` unlocks auto-captions.
 
 ## When to Use TTS
 

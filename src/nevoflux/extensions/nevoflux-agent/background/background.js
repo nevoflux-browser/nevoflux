@@ -208,6 +208,9 @@ const pendingGetCompositionRequests = new Map();
 // Canvas Video render tabs we've already opened for a given job_id, used to
 // dedup canvas_video_open_render_tab broadcasts across retries / reconnects.
 const _openedRenderTabs = new Set();
+// Canvas tabs we've already opened for a given artifact_id, used to dedup
+// canvas_video_open_canvas_tab broadcasts. Mirrors _openedRenderTabs.
+const _openedCanvasTabs = new Set();
 
 // Note: as of protocol alignment (Plan B), the daemon now echoes our `call_id`
 // in events and uses `event_type` discriminator with stdout/stderr/progress/
@@ -1261,6 +1264,37 @@ class ChannelManager {
       return;
     }
 
+    // Daemon broadcasts this after a successful canvas_create_composition.
+    // We respond by opening the canvas editor page for the new artifact.
+    // The canvas page self-hydrates from the daemon (content_store.load →
+    // artifact.get fallback), so we don't need to seed ContentStore here.
+    // Dedup by artifact_id so a re-broadcast / proxy reconnect doesn't
+    // spawn duplicate tabs for the same composition.
+    if (message.type === 'canvas_video_open_canvas_tab') {
+      const artifactId = message.payload?.artifact_id;
+      if (artifactId && !_openedCanvasTabs.has(artifactId)) {
+        _openedCanvasTabs.add(artifactId);
+        browser.nevoflux
+          .openCanvasTab(artifactId)
+          .then((result) => {
+            if (!result?.success) {
+              console.error(
+                '[NevoFlux] canvas_video_open_canvas_tab failed:',
+                result?.error
+              );
+              _openedCanvasTabs.delete(artifactId);
+            } else if (result.tabId) {
+              _canvasTabId = result.tabId;
+            }
+          })
+          .catch((e) => {
+            console.error('[NevoFlux] canvas_video_open_canvas_tab failed:', e);
+            _openedCanvasTabs.delete(artifactId);
+          });
+      }
+      return;
+    }
+
     // P3: daemon asks us to run the composition-linter on a composition's
     // HTML. We dynamic-import the linter module (same code served under
     // `lib/composition-linter/` in the extension), run it, and reply.
@@ -1276,7 +1310,12 @@ class ChannelManager {
           const mod = await import(
             browser.runtime.getURL('lib/composition-linter/index.js')
           );
-          report = mod.lint(html, { composition_id });
+          // Strict mode: when the daemon dispatches a lint request it always
+          // ties it to a real composition_id, so narrowed heuristic warnings
+          // (overlapping-gsap-tweens, unscoped-gsap-selector) escalate to
+          // errors. Local/fixture invocations leave strict=false and treat
+          // those rules as warnings.
+          report = mod.lint(html, { composition_id, strict: true });
         } catch (err) {
           console.error('[NevoFlux] lint failed:', err);
           report = {
@@ -1461,6 +1500,11 @@ class ChannelManager {
         'fillRichText',
         'uploadFile',
         'activateTab',
+        // P5a Mode-3: extract_visual_identity opens a tab + runs extraction
+        // entirely in background.js; sidebar WASM has no handler for this
+        // action and forwarding there causes a silent Deserialize-error drop
+        // and the daemon waits forever (until registry cleanup at 10 min).
+        'extractVisualIdentity',
       ]);
       if (DIRECT_ACTIONS.has(action)) {
         console.log(`[NevoFlux] Handling ${action} directly (bypassing sidebar)`);
@@ -3092,6 +3136,11 @@ async function executeBrowserTool(request, caller = 'unknown') {
     'read_artifact',
     'edit_artifact',
     'canvas_render',
+    // Visual-identity extraction handles its own tab lifecycle: URL mode
+    // creates a background tab; tab mode reads target.tab_id from params.
+    // Adding to this set prevents the dispatcher from rejecting URL-mode
+    // calls with "No active web tab found".
+    'extractVisualIdentity',
   ]);
 
   // Get target tab (skip for tab-independent actions)
@@ -3266,6 +3315,12 @@ async function executeBrowserTool(request, caller = 'unknown') {
       case 'canvas_render':
         return await executeCanvasRender(params);
 
+      // Visual identity extraction (Mode 3 entry point — backs the
+      // canvas_extract_visual_identity tool; opens a URL or reuses a tab,
+      // pulls metadata + screenshot, returns VisualIdentity JSON).
+      case 'extractVisualIdentity':
+        return await executeExtractVisualIdentity(params, targetTabId, timeout_ms);
+
       default:
         return {
           success: false,
@@ -3305,7 +3360,29 @@ async function executeReadArtifact(params) {
     return entry; // { success: false, error: ... }
   }
 
-  const content = entry.data?.content || '';
+  // Multi-file artifact: prefer files[path ?? entry] over the legacy
+  // `content` mirror so the caller observes the canonical source. content
+  // tracks files[entry] under the post-C invariant, but a `path` argument
+  // lets the caller pick a non-entry file (e.g. DESIGN.md).
+  const filesMap = entry.data?.files;
+  const isMultiFile = filesMap && typeof filesMap === 'object' && Object.keys(filesMap).length > 0;
+  let content;
+  if (isMultiFile) {
+    const targetPath = params.path || entry.data?.entry || 'index.html';
+    if (filesMap[targetPath] == null) {
+      return {
+        success: false,
+        error: {
+          code: 12008,
+          message: `path '${targetPath}' not found in artifact files (available: ${Object.keys(filesMap).join(', ')})`,
+          recoverable: true,
+        },
+      };
+    }
+    content = filesMap[targetPath];
+  } else {
+    content = entry.data?.content || '';
+  }
   const allLines = content.split('\n');
   const totalLines = allLines.length;
 
@@ -3416,7 +3493,7 @@ async function executeReadArtifact(params) {
  * Edit artifact using search-and-replace pattern
  */
 async function executeEditArtifact(params) {
-  const { id, old_str, new_str } = params;
+  const { id, old_str, new_str, path } = params;
   if (!id) {
     return {
       success: false,
@@ -3443,8 +3520,34 @@ async function executeEditArtifact(params) {
     };
   }
 
-  const content = entry.data?.content || '';
-  const count = content.split(old_str).length - 1;
+  // Multi-file artifact: read/write through files[targetPath]. The legacy
+  // `content` field is only kept in sync as a derived mirror of files[entry];
+  // editing `content` directly drifts from files[entry] and gets clobbered
+  // by any multi-file aware writer (canvas_apply_design_md re-injects from
+  // files["index.html"] and overwrites content with the result, wiping
+  // edits made via the legacy path).
+  const filesMap = entry.data?.files;
+  const isMultiFile = filesMap && typeof filesMap === 'object' && Object.keys(filesMap).length > 0;
+  const targetPath = isMultiFile ? path || entry.data?.entry || 'index.html' : null;
+
+  let sourceContent;
+  if (isMultiFile) {
+    if (filesMap[targetPath] == null) {
+      return {
+        success: false,
+        error: {
+          code: 12008,
+          message: `path '${targetPath}' not found in artifact files (available: ${Object.keys(filesMap).join(', ')})`,
+          recoverable: true,
+        },
+      };
+    }
+    sourceContent = filesMap[targetPath];
+  } else {
+    sourceContent = entry.data?.content || '';
+  }
+
+  const count = sourceContent.split(old_str).length - 1;
 
   if (count === 0) {
     return {
@@ -3468,8 +3571,16 @@ async function executeEditArtifact(params) {
     };
   }
 
-  const newContent = content.replace(old_str, new_str);
-  const result = await browser.nevoflux.updateArtifact(id, { code: newContent });
+  const newContent = sourceContent.replace(old_str, new_str);
+  let result;
+  if (isMultiFile) {
+    // Patch the targeted file. updateArtifact's invariant logic recomputes
+    // existing.content := files[entry] when targetPath happens to be entry.
+    const newFiles = { ...filesMap, [targetPath]: newContent };
+    result = await browser.nevoflux.updateArtifact(id, { files: newFiles });
+  } else {
+    result = await browser.nevoflux.updateArtifact(id, { code: newContent });
+  }
   if (!result.success) {
     return result;
   }
@@ -3852,6 +3963,724 @@ async function executeScreenshotViaApi(tabId, params) {
   } catch (error) {
     return { success: false, error: { code: -1, message: error.message, recoverable: true } };
   }
+}
+
+/**
+ * Extract a brand's visual identity from a URL or existing tab.
+ *
+ * Backs the canvas_extract_visual_identity tool (Mode 3 entry point per
+ * umbrella spec §6). Slice A returns: name, tagline, final URL, hero
+ * screenshot (base64 PNG), extracted_at, warnings. Color / font / logo /
+ * key_assets fields are present but empty until Slice B.
+ *
+ * Tab handling:
+ * - URL mode: open background tab, wait for `complete` + 2s buffer, run
+ *   extractor, capture screenshot, close tab.
+ * - Tab mode: reuse existing tab, do NOT close.
+ *
+ * @param {object} params - ExtractVisualIdentityRequest shape
+ * @param {number|undefined} routingTabId - The BrowserRequest.tab_id (set
+ *   by daemon when target.tab_id was present); we use params.target as the
+ *   authoritative source and treat routingTabId as a hint.
+ * @param {number|undefined} timeoutMs - Hard wall-clock budget; defaults
+ *   to params.timeout_sec * 1000 or 30000.
+ */
+async function executeExtractVisualIdentity(params, _routingTabId, timeoutMs) {
+  const target = params?.target || {};
+  const url = typeof target.url === 'string' ? target.url.trim() : '';
+  // Only honour an EXPLICIT target.tab_id from the request payload — not the
+  // dispatch's "current tab" fallback (which would force tab-mode whenever
+  // any tab is open and silently ignore target.url).
+  const explicitTabId = Number.isFinite(target.tab_id) ? target.tab_id : null;
+
+  if (!url && !explicitTabId) {
+    return {
+      success: false,
+      error: {
+        code: -1,
+        message: 'extract_visual_identity: target.url OR target.tab_id required',
+        recoverable: false,
+      },
+    };
+  }
+  if (url && explicitTabId) {
+    return {
+      success: false,
+      error: {
+        code: -1,
+        message: 'extract_visual_identity: target.url AND target.tab_id are mutually exclusive',
+        recoverable: false,
+      },
+    };
+  }
+
+  // Hard wall-clock budget: we MUST never let this function hang past ~25s
+  // because the daemon's BrowserRequest oneshot sender has no timeout and
+  // an indefinite hang here orphans the request_id until the periodic
+  // registry cleanup (10 minutes), causing the LLM to wait + fall back +
+  // get confused. Race the work against the budget so we always return SOME
+  // response within the budget.
+  const timeoutSec = Number.isFinite(params?.timeout_sec) ? params.timeout_sec : 20;
+  const hardBudgetMs = Math.min(
+    Math.max(5_000, timeoutSec * 1_000),
+    timeoutMs && timeoutMs > 0 ? timeoutMs : 25_000
+  );
+
+  const work = (async () => {
+    const warnings = [];
+    const startedAt = Date.now();
+    let workTabId = explicitTabId;
+    let createdTab = false;
+
+    const log = (msg) => console.log(`[extract_vi] ${msg}`);
+
+    try {
+      // ── Open tab (URL mode) ───────────────────────────────────────────────
+      if (url) {
+        log(`opening tab url=${url}`);
+        // active: true — Firefox lazy-loads background tabs, leaving the
+        // content process in a state where browser.nevoflux.eval() never
+        // resolves. Foreground load costs the user a brief flicker but
+        // makes the extraction reliable. Tab is closed in `finally`.
+        const tab = await browser.tabs.create({ url, active: true });
+        workTabId = tab.id;
+        createdTab = true;
+        log(`tab created id=${workTabId}, waiting for complete...`);
+
+        // Wait for `complete` + 1s buffer. Cap waitForTabComplete budget
+        // at half the hard budget so eval/screenshot still have time.
+        await waitForTabComplete(workTabId, Math.floor(hardBudgetMs / 2));
+        log(`tab complete; settle 1s`);
+        await sleepMs(1_000);
+      }
+
+      if (!Number.isFinite(workTabId)) {
+        throw new Error('failed to resolve a tab id for extraction');
+      }
+
+      // ── Run extractor in the page ────────────────────────────────────────
+      // Slice B: full extractor — name/tagline/url + logo (priority chain) +
+      // fonts (hero/body/mono via getComputedStyle) + key_assets (feature
+      // queries with confidence scoring). Colors are quantized by the
+      // background script from the screenshot, NOT here.
+      const extractorScript = `(() => {
+        const og = (n) => {
+          const el = document.querySelector('meta[property="og:' + n + '"]');
+          return el ? el.getAttribute('content') : null;
+        };
+        const tw = (n) => {
+          const el = document.querySelector('meta[name="twitter:' + n + '"]');
+          return el ? el.getAttribute('content') : null;
+        };
+        const metaName = (n) => {
+          const el = document.querySelector('meta[name="' + n + '"]');
+          return el ? el.getAttribute('content') : null;
+        };
+        const fallbackTagline = () => {
+          const h2 = document.querySelector('h1 + h2, h1 + p, header h2, header p');
+          return h2 ? (h2.textContent || '').trim().slice(0, 200) : null;
+        };
+
+        // ── Logo — priority chain per spec §6.3 ────────────────────────────
+        const extractLogo = () => {
+          const absUrl = (u) => {
+            if (!u) return null;
+            try { return new URL(u, location.href).href; } catch (_) { return null; }
+          };
+          // 1. apple-touch-icon at sizes ≥ 180 (high-DPI logo)
+          const appleIcons = Array.from(document.querySelectorAll('link[rel="apple-touch-icon"]'));
+          for (const ic of appleIcons) {
+            const sizes = ic.getAttribute('sizes') || '';
+            const match = sizes.match(/(\\d+)x\\d+/);
+            const size = match ? parseInt(match[1], 10) : 0;
+            if (size >= 180) {
+              return { url: absUrl(ic.getAttribute('href')), source: 'apple-touch-icon', square_score: 1.0 };
+            }
+          }
+          // 2. og:image (often square brand asset)
+          const og = document.querySelector('meta[property="og:image"]');
+          if (og && og.content) {
+            return { url: absUrl(og.content), source: 'og:image', square_score: null };
+          }
+          // 3. <img alt*="logo" i>
+          const altLogo = document.querySelector('img[alt*="logo" i]');
+          if (altLogo && altLogo.src) {
+            const sq = altLogo.naturalWidth && altLogo.naturalHeight
+              ? Math.min(altLogo.naturalWidth, altLogo.naturalHeight) /
+                Math.max(altLogo.naturalWidth, altLogo.naturalHeight)
+              : null;
+            return { url: absUrl(altLogo.src), source: 'img-logo', square_score: sq };
+          }
+          // 4. header img:first-of-type
+          const headerImg = document.querySelector('header img');
+          if (headerImg && headerImg.src) {
+            return { url: absUrl(headerImg.src), source: 'header-img', square_score: null };
+          }
+          // 5. link[rel=icon] last resort (typically tiny favicon)
+          const linkIcon = document.querySelector('link[rel~="icon"]');
+          if (linkIcon && linkIcon.href) {
+            return { url: absUrl(linkIcon.href), source: 'link-icon', square_score: null };
+          }
+          return null;
+        };
+
+        // ── Fonts — hero (h1) / body / mono (code/pre) ─────────────────────
+        const fontFor = (selector, sourceLabel) => {
+          const el = document.querySelector(selector);
+          if (!el) return null;
+          const cs = getComputedStyle(el);
+          const family = cs.fontFamily || '';
+          if (!family.trim()) return null;
+          const weightStr = cs.fontWeight || '';
+          const weight = parseInt(weightStr, 10);
+          return {
+            family: family,
+            weight: Number.isFinite(weight) ? weight : null,
+            source: sourceLabel,
+          };
+        };
+        const extractFonts = () => {
+          const out = [];
+          const hero = fontFor('h1, [class*="hero"] h1, [class*="hero"] h2', 'hero');
+          if (hero) out.push(hero);
+          const body = fontFor('body', 'body');
+          if (body) out.push(body);
+          const mono = fontFor('code, pre code, pre', 'mono');
+          if (mono) out.push(mono);
+          return out;
+        };
+
+        // ── Key assets — feature lists with confidence scoring ─────────────
+        const extractKeyAssets = () => {
+          const SELECTORS = [
+            'ul.features li',
+            '.feature-list .feature-item',
+            '.features .feature, .features .feature-item',
+            '[class*="features"] [class*="item"]',
+            '[class*="benefit"] li',
+            '[class*="value-prop"] [class*="item"]',
+            '[class*="card-grid"] [class*="card"] h3',
+          ];
+          const seen = new Set();
+          const items = [];
+          const vh = window.innerHeight || 1080;
+          for (const sel of SELECTORS) {
+            let nodes;
+            try {
+              nodes = document.querySelectorAll(sel);
+            } catch (_) { continue; }
+            if (nodes.length < 2 || nodes.length > 12) continue;
+            for (const el of nodes) {
+              const text = (el.innerText || el.textContent || '').trim().replace(/\\s+/g, ' ');
+              if (!text || text.length < 8 || text.length > 240) continue;
+              if (seen.has(text)) continue;
+              seen.add(text);
+              const rect = el.getBoundingClientRect();
+              const fontSize = parseFloat(getComputedStyle(el).fontSize) || 14;
+              const inViewport = rect.top < vh && rect.bottom > 0;
+              const hasHeading = !!el.querySelector('h2, h3, h4, strong, b');
+              let confidence = 0.4;
+              if (inViewport) confidence += 0.25;
+              if (fontSize >= 14) confidence += 0.10;
+              if (fontSize >= 18) confidence += 0.10;
+              if (hasHeading) confidence += 0.15;
+              items.push({
+                text: text.slice(0, 200),
+                confidence: Math.min(Math.max(confidence, 0), 1),
+              });
+              if (items.length >= 8) break;
+            }
+            if (items.length >= 3) break; // first selector that yields enough wins
+          }
+          // Sort by confidence desc, take top 5
+          items.sort((a, b) => b.confidence - a.confidence);
+          return items.slice(0, 5);
+        };
+
+        return {
+          name: og('title') || og('site_name') || tw('title') || document.title || null,
+          tagline: og('description') || metaName('description') || tw('description') || fallbackTagline(),
+          url: location.href,
+          readyState: document.readyState,
+          bodyTextLength: (document.body && document.body.innerText) ? document.body.innerText.length : 0,
+          logo: extractLogo(),
+          fonts: extractFonts(),
+          key_assets: extractKeyAssets(),
+        };
+      })()`;
+
+      log(`eval extractor on tab=${workTabId}`);
+      let pageMeta = null;
+      try {
+        const evalResult = await raceWithTimeout(
+          browser.nevoflux.eval(workTabId, extractorScript),
+          5_000,
+          'eval'
+        );
+        log(`eval returned: ${typeof evalResult}`);
+        pageMeta = evalResult?.value ?? evalResult?.result ?? evalResult ?? null;
+      } catch (e) {
+        log(`eval failed: ${e.message}`);
+        warnings.push('extractor_eval_failed: ' + (e?.message || String(e)));
+      }
+
+      if (!pageMeta || typeof pageMeta !== 'object') {
+        warnings.push('extractor_returned_no_data');
+        pageMeta = {};
+      }
+      if (pageMeta.readyState && pageMeta.readyState !== 'complete') {
+        warnings.push('hydrate_incomplete');
+      }
+      if (typeof pageMeta.bodyTextLength === 'number' && pageMeta.bodyTextLength < 80) {
+        warnings.push('thin_content');
+      }
+
+      // ── Capture hero screenshot ──────────────────────────────────────────
+      log(`capture screenshot on tab=${workTabId}`);
+      let heroB64 = null;
+      try {
+        const shot = await raceWithTimeout(
+          browser.nevoflux.screenshot(workTabId, { fullPage: false }),
+          5_000,
+          'screenshot'
+        );
+        if (shot && shot.success !== false && shot.data) {
+          heroB64 = shot.data;
+        } else if (shot?.error) {
+          warnings.push('screenshot_failed: ' + (shot.error.message || 'unknown'));
+        }
+      } catch (e) {
+        log(`screenshot failed: ${e.message}`);
+        warnings.push('screenshot_failed: ' + (e?.message || String(e)));
+      }
+
+      // ── Color quantization (Slice B) ─────────────────────────────────────
+      // Decode the hero PNG and extract top-5 brand colors with role hints.
+      // Bounded by raceWithTimeout because OffscreenCanvas + median-cut on
+      // a 1920×1080 PNG should complete in < 200 ms but we don't want a
+      // pathological image to stall the whole extraction.
+      let colors = [];
+      if (heroB64) {
+        try {
+          colors = await raceWithTimeout(
+            quantizeHeroColors(heroB64),
+            5_000,
+            'color_quantize'
+          );
+          log(`quantized ${colors.length} colors`);
+        } catch (e) {
+          log(`color_quantize failed: ${e.message}`);
+          warnings.push('color_quantize_failed: ' + (e?.message || String(e)));
+        }
+      }
+
+      // ── Normalize extractor outputs to protocol shapes ───────────────────
+      const safeFonts = Array.isArray(pageMeta.fonts)
+        ? pageMeta.fonts
+            .filter((f) => f && typeof f.family === 'string' && f.family.trim())
+            .map((f) => ({
+              family: f.family.trim(),
+              weight: Number.isFinite(f.weight) ? f.weight : null,
+              source: typeof f.source === 'string' ? f.source : 'other',
+            }))
+        : [];
+      const safeKeyAssets = Array.isArray(pageMeta.key_assets)
+        ? pageMeta.key_assets
+            .filter((a) => a && typeof a.text === 'string' && a.text.trim())
+            .map((a) => ({
+              text: a.text.trim().slice(0, 200),
+              confidence: Number.isFinite(a.confidence)
+                ? Math.min(Math.max(a.confidence, 0), 1)
+                : 0.5,
+            }))
+        : [];
+      const safeLogo =
+        pageMeta.logo &&
+        typeof pageMeta.logo === 'object' &&
+        typeof pageMeta.logo.url === 'string' &&
+        pageMeta.logo.url
+          ? {
+              url: pageMeta.logo.url,
+              source:
+                typeof pageMeta.logo.source === 'string'
+                  ? pageMeta.logo.source
+                  : 'unknown',
+              square_score: Number.isFinite(pageMeta.logo.square_score)
+                ? pageMeta.logo.square_score
+                : null,
+            }
+          : null;
+
+      const result = {
+        name: typeof pageMeta.name === 'string' ? pageMeta.name : null,
+        tagline: typeof pageMeta.tagline === 'string' ? pageMeta.tagline : null,
+        url: typeof pageMeta.url === 'string' ? pageMeta.url : url || '',
+        hero_screenshot_b64: heroB64,
+        logo: safeLogo,
+        colors,
+        fonts: safeFonts,
+        key_assets: safeKeyAssets,
+        extracted_at: Math.floor(startedAt / 1000),
+        warnings,
+      };
+      log(
+        `done colors=${colors.length} fonts=${safeFonts.length} ` +
+          `logo=${safeLogo ? 'Y' : 'N'} assets=${safeKeyAssets.length} ` +
+          `warnings=[${warnings.join(',')}]`
+      );
+      return { success: true, result };
+    } catch (e) {
+      log(`fatal: ${e.message}`);
+      return {
+        success: false,
+        error: {
+          code: -1,
+          message: 'extract_visual_identity: ' + (e?.message || String(e)),
+          recoverable: true,
+        },
+      };
+    } finally {
+      if (createdTab && Number.isFinite(workTabId)) {
+        try {
+          await browser.tabs.remove(workTabId);
+          log(`closed tab=${workTabId}`);
+        } catch (e) {
+          console.warn('[NevoFlux] extract_visual_identity: failed to close tab', e);
+        }
+      }
+    }
+  })();
+
+  // Hard outer budget — guarantees we never hang the daemon's request channel.
+  return await raceWithTimeout(work, hardBudgetMs, 'extract_visual_identity').catch((e) => ({
+    success: false,
+    error: {
+      code: -1,
+      message: 'extract_visual_identity: ' + (e?.message || String(e)),
+      recoverable: true,
+    },
+  }));
+}
+
+/**
+ * Resolve `promise` if it settles within `ms`, otherwise reject with a
+ * `<label> timed out after Nms` error. Used to bound any await that could
+ * hang indefinitely (e.g. browser.nevoflux.eval against a non-responsive
+ * content process).
+ */
+function raceWithTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise.finally(() => clearTimeout(timer)), timeout]);
+}
+
+// ============================================================================
+// Visual identity color quantization (P5a Slice B)
+//
+// Decode the hero screenshot PNG (base64) → ImageBitmap → downsampled canvas →
+// median-cut quantize to top-5 RGB buckets → assign role hints (Background /
+// Primary / Text / Accent) per spec §6.3 heuristics.
+//
+// Implemented inline (no color-thief.js vendoring) because median-cut for
+// 5 buckets over 24K downsampled pixels is fast enough (≤ 50 ms) and the
+// dependency surface stays small.
+// ============================================================================
+
+/**
+ * Quantize a hero screenshot PNG (base64) into top-5 colors with role hints.
+ *
+ * @param {string} b64Png  Base64-encoded PNG (no data URL prefix).
+ * @returns {Promise<Array<{hex,rgb,frequency,role_hint}>>}  Top 5 colors.
+ *   Returns empty array on any decoding failure (caller treats as "color
+ *   extraction unavailable" warning rather than fatal error).
+ */
+async function quantizeHeroColors(b64Png) {
+  if (!b64Png || typeof b64Png !== 'string') return [];
+  try {
+    // base64 → bytes → Blob → ImageBitmap
+    const binary = atob(b64Png);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'image/png' });
+    const bitmap = await createImageBitmap(blob);
+
+    // Downsample to 200×N for speed. Quality is fine for top-5 brand colors;
+    // anti-aliasing on the rescale also smooths out 1-pixel noise.
+    const SAMPLE_W = 200;
+    const SAMPLE_H = Math.max(1, Math.round((bitmap.height * SAMPLE_W) / bitmap.width));
+    const canvas = new OffscreenCanvas(SAMPLE_W, SAMPLE_H);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(bitmap, 0, 0, SAMPLE_W, SAMPLE_H);
+    const imageData = ctx.getImageData(0, 0, SAMPLE_W, SAMPLE_H);
+    bitmap.close?.();
+
+    // Pack pixels into [r,g,b] tuples, dropping fully-transparent pixels.
+    const pixels = [];
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < 128) continue; // skip near-transparent
+      pixels.push([data[i], data[i + 1], data[i + 2]]);
+    }
+    if (pixels.length < 16) return [];
+
+    const buckets = medianCut(pixels, 5);
+    const total = pixels.length;
+
+    // Build colors with frequency, sorted by frequency desc.
+    const colors = buckets
+      .map((b) => {
+        const r = Math.round(b.rSum / b.count);
+        const g = Math.round(b.gSum / b.count);
+        const blu = Math.round(b.bSum / b.count);
+        return {
+          hex: rgbToHex(r, g, blu),
+          rgb: [r, g, blu],
+          frequency: b.count / total,
+          role_hint: 'unspecified',
+        };
+      })
+      .sort((a, b) => b.frequency - a.frequency);
+
+    assignColorRoles(colors);
+    return colors;
+  } catch (e) {
+    console.warn('[extract_vi] quantizeHeroColors failed:', e);
+    return [];
+  }
+}
+
+/**
+ * Median-cut quantization. Splits the input pixel set into `N` buckets by
+ * repeatedly dividing the bucket with the widest channel range.
+ *
+ * Each returned bucket carries the running sums (rSum/gSum/bSum) and
+ * `count` so the caller can derive the centroid color.
+ */
+function medianCut(pixels, targetBuckets) {
+  // Initial bucket = all pixels.
+  let buckets = [makeBucket(pixels)];
+  while (buckets.length < targetBuckets) {
+    // Pick the bucket with the largest channel range; if all are 0, stop.
+    let largest = buckets[0];
+    let largestRange = bucketWidestRange(largest);
+    let largestIdx = 0;
+    for (let i = 1; i < buckets.length; i++) {
+      const r = bucketWidestRange(buckets[i]);
+      if (r.range > largestRange.range) {
+        largestRange = r;
+        largest = buckets[i];
+        largestIdx = i;
+      }
+    }
+    if (largestRange.range === 0) break; // can't split flat buckets
+    // Sort pixels in that bucket along the widest channel and split at median.
+    const ch = largestRange.channel; // 0=R, 1=G, 2=B
+    largest.pixels.sort((a, b) => a[ch] - b[ch]);
+    const mid = Math.floor(largest.pixels.length / 2);
+    const left = makeBucket(largest.pixels.slice(0, mid));
+    const right = makeBucket(largest.pixels.slice(mid));
+    buckets.splice(largestIdx, 1, left, right);
+  }
+  return buckets;
+}
+
+/** Build a bucket carrying its pixel list and running channel sums + min/max. */
+function makeBucket(pixels) {
+  let rMin = 255,
+    rMax = 0,
+    gMin = 255,
+    gMax = 0,
+    bMin = 255,
+    bMax = 0,
+    rSum = 0,
+    gSum = 0,
+    bSum = 0;
+  for (const [r, g, b] of pixels) {
+    if (r < rMin) rMin = r;
+    if (r > rMax) rMax = r;
+    if (g < gMin) gMin = g;
+    if (g > gMax) gMax = g;
+    if (b < bMin) bMin = b;
+    if (b > bMax) bMax = b;
+    rSum += r;
+    gSum += g;
+    bSum += b;
+  }
+  return {
+    pixels,
+    count: pixels.length,
+    rSum,
+    gSum,
+    bSum,
+    rRange: rMax - rMin,
+    gRange: gMax - gMin,
+    bRange: bMax - bMin,
+  };
+}
+
+/** Widest channel + its range value, used by medianCut to pick split target. */
+function bucketWidestRange(b) {
+  if (b.rRange >= b.gRange && b.rRange >= b.bRange) return { channel: 0, range: b.rRange };
+  if (b.gRange >= b.bRange) return { channel: 1, range: b.gRange };
+  return { channel: 2, range: b.bRange };
+}
+
+/**
+ * Assign Background / Primary / Text / Accent role hints to the top-5
+ * colors with sanity-check fallbacks so a low-contrast page (e.g.
+ * mostly-white landing page where median-cut produces 4 near-white
+ * buckets and 1 brand color) doesn't yield "secondary == accent ==
+ * foreground == background == #ffffff" — which renders the entire
+ * design unusable.
+ *
+ * Heuristics (per spec §6.3 + sanity bounds added 2026-04-26):
+ *   - Background: highest frequency AND near #fff/#000 (lightness > 0.85
+ *     or < 0.15). If no near-extreme color exists, top-frequency wins.
+ *   - Primary: highest saturation among non-background, freq > 5%.
+ *   - Text: max contrast vs Background, prefer low saturation. **If best
+ *     candidate's lightness contrast vs bg < 0.45 (~WCAG AA fail for
+ *     large text), mutate hex to #1a1a1a or #f0f0f0 based on bg lightness
+ *     so the role always carries usable contrast** rather than near-bg
+ *     duplicates that produce invisible text.
+ *   - Accent: remainder, **only if Manhattan RGB distance from bg ≥ 60**
+ *     (visually distinct). Near-bg leftovers stay 'unspecified' so the
+ *     downstream consumer (vi_to_design.rs) falls back to derived colors.
+ *
+ * Mutates `colors[*].role_hint` (and possibly `.hex`/`.rgb` for the text
+ * fallback) in place.
+ */
+function assignColorRoles(colors) {
+  if (!colors.length) return;
+
+  const hsv = colors.map((c) => rgbToHsv(c.rgb[0], c.rgb[1], c.rgb[2]));
+  const lightness = colors.map((c) => (Math.max(...c.rgb) + Math.min(...c.rgb)) / 2 / 255);
+
+  // Background — prefer near-extreme; fallback to most frequent.
+  let bgIdx = -1;
+  for (let i = 0; i < colors.length; i++) {
+    if (lightness[i] > 0.85 || lightness[i] < 0.15) {
+      if (bgIdx === -1 || colors[i].frequency > colors[bgIdx].frequency) bgIdx = i;
+    }
+  }
+  if (bgIdx === -1) bgIdx = 0; // most frequent
+  colors[bgIdx].role_hint = 'background';
+
+  // Primary — most saturated non-bg with freq > 5%.
+  let primaryIdx = -1;
+  let primarySat = -1;
+  for (let i = 0; i < colors.length; i++) {
+    if (i === bgIdx) continue;
+    if (colors[i].frequency < 0.05) continue;
+    if (hsv[i].s > primarySat) {
+      primarySat = hsv[i].s;
+      primaryIdx = i;
+    }
+  }
+  if (primaryIdx >= 0) colors[primaryIdx].role_hint = 'primary';
+
+  // Text — pick max-contrast / low-saturation candidate; enforce contrast
+  // floor with a deterministic mutation if no candidate qualifies.
+  const bgL = lightness[bgIdx];
+  const TEXT_CONTRAST_FLOOR = 0.45;
+  let textIdx = -1;
+  let textScore = -1;
+  for (let i = 0; i < colors.length; i++) {
+    if (colors[i].role_hint !== 'unspecified') continue;
+    const contrast = Math.abs(lightness[i] - bgL);
+    const score = contrast - hsv[i].s * 0.3; // penalise saturated colors
+    if (score > textScore) {
+      textScore = score;
+      textIdx = i;
+    }
+  }
+  if (textIdx >= 0) {
+    const candidateContrast = Math.abs(lightness[textIdx] - bgL);
+    if (candidateContrast >= TEXT_CONTRAST_FLOOR) {
+      colors[textIdx].role_hint = 'text';
+    } else {
+      // Best available text candidate doesn't have enough contrast —
+      // mutate to a deterministic high-contrast value based on bg
+      // lightness. Frequency dropped to 0 to mark this as synthesized.
+      const c = colors[textIdx];
+      const isLightBg = bgL > 0.5;
+      c.rgb = isLightBg ? [26, 26, 26] : [240, 240, 240];
+      c.hex = isLightBg ? '#1a1a1a' : '#f0f0f0';
+      c.frequency = 0;
+      c.role_hint = 'text';
+    }
+  }
+
+  // Accent — only promote leftover colors that are visually distinct
+  // from the background. Near-bg duplicates remain 'unspecified' so
+  // vi_to_design.rs falls back to derived accent/secondary instead of
+  // emitting a DESIGN.md where accent and background are identical.
+  const bgRgb = colors[bgIdx].rgb;
+  const ACCENT_MIN_BG_DIST = 60; // Manhattan distance ~ visually distinct
+  for (const c of colors) {
+    if (c.role_hint !== 'unspecified') continue;
+    const dist =
+      Math.abs(c.rgb[0] - bgRgb[0]) +
+      Math.abs(c.rgb[1] - bgRgb[1]) +
+      Math.abs(c.rgb[2] - bgRgb[2]);
+    if (dist < ACCENT_MIN_BG_DIST) {
+      // Too close to bg — don't promote; downstream derives accent.
+      continue;
+    }
+    c.role_hint = 'accent';
+  }
+}
+
+/** Convert 0..255 RGB to HSV (s/v in 0..1, h in 0..360). */
+function rgbToHsv(r, g, b) {
+  const rN = r / 255,
+    gN = g / 255,
+    bN = b / 255;
+  const max = Math.max(rN, gN, bN);
+  const min = Math.min(rN, gN, bN);
+  const delta = max - min;
+  const v = max;
+  const s = max === 0 ? 0 : delta / max;
+  let h = 0;
+  if (delta !== 0) {
+    if (max === rN) h = ((gN - bN) / delta) % 6;
+    else if (max === gN) h = (bN - rN) / delta + 2;
+    else h = (rN - gN) / delta + 4;
+    h *= 60;
+    if (h < 0) h += 360;
+  }
+  return { h, s, v };
+}
+
+/** Format 0..255 RGB triple as #rrggbb hex. */
+function rgbToHex(r, g, b) {
+  const h = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+  return '#' + h(r) + h(g) + h(b);
+}
+
+/** Sleep helper. */
+function sleepMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Wait until the given tab's status flips to 'complete'. Honours the wall
+ * clock budget so a stuck SPA can't hang the extraction indefinitely.
+ */
+async function waitForTabComplete(tabId, budgetMs) {
+  const deadline = Date.now() + budgetMs;
+  while (Date.now() < deadline) {
+    let tab;
+    try {
+      tab = await browser.tabs.get(tabId);
+    } catch (e) {
+      throw new Error('tab disappeared during load: ' + e.message);
+    }
+    if (tab.status === 'complete') return;
+    await sleepMs(200);
+  }
+  throw new Error(`tab load timeout after ${budgetMs}ms (status still ${'pending'})`);
 }
 
 /**

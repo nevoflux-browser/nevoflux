@@ -17,7 +17,7 @@
 //   parser) accessed via `readAttr(tag.raw, attr)`.  We use DOM element objects
 //   accessible via `ctx.doc.querySelectorAll(...)`.
 
-import { push } from '../utils.js';
+import { push, pushNarrowed } from '../utils.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -228,7 +228,7 @@ function ruleGsapTweenChecks(ctx, report) {
         continue;
       }
       const firstTween = existing.get(shared[0]);
-      push(report, {
+      pushNarrowed(report, ctx, {
         severity: 'warning',
         rule_id: 'comp/overlapping-gsap-tweens',
         message:
@@ -272,7 +272,7 @@ function ruleGsapTweenChecks(ctx, report) {
       if (!isSuspiciousGlobalSelector(tween.selector)) continue;
       const className = getSingleClassSelector(tween.selector);
       if (className && (classUsage.get(className) || 0) < 2) continue;
-      push(report, {
+      pushNarrowed(report, ctx, {
         severity: 'warning',
         rule_id: 'comp/unscoped-gsap-selector',
         message:

@@ -81,22 +81,26 @@ Check in order:
 - No simultaneous `<video>` + `<audio>` (source audio passes through)
 - Layer via `data-track-index`: source video = 0, overlays = 1–10, watermark = 11+
 
-**Mode 3 — Website-to-video.** Start from `templates/website-promo-16x9.html`. 7-step flow:
-1. `extract_visual_identity(url_or_tab)` → brand assets
-2. Write `DESIGN.md` into VirtualFS
-3. Write `SCRIPT.md` (~50 words/10s)
-4. Write `STORYBOARD.md` (per-beat: mood / camera / transition / asset / animation)
-5. (Optional) `tts_synthesize_local` → `narration.wav` + `transcript.json`; back-fill beat durations
-6. Build composition HTML (Approach + VIG + Layout-First + Transition rules)
-7. `canvas_lint_composition` → zero ERROR → send preview link
+**Mode 3 — Website-to-video.** Start from `templates/website-promo-16x9.html`. Two-step shortcut for the brand-identity phase:
 
-Key Mode 3 components: `components/screenshot-reveal.html`, `components/feature-list-checkmark.html`. `extract_visual_identity` auto-fills DESIGN.md — skip VIG questions; echo primary/font/tagline for confirmation. Template: `reference/DESIGN-template.md`; extensions: `reference/design-md-video-extension.md`.
+1. `canvas_extract_visual_identity({target:{url}})` → returns a `VisualIdentity` JSON (name, tagline, colors with role hints, fonts by source, logo URL, key_assets).
+2. `canvas_create_from_visual_identity({title, width, height, duration_sec, fps, template, visual_identity})` — pass the VI from step 1 verbatim. Daemon deterministically renders DESIGN.md from VI fields and creates the composition in one call. **Do NOT manually render DESIGN.md and call `canvas_create_composition`** — that path is error-prone (LLM hallucinates field names, drops weights, mis-formats YAML); the new tool is the right baseline.
+
+After the composition exists you can iterate:
+- (Optional) `browser_edit_artifact` on the composition's `DESIGN.md` to apply user-specific tweaks ("make background black"); then `canvas_apply_design_md` to refresh the brand layer.
+- (Optional) Write `SCRIPT.md` / `STORYBOARD.md` into the composition for narration + per-beat planning.
+- (Optional) `tts_synthesize_api({composition_id, text})` — writes `narration.mp3` directly into the composition's files map; the renderer picks it up and muxes into the MP4. Requires `[tts.elevenlabs] api_key` in `~/.config/nevoflux/config.toml`.
+- (Future) `tts_synthesize_local` (Kokoro) + `tts_transcribe` (Whisper) — registered today but return ConfigMissing until the `nevoflux-tts` ONNX crate ships.
+- `canvas_lint_composition` → zero ERROR → send preview link. (Daemon path runs in strict mode: narrowed warnings — `comp/overlapping-gsap-tweens`, `comp/unscoped-gsap-selector` — escalate to errors.)
+- `canvas_render_video` → MP4 (with narration audio if present).
+
+Key Mode 3 components: `components/screenshot-reveal.html`, `components/feature-list-checkmark.html`. The VI extraction skips the VIG questionnaire — just echo back `name` / `colors.primary` / `typography.hero.family` to the user for confirmation. Template: `reference/DESIGN-template.md`; extensions: `reference/design-md-video-extension.md`.
 
 ## DESIGN.md Workflow
 
 `DESIGN.md` lives in composition VirtualFS — persistent brand identity across sessions.
 
-**Before every composition:** `readFile('DESIGN.md')` — found → use it; not found → create (Mode 3: auto from `extract_visual_identity`; Mode 1/2: VIG answers → write to file).
+**Before every composition:** `readFile('DESIGN.md')` — found → use it; not found → create (Mode 3: auto via `canvas_create_from_visual_identity`; Mode 1/2: VIG answers → write to file).
 
 Sections: `## Brand` / `## Colors` / `## Typography` / `## Motion` / `## Style Prompt` / `## What NOT to Do`. Full template: `reference/DESIGN-template.md`.
 
@@ -104,13 +108,16 @@ Usage: CSS variables (`color: var(--primary)`); eases from Motion section; "chan
 
 ## TTS & Narration
 
-See `snippets/tts-workflow.md` for full workflow and voice-selection guide.
+See `snippets/tts-workflow.md` (full workflow + status) and `snippets/auto-captions.md` (caption emission rules).
 
-- **Kokoro local (default):** `tts_synthesize_local(text, voice, speed)` — EN voices `af/am/bf/bm`, ZH `zf/zm`; speed 0.5–2.0. First use: ~82 MB download; fully offline after.
-- **ElevenLabs API:** `tts_synthesize_api("elevenlabs", text, voice_id)` — user must configure key; avoid for mainland China users.
-- **User audio:** `tts_transcribe(bytes)` → word-level transcript into VirtualFS.
+**Today (P5b-1 + P5b-final shipped):**
+- `tts_synthesize_api({text, composition_id, voice_id?, model_id?})` — ElevenLabs HTTP path. Daemon writes `narration.mp3` into the artifact's files map; renderer auto-muxes via ffmpeg. Requires `[tts.elevenlabs] api_key` in `~/.config/nevoflux/config.toml`. Text capped at 600 chars (~60s of speech).
 
-Auto-captions: group by transcript timestamps (merge < 7 chars, split > 15 chars) → one `caption-subtitle` clip per group. Constraints: max 1 narration per composition; no narration when `<video>` is present (v1 audio-exclusion).
+**Registered but gated on the next `nevoflux-tts` ONNX crate milestone:**
+- `tts_synthesize_local` — Kokoro-82M local TTS (`af/am/bf/bm/zf/zm` voices). Returns ConfigMissing today.
+- `tts_transcribe` — Whisper ONNX → segment timestamps. Returns ConfigMissing today. Auto-captions depend on this.
+
+**Auto-captions (P5c):** when Whisper is wired, `tts_transcribe({composition_id, file_path: "narration.mp3"})` returns `segments[]`; group by sentence boundary (7–15 chars per row) and emit `caption-subtitle` clips on `data-track-index ≥ 20`. Eight `comp/caption-*` lint rules enforce the DOM contract. Constraints: max 1 narration per composition (`nf/single-audio`); no narration when a `<video>` track has its own audio.
 
 ## Layout Before Animation
 

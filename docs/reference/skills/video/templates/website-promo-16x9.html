@@ -22,7 +22,7 @@
 
   AGENT USAGE:
   1. 替换所有 <<...>> 占位符为 DESIGN.md / extract_visual_identity 数据
-  2. 不要硬编码颜色——全部用 var(--primary) / var(--accent) / var(--bg-dark) 等
+  2. 不要硬编码颜色——全部用 var(--color-primary, #1a6b6b) / var(--color-accent, #ffcc33) / var(--color-background, #0b1020) 等
   3. hero screenshot 引用 assets/hero.png（extract_visual_identity 已保存）
   4. features 3 条从 extract_visual_identity.key_assets 或用户网站 feature list 提取
   5. 旁白（可选）：调用 tts_synthesize_local 生成，与 composition duration 对齐
@@ -36,15 +36,14 @@
 <head>
   <meta charset="utf-8">
   <style>
-    /* === 从 DESIGN.md 引用 === */
-    /* AGENT: 实际写入时把 DESIGN.md 的 CSS 变量复制到这里 */
-    :root {
-      --primary: #1a6b6b;       /* 从 DESIGN.md 复制 */
-      --accent: #ffcc33;
-      --bg-dark: #0b1020;
-      --bg-light: #f3f6f8;
-      --text-primary: #0b1020;
-    }
+    /* Brand layer is provided by the daemon-injected <style data-nf-* > block
+       at the top of <head>, which sets --color-primary / --color-secondary /
+       --color-accent / --color-background / --color-foreground. Consumer
+       rules below carry hex fallbacks via var(--x, #fallback) so the
+       template still previews sensibly when opened standalone (no daemon
+       injection). NOTE: do not redeclare :root with self-referencing
+       var(--color-primary, #...) — that produces a CSS cyclic reference
+       and silently invalidates the property, blanking every consumer rule. */
 
     body { margin: 0; background: #000; }
     #stage {
@@ -53,9 +52,9 @@
       height: 1080px;
       overflow: hidden;
       /* 字体栈从 DESIGN.md Typography 节复制 */
-      font-family: 'Inter', 'PingFang SC', -apple-system, sans-serif;
-      color: var(--text-primary);
-      background: var(--bg-light);
+      font-family: var(--typography-hero-family, 'Inter', 'PingFang SC', -apple-system, sans-serif);
+      color: var(--color-background, #0b1020);
+      background: var(--color-foreground, #f3f6f8);
     }
 
     /* === Scene 1: Brand reveal (0-4s) === */
@@ -65,7 +64,7 @@
       align-items: center; justify-content: center;
       gap: 32px; padding: 80px;
       box-sizing: border-box;
-      background: var(--bg-light);
+      background: var(--color-foreground, #f3f6f8);
     }
     .brand-logo {
       width: 240px; height: 240px;
@@ -74,11 +73,11 @@
     }
     .brand-name {
       font-size: 140px; font-weight: 800; letter-spacing: -0.03em;
-      color: var(--primary); margin: 0; line-height: 1;
+      color: var(--color-primary, #1a6b6b); margin: 0; line-height: 1;
     }
     .brand-tagline {
       font-size: 44px; font-weight: 400; margin: 0;
-      color: var(--text-primary); opacity: 0.8;
+      color: var(--color-background, #0b1020); opacity: 0.8;
       letter-spacing: 0.02em; text-align: center;
     }
 
@@ -86,7 +85,7 @@
     .scene-showcase {
       position: absolute; inset: 0;
       display: flex; align-items: center; justify-content: center;
-      background: var(--bg-dark);
+      background: var(--color-background, #0b1020);
       perspective: 1400px;
     }
     .showcase-screenshot {
@@ -107,8 +106,8 @@
     .showcase-badge {
       position: absolute; top: 100px; right: 120px;
       padding: 16px 32px;
-      background: var(--accent);
-      color: var(--bg-dark);
+      background: var(--color-accent, #ffcc33);
+      color: var(--color-background, #0b1020);
       border-radius: 999px;
       font-size: 32px; font-weight: 800;
       letter-spacing: 0.04em;
@@ -121,11 +120,11 @@
       align-items: center; justify-content: center;
       gap: 56px; padding: 120px;
       box-sizing: border-box;
-      background: var(--bg-light);
+      background: var(--color-foreground, #f3f6f8);
     }
     .features-title {
       font-size: 88px; font-weight: 800;
-      color: var(--text-primary);
+      color: var(--color-background, #0b1020);
       letter-spacing: -0.02em; margin: 0;
     }
     .features-list {
@@ -139,7 +138,7 @@
     .feature-check {
       width: 72px; height: 72px;
       border-radius: 50%;
-      background: var(--primary);
+      background: var(--color-primary, #1a6b6b);
       color: #fff;
       display: flex; align-items: center; justify-content: center;
       font-size: 40px; font-weight: 900;
@@ -153,7 +152,7 @@
       align-items: center; justify-content: center;
       gap: 48px; padding: 80px;
       box-sizing: border-box;
-      background: var(--primary);
+      background: var(--color-primary, #1a6b6b);
     }
     .cta-logo {
       width: 160px; height: 160px;
@@ -168,8 +167,8 @@
     }
     .cta-button {
       padding: 28px 72px;
-      background: var(--accent);
-      color: var(--bg-dark);
+      background: var(--color-accent, #ffcc33);
+      color: var(--color-background, #0b1020);
       border-radius: 999px;
       font-size: 40px; font-weight: 700;
       letter-spacing: 0.02em;
@@ -182,7 +181,7 @@
     }
     .crossfade-layer {
       position: absolute; inset: 0;
-      background: var(--bg-light); pointer-events: none; opacity: 0;
+      background: var(--color-foreground, #f3f6f8); pointer-events: none; opacity: 0;
     }
   </style>
 </head>

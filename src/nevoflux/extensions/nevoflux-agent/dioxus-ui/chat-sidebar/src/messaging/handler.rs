@@ -399,13 +399,19 @@ fn handle_render_progress_delivery(
 
         is_new
     };
+    let _ = is_new_job;
 
-    // When a new job_id appears, bind it to the most recent message that
-    // has an unclaimed `canvas_render_video` tool_call so `MessageBubble`
-    // can render a `RenderProgressCard` underneath that tool_use.
-    if is_new_job {
-        bind_job_to_message(ctx, &job_id);
-    }
+    // Try to bind on EVERY delivery, not just the first one for this job_id.
+    // The first progress event for a render commonly arrives while the
+    // assistant message is still streaming (only `live_tools` populated;
+    // `ctx.messages` not yet updated with the finalized canvas_render_video
+    // tool_call). A one-shot bind on first arrival misses that window
+    // permanently, leaving `message_render_job_ids` empty and the
+    // `RenderProgressCard` invisible. `bind_job_to_message` is idempotent
+    // (early-returns when the job is already bound), so retrying every
+    // delivery is safe and lets the bind succeed once the streaming message
+    // finalizes.
+    bind_job_to_message(ctx, &job_id);
 }
 
 /// Bind a newly-appeared `job_id` to the most recent message whose

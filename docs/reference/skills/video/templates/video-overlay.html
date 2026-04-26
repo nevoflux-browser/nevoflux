@@ -28,12 +28,13 @@
 <head>
   <meta charset="utf-8">
   <style>
-    /* === Design tokens === */
+    /* Brand layer is provided by the daemon-injected <style data-nf-* > block
+       at the top of <head>, which sets --color-primary / --color-background /
+       --color-foreground (and --color-surface when supplied). DO NOT
+       redeclare them here as `--color-primary: var(--color-primary, ...)` —
+       that creates a CSS cyclic reference and silently invalidates the
+       value. Use var(--color-X, #fallback) inline at consumer rules instead. */
     :root {
-      --color-bg:         var(--color-background,  #000);
-      --color-fg:         var(--color-foreground,  #fff);
-      --color-surface:    var(--color-surface,     rgba(0,0,0,.55));
-      --color-accent:     var(--color-primary,     #e63946);
       --font-hero:        var(--typography-hero-family,  'Inter', system-ui, sans-serif);
       --font-body:        var(--typography-body-family,  'Inter', system-ui, sans-serif);
       --fw-hero:          var(--typography-hero-weight,  700);
@@ -48,7 +49,7 @@
       --safe-sides:  var(--aspect-safe_sides,   80px);
     }
 
-    body { margin: 0; background: var(--color-bg); overflow: hidden; font-family: var(--font-body); }
+    body { margin: 0; background: var(--color-background, #000); overflow: hidden; font-family: var(--font-body); }
 
     #stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
 
@@ -66,10 +67,10 @@
     .overlay-title-text {
       font-family: var(--font-hero); font-weight: var(--fw-hero);
       font-size: 72px; line-height: 1.1; letter-spacing: -.02em;
-      color: var(--color-fg); text-shadow: 0 2px 12px rgba(0,0,0,.6);
+      color: var(--color-foreground, #fff); text-shadow: 0 2px 12px rgba(0,0,0,.6);
     }
     .overlay-title-rule {
-      width: 0%; height: 3px; background: var(--color-accent);
+      width: 0%; height: 3px; background: var(--color-primary, #e63946);
       border-radius: 2px; margin-top: var(--sp-sm);
     }
 
@@ -78,7 +79,7 @@
       position: absolute; top: var(--safe-top); right: var(--safe-sides);
       font-family: var(--font-body); font-weight: var(--fw-body);
       font-size: 28px; letter-spacing: .05em; text-transform: uppercase;
-      color: var(--color-fg); background: var(--color-surface);
+      color: var(--color-foreground, #fff); background: var(--color-surface, rgba(0,0,0,.55));
       border: 1px solid rgba(255,255,255,.22); border-radius: var(--r-md);
       padding: var(--sp-sm) var(--sp-lg); backdrop-filter: blur(4px);
       opacity: 0;
@@ -88,12 +89,12 @@
     .overlay-lower-third {
       position: absolute; left: 0; bottom: var(--safe-bottom);
       display: flex; align-items: center; gap: var(--sp-md);
-      background: var(--color-surface); border-left: 6px solid var(--color-accent);
+      background: var(--color-surface, rgba(0,0,0,.55)); border-left: 6px solid var(--color-primary, #e63946);
       padding: var(--sp-md) var(--sp-xl);
       transform: translateX(-100%); opacity: 0;
     }
-    .lt-label { font-family: var(--font-body); font-weight: var(--fw-body); font-size: 22px; letter-spacing: .08em; text-transform: uppercase; color: var(--color-accent); }
-    .lt-name  { font-family: var(--font-hero); font-weight: var(--fw-hero); font-size: 38px; line-height: 1.1; color: var(--color-fg); }
+    .lt-label { font-family: var(--font-body); font-weight: var(--fw-body); font-size: 22px; letter-spacing: .08em; text-transform: uppercase; color: var(--color-primary, #e63946); }
+    .lt-name  { font-family: var(--font-hero); font-weight: var(--fw-hero); font-size: 38px; line-height: 1.1; color: var(--color-foreground, #fff); }
     .lt-sub   { font-family: var(--font-body); font-weight: 400; font-size: 24px; color: rgba(255,255,255,.75); }
 
     @media (prefers-reduced-motion: reduce) {

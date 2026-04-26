@@ -38,13 +38,13 @@
 <head>
   <meta charset="utf-8">
   <style>
-    /* === Design tokens — agent injects DESIGN.md values here === */
+    /* Brand layer is provided by the daemon-injected <style data-nf-* > block
+       at the top of <head>. DO NOT redeclare --color-* with self-referencing
+       var() here — that's a cyclic reference per CSS spec and silently
+       invalidates the property, blanking every consumer rule. Instead, use
+       var(--color-X, #fallback) inline at every consumer site so the
+       template still previews sensibly when opened standalone. */
     :root {
-      --color-primary:    var(--color-primary,    #a259ff);
-      --color-secondary:  var(--color-secondary,  #1abcfe);
-      --color-accent:     var(--color-accent,     #0acf83);
-      --color-background: var(--color-background, #0a0a0f);
-      --color-foreground: var(--color-foreground, #ffffff);
       --color-surface:    #1e1e1e;
       --color-border:     rgba(255, 255, 255, 0.12);
 
@@ -74,7 +74,7 @@
       position: relative;
       width: 1080px; height: 1920px;
       overflow: hidden;
-      background: var(--color-background);
+      background: var(--color-background, #0a0a0f);
     }
 
     /* Clip utility — runtime controls visibility */
@@ -88,7 +88,7 @@
     }
 
     /* ── Scene 1: Logo Intro ── */
-    .scene-logo-intro { background: var(--color-background); flex-direction: column; gap: 48px; }
+    .scene-logo-intro { background: var(--color-background, #0a0a0f); flex-direction: column; gap: 48px; }
 
     .logo-intro-wrap { position: relative; width: 160px; height: 240px; }
 
@@ -107,12 +107,16 @@
     .intro-brand-name {
       font-family: var(--font-hero); font-weight: var(--font-weight-hero);
       font-size: 130px; letter-spacing: -0.03em;
-      color: var(--color-foreground); margin: 0; opacity: 0; text-align: center;
+      color: var(--color-foreground, #ffffff); margin: 0; opacity: 0; text-align: center;
     }
 
     /* ── Scene 2: Product Canvas ── */
     .scene-canvas {
-      background: var(--color-surface);
+      /* Drive from --color-background so DESIGN.md controls every scene
+         uniformly. The optional --color-surface override (template-local) was
+         removed because it left scene-canvas dark gray regardless of any
+         caller-supplied background color, defeating the brand layer. */
+      background: var(--color-background, #0a0a0f);
       flex-direction: column; justify-content: flex-start;
       padding: var(--safe-top) var(--safe-sides) var(--safe-bottom);
       gap: 0;
@@ -133,14 +137,14 @@
 
     .canvas-eyebrow {
       font-family: var(--font-body); font-size: 34px; font-weight: 600;
-      letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-primary);
+      letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-primary, #a259ff);
       text-align: center;
     }
 
     .canvas-headline {
       font-family: var(--font-hero); font-weight: var(--font-weight-hero);
       font-size: 96px; letter-spacing: -0.03em;
-      color: var(--color-foreground); margin: 0; text-align: center;
+      color: var(--color-foreground, #ffffff); margin: 0; text-align: center;
       line-height: 1.05;
     }
 
@@ -168,9 +172,9 @@
       display: flex; align-items: center; justify-content: center;
     }
 
-    .feature-card:nth-child(1) .feature-icon-wrap { background: color-mix(in srgb, var(--color-primary)   20%, transparent); }
-    .feature-card:nth-child(2) .feature-icon-wrap { background: color-mix(in srgb, var(--color-secondary) 20%, transparent); }
-    .feature-card:nth-child(3) .feature-icon-wrap { background: color-mix(in srgb, var(--color-accent)    20%, transparent); }
+    .feature-card:nth-child(1) .feature-icon-wrap { background: color-mix(in srgb, var(--color-primary, #a259ff)   20%, transparent); }
+    .feature-card:nth-child(2) .feature-icon-wrap { background: color-mix(in srgb, var(--color-secondary, #1abcfe) 20%, transparent); }
+    .feature-card:nth-child(3) .feature-icon-wrap { background: color-mix(in srgb, var(--color-accent, #0acf83)    20%, transparent); }
 
     .feature-icon { font-size: 38px; line-height: 1; }
 
@@ -178,7 +182,7 @@
 
     .feature-title {
       font-family: var(--font-hero); font-weight: var(--font-weight-hero);
-      font-size: 48px; letter-spacing: -0.02em; color: var(--color-foreground); margin: 0;
+      font-size: 48px; letter-spacing: -0.02em; color: var(--color-foreground, #ffffff); margin: 0;
     }
 
     .feature-desc {
@@ -187,7 +191,7 @@
     }
 
     /* ── Scene 3: Logo Outro ── */
-    .scene-logo-outro { background: var(--color-background); flex-direction: column; gap: 56px; }
+    .scene-logo-outro { background: var(--color-background, #0a0a0f); flex-direction: column; gap: 56px; }
 
     .outro-logo-wrap { width: 160px; height: 240px; position: relative; }
 
@@ -197,7 +201,7 @@
       position: absolute; top: 50%; left: 50%;
       width: 420px; height: 420px; margin: -210px 0 0 -210px;
       border-radius: 50%;
-      background: radial-gradient(circle, color-mix(in srgb, var(--color-primary) 30%, transparent) 0%, transparent 70%);
+      background: radial-gradient(circle, color-mix(in srgb, var(--color-primary, #a259ff) 30%, transparent) 0%, transparent 70%);
       pointer-events: none; opacity: 0;
     }
 
@@ -206,7 +210,7 @@
     .outro-tagline {
       font-family: var(--font-hero); font-weight: 500;
       font-size: 66px; letter-spacing: -0.01em;
-      color: var(--color-foreground); text-align: center; margin: 0; opacity: 0;
+      color: var(--color-foreground, #ffffff); text-align: center; margin: 0; opacity: 0;
       line-height: 1.15;
     }
 
@@ -245,18 +249,18 @@
       <svg viewBox="0 0 160 240" width="160" height="240" aria-hidden="true">
         <path id="lp-tl" class="logo-piece"
           d="M 0 40 C 0 17.9 17.9 0 40 0 L 80 0 L 80 80 L 40 80 C 17.9 80 0 62.1 0 40 Z"
-          fill="var(--color-primary)" />
+          fill="var(--color-primary, #a259ff)" />
         <path id="lp-tr" class="logo-piece"
           d="M 80 0 L 120 0 C 142.1 0 160 17.9 160 40 C 160 62.1 142.1 80 120 80 L 80 80 L 80 0 Z"
-          fill="var(--color-secondary)" />
+          fill="var(--color-secondary, #1abcfe)" />
         <path id="lp-ml" class="logo-piece"
           d="M 0 120 C 0 97.9 17.9 80 40 80 L 80 80 L 80 160 L 40 160 C 17.9 160 0 142.1 0 120 Z"
-          fill="var(--color-accent)" />
+          fill="var(--color-accent, #0acf83)" />
         <circle id="lp-mr" class="logo-piece" cx="120" cy="120" r="40"
-          fill="var(--color-secondary)" />
+          fill="var(--color-secondary, #1abcfe)" />
         <path id="lp-bl" class="logo-piece"
           d="M 0 200 C 0 177.9 17.9 160 40 160 L 80 160 L 80 200 C 80 222.1 62.1 240 40 240 C 17.9 240 0 222.1 0 200 Z"
-          fill="var(--color-accent)" />
+          fill="var(--color-accent, #0acf83)" />
       </svg>
       <div class="logo-ring" id="logo-ring"></div>
     </div>
@@ -264,9 +268,13 @@
     <h1 class="intro-brand-name" id="intro-brand-name"><<BRAND_NAME>></h1>
   </div>
 
-  <!-- Flash 1→2 at 1.8s -->
+  <!-- Flash 1→2 — peak at 2.0s (the cut moment), not 1.92s. The flash
+       must mask the scene-1→scene-2 transition; if it peaks before the
+       cut, viewers see scene-1 holding while the flash whites out and
+       fades, then the cut happens through a nearly-transparent flash.
+       Re-aligned 2026-04-26 from start=1.8/peak=1.92 to start=1.88/peak=2.0. -->
   <div class="flash-overlay clip" id="flash-1"
-       data-start="1.8" data-duration="0.4" data-track-index="50"></div>
+       data-start="1.88" data-duration="0.24" data-track-index="50"></div>
 
   <!-- Scene 2 (2 – 18s): Product canvas — feature callout cards stacked vertically. -->
   <!-- AGENT: replace <<CANVAS_EYEBROW>>, <<CANVAS_HEADLINE>>, and all <<FEATURE_N_*>> -->
@@ -309,9 +317,9 @@
 
   </div>
 
-  <!-- Flash 2→3 at 17.8s -->
+  <!-- Flash 2→3 — peak at 18.0s (the cut moment), see flash-1 comment. -->
   <div class="flash-overlay clip" id="flash-2"
-       data-start="17.8" data-duration="0.4" data-track-index="50"></div>
+       data-start="17.88" data-duration="0.24" data-track-index="50"></div>
 
   <!-- Scene 3 (18 – 20s): Logo outro — pieces slide from top + tagline + CTA. -->
   <!-- AGENT: replace <<TAGLINE>>, <<CTA_URL>> -->
@@ -323,18 +331,18 @@
       <svg viewBox="0 0 160 240" width="160" height="240" aria-hidden="true">
         <path id="op-tl" class="outro-piece"
           d="M 0 40 C 0 17.9 17.9 0 40 0 L 80 0 L 80 80 L 40 80 C 17.9 80 0 62.1 0 40 Z"
-          fill="var(--color-primary)" />
+          fill="var(--color-primary, #a259ff)" />
         <path id="op-tr" class="outro-piece"
           d="M 80 0 L 120 0 C 142.1 0 160 17.9 160 40 C 160 62.1 142.1 80 120 80 L 80 80 L 80 0 Z"
-          fill="var(--color-secondary)" />
+          fill="var(--color-secondary, #1abcfe)" />
         <path id="op-ml" class="outro-piece"
           d="M 0 120 C 0 97.9 17.9 80 40 80 L 80 80 L 80 160 L 40 160 C 17.9 160 0 142.1 0 120 Z"
-          fill="var(--color-accent)" />
+          fill="var(--color-accent, #0acf83)" />
         <circle id="op-mr" class="outro-piece" cx="120" cy="120" r="40"
-          fill="var(--color-secondary)" />
+          fill="var(--color-secondary, #1abcfe)" />
         <path id="op-bl" class="outro-piece"
           d="M 0 200 C 0 177.9 17.9 160 40 160 L 80 160 L 80 200 C 80 222.1 62.1 240 40 240 C 17.9 240 0 222.1 0 200 Z"
-          fill="var(--color-accent)" />
+          fill="var(--color-accent, #0acf83)" />
       </svg>
     </div>
 
@@ -383,15 +391,20 @@
     0.70,
   );
 
-  // Logo micro-pulse (spring in → return)
+  // Logo micro-pulse (spring in → return). Use fromTo for the first hop
+  // and `to` for the return — back-to-back fromTo on the same target
+  // double-immediateRenders at construction time, the LATER one wins for
+  // the t=0 set, and when the earlier one activates GSAP snaps the
+  // element to its `from` state, producing a visible flicker right when
+  // the scene becomes visible. `to()` skips the immediateRender and just
+  // continues from whatever value the previous tween left.
   tl.fromTo('#logo-intro-wrap',
     { scale: 1 },
     { scale: 1.06, duration: 0.12, ease: 'power2.out' },
     0.72,
   );
-  tl.fromTo('#logo-intro-wrap',
-    { scale: 1.06 },
-    { scale: 1, duration: 0.14, ease: 'power2.in', overwrite: 'auto' },
+  tl.to('#logo-intro-wrap',
+    { scale: 1, duration: 0.14, ease: 'power2.in' },
     0.84,
   );
 
@@ -402,17 +415,23 @@
     0.90,
   );
 
-  // Flash 1→2 (1.8s)
+  // Flash 1→2 — yoyo peak at t=2.0 (cut moment). yoyo+repeat:1 means
+  // forward 0.12s + backward 0.12s = total 0.24s, peak at start+0.12.
+  // So position=1.88 puts peak at 2.0 exactly where the scene-1→scene-2
+  // clip swap happens, masking the transition properly.
   tl.fromTo('#flash-1',
     { opacity: 0 },
     { opacity: 1, duration: 0.12, yoyo: true, repeat: 1, ease: 'power2.inOut' },
-    1.80,
+    1.88,
   );
 
   // ── Scene 2 (2 – 18s): Product canvas ────────────────────────────────────
   // Header slides up, then 3 feature cards stagger in from below (back.out spring).
   // Cards get 3 rounds of scale-highlight cycling (each card ~2s window).
 
+  // canvas-header: ONE fromTo for entry, ONE `to` for exit later in the
+  // timeline. See the logo-intro-wrap comment above for why a second
+  // fromTo on the same target is forbidden.
   tl.fromTo('#canvas-header',
     { y: 48, opacity: 0 },
     { y:  0, opacity: 1, duration: 0.6, ease: 'power3.out' },
@@ -427,42 +446,47 @@
     );
   });
 
-  // Feature highlight cycle — 3 cards × 3 rounds (finite, ~2s per beat)
+  // Feature highlight cycle — 3 cards × 3 rounds (finite, ~2s per beat).
+  // Use `to` (no immediateRender) instead of fromTo so each pulse picks
+  // up the card's current scale (settled at 1 from CSS default or the
+  // previous pulse's down-tween end). With fromTo on every pulse, the
+  // dual-immediateRender bug would set every card to scale:1.02 at t=0
+  // (the LAST forEach iteration's down-tween from-value); the first
+  // pulse for each card would then snap visibly back to 1.
   [
     '#feature-card-1', '#feature-card-2', '#feature-card-3',
     '#feature-card-1', '#feature-card-2', '#feature-card-3',
     '#feature-card-1', '#feature-card-2', '#feature-card-3',
   ].forEach((id, i) => {
     const t = 3.80 + i * 2.00;
-    tl.fromTo(id,
-      { scale: 1 },
+    tl.to(id,
       { scale: 1.02, duration: 0.28, ease: 'power2.out' },
       t,
     );
-    tl.fromTo(id,
-      { scale: 1.02 },
-      { scale: 1, duration: 0.28, ease: 'power2.in', overwrite: 'auto' },
+    tl.to(id,
+      { scale: 1, duration: 0.28, ease: 'power2.in' },
       t + 0.28,
     );
   });
 
-  // Canvas exit — slide down before flash (vertical exit for portrait)
-  tl.fromTo('#canvas-header',
-    { y: 0, opacity: 1 },
-    { y: 60, opacity: 0, duration: 0.35, ease: 'power2.in', overwrite: 'auto' },
+  // Canvas exit — slide down before flash (vertical exit for portrait).
+  // Use `to` (not fromTo) so we don't conflict with the entry fromTo's
+  // immediateRender at t=0; canvas-header naturally sits at y:0,op:1
+  // after its entry tween, so a plain `to` to the exit state is correct.
+  tl.to('#canvas-header',
+    { y: 60, opacity: 0, duration: 0.35, ease: 'power2.in' },
     17.20,
   );
-  tl.fromTo('#features-stack',
-    { y: 0, opacity: 1 },
-    { y: 60, opacity: 0, duration: 0.35, ease: 'power2.in', overwrite: 'auto' },
+  tl.to('#features-stack',
+    { y: 60, opacity: 0, duration: 0.35, ease: 'power2.in' },
     17.30,
   );
 
-  // Flash 2→3 (17.8s)
+  // Flash 2→3 — yoyo peak at t=18.0 (cut moment). See flash-1 comment.
   tl.fromTo('#flash-2',
     { opacity: 0 },
     { opacity: 1, duration: 0.12, yoyo: true, repeat: 1, ease: 'power2.inOut' },
-    17.80,
+    17.88,
   );
 
   // ── Scene 3 (18 – 20s): Logo outro + CTA ─────────────────────────────────
@@ -477,27 +501,30 @@
     );
   });
 
-  // Glow bloom
+  // Glow bloom (same fromTo→to pattern as logo-intro-wrap to avoid the
+  // dual-immediateRender flicker — the outro-glow case is the most
+  // visible bug: at t=18.0 scene-3 becomes visible with glow already
+  // sitting at op:1,scale:1.2 from the second fromTo's t=0 set, then
+  // 18.55 snaps it to op:0,scale:0.5 before re-blooming, producing an
+  // obvious "flash" right at scene start).
   tl.fromTo('#outro-glow',
     { opacity: 0, scale: 0.5 },
     { opacity: 1, scale: 1.2, duration: 0.35, ease: 'power2.out' },
     18.55,
   );
-  tl.fromTo('#outro-glow',
-    { opacity: 1, scale: 1.2 },
-    { opacity: 0, scale: 2.0, duration: 0.80, ease: 'power2.out', overwrite: 'auto' },
+  tl.to('#outro-glow',
+    { opacity: 0, scale: 2.0, duration: 0.80, ease: 'power2.out' },
     18.90,
   );
 
-  // Logo pulse
+  // Logo pulse — second hop is `to`, not fromTo (see comments above).
   tl.fromTo('#outro-logo-wrap',
     { scale: 1 },
     { scale: 1.06, duration: 0.2, ease: 'back.out(1.7)' },
     18.60,
   );
-  tl.fromTo('#outro-logo-wrap',
-    { scale: 1.06 },
-    { scale: 1, duration: 0.2, ease: 'power2.inOut', overwrite: 'auto' },
+  tl.to('#outro-logo-wrap',
+    { scale: 1, duration: 0.2, ease: 'power2.inOut' },
     18.80,
   );
 
