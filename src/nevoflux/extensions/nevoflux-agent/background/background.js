@@ -205,6 +205,10 @@ const sidebarPersistSaveRequests = new Map();
 const pendingShareRequests = new Map();
 // Canvas Video composition fetch: requestId → bridgeId
 const pendingGetCompositionRequests = new Map();
+// Canvas Video composition fetch by id (Canvas Editor URL-rewriting
+// path; sibling of pendingGetCompositionRequests but does NOT require
+// a render job): requestId → bridgeId
+const pendingLoadCompositionHtmlRequests = new Map();
 // Canvas Video render tabs we've already opened for a given job_id, used to
 // dedup canvas_video_open_render_tab broadcasts across retries / reconnects.
 const _openedRenderTabs = new Set();
@@ -1245,6 +1249,7 @@ class ChannelManager {
     if (routeCanvasToolResponse('canvas_tool_validate_response', pendingToolValidateRequests)) return;
 
     if (routeCanvasToolResponse('canvas_video_get_composition_response', pendingGetCompositionRequests)) return;
+    if (routeCanvasToolResponse('canvas_video_load_composition_html_response', pendingLoadCompositionHtmlRequests)) return;
 
     // Daemon broadcasts this after a successful canvas_video_render_start.
     // We respond by opening the render page for that job. Dedup by job_id so
@@ -1469,6 +1474,24 @@ class ChannelManager {
           })
           .catch(() => {});
         pendingGetCompositionRequests.delete(requestId);
+        break;
+      }
+      return;
+    }
+    // Same fanout for canvas_video_load_composition_html errors.
+    if (msgType === 'error' && pendingLoadCompositionHtmlRequests.size > 0) {
+      for (const [requestId, bridgeId] of pendingLoadCompositionHtmlRequests) {
+        const errPayload = message.payload || {};
+        browser.nevoflux
+          .bridgeRespond(bridgeId, {
+            success: false,
+            error: {
+              code: errPayload.code || 'AGENT_ERROR',
+              message: errPayload.message || 'Agent returned an error',
+            },
+          })
+          .catch(() => {});
+        pendingLoadCompositionHtmlRequests.delete(requestId);
         break;
       }
       return;
@@ -2534,6 +2557,26 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
               payload: { request_id: requestId, ...(payload || {}) },
             });
             // Defer respond until canvas_video_get_composition_response arrives.
+            return;
+          } catch (err) {
+            result = { success: false, error: { code: -1, message: err.message } };
+            break;
+          }
+        }
+
+        case 'canvas.video.load_composition_html': {
+          // Canvas Editor / preview: fetch URL-rewritten composition HTML
+          // by composition_id (no render job needed). The asset_server,
+          // when wired, rewrites `assets/X` to /v1/asset/composition/...
+          // URLs so the resulting HTML can be srcdoc'd into an iframe
+          // and image / video / audio refs resolve over loopback HTTP.
+          try {
+            const requestId = `cvlc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            pendingLoadCompositionHtmlRequests.set(requestId, id);
+            channelManager.sendToAgent({
+              type: 'canvas_video_load_composition_html',
+              payload: { request_id: requestId, ...(payload || {}) },
+            });
             return;
           } catch (err) {
             result = { success: false, error: { code: -1, message: err.message } };

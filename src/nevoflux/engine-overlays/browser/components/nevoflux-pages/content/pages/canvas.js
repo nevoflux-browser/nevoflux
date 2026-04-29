@@ -1532,6 +1532,40 @@ document.getElementById('content').innerHTML = md.render(${JSON.stringify(artifa
     // Normalize type (handle both short types and MIME types)
     const type = this._normalizeType(artifact.type);
     console.error(`[Canvas] _render: normalizedType=${type}`);
+
+    // For composition artifacts (canvas_video), fetch URL-rewritten HTML
+    // from the daemon via the new canvas.video.load_composition_html
+    // bridge — that path runs `assets/X` references through the asset
+    // plane (`/v1/asset/composition/<id>/<name>?t=<token>`) so binary
+    // assets actually resolve in the srcdoc iframe. Without this branch,
+    // the iframe would render `<img src="assets/hero.png">` against an
+    // opaque origin and fail to load (Bug B).
+    if (type === 'html' && this.isComposition() && this._artifactId) {
+      try {
+        const result = await NevofluxPage.sendQuery('bridge:request', {
+          type: 'canvas.video.load_composition_html',
+          payload: { composition_id: this._artifactId },
+        });
+        if (result && result.success && result.data && result.data.html) {
+          this._renderSrcdoc(viewport, result.data.html);
+          return;
+        }
+        console.warn(
+          '[Canvas] load_composition_html returned no html, falling back to artifact.content',
+          result
+        );
+      } catch (e) {
+        console.warn(
+          '[Canvas] load_composition_html failed, falling back to artifact.content:',
+          e
+        );
+      }
+      // Fallback path: srcdoc the raw stored HTML (assets won't resolve
+      // but at least the layout / text shows up).
+      this._renderSrcdoc(viewport, artifact.content);
+      return;
+    }
+
     switch (type) {
       case 'html':
         // Auto-detect React HTML: if HTML contains React CDN scripts or <script type="text/babel">,
