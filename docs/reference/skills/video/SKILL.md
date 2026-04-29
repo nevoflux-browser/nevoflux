@@ -99,23 +99,54 @@ Key Mode 3 components: `components/screenshot-reveal.html`, `components/feature-
 
 ## Image Asset Gate (IAG) — MANDATORY when user provides any image
 
-**If the user's request involves an image they provided** (uploaded file, URL, "this picture", clipboard paste, "do a video of <THIS>"), the FIRST canvas tool you call MUST be `canvas_attach_asset`. Not `canvas_create_composition` first, not `browser_edit_artifact` first — `canvas_attach_asset` first.
+**If the user's request involves an image they provided** (uploaded file, URL, "this picture", clipboard paste, "do a video of <THIS>"), call `canvas_attach_asset` BEFORE writing any `<img src="assets/...">` HTML. The order is `canvas_create_composition` → `canvas_attach_asset` → `browser_edit_artifact` (the create gives you the `composition_id`).
+
+### Vision input vs binary asset — they're different
+
+When the user attaches a local file to chat, you'll see TWO things in your context:
+
+1. **The image as a vision attachment** — you can literally "see" it. Use this to make design decisions: pick colors, write copy that fits, choose layout.
+2. **The file path as a `local_files` entry** — usually something like `/tmp/Image_xyz.png`. Use this to call `canvas_attach_asset({ local_path: ... })`.
+
+These are TWO separate jobs:
+- vision attachment → for YOUR understanding
+- `canvas_attach_asset` → for the RENDERER (puts bytes into `composition.files["assets/..."]` so `<img src="assets/...">` resolves at render time)
+
+You need both. Seeing the image doesn't put it in the artifact; calling attach without seeing leaves you without design context.
+
+### Choosing the source variant
+
+`canvas_attach_asset` takes ONE of four sources:
+
+| Source | When to use |
+|---|---|
+| **`local_path`** | **PREFERRED** when the path is in your `local_files` context (user uploaded a file). Daemon reads bytes server-side, no tool-arg size cap. |
+| `url` | User gave you a public http(s) URL the daemon can fetch directly. |
+| `data_b64` | You already have the bytes in tool-arg-friendly size (≤ 1 MB). For larger files use `local_path` or `url` — `data_b64` will hit tool-arg limits. |
+| `from_tab` | Not yet wired — currently errors. Use `data_b64` with explicitly captured screenshot bytes. |
 
 ```
-1. canvas_attach_asset({ composition_id, source: { url|data_b64 }, name: "hero.png" })
-   → returns { path: "assets/hero.png", mime_type, size_bytes }
-2. Reference the returned path in HTML: <img src="assets/hero.png">
+1. canvas_attach_asset({ composition_id, local_path: "/tmp/Image_xyz.png" })
+   → returns { path: "assets/Image_xyz.png", mime_type, size_bytes }
+2. Reference the returned `path` in HTML: <img src="assets/Image_xyz.png">
 ```
 
-**Banned patterns (silently break the render):**
-- ❌ `<img src="https://example.com/the-image.jpg">` — render tab can't fetch external URLs
-- ❌ `<img src="data:image/png;base64,iVBOR...">` — bloats artifact, breaks lint, can't be reused
-- ❌ Writing `<img src="assets/foo.png">` BEFORE calling `canvas_attach_asset` — file doesn't exist, render shows broken image
-- ❌ Calling `canvas_attach_asset` AFTER `browser_edit_artifact` finishes editing index.html — Canvas Editor's write-back used to clobber assets (now defended at the daemon, but order still matters for reasoning)
+### Banned patterns (silently break the render or burn turns)
 
-**Why it's strict:** the renderer loads composition HTML in a sandbox iframe with no origin. Only `assets/*` paths backed by entries in the composition's `files` map get inlined as `data:` URIs. Anything else 404s.
+- ❌ `<img src="https://example.com/the-image.jpg">` — render tab can't fetch external URLs.
+- ❌ `<img src="data:image/png;base64,iVBOR...">` — bloats artifact, breaks lint.
+- ❌ Writing `<img src="assets/foo.png">` BEFORE calling `canvas_attach_asset` — file doesn't exist yet.
+- ❌ Calling `canvas_attach_asset` AFTER `browser_edit_artifact` finishes editing index.html — past Canvas Editor saves clobbered assets; now defended at the daemon but order still cleaner.
+- ❌ **`glob`-ing `/tmp/`, `read`-ing the image (UTF-8 fails), or asking the user "what's the path?" when the path is already in your `local_files` context.** This wastes turns. The path appears as a path-string near the user message; use it directly with `local_path`.
+- ❌ Spinning up a local HTTP server to expose the file via URL — pointless detour. Use `local_path` instead.
 
-**Mode 3 exception:** `canvas_create_from_visual_identity` already attaches the extracted hero screenshot internally — no separate `canvas_attach_asset` needed for that one image. Additional images still go through the IAG.
+### Why it's strict
+
+The renderer loads composition HTML in a sandbox iframe with no origin. Only `assets/*` paths backed by entries in the composition's `files` map get inlined as `data:` URIs. Anything else 404s.
+
+### Mode 3 exception
+
+`canvas_create_from_visual_identity` already attaches the extracted hero screenshot internally — no separate `canvas_attach_asset` needed for that one image. Additional images still go through the IAG.
 
 ## Template-vs-custom decision (read before calling create_composition)
 
