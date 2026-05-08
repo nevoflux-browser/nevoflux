@@ -9,6 +9,7 @@ mod message_area;
 mod input_area;
 mod agent_status;
 mod permission_dialog;
+pub mod loop_ui;
 mod mcp_config;
 mod ask_user_dialog;
 mod plan_card;

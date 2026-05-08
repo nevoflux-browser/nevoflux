@@ -189,6 +189,137 @@ pub async fn send_plan_cancelled(session_id: &str) -> Result<(), String> {
 }
 
 // ============================================
+// /loop Skill Messages (spec §2.6)
+// ============================================
+
+/// Send a LoopCancelCommand to the daemon.
+pub async fn send_loop_cancel(session_id: &str, loop_id: &str, force: bool) -> Result<(), String> {
+    let message = ChatMessage::LoopCancelCommand(LoopCancelCommandPayload {
+        session_id: session_id.to_string(),
+        loop_id: loop_id.to_string(),
+        force,
+    });
+    send_to_agent(message).await
+}
+
+/// Result of parsing a `/loop <trigger> <prompt|/skill ...>` user input.
+pub struct ParsedLoop {
+    pub trigger_expr: String,
+    pub prompt_text: Option<String>,
+    pub wrapped_skill: Option<serde_json::Value>,
+}
+
+/// Send a `/loop` skill command (parsed from user input) to the daemon.
+pub async fn send_loop_create(session_id: &str, parsed: ParsedLoop) -> Result<(), String> {
+    let mut args = serde_json::json!({
+        "trigger_expr": parsed.trigger_expr,
+    });
+    if let Some(p) = parsed.prompt_text {
+        args["prompt_text"] = serde_json::Value::String(p);
+    }
+    if let Some(s) = parsed.wrapped_skill {
+        args["wrapped_skill"] = s;
+    }
+    let payload = SkillCommandPayload {
+        session_id: session_id.to_string(),
+        skill_name: "loop".into(),
+        args: Some(args),
+    };
+    send_to_agent(ChatMessage::SkillCommand(payload)).await
+}
+
+/// Parse "/loop <trigger> <prompt>" into the create-loop arg shape.
+/// Returns `None` if the input doesn't look like a /loop command.
+///
+/// Trigger may itself be a multi-token expression (e.g. `AND(time:5m,event:foo)`);
+/// we split on the first whitespace at paren-depth 0. Trigger that starts with
+/// a digit gets the canonical `time:` prefix prepended.
+pub fn parse_loop_command(input: &str) -> Option<ParsedLoop> {
+    let rest = input.strip_prefix("/loop ")?.trim();
+    if rest.is_empty() {
+        return None;
+    }
+    let (trigger_raw, prompt) = split_trigger_and_rest(rest)?;
+
+    let trigger_expr = if trigger_raw
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_digit())
+        .unwrap_or(false)
+    {
+        format!("time:{trigger_raw}")
+    } else {
+        trigger_raw.to_string()
+    };
+
+    if let Some(skill_rest) = prompt.strip_prefix('/') {
+        let (skill_name, skill_args) = skill_rest.split_once(' ').unwrap_or((skill_rest, ""));
+        return Some(ParsedLoop {
+            trigger_expr,
+            prompt_text: None,
+            wrapped_skill: Some(serde_json::json!({ "name": skill_name, "args": skill_args })),
+        });
+    }
+    Some(ParsedLoop {
+        trigger_expr,
+        prompt_text: Some(prompt.to_string()),
+        wrapped_skill: None,
+    })
+}
+
+fn split_trigger_and_rest(s: &str) -> Option<(&str, &str)> {
+    let mut depth = 0i32;
+    for (i, ch) in s.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ' ' | '\t' if depth == 0 => return Some((&s[..i], s[i + 1..].trim_start())),
+            _ => {}
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod loop_parser_tests {
+    use super::*;
+
+    #[test]
+    fn simple_time_with_prompt() {
+        let p = parse_loop_command("/loop 5m check the PR").unwrap();
+        assert_eq!(p.trigger_expr, "time:5m");
+        assert_eq!(p.prompt_text.as_deref(), Some("check the PR"));
+        assert!(p.wrapped_skill.is_none());
+    }
+
+    #[test]
+    fn nested_combinator_keeps_prompt() {
+        let p = parse_loop_command("/loop AND(time:5m,event:foo) check the PR").unwrap();
+        assert_eq!(p.trigger_expr, "AND(time:5m,event:foo)");
+        assert_eq!(p.prompt_text.as_deref(), Some("check the PR"));
+    }
+
+    #[test]
+    fn wrapped_skill_form() {
+        let p = parse_loop_command("/loop 5m /video render demo.md").unwrap();
+        assert!(p.prompt_text.is_none());
+        let ws = p.wrapped_skill.unwrap();
+        assert_eq!(ws.get("name").unwrap().as_str().unwrap(), "video");
+        assert_eq!(ws.get("args").unwrap().as_str().unwrap(), "render demo.md");
+    }
+
+    #[test]
+    fn rejects_non_loop_input() {
+        assert!(parse_loop_command("hello world").is_none());
+    }
+
+    #[test]
+    fn rejects_loop_without_args() {
+        assert!(parse_loop_command("/loop ").is_none());
+    }
+}
+
+// ============================================
 // File Picker (Native Dialog via Agent)
 // ============================================
 

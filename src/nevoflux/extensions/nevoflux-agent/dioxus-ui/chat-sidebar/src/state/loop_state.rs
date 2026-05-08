@@ -7,7 +7,7 @@
 use std::collections::VecDeque;
 
 /// Per-loop sidebar state, populated from `system:loop:*` EventBus deliveries.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct LoopState {
     pub loop_id: String,
     pub session_id: String,
@@ -21,7 +21,7 @@ pub struct LoopState {
     pub iterations: VecDeque<IterationRow>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct IterationRow {
     pub sequence_number: i64,
     pub started_at: i64,
