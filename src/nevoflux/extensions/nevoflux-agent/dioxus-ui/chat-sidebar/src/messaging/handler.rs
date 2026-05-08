@@ -280,6 +280,15 @@ fn handle_event_delivery(mut ctx: AppContext, delivery: shared_protocol::EventBu
         return;
     }
 
+    // system:loop:* — /loop skill (spec §11)
+    if topic.starts_with("system:loop:") {
+        if !dedupe_event_id(&delivery.event.event_id) {
+            return;
+        }
+        apply_loop_event(ctx, topic, &delivery.event.payload);
+        return;
+    }
+
     if topic.contains(":notification") {
         let title = delivery.event.payload
             .get("title")
@@ -1865,5 +1874,111 @@ fn handle_skill_list_response(mut ctx: AppContext, data: serde_json::Value) {
     } else {
         tracing::info!("No skills available");
         ctx.available_skills.set(Vec::new());
+    }
+}
+
+/// Materialize a `system:loop:*` payload into `ctx.loops`.
+/// Topics: created, state_changed, iteration_start, iteration_end,
+/// scratchpad_changed, trigger_dropped, cancelled.
+fn apply_loop_event(mut ctx: crate::context::AppContext, topic: &str, payload: &serde_json::Value) {
+    use crate::state::{IterationRow, LoopState};
+    use shared_protocol::{
+        LoopCancelledPayload, LoopCreatedPayload, LoopIterationEndPayload,
+        LoopIterationStartPayload, LoopScratchpadChangedPayload, LoopStateChangedPayload,
+        LoopTriggerDroppedPayload,
+    };
+
+    match topic {
+        "system:loop:created" => {
+            if let Ok(p) = serde_json::from_value::<LoopCreatedPayload>(payload.clone()) {
+                let mut loops = ctx.loops.write();
+                loops.entry(p.loop_id.clone()).or_insert_with(|| LoopState {
+                    loop_id: p.loop_id.clone(),
+                    session_id: p.session_id,
+                    trigger_expr: p.trigger_expr,
+                    state: "pending".into(),
+                    ..Default::default()
+                });
+            }
+        }
+        "system:loop:state_changed" => {
+            if let Ok(p) = serde_json::from_value::<LoopStateChangedPayload>(payload.clone()) {
+                let mut loops = ctx.loops.write();
+                if let Some(s) = loops.get_mut(&p.loop_id) {
+                    s.state = p.new_state;
+                }
+            }
+        }
+        "system:loop:iteration_start" => {
+            if let Ok(p) = serde_json::from_value::<LoopIterationStartPayload>(payload.clone()) {
+                let mut loops = ctx.loops.write();
+                if let Some(s) = loops.get_mut(&p.loop_id) {
+                    s.push_or_update_iteration(IterationRow {
+                        sequence_number: p.sequence_number,
+                        started_at: p.started_at,
+                        ended_at: None,
+                        status: "running".into(),
+                        fire_reason: p.fire_reason,
+                        tool_calls_summary: serde_json::Value::Null,
+                    });
+                }
+            }
+        }
+        "system:loop:iteration_end" => {
+            if let Ok(p) = serde_json::from_value::<LoopIterationEndPayload>(payload.clone()) {
+                let mut loops = ctx.loops.write();
+                if let Some(s) = loops.get_mut(&p.loop_id) {
+                    s.iteration_count = p.sequence_number;
+                    if let Some(row) = s
+                        .iterations
+                        .iter_mut()
+                        .find(|r| r.sequence_number == p.sequence_number)
+                    {
+                        row.ended_at = Some(p.ended_at);
+                        row.status = p.status;
+                        row.tool_calls_summary = p.tool_calls_summary;
+                    } else {
+                        // No matching start row (start was missed) — push a fresh one.
+                        s.push_or_update_iteration(IterationRow {
+                            sequence_number: p.sequence_number,
+                            started_at: 0,
+                            ended_at: Some(p.ended_at),
+                            status: p.status,
+                            fire_reason: String::new(),
+                            tool_calls_summary: p.tool_calls_summary,
+                        });
+                    }
+                }
+            }
+        }
+        "system:loop:scratchpad_changed" => {
+            if let Ok(p) = serde_json::from_value::<LoopScratchpadChangedPayload>(payload.clone()) {
+                let mut loops = ctx.loops.write();
+                if let Some(s) = loops.get_mut(&p.loop_id) {
+                    s.scratchpad_preview = p.preview;
+                    s.scratchpad_bytes = p.bytes;
+                }
+            }
+        }
+        "system:loop:trigger_dropped" => {
+            if let Ok(p) = serde_json::from_value::<LoopTriggerDroppedPayload>(payload.clone()) {
+                let mut loops = ctx.loops.write();
+                if let Some(s) = loops.get_mut(&p.loop_id) {
+                    s.skipped_triggers = p.skipped_count;
+                }
+            }
+        }
+        "system:loop:cancelled" => {
+            if let Ok(p) = serde_json::from_value::<LoopCancelledPayload>(payload.clone()) {
+                let mut loops = ctx.loops.write();
+                if let Some(s) = loops.get_mut(&p.loop_id) {
+                    s.state = "cancelled".into();
+                }
+                let _ = p; // by/force not yet rendered in MVP
+            }
+        }
+        _ => {
+            tracing::warn!("[Sidebar] unknown system:loop:* topic: {topic}");
+        }
     }
 }
