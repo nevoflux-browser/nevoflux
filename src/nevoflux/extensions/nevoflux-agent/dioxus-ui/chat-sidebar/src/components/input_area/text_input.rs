@@ -567,6 +567,31 @@ pub fn TextInput(disabled: bool) -> Element {
             return;
         }
 
+        // /loop slash-command path (spec §2.6).
+        // Route "/loop <trigger> <prompt|/skill ...>" to send_loop_create
+        // before the normal chat send pipeline. We still echo the user's
+        // input as a user message so the chat history shows what they typed.
+        if text.starts_with("/loop ") {
+            if let Some(parsed) = crate::messaging::parse_loop_command(&text) {
+                input_text.set(String::new());
+                rows.set(1);
+                show_tab_selector.set(false);
+                attached_files.set(Vec::new());
+
+                ctx.messages.write().push(Message::user(&text));
+                let session_id = ctx.session.read().id.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Err(e) =
+                        crate::messaging::send_loop_create(&session_id, parsed).await
+                    {
+                        tracing::error!("[Sidebar] send_loop_create failed: {}", e);
+                    }
+                });
+                return;
+            }
+            // Falls through to normal send if parser rejects (e.g. "/loop ").
+        }
+
         input_text.set(String::new());
         rows.set(1);
         show_tab_selector.set(false);
