@@ -154,6 +154,7 @@ pub async fn send_skill_command(
     let message = ChatMessage::SkillCommand(SkillCommandPayload {
         session_id: session_id.to_string(),
         skill_name,
+        mode: ChatMode::default(),
         args,
     });
 
@@ -210,7 +211,13 @@ pub struct ParsedLoop {
 }
 
 /// Send a `/loop` skill command (parsed from user input) to the daemon.
-pub async fn send_loop_create(session_id: &str, parsed: ParsedLoop) -> Result<(), String> {
+/// `mode` is the session's current chat mode and drives the loop's iteration
+/// tool catalog on the daemon side.
+pub async fn send_loop_create(
+    session_id: &str,
+    mode: ChatMode,
+    parsed: ParsedLoop,
+) -> Result<(), String> {
     let mut args = serde_json::json!({
         "trigger_expr": parsed.trigger_expr,
     });
@@ -223,6 +230,7 @@ pub async fn send_loop_create(session_id: &str, parsed: ParsedLoop) -> Result<()
     let payload = SkillCommandPayload {
         session_id: session_id.to_string(),
         skill_name: "loop".into(),
+        mode,
         args: Some(args),
     };
     send_to_agent(ChatMessage::SkillCommand(payload)).await

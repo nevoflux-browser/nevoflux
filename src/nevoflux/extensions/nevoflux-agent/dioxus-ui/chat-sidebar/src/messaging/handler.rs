@@ -1896,6 +1896,8 @@ fn apply_loop_event(mut ctx: crate::context::AppContext, topic: &str, payload: &
                     loop_id: p.loop_id.clone(),
                     session_id: p.session_id,
                     trigger_expr: p.trigger_expr,
+                    prompt_text: p.prompt_text,
+                    wrapped_skill: p.wrapped_skill,
                     state: "pending".into(),
                     ..Default::default()
                 });

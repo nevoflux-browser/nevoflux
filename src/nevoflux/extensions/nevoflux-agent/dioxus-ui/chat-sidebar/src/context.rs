@@ -233,10 +233,13 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                 // handler::handle_event_delivery. Also subscribe to
                 // `jobs:render:*` so render job progress/complete events
                 // flow into `ctx.render_jobs` via the same handler.
+                // And `system:loop:*` so /loop sticky cards + iteration
+                // cards populate ctx.loops via handler::apply_loop_event.
                 if let Err(e) = crate::messaging::send_events_subscribe(
                     vec![
                         "ui:notification:*".to_string(),
                         "jobs:render:*".to_string(),
+                        "system:loop:*".to_string(),
                     ],
                     false,
                     256,
@@ -244,7 +247,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                 .await
                 {
                     tracing::warn!(
-                        "EventBus subscribe to ui:notification:*, jobs:render:* failed: {}",
+                        "EventBus subscribe to ui:notification:*, jobs:render:*, system:loop:* failed: {}",
                         e
                     );
                 }

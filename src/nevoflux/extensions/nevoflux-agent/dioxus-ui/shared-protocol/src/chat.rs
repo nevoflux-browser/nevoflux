@@ -71,6 +71,10 @@ pub struct ChatMessagePayload {
 pub struct SkillCommandPayload {
     pub session_id: String,
     pub skill_name: String,
+    /// Chat mode at command-issue time. The /loop skill uses this to
+    /// pick the iteration's tool catalog (chat/browser/agent).
+    #[serde(default)]
+    pub mode: ChatMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub args: Option<serde_json::Value>,
 }

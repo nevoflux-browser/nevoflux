@@ -4508,6 +4508,25 @@ body {
   background: color-mix(in srgb, var(--nevo-accent) 15%, transparent);
 }
 
+.loop-prompt {
+  font-size: 12px;
+  margin-top: 6px;
+  color: var(--nevo-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loop-wrapped-skill {
+  font-family: var(--nevo-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  margin-top: 6px;
+  color: var(--nevo-accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .loop-scratchpad-preview {
   font-family: var(--nevo-font-mono, ui-monospace, monospace);
   font-size: 11px;

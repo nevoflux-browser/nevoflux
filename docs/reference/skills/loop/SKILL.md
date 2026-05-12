@@ -35,9 +35,15 @@ scratchpad:
 - `state:tab=current|<id>:<css-selector>:change` — fires when the selector's DOM mutates (deferred — currently no-ops).
 - `AND(a,b,…)` / `OR(a,b,…)` — combine; nesting depth ≤ 3.
 
-## Tool permission classes
+## Tool mode
 
-The loop creator picks an allow-list. Default: `read`, `scratchpad-write`, `event-subscribe`. Anything else (`dom-click`, `nav`, `write`, `net-post`) is opt-in. Tools you call that fall outside the allow-list are rejected with an error — fall back rather than retrying.
+The iteration's tool catalog is picked by `mode`, inherited from the sidebar's current chat mode at /loop creation time. Three modes form an inclusion hierarchy:
+
+- `chat` (default, safe): reasoning + scratchpad + read-only tools (`think`, `web_search`, `web_fetch`, `memory_search`, `memory_view`, browser-read tools like `browser_get_content`/`browser_get_markdown`/`browser_screenshot`, `loop.scratchpad.get/set`)
+- `browser`: `chat` ∪ browser interaction (`browser_click`, `browser_type`, `browser_scroll`, `browser_navigate`, `browser_activate_tab`, …)
+- `agent`: `browser` ∪ destructive tools (`write`, `edit`, `bash`, `browser_edit_artifact`, `memory_create/update/delete`, canvas tools)
+
+Two tools are always forbidden inside iterations regardless of mode: `loop.create` (would let an iteration spawn nested loops) and `ask_user` (would block on a sidebar that may be closed).
 
 ## Scratchpad usage
 

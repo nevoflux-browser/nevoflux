@@ -580,9 +580,10 @@ pub fn TextInput(disabled: bool) -> Element {
 
                 ctx.messages.write().push(Message::user(&text));
                 let session_id = ctx.session.read().id.clone();
+                let mode = ctx.chat_mode.read().clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     if let Err(e) =
-                        crate::messaging::send_loop_create(&session_id, parsed).await
+                        crate::messaging::send_loop_create(&session_id, mode, parsed).await
                     {
                         tracing::error!("[Sidebar] send_loop_create failed: {}", e);
                     }

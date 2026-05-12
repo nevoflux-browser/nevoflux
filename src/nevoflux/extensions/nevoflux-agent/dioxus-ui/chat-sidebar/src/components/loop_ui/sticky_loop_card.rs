@@ -74,6 +74,11 @@ fn StickyLoopCard(state: crate::state::LoopState) -> Element {
                     "cancel"
                 }
             }
+            if let Some(skill) = state.wrapped_skill.as_deref() {
+                div { class: "loop-wrapped-skill", title: "{skill}", "/{skill}" }
+            } else if let Some(prompt) = state.prompt_text.as_deref() {
+                div { class: "loop-prompt", title: "{prompt}", "{prompt}" }
+            }
             if scratch_visible {
                 div { class: "loop-scratchpad-preview",
                     "scratch ({state.scratchpad_bytes}b): {state.scratchpad_preview}"

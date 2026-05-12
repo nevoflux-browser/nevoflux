@@ -7418,11 +7418,31 @@ const tabEventListeners = {
 };
 
 // Update tab context when active tab changes
-tabEventListeners.onActivated = async (_activeInfo) => {
+tabEventListeners.onActivated = async (activeInfo) => {
   const context = await getActiveTabContext();
   broadcastToSidebar({
     type: MessageTypes.TAB_CONTEXT_UPDATE,
     payload: context,
+  });
+
+  // Publish ui:tab:focused on EventBus so /loop event:ui:tab:focused triggers fire.
+  // Topic chosen to mirror dom-watcher's ui:tab:* namespace.
+  channelManager.sendToAgent({
+    type: MessageTypes.EVENTS_REQUEST,
+    payload: {
+      action: 'publish',
+      topic: 'ui:tab:focused',
+      payload: {
+        tab_id: context.tab_id,
+        previous_tab_id: activeInfo?.previousTabId ?? null,
+        window_id: activeInfo?.windowId ?? null,
+        zen_sync_id: context.zen_sync_id,
+        url: context.url,
+        title: context.title,
+        ts_ms: Date.now(),
+      },
+      delivery: toEventBusDeliveryMode('ephemeral'),
+    },
   });
 };
 browser.tabs.onActivated.addListener(tabEventListeners.onActivated);

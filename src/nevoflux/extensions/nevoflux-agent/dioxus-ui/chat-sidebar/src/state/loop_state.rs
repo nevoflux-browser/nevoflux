@@ -12,6 +12,8 @@ pub struct LoopState {
     pub loop_id: String,
     pub session_id: String,
     pub trigger_expr: String,
+    pub prompt_text: Option<String>,
+    pub wrapped_skill: Option<String>,
     pub state: String, // pending|running|idle|failed|cancelled
     pub iteration_count: i64,
     pub skipped_triggers: i64,
