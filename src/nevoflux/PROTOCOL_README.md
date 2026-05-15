@@ -341,6 +341,12 @@ The full local launcher builds the browser, native agent, WASM chat panel, packa
 npm run start:full
 ```
 
+The default launcher path uses the current shell environment as-is and does not add display or graphics overrides. If the local desktop has display or graphics issues, use fallback mode:
+
+```bash
+./scripts/launch-nevoflux.sh --fallback
+```
+
 For SSH X11 forwarding fallback:
 
 ```bash
@@ -349,13 +355,11 @@ For SSH X11 forwarding fallback:
 
 This mode is intended as a backup only. Raw SSH X11 forwarding is slow for full browser UI testing; remote desktop, VNC, or xpra-style sessions are preferred when available.
 
-For local testing without launcher-provided runtime environment or graphics preference overrides:
+`--raw` is still accepted as a compatibility alias for the default no-overrides launch behavior:
 
 ```bash
 ./scripts/launch-nevoflux.sh --raw
 ```
-
-`--raw` still builds and stages the browser, native agent, and panel. It only changes launch-time environment and preference handling, and cannot be combined with `--ssh`.
 
 ## Configuration
 

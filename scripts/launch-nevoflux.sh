@@ -7,6 +7,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 SSH_MODE=false
+FALLBACK_MODE=false
 RAW_MODE=false
 MACH_RUN_ARGS=()
 
@@ -14,6 +15,10 @@ while (($#)); do
   case "$1" in
     --ssh)
       SSH_MODE=true
+      shift
+      ;;
+    --fallback)
+      FALLBACK_MODE=true
       shift
       ;;
     --raw)
@@ -32,9 +37,9 @@ while (($#)); do
   esac
 done
 
-if [[ "$SSH_MODE" == true && "$RAW_MODE" == true ]]; then
-  echo "Error: --ssh and --raw cannot be used together." >&2
-  echo "--ssh forces remote-display runtime overrides; --raw disables launcher runtime overrides." >&2
+if [[ "$RAW_MODE" == true && ("$SSH_MODE" == true || "$FALLBACK_MODE" == true) ]]; then
+  echo "Error: --raw cannot be combined with --ssh or --fallback." >&2
+  echo "--raw is now the default launch behavior; --ssh and --fallback force runtime overrides." >&2
   exit 1
 fi
 
@@ -204,19 +209,17 @@ fi
 install -m 0755 "$AGENT_BUILD" "$DIST_BUNDLE/bin/$AGENT_NAME"
 write_native_host_manifest "$DIST_BUNDLE/bin/$AGENT_NAME"
 
-RUN_PREFS=(
-  --setpref intl.locale.requested=en-US
-  --setpref intl.locale.matchOS=false
-  --setpref app.update.disabledForTesting=true
-  --setpref app.update.auto=false
-  --setpref app.update.enabled=false
-  --setpref app.update.background.enabled=false
-)
+RUN_PREFS=()
 
 if [[ "$RAW_MODE" == true ]]; then
-  echo "Raw launch mode enabled. Skipping launcher runtime env and graphics pref overrides."
-  RUN_PREFS=()
-else
+  echo "Raw launch mode is now the default. Continuing without launcher runtime env or graphics pref overrides."
+fi
+
+if [[ "$FALLBACK_MODE" == true || "$SSH_MODE" == true ]]; then
+  if [[ "$FALLBACK_MODE" == true ]]; then
+    echo "Fallback launch mode enabled. Applying launcher runtime env and pref overrides."
+  fi
+
   export LANG="${LANG:-en_US.UTF-8}"
   export LANGUAGE="${LANGUAGE:-en_US:en}"
   export GDK_BACKEND="${GDK_BACKEND:-x11}"
@@ -224,6 +227,15 @@ else
   export MOZ_WEBRENDER_SOFTWARE="${MOZ_WEBRENDER_SOFTWARE:-1}"
   export MOZ_DISABLE_GFX_SANITY_TEST="${MOZ_DISABLE_GFX_SANITY_TEST:-1}"
   export LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-1}"
+
+  RUN_PREFS+=(
+    --setpref intl.locale.requested=en-US
+    --setpref intl.locale.matchOS=false
+    --setpref app.update.disabledForTesting=true
+    --setpref app.update.auto=false
+    --setpref app.update.enabled=false
+    --setpref app.update.background.enabled=false
+  )
 fi
 
 if [[ "$SSH_MODE" == true ]]; then

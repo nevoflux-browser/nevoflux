@@ -11,11 +11,11 @@ cargo build --release --manifest-path native/nevoflux-agent/Cargo.toml --bin nev
 npm run start:full
 ```
 
-The binary will be available at `native/nevoflux-agent/target/release/nevoflux-agent`. `npm run start:full` builds the browser, the agent, and the WASM chat panel before launching NevoFlux.
+The binary will be available at `native/nevoflux-agent/target/release/nevoflux-agent`. `npm run start:full` builds the browser, the agent, and the WASM chat panel before launching NevoFlux. By default, the launcher uses the current shell environment as-is and does not add display or graphics overrides.
 
-For SSH X11 forwarding fallback, use `./scripts/launch-nevoflux.sh --ssh` from the monorepo root. This mode is a backup only because raw SSH X11 forwarding has poor browser UI performance.
+If the local desktop has display or graphics issues, use `./scripts/launch-nevoflux.sh --fallback` from the monorepo root to apply conservative runtime overrides.
 
-For local testing without launcher-provided runtime environment or graphics preference overrides, use `./scripts/launch-nevoflux.sh --raw`. It still builds and stages the browser, native agent, and panel, and cannot be combined with `--ssh`.
+For SSH X11 forwarding fallback, use `./scripts/launch-nevoflux.sh --ssh` from the monorepo root. This mode is a backup only because raw SSH X11 forwarding has poor browser UI performance. `--raw` is still accepted as a compatibility alias for the default no-overrides launch behavior.
 
 ## Features
 

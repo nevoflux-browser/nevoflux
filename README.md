@@ -158,6 +158,13 @@ For a full local test build that includes the browser, native agent, and agent p
 npm run start:full
 ```
 
+By default, the launcher uses the current shell environment as-is and does not add display or graphics overrides. If the local desktop has display or graphics issues, use the fallback launch mode:
+
+```bash
+./scripts/launch-nevoflux.sh --fallback
+# or: npm run start:full -- --fallback
+```
+
 As a backup for SSH X11 forwarding, run:
 
 ```bash
@@ -167,14 +174,12 @@ As a backup for SSH X11 forwarding, run:
 
 SSH X11 forwarding has poor browser UI performance and is less reliable than a remote desktop/VNC-style session. Prefer remote desktop for interactive testing when available.
 
-For local testing without launcher-provided environment or graphics preference overrides, run:
+`--raw` is still accepted as a compatibility alias for the default no-overrides launch behavior:
 
 ```bash
 ./scripts/launch-nevoflux.sh --raw
 # or: npm run start:full -- --raw
 ```
-
-`--raw` still builds and stages the browser, native agent, and panel. It only skips the launch-time env/pref defaults. `--raw` and `--ssh` are mutually exclusive.
 
 ### Native Agent
 
