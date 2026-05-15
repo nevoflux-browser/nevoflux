@@ -72,6 +72,7 @@ fn ChatSidebar() -> Element {
     let is_minimized = *ctx.minimized.read();
     let first_run = *ctx.first_run.read();
     let has_configured = *ctx.has_configured_provider.read();
+    let theme = *ctx.theme.read();
 
     // First-launch onboarding: show OnboardingScreen instead of normal UI
     if first_run && !has_configured {
@@ -84,6 +85,7 @@ fn ChatSidebar() -> Element {
         div {
             class: if is_minimized { "chat-sidebar chat-sidebar--minimized" } else { "chat-sidebar" },
             id: "nevoflux-chat-sidebar",
+            "data-theme": theme.as_str(),
 
             if is_minimized {
                 // Minimized rail mode

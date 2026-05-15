@@ -50,6 +50,15 @@ Build and test to ensure everything works:
 ```bash
 npm run build:ui
 npm run start
+
+# For agent panel changes, build and launch the full browser/agent/panel stack:
+npm run start:full
+
+# Backup only for SSH X11 forwarding. This is slow for full browser UI testing.
+./scripts/launch-nevoflux.sh --ssh
+
+# Local raw launch after building/staging, without launcher env/pref overrides.
+./scripts/launch-nevoflux.sh --raw
 ```
 
 ### Step 3: Export Patches
@@ -127,8 +136,17 @@ If you already have patches and want to make further modifications after upstrea
 # 2. Make additional changes on top of patched files
 vim src/zen/common/modules/ZenStartup.mjs
 
-# 3. Test
+# 3. Test browser-only changes
 npm run build:ui && npm run start
+
+# For agent panel changes, test the full browser/agent/panel stack
+npm run start:full
+
+# Backup only for SSH X11 forwarding. Prefer remote desktop/VNC for performance.
+./scripts/launch-nevoflux.sh --ssh
+
+# Local raw launch after building/staging, without launcher env/pref overrides.
+./scripts/launch-nevoflux.sh --raw
 
 # 4. Re-export patches (overwrites old patches with combined changes)
 ./scripts/export-nevoflux-patches.sh

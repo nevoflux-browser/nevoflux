@@ -1,0 +1,32 @@
+# crates/testing/Cargo.toml
+
+[package]
+name = "nevoflux-testing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+description = "Shared testing infrastructure for NevoFlux Agent"
+
+[dependencies]
+# Internal crates
+nevoflux-protocol = { path = "../protocol" }
+nevoflux-storage = { path = "../storage" }
+nevoflux-daemon = { path = "../daemon" }
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Async
+tokio.workspace = true
+async-trait.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+[dev-dependencies]
+# Testing
+proptest.workspace = true
+test-case.workspace = true

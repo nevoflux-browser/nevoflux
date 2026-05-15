@@ -1,0 +1,229 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  BINARY_NAME: nevoflux-agent
+
+jobs:
+  # Download embedding model once, share across all platform builds
+  download-model:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download embedding model
+        run: |
+          pip install huggingface_hub
+          python -c "
+          from huggingface_hub import snapshot_download
+          import os, glob, shutil
+          cache_dir = 'models/fastembed'
+          os.makedirs(cache_dir, exist_ok=True)
+          snapshot_download(
+              'intfloat/multilingual-e5-small',
+              cache_dir=cache_dir,
+              allow_patterns=[
+                  'tokenizer.json',
+                  'config.json',
+                  'special_tokens_map.json',
+                  'tokenizer_config.json',
+                  'sentencepiece.bpe.model',
+                  'onnx/model_O4.onnx',
+                  'onnx/tokenizer.json',
+                  'onnx/config.json',
+                  'onnx/special_tokens_map.json',
+                  'onnx/tokenizer_config.json',
+                  'onnx/sentencepiece.bpe.model',
+              ],
+          )
+          # Rename optimized model to model.onnx (fastembed expects this name)
+          for f in glob.glob(os.path.join(cache_dir, '**', 'model_O4.onnx'), recursive=True):
+              target = os.path.join(os.path.dirname(f), 'model.onnx')
+              os.rename(f, target)
+              print(f'Renamed {f} -> {target}')
+
+          # Deduplicate HF cache: resolve symlinks in snapshots/, remove blobs/
+          # HF cache stores data in blobs/ and symlinks in snapshots/ - artifact
+          # upload follows symlinks causing data to be stored twice.
+          model_dir = os.path.join(cache_dir, 'models--intfloat--multilingual-e5-small')
+          snapshots = os.path.join(model_dir, 'snapshots')
+          for root, dirs, files in os.walk(snapshots):
+              for fname in files:
+                  fpath = os.path.join(root, fname)
+                  if os.path.islink(fpath):
+                      real = os.path.realpath(fpath)
+                      os.remove(fpath)
+                      shutil.copy2(real, fpath)
+          blobs = os.path.join(model_dir, 'blobs')
+          if os.path.isdir(blobs):
+              shutil.rmtree(blobs)
+              print(f'Removed {blobs}, kept resolved files in snapshots/')
+          "
+
+      - name: Upload model artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: embedding-model
+          path: models/
+          retention-days: 1
+
+  build:
+    needs: download-model
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: nevoflux-agent-linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact: nevoflux-agent-linux-aarch64
+            use_cross: true
+            # ort (ONNX Runtime) C++ linking fails in cross Docker container
+            no_embedding: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            artifact: nevoflux-agent-macos-x86_64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            artifact: nevoflux-agent-macos-aarch64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact: nevoflux-agent-windows-x86_64
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            artifact: nevoflux-agent-windows-aarch64
+            # ort (ONNX Runtime) doesn't link on Windows ARM64 yet
+            no_embedding: true
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # Stamp the version from the git tag into Cargo.toml so that
+      # `nevoflux-agent --version` prints the release version, not the
+      # development placeholder.
+      - name: Set version from tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Setting workspace version to ${VERSION}"
+          sed -i.bak "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+          rm -f Cargo.toml.bak
+          grep '^version' Cargo.toml
+
+      # Linux x86_64: install X11 development libraries
+      - name: Install Linux dependencies
+        if: matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libx11-dev libxrandr-dev libxtst-dev libwayland-dev
+
+      # Linux aarch64: install cross tool for Docker-based cross-compilation
+      - name: Install cross
+        if: matrix.use_cross == true
+        run: |
+          curl -fsSL https://github.com/cross-rs/cross/releases/latest/download/cross-x86_64-unknown-linux-gnu.tar.gz \
+            | sudo tar xz -C /usr/local/bin
+
+      - name: Build
+        if: ${{ !matrix.use_cross && !matrix.no_embedding }}
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build (no embedding)
+        if: ${{ !matrix.use_cross && matrix.no_embedding }}
+        run: cargo build --release --target ${{ matrix.target }} --no-default-features
+
+      - name: Build (cross)
+        if: ${{ matrix.use_cross && !matrix.no_embedding }}
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Build (cross, no embedding)
+        if: ${{ matrix.use_cross && matrix.no_embedding }}
+        run: cross build --release --target ${{ matrix.target }} --no-default-features
+
+      # Download pre-cached embedding model
+      - name: Download embedding model
+        uses: actions/download-artifact@v4
+        with:
+          name: embedding-model
+          path: staging/models
+
+      # Package: binary + embedding model
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p staging
+          cp target/${{ matrix.target }}/release/${{ env.BINARY_NAME }} staging/
+          cd staging
+          tar czf ../${{ matrix.artifact }}.tar.gz ${{ env.BINARY_NAME }} models/
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path staging
+          Copy-Item "target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}.exe" staging/
+          Compress-Archive -Path "staging/${{ env.BINARY_NAME }}.exe", "staging/models" -DestinationPath "${{ matrix.artifact }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.zip
+          if-no-files-found: error
+
+  release:
+    needs: [download-model, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum *.tar.gz *.zip > checksums-sha256.txt
+          cat checksums-sha256.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+            artifacts/checksums-sha256.txt

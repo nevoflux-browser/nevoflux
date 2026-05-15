@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    html, body { margin: 0; padding: 0; background: #000; }
+    #stage { position: relative; width: 640px; height: 360px; overflow: hidden; }
+    .box { position: absolute; top: 120px; width: 120px; height: 120px; background: #e11; }
+  </style>
+</head>
+<body>
+  <div id="stage"
+       data-composition-id="poc"
+       data-width="640"
+       data-height="360"
+       data-duration="5"
+       data-fps="30"
+       data-bg="#000">
+    <div id="box" class="box"></div>
+  </div>
+  <script type="module">
+    import { gsap } from 'https://esm.sh/gsap@3.13';
+    window.__timelines = window.__timelines || [];
+    const tl = gsap.timeline({ paused: true });
+    tl.fromTo('#box',
+      { x: 0 },
+      { x: 520, duration: 5, ease: 'linear' },
+      0
+    );
+    window.__timelines.push(tl);
+  </script>
+</body>
+</html>

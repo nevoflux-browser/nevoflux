@@ -1,0 +1,21 @@
+# crates/storage/Cargo.toml
+
+[package]
+name = "nevoflux-storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+nevoflux-protocol = { path = "../protocol" }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+base64 = "0.22"
+tracing = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+test-case = { workspace = true }

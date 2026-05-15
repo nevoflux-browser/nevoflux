@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NevoFlux Agent</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      width: 320px;
+      padding: 16px;
+      background: #f8f9fa;
+      color: #212529;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #dee2e6;
+    }
+
+    .header img {
+      width: 32px;
+      height: 32px;
+    }
+
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px;
+      background: white;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .status-indicator {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #dc3545;
+    }
+
+    .status-indicator.connected {
+      background: #28a745;
+    }
+
+    .status-text {
+      font-size: 14px;
+      color: #6c757d;
+    }
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+
+    .btn-primary {
+      background: #007bff;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #0056b3;
+    }
+
+    .btn-primary:disabled {
+      background: #6c757d;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #e9ecef;
+      color: #495057;
+    }
+
+    .btn-secondary:hover {
+      background: #dee2e6;
+    }
+
+    .footer {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid #dee2e6;
+      text-align: center;
+      font-size: 12px;
+      color: #adb5bd;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon32.png" alt="NevoFlux" onerror="this.style.display='none'">
+    <h1>NevoFlux Agent</h1>
+  </div>
+
+  <div class="status">
+    <div class="status-indicator" id="statusIndicator"></div>
+    <span class="status-text" id="statusText">Checking connection...</span>
+  </div>
+
+  <div class="actions">
+    <button class="btn-primary" id="connectBtn">Connect</button>
+    <button class="btn-secondary" id="statusBtn">Check Status</button>
+  </div>
+
+  <div class="footer">
+    NevoFlux Agent v0.1.0
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

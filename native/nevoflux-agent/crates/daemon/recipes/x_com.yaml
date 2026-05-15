@@ -1,0 +1,57 @@
+# X.com (Twitter) compose recipe.
+#
+# IMPORTANT: selectors must be manually re-verified against live x.com
+# DOM before every merge. See spec §11.3 item 5.
+#
+# Last verified: 2026-04-12 — all primary selectors confirmed working.
+# submit_fallback [data-testid="tweetButton"] not found (primary OK).
+
+name: x_com
+hostname_patterns:
+  - "x.com"
+  - "twitter.com"
+  - "mobile.x.com"
+  - "mobile.twitter.com"
+version: 1
+enabled: true
+
+compose:
+  selector: '[data-testid="tweetTextarea_0"]'
+  fallback_selectors:
+    - '[data-testid="tweetTextarea"]'
+    - 'div[role="textbox"][contenteditable="true"]'
+  expected_framework: "draft.js"
+
+submit:
+  selector: '[data-testid="tweetButtonInline"]'
+  fallback_selectors:
+    - '[data-testid="tweetButton"]'
+
+mention:
+  trigger_char: "@"
+  pattern: '@([A-Za-z0-9_]{1,15})'
+  candidate_list_selector: 'div[role="listbox"]'
+  candidate_list_timeout_ms: 2000
+  confirm_method: "enter_key"
+  candidate_item_selector: 'div[role="listbox"] [role="option"]'
+  pause_between_segments_ms: 150
+
+upload:
+  file_input_selector: 'input[data-testid="fileInput"]'
+  upload_complete_indicator: '[data-testid="attachments"] img'
+  upload_complete_timeout_ms: 30000
+  accepted_mime_types:
+    - image/jpeg
+    - image/png
+    - image/webp
+    - image/gif
+    - video/mp4
+    - video/quicktime
+  max_size_bytes: 5242880
+
+notes: |
+  Draft.js compose unmounts on tab switch; identity may change.
+  Compose clears after submit, so fingerprint must be reloaded
+  before any follow-up call. Mention listbox uses role="option";
+  Enter confirms the currently-highlighted candidate (the first
+  entry by default).

@@ -4,10 +4,10 @@
 
 //! Header component
 
+use crate::bindings::nevoflux_api;
+use crate::context::{persist_panel_theme, use_app_context, AppContext, PanelTheme};
 use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
-use crate::bindings::nevoflux_api;
-use crate::context::{use_app_context, AppContext};
 
 /// Header component with History and Maximize buttons
 #[component]
@@ -16,6 +16,23 @@ pub fn Header() -> Element {
 
     // Read maximize state
     let is_maximized = ctx.maximize.read().is_maximized;
+    let current_theme = *ctx.theme.read();
+    let is_dark = current_theme == PanelTheme::Dark;
+    let theme_title = if is_dark {
+        "Switch to light mode"
+    } else {
+        "Switch to dark mode"
+    };
+    let theme_pressed = if is_dark { "true" } else { "false" };
+
+    let toggle_theme = {
+        let mut ctx = ctx.clone();
+        move |_| {
+            let next_theme = (*ctx.theme.read()).toggle();
+            ctx.theme.set(next_theme);
+            persist_panel_theme(next_theme);
+        }
+    };
 
     let toggle_history = {
         let mut ctx = ctx.clone();
@@ -84,6 +101,49 @@ pub fn Header() -> Element {
         header { class: "header",
             // Left side: Avatar (shown when configured)
             div { class: "header-left",
+                button {
+                    class: if is_dark { "header-btn theme-toggle-btn active" } else { "header-btn theme-toggle-btn" },
+                    aria_label: "{theme_title}",
+                    aria_pressed: "{theme_pressed}",
+                    title: "{theme_title}",
+                    onclick: toggle_theme,
+                    if is_dark {
+                        // Sun icon
+                        svg {
+                            width: "16",
+                            height: "16",
+                            view_box: "0 0 24 24",
+                            fill: "none",
+                            stroke: "currentColor",
+                            stroke_width: "2",
+                            stroke_linecap: "round",
+                            stroke_linejoin: "round",
+                            circle { cx: "12", cy: "12", r: "4" }
+                            path { d: "M12 2v2" }
+                            path { d: "M12 20v2" }
+                            path { d: "m4.93 4.93 1.41 1.41" }
+                            path { d: "m17.66 17.66 1.41 1.41" }
+                            path { d: "M2 12h2" }
+                            path { d: "M20 12h2" }
+                            path { d: "m6.34 17.66-1.41 1.41" }
+                            path { d: "m19.07 4.93-1.41 1.41" }
+                        }
+                    } else {
+                        // Moon icon
+                        svg {
+                            width: "16",
+                            height: "16",
+                            view_box: "0 0 24 24",
+                            fill: "none",
+                            stroke: "currentColor",
+                            stroke_width: "2",
+                            stroke_linecap: "round",
+                            stroke_linejoin: "round",
+                            path { d: "M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" }
+                        }
+                    }
+                }
+
                 if let Some(ref url) = *avatar {
                     div { class: "header-avatar",
                         img {
@@ -219,10 +279,7 @@ async fn do_maximize(ctx: AppContext) -> Result<(), String> {
 
     let url = format!(
         "{}?mode=maximized&session_id={}&target_tab_id={}&source_tab_id={}",
-        base_path,
-        session_id,
-        target_tab_id,
-        source_tab_id
+        base_path, session_id, target_tab_id, source_tab_id
     );
 
     tracing::info!("Opening maximized view: {}", url);
@@ -242,7 +299,8 @@ async fn do_restore(ctx: AppContext) -> Result<(), String> {
     drop(maximize_state);
 
     // Get current tab ID (we're in a tab, not sidebar)
-    let current_tab = nevoflux_api::get_current_tab().await?
+    let current_tab = nevoflux_api::get_current_tab()
+        .await?
         .ok_or_else(|| "Could not get current tab".to_string())?;
     let current_tab_id = current_tab.id as i32;
 

@@ -1,0 +1,20 @@
+[package]
+name = "nevoflux-skills"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+description = "Skills system for NevoFlux Agent"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+tokio = { workspace = true, features = ["fs", "sync", "rt-multi-thread", "process"] }
+async-trait.workspace = true
+thiserror.workspace = true
+tracing = "0.1"
+directories.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+tokio-test = "0.4"

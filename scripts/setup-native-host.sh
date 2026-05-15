@@ -9,8 +9,9 @@
 # Binary resolution order:
 #   1. Command line argument: ./setup-native-host.sh /path/to/binary
 #   2. Environment variable: NEVOFLUX_AGENT_BIN=/path/to/binary
-#   3. Local development: ../nevoflux-agent/target/release/nevoflux-agent
-#   4. GitHub release download (for release builds)
+#   3. Monorepo development: native/nevoflux-agent/target/release/nevoflux-agent
+#   4. Legacy sibling checkout: ../nevoflux-agent/target/release/nevoflux-agent
+#   5. GitHub release download (for release builds)
 
 set -e
 
@@ -18,13 +19,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Configuration
-AGENT_PROJECT="$PROJECT_ROOT/../nevoflux-agent"
+AGENT_PROJECT="$PROJECT_ROOT/native/nevoflux-agent"
+LEGACY_AGENT_PROJECT="$PROJECT_ROOT/../nevoflux-agent"
 AGENT_BIN_NAME="nevoflux-agent"
 EXTENSION_ID="agent@nevoflux.com"
 MANIFEST_NAME="com.nevoflux.agent"
 
 # GitHub release configuration (for future use)
-GITHUB_REPO="user/nevoflux-agent"
+GITHUB_REPO="dorisgyl/nevoflux-agent"
 GITHUB_RELEASE_TAG="latest"
 
 echo "=== NevoFlux Native Messaging Host Setup ==="
@@ -91,14 +93,21 @@ resolve_binary() {
     return 0
   fi
 
-  # Priority 3: Local development build (pre-built in separate project)
+  # Priority 3: Monorepo development build
   local dev_binary="$AGENT_PROJECT/target/release/$AGENT_BIN_NAME"
   if [ -f "$dev_binary" ]; then
     echo "$dev_binary"
     return 0
   fi
 
-  # Priority 4: Download from GitHub (for release builds)
+  # Priority 4: Legacy sibling checkout
+  local legacy_dev_binary="$LEGACY_AGENT_PROJECT/target/release/$AGENT_BIN_NAME"
+  if [ -f "$legacy_dev_binary" ]; then
+    echo "$legacy_dev_binary"
+    return 0
+  fi
+
+  # Priority 5: Download from GitHub (for release builds)
   # Uncomment when GitHub releases are available
   # local download_path="$PROJECT_ROOT/build/nevoflux-agent/$AGENT_BIN_NAME"
   # echo "Binary not found locally. Downloading from GitHub releases..."
@@ -118,7 +127,7 @@ if [ -z "$AGENT_BIN" ] || [ ! -f "$AGENT_BIN" ]; then
   echo "Expected location: $AGENT_PROJECT/target/release/$AGENT_BIN_NAME"
   echo ""
   echo "Options:"
-  echo "  1. Build agent first:  cd $AGENT_PROJECT && cargo build --release"
+  echo "  1. Build agent first:  cargo build --release --manifest-path $AGENT_PROJECT/Cargo.toml --bin $AGENT_BIN_NAME"
   echo "  2. Specify path:       ./setup-native-host.sh /path/to/nevoflux-agent"
   echo "  3. Set env var:        NEVOFLUX_AGENT_BIN=/path/to/binary ./setup-native-host.sh"
   exit 1
@@ -201,7 +210,7 @@ echo ""
 echo "=== Setup Complete ==="
 echo ""
 echo "Next steps:"
-echo "  1. Run: npm run start"
+echo "  1. Run: npm run start:full"
 echo "  2. Open browser and press Ctrl+Shift+A to open the NevoFlux sidebar"
 echo "  3. Check the browser console (F12) for extension messages"
 echo ""

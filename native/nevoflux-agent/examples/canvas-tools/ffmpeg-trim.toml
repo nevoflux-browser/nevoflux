@@ -1,0 +1,28 @@
+name = "ffmpeg.trim"
+description = "Trim a video/audio file to a specific time range"
+kind = "command"
+binary = "ffmpeg"
+args_mode = "template"
+args = ["-y", "-i", "{{input}}", "-ss", "{{start}}", "-to", "{{end}}", "-c", "copy", "{{output}}"]
+
+[params.input]
+type = "path"
+allowed_prefix = "$SESSION_DIR"
+
+[params.start]
+type = "text"
+pattern = "^[0-9]+([.][0-9]+)?$"
+
+[params.end]
+type = "text"
+pattern = "^[0-9]+([.][0-9]+)?$"
+
+[params.output]
+type = "path"
+allowed_prefix = "$SESSION_DIR"
+
+[constraints]
+timeout_seconds = 120
+cwd = "$SESSION_DIR"
+max_stdout_bytes = 4096
+max_stderr_bytes = 65536

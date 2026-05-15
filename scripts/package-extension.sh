@@ -37,6 +37,8 @@ if [ -d "$DIOXUS_DIST" ]; then
   fi
 
   echo "Copying WASM build output from dist/ to wasm/..."
+  rm -rf "$WASM_DIR"
+  mkdir -p "$WASM_DIR"
   cp -r "$DIOXUS_DIST/"* "$WASM_DIR/"
   echo "✓ WASM files copied"
 fi
@@ -143,6 +145,7 @@ rm -f "$BUILD_DIR/$XPI_NAME"
 zip -r "$BUILD_DIR/$XPI_NAME" . \
   -x "*.git*" \
   -x "*.DS_Store" \
+  -x "*.bak" \
   -x "*.md" \
   -x "*node_modules*" \
   -x "*.log" \
@@ -153,8 +156,7 @@ zip -r "$BUILD_DIR/$XPI_NAME" . \
   -x "dioxus-ui/content-sidebar/target/*" \
   -x "dioxus-ui/shared-protocol/target/*" \
   -x "dioxus-ui/.cargo/*" \
-  -x "package-lock.json" \
-  -x "manifest.json.bak"
+  -x "package-lock.json"
 
 echo "✓ Extension packaged: $BUILD_DIR/$XPI_NAME"
 

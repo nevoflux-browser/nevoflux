@@ -1,0 +1,45 @@
+[package]
+name = "nevoflux-computer"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+description = "Computer Use (screenshot, mouse, keyboard) for NevoFlux Agent"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["sync", "time"] }
+async-trait.workspace = true
+thiserror.workspace = true
+tracing = "0.1"
+
+# Image handling
+image = { version = "0.25", default-features = false, features = ["png"] }
+base64 = "0.22"
+
+# Cross-platform input simulation (optional, for real implementation)
+# enigo = { version = "0.2", optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = { version = "0.13", features = ["shm", "randr", "xtest"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-graphics = { version = "0.23", features = ["highsierra"] }
+core-foundation = "0.9"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.54", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_KeyboardAndMouse",
+] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio-test = "0.4"
+
+[features]
+default = []
+# Enable real input simulation (requires platform-specific deps)
+# real-input = ["enigo"]

@@ -1,0 +1,43 @@
+name = "nevoflux-canvas-share"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[r2_buckets]]
+binding = "SHARE_BUCKET"
+bucket_name = "nevoflux-canvas-share"
+
+[[kv_namespaces]]
+binding = "SHARE_KV"
+id = "e76d074de96e456ca6d36b10bca1f778"
+
+[triggers]
+crons = ["0 */6 * * *"]
+
+[vars]
+MAX_BUNDLE_SIZE = "57671680"
+DEFAULT_EXPIRY_SECS = "2592000"
+MAX_LIFETIME_SECS = "31536000"
+CORS_ORIGIN = "moz-extension://*"
+
+# Rate Limiting Configuration
+# These rules are configured in the Cloudflare Dashboard under Security > WAF > Rate limiting rules.
+# Documenting the intended rules here for reference:
+#
+# Rule 1: Upload rate limit
+#   - Match: POST /api/share
+#   - Period: 1 minute
+#   - Requests: 10
+#   - Action: block (429)
+#
+# Rule 2: Global rate limit (per-IP across all endpoints)
+#   - Match: *
+#   - Period: 1 minute
+#   - Requests: 120
+#   - Action: block (429)
+#
+# Rule 3: Fetch bundle rate limit
+#   - Match: GET /api/share/*/bundle
+#   - Period: 1 minute
+#   - Requests: 30
+#   - Action: block (429)

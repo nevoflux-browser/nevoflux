@@ -1,0 +1,146 @@
+# crates/daemon/Cargo.toml
+
+[package]
+name = "nevoflux-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+description = "Core daemon for NevoFlux Agent"
+
+[features]
+default = ["embedding"]
+embedding = ["nevoflux-llm/embedding"]
+
+[dependencies]
+# Internal crates
+nevoflux-protocol = { path = "../protocol" }
+nevoflux-storage = { path = "../storage" }
+nevoflux-mcp = { path = "../mcp" }
+nevoflux-skills = { path = "../skills" }
+nevoflux-llm = { path = "../llm", default-features = false }
+nevoflux-computer = { path = "../computer" }
+nevoflux-builtin-wasm = { path = "../builtin-wasm" }
+
+# LLM framework
+rig-core = { workspace = true }
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+
+# HTTP client
+reqwest = { workspace = true }
+
+# HTTP server (MCP Streamable HTTP for ACP bridge)
+axum = "0.7"
+
+# Async runtime
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time", "signal", "fs", "net", "io-util"] }
+tokio-util = "0.7"
+async-trait.workspace = true
+futures.workspace = true
+tokio-stream = { workspace = true, features = ["sync"] }
+
+# Error handling
+thiserror.workspace = true
+
+# Random number generation (for retry jitter)
+rand = "0.8"
+
+# Logging
+tracing = "0.1"
+
+# Bytes
+bytes = "1"
+
+# Wasmtime
+wasmtime = { workspace = true }
+wasmtime-wasi = { workspace = true }
+
+# UUID generation
+uuid = { version = "1", features = ["v4"] }
+
+# File glob matching
+glob = "0.3"
+
+# Regex engine (recipe pattern validation)
+regex = { workspace = true }
+
+# Grep engine (ripgrep)
+grep-regex = "0.1"
+grep-searcher = "0.1"
+grep-matcher = "0.1"
+
+# .gitignore-aware file traversal
+ignore = "0.4"
+
+# Configuration file support
+dirs = "5.0"
+directories = { workspace = true }
+toml = "0.8"
+
+# SQLite (needed by event_bus persistent writer for params!)
+rusqlite = { workspace = true }
+
+# Date/time utilities
+chrono = { version = "0.4", features = ["serde"] }
+
+# File watching for hot config reloading
+notify = { version = "6.1", default-features = false, features = ["macos_fsevent"] }
+
+# Concurrent hash map for learning buffer
+dashmap = "6"
+
+# Markdown section parsing
+pulldown-cmark = "0.12"
+
+# Encryption (AES-256-GCM for learning data at rest)
+aes-gcm = "0.10"
+base64 = "0.22"
+
+# ffmpeg subprocess management (video skill render pipeline)
+ffmpeg-sidecar = "1.1"
+
+# Hashing for domain anonymization in knowledge export
+sha2 = "0.10"
+hex = "0.4"
+
+# Canvas share encryption
+argon2 = "0.5"
+zeroize = { version = "1", features = ["derive"] }
+data-encoding = "2"
+
+# Native file dialog
+rfd = "0.15"
+
+# CLI detection (for OpenClaw setup)
+which = "7"
+
+# Code Mode - Python interpreter for agent code execution
+monty = { git = "https://github.com/pydantic/monty.git", tag = "v0.0.7" }
+
+# Tempfile staging — used by canvas_video render to stage narration MP3
+# bytes for ffmpeg's `-i <audio>` input (P5b-final). Must be in [dependencies]
+# (not [dev-dependencies]) because the staging code runs in production.
+tempfile = "3"
+
+# Image decode + resize for canvas_attach_asset. The agent commonly hands
+# us 2-5 MP hero images; without downsampling to stage dimensions every
+# rendered frame ships an oversized bitmap through drawSnapshot, blowing
+# past PAGE_IDLE_TIMEOUT. The codecs we enable cover what
+# canvas_attach_asset is likely to receive over HTTP / data_b64.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "gif"] }
+
+[target.'cfg(unix)'.dependencies]
+nix = { version = "0.29", features = ["signal", "process"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+nevoflux-testing = { path = "../testing" }
+rusqlite = { workspace = true }
+proptest = { workspace = true }
+wat = "1"
+tempfile = "3"

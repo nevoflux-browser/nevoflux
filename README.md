@@ -134,7 +134,7 @@ default_model = "claude-sonnet-4-20250514"
 
 ## Getting Started
 
-Nevoflux consists of two components: **the browser** (this repository) and the **Rust native agent** ([nevoflux-agent](https://github.com/dorisgyl/nevoflux-agent)). Both are needed for full functionality.
+Nevoflux consists of two components in this monorepo: **the browser** and the **Rust native agent** (`native/nevoflux-agent`). Both are needed for full functionality.
 
 ### Browser
 
@@ -152,15 +152,35 @@ npm run build
 npm run start
 ```
 
+For a full local test build that includes the browser, native agent, and agent panel extension:
+
+```bash
+npm run start:full
+```
+
+As a backup for SSH X11 forwarding, run:
+
+```bash
+./scripts/launch-nevoflux.sh --ssh
+# or: npm run start:full -- --ssh
+```
+
+SSH X11 forwarding has poor browser UI performance and is less reliable than a remote desktop/VNC-style session. Prefer remote desktop for interactive testing when available.
+
+For local testing without launcher-provided environment or graphics preference overrides, run:
+
+```bash
+./scripts/launch-nevoflux.sh --raw
+# or: npm run start:full -- --raw
+```
+
+`--raw` still builds and stages the browser, native agent, and panel. It only skips the launch-time env/pref defaults. `--raw` and `--ssh` are mutually exclusive.
+
 ### Native Agent
 
 ```bash
 # Prerequisites: Rust 1.75+
-
-git clone https://github.com/dorisgyl/nevoflux-agent.git
-cd nevoflux-agent
-
-cargo build --release
+cargo build --release --manifest-path native/nevoflux-agent/Cargo.toml --bin nevoflux-agent
 ```
 
 Then register the native messaging host:
@@ -413,6 +433,7 @@ git commit -m "patch(feature): description"
 | `npm run build`      | Full browser build              |
 | `npm run build:ui`   | UI-only rebuild (faster)        |
 | `npm run start`      | Launch the browser              |
+| `npm run start:full` | Build browser, agent, panel, then launch |
 | `npm run reload-ext` | Reload extension + clear caches |
 | `npm run test`       | Run tests                       |
 | `npm run lint`       | Run ESLint/Prettier             |

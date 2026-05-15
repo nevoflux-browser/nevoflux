@@ -1,0 +1,18 @@
+# crates/protocol/Cargo.toml
+
+[package]
+name = "nevoflux-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Protocol definitions for NevoFlux Agent IPC communication"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+rmp-serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+test-case = { workspace = true }
