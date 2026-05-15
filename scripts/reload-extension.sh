@@ -64,6 +64,6 @@ fi
 echo ""
 echo "✅ Extension reloaded and caches cleared!"
 echo ""
-echo "Now run: npm run start"
+echo "Now run: npm run start:full"
 echo ""
 echo "The extension will be loaded with your latest changes."

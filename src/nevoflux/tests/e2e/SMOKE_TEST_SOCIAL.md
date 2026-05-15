@@ -4,8 +4,7 @@ Manual checklist run before each release. Not CI, not automated.
 
 ## Prerequisites
 
-- NevoFlux browser built and running (`npm run build && npm run start`)
-- Native agent built and connected (`cd /ai/project/nevoflux-agent && cargo build --release && ./scripts/setup-native-host.sh`)
+- NevoFlux browser, native agent, and agent panel built and running (`npm run start:full`)
 - Sidebar open, agent responding
 
 ## X.com (Twitter)

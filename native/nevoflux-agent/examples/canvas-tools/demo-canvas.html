@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Canvas Tool Demo — ffmpeg.trim</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f0f14;
+      color: #e0e0e8;
+      line-height: 1.5;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 24px;
+      margin-bottom: 4px;
+      color: #fff;
+    }
+    .subtitle {
+      color: #888;
+      margin-bottom: 32px;
+      font-size: 14px;
+    }
+    section {
+      background: #1a1a24;
+      border: 1px solid #2a2a3a;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    h2 {
+      font-size: 16px;
+      margin-bottom: 16px;
+      color: #c0c0c8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      color: #888;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input[type="text"] {
+      width: 100%;
+      background: #12121a;
+      border: 1px solid #2a2a3a;
+      color: #e0e0e8;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-family: ui-monospace, monospace;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    input:focus {
+      outline: none;
+      border-color: #6366f1;
+    }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    button {
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    button:hover:not(:disabled) { background: #4f46e5; }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: #2a2a3a;
+      color: #e0e0e8;
+    }
+    .btn-secondary:hover:not(:disabled) { background: #3a3a4a; }
+    .tool-list-item {
+      padding: 12px;
+      background: #12121a;
+      border: 1px solid #2a2a3a;
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+    .tool-name {
+      font-family: ui-monospace, monospace;
+      font-weight: 500;
+      color: #818cf8;
+      font-size: 14px;
+    }
+    .tool-desc {
+      font-size: 13px;
+      color: #888;
+      margin-top: 4px;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: #12121a;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 12px 0;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #6366f1;
+      transition: width 0.2s ease;
+    }
+    .output {
+      background: #0a0a0f;
+      border: 1px solid #2a2a3a;
+      border-radius: 6px;
+      padding: 14px;
+      font-family: ui-monospace, monospace;
+      font-size: 12px;
+      max-height: 320px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .event {
+      padding: 4px 0;
+      border-bottom: 1px dashed #2a2a3a;
+    }
+    .event:last-child { border-bottom: none; }
+    .event.started { color: #4ade80; }
+    .event.stdout { color: #e0e0e8; }
+    .event.stderr { color: #fbbf24; }
+    .event.progress { color: #818cf8; }
+    .event.finished { color: #4ade80; font-weight: 600; }
+    .event.error { color: #f87171; font-weight: 600; }
+    .event-time {
+      color: #555;
+      font-size: 11px;
+      margin-right: 8px;
+    }
+    .status-idle { color: #888; }
+    .status-running { color: #fbbf24; }
+    .status-done { color: #4ade80; }
+    .status-error { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Canvas Tool Demo</h1>
+    <p class="subtitle">Demonstrate end-to-end tool invocation with <code>NevofluxSDK.tool.invoke("ffmpeg.trim")</code></p>
+
+    <section>
+      <h2>Available Tools</h2>
+      <div id="tool-list">Loading...</div>
+      <button id="reload-tools-btn" class="btn-secondary" style="margin-top: 12px;">Reload</button>
+    </section>
+
+    <section>
+      <h2>Invoke ffmpeg.trim</h2>
+      <label>Input Path</label>
+      <input type="text" id="input-path" placeholder="/path/to/input.mp4" value="$SESSION_DIR/video.mp4">
+
+      <div class="form-row">
+        <div>
+          <label>Start Time</label>
+          <input type="text" id="start-time" value="00:00:10">
+        </div>
+        <div>
+          <label>End Time</label>
+          <input type="text" id="end-time" value="00:00:20">
+        </div>
+      </div>
+
+      <label>Output Path</label>
+      <input type="text" id="output-path" value="$SESSION_DIR/trimmed.mp4">
+
+      <button id="run-btn">Run ffmpeg.trim</button>
+
+      <p id="status" class="status-idle" style="margin-top: 12px;">Ready</p>
+
+      <div class="progress-bar" id="progress-container" style="display: none;">
+        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Output Stream</h2>
+      <div class="output" id="output-log">
+        <div class="event"><em>Events will appear here...</em></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Helper
+    const $ = (id) => document.getElementById(id);
+
+    function logEvent(type, message) {
+      const output = $('output-log');
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement('div');
+      div.className = `event ${type}`;
+      div.innerHTML = `<span class="event-time">${time}</span><strong>${type.toUpperCase()}</strong>: ${message}`;
+      output.appendChild(div);
+      output.scrollTop = output.scrollHeight;
+    }
+
+    function setStatus(state, message) {
+      const el = $('status');
+      el.className = `status-${state}`;
+      el.textContent = message;
+    }
+
+    async function loadTools() {
+      $('tool-list').textContent = 'Loading...';
+      try {
+        const result = await NevofluxSDK.tool.list();
+        const tools = result.tools || [];
+        if (tools.length === 0) {
+          $('tool-list').innerHTML = '<em style="color:#888">No tools registered yet. Drop a TOML file into your user canvas-tools directory.</em>';
+          return;
+        }
+        $('tool-list').innerHTML = tools.map(t => `
+          <div class="tool-list-item">
+            <div class="tool-name">${t.name}</div>
+            <div class="tool-desc">${t.description || '(no description)'} — source: ${t.source}${t.enabled ? '' : ' (disabled)'}</div>
+          </div>
+        `).join('');
+      } catch (err) {
+        $('tool-list').innerHTML = `<em style="color:#f87171">Failed to load tools: ${err.message || err}</em>`;
+      }
+    }
+
+    async function runFfmpegTrim() {
+      const input = $('input-path').value.trim();
+      const start = $('start-time').value.trim();
+      const end = $('end-time').value.trim();
+      const output = $('output-path').value.trim();
+
+      if (!input || !start || !end || !output) {
+        alert('All fields are required');
+        return;
+      }
+
+      $('run-btn').disabled = true;
+      $('output-log').innerHTML = '';
+      $('progress-container').style.display = 'block';
+      $('progress-fill').style.width = '0%';
+      setStatus('running', 'Starting...');
+
+      try {
+        const result = await NevofluxSDK.tool.invoke('ffmpeg.trim', {
+          input: input,
+          start: start,
+          end: end,
+          output: output,
+        }, {
+          timeoutMs: 120000,
+          onEvent: (event) => {
+            const type = event.event_type || 'info';
+            switch (type) {
+              case 'started':
+                logEvent('started', `Started ${event.tool_name}`);
+                setStatus('running', 'Started');
+                break;
+              case 'stdout':
+                logEvent('stdout', event.data || '');
+                break;
+              case 'stderr':
+                logEvent('stderr', event.data || '');
+                break;
+              case 'progress':
+                const pct = Math.round((event.progress || 0) * 100);
+                logEvent('progress', `${pct}% ${event.message || ''}`);
+                $('progress-fill').style.width = pct + '%';
+                setStatus('running', `Progress: ${pct}%`);
+                break;
+              case 'finished':
+                logEvent('finished', `Exit ${event.exit_code}, ${event.duration_ms}ms`);
+                setStatus('done', `Done in ${event.duration_ms}ms`);
+                break;
+              case 'error':
+                logEvent('error', event.error || '');
+                setStatus('error', 'Error');
+                break;
+            }
+          },
+        });
+        logEvent('finished', `Call ID: ${result.callId}, pending: ${result.pending}`);
+      } catch (err) {
+        logEvent('error', err.message || String(err));
+        setStatus('error', 'Failed');
+      } finally {
+        $('run-btn').disabled = false;
+      }
+    }
+
+    // Event wiring
+    document.addEventListener('DOMContentLoaded', () => {
+      if (typeof NevofluxSDK === 'undefined') {
+        $('tool-list').innerHTML = '<em style="color:#f87171">NevofluxSDK not available. Open this page inside NevoFlux browser via nevoflux://canvas/demo-canvas.html</em>';
+        $('run-btn').disabled = true;
+        return;
+      }
+      loadTools();
+      $('reload-tools-btn').addEventListener('click', loadTools);
+      $('run-btn').addEventListener('click', runFfmpegTrim);
+    });
+  </script>
+</body>
+</html>

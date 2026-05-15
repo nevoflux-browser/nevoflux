@@ -2,7 +2,7 @@
  * NevoFlux P1 E2E Tests - Tab Management, Network, Drag
  *
  * Usage:
- * 1. Open the browser with: npm run start
+ * 1. Open the browser with: npm run start:full
  * 2. Open Browser Console (Ctrl+Shift+J or Cmd+Shift+J)
  * 3. Copy and paste this entire script
  * 4. Run: runAllRemainingTests()

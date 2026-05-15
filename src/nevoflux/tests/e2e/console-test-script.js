@@ -2,7 +2,7 @@
  * NevoFlux P1 E2E Console Test Script
  *
  * Usage:
- * 1. Open the browser with: npm run start
+ * 1. Open the browser with: npm run start:full
  * 2. Navigate to the test page (file:///path/to/test-page.html)
  * 3. Open Browser Console (Ctrl+Shift+J or Cmd+Shift+J)
  * 4. Copy and paste this entire script

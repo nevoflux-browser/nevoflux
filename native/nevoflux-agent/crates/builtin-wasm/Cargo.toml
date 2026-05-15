@@ -1,0 +1,29 @@
+[package]
+name = "nevoflux-builtin-wasm"
+version.workspace = true
+edition = "2021"
+license.workspace = true
+description = "Built-in Wasm Agent for NevoFlux - Chat/Browser/Agent modes"
+
+# This crate is compiled to wasm32-wasi, not the native target
+# Build with: cargo build --release --target wasm32-wasi
+
+[lib]
+# cdylib for WASM compilation, rlib for native usage as library
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# MessagePack for host-guest communication
+rmp-serde = { workspace = true }
+
+# Protocol types (for LocalFileRef)
+nevoflux-protocol = { path = "../protocol" }
+
+[dev-dependencies]
+# Tests run on native target, not wasm
+
+[features]
+default = []

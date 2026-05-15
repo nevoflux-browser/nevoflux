@@ -30,34 +30,23 @@ This directory contains the complete implementation of the Browser Agent Native 
 ## Directory Structure
 
 ```
-src/nevoflux/
-├── crates/
-│   ├── nevoflux-common/
-│   │   └── src/
-│   │       ├── protocol.rs          # Protocol types and envelope
-│   │       └── tests/
-│   │           └── protocol_tests.rs # Protocol tests
-│   └── nevoflux-agent/
-│       ├── src/
-│       │   ├── main.rs               # Entry point
-│       │   ├── session.rs            # Session management
-│       │   ├── action_router.rs      # Action ID routing
-│       │   ├── stream_manager.rs     # Streaming output
-│       │   └── native_messaging/
-│       │       ├── mod.rs            # Module exports
-│       │       ├── transport.rs      # 4-byte prefix transport
-│       │       └── handler.rs        # Message handling
-│       └── examples/
-│           └── link_checker_scenario.rs # Complete example
-└── extensions/
-    └── nevoflux-agent/
-        ├── sidebar/
-        │   ├── sidebar.html          # Main HTML
-        │   ├── app-controller.js     # Application logic
-        │   └── components/
-        │       └── dynamic-renderer.js # A2UI renderer
-        └── utils/
-            └── protocol-client.js    # Protocol client
+native/nevoflux-agent/
+├── src/
+│   ├── main.rs                       # CLI and native messaging entry point
+│   └── cli.rs                        # CLI argument parsing
+└── crates/
+    ├── bridge/                       # Native messaging bridge
+    ├── daemon/                       # Session management and agent runtime
+    ├── mcp/                          # MCP server/client support
+    ├── protocol/                     # Shared protocol types
+    └── storage/                      # Persistent storage
+
+src/nevoflux/extensions/nevoflux-agent/
+├── background.js                     # Extension background script
+├── manifest.json                     # Extension manifest
+├── sidebar/                          # Static sidebar shell
+├── dioxus-ui/                        # WASM chat panel source
+└── wasm/                             # Generated panel assets (ignored)
 ```
 
 ## Protocol Implementation
@@ -294,10 +283,7 @@ The implementation includes a complete example demonstrating the protocol flow:
 
 ### Running the Example
 
-```bash
-cd src/nevoflux/crates
-cargo run --example link_checker_scenario
-```
+The old standalone `link_checker_scenario` example is not checked into the current monorepo. Use the Rust test suite and the full local launcher to verify protocol behavior against the current native agent and extension.
 
 ### Example Output
 
@@ -314,8 +300,7 @@ The example demonstrates:
 ### Rust Tests
 
 ```bash
-cd src/nevoflux/crates
-cargo test
+cargo test --manifest-path native/nevoflux-agent/Cargo.toml
 ```
 
 Tests cover:
@@ -343,18 +328,37 @@ Frontend components can be tested in the browser:
 ### Rust Agent
 
 ```bash
-cd src/nevoflux/crates
-cargo build --release
+cargo build --release --manifest-path native/nevoflux-agent/Cargo.toml --bin nevoflux-agent
 ```
 
-The binary will be at: `target/release/nevoflux-agent`
+The binary will be at: `native/nevoflux-agent/target/release/nevoflux-agent`
 
 ### Extension
 
-The extension is already built as part of the NevoFlux browser build:
+The full local launcher builds the browser, native agent, WASM chat panel, packages the extension, stages the native host, and starts NevoFlux:
 
 ```bash
-npm run build
+npm run start:full
+```
+
+The default launcher path uses the current shell environment as-is and does not add display or graphics overrides. If the local desktop has display or graphics issues, use fallback mode:
+
+```bash
+./scripts/launch-nevoflux.sh --fallback
+```
+
+For SSH X11 forwarding fallback:
+
+```bash
+./scripts/launch-nevoflux.sh --ssh
+```
+
+This mode is intended as a backup only. Raw SSH X11 forwarding is slow for full browser UI testing; remote desktop, VNC, or xpra-style sessions are preferred when available.
+
+`--raw` is still accepted as a compatibility alias for the default no-overrides launch behavior:
+
+```bash
+./scripts/launch-nevoflux.sh --raw
 ```
 
 ## Configuration
@@ -371,7 +375,7 @@ The browser needs a native messaging manifest to locate the agent:
   "description": "NevoFlux AI Agent",
   "path": "/path/to/nevoflux-agent",
   "type": "stdio",
-  "allowed_extensions": ["nevoflux-agent@nevoflux.com"]
+  "allowed_extensions": ["agent@nevoflux.com"]
 }
 ```
 

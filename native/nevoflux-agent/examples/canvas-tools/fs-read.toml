@@ -1,0 +1,17 @@
+name = "fs.read"
+description = "Read a file from the session directory"
+kind = "internal"
+api = "fs.read_file"
+
+[params.path]
+type = "path"
+allowed_prefix = "$SESSION_DIR"
+
+[params.encoding]
+type = "enum"
+values = ["utf-8", "base64"]
+optional = true
+default = "utf-8"
+
+[constraints]
+timeout_seconds = 5

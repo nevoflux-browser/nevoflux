@@ -8,14 +8,47 @@
 //! by any component in the tree.
 
 use dioxus::prelude::*;
+use wasm_bindgen::{JsCast, JsValue};
 
 use crate::state::{
     AgentStatusState, AskUserState, ConnectionState, HistoryState, LiveToolEntry, MaximizeState,
     McpConfigState, Message, PendingFilePick, PendingModeChoice, PermissionRequestState,
     PickedFile, SessionState, SkillItem, StreamingState, TabContext,
 };
-use shared_protocol::ToolAuthRequest;
 use shared_protocol::ChatMode;
+use shared_protocol::ToolAuthRequest;
+
+const THEME_STORAGE_KEY: &str = "nevoflux.agentPanel.theme";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PanelTheme {
+    Light,
+    Dark,
+}
+
+impl PanelTheme {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Light => "light",
+            Self::Dark => "dark",
+        }
+    }
+
+    pub fn toggle(self) -> Self {
+        match self {
+            Self::Light => Self::Dark,
+            Self::Dark => Self::Light,
+        }
+    }
+
+    fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "light" => Some(Self::Light),
+            "dark" => Some(Self::Dark),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct EventNotification {
@@ -82,6 +115,8 @@ pub struct AppContext {
     pub first_run: Signal<bool>,
     /// Whether a provider is configured in agent settings
     pub has_configured_provider: Signal<bool>,
+    /// Active sidebar color theme
+    pub theme: Signal<PanelTheme>,
     /// EventBus notification toasts
     pub event_notifications: Signal<Vec<EventNotification>>,
     /// Active render jobs keyed by job_id, populated from jobs:render:* EventBus deliveries
@@ -134,6 +169,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     let loops = use_signal(std::collections::HashMap::new);
     let mut first_run = use_signal(|| false);
     let mut has_configured_provider = use_signal(|| false);
+    let theme = use_signal(load_initial_theme);
 
     // Build context
     let mut ctx = AppContext {
@@ -166,11 +202,17 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         loops,
         first_run,
         has_configured_provider,
+        theme,
         mock_enabled,
     };
 
     // Provide context to children
     use_context_provider(|| ctx);
+
+    // Keep document-level theme attributes in sync so onboarding and modals inherit it too.
+    use_effect(move || {
+        apply_panel_theme(*ctx.theme.read());
+    });
 
     // Initialize messaging on mount
     use_effect(move || {
@@ -194,8 +236,14 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                 // Try immediately first
                 match crate::messaging::query_agent_status().await {
                     Ok(status) => {
-                        let is_first_run = status.get("first_run").and_then(|v| v.as_bool()).unwrap_or(false);
-                        let has_configured = status.get("has_configured_provider").and_then(|v| v.as_bool()).unwrap_or(false);
+                        let is_first_run = status
+                            .get("first_run")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
+                        let has_configured = status
+                            .get("has_configured_provider")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false);
                         first_run.set(is_first_run);
                         has_configured_provider.set(has_configured);
                         status_ok = true;
@@ -206,8 +254,14 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                             crate::messaging::sleep_ms(*delay).await;
                             match crate::messaging::query_agent_status().await {
                                 Ok(status) => {
-                                    let is_first_run = status.get("first_run").and_then(|v| v.as_bool()).unwrap_or(false);
-                                    let has_configured = status.get("has_configured_provider").and_then(|v| v.as_bool()).unwrap_or(false);
+                                    let is_first_run = status
+                                        .get("first_run")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false);
+                                    let has_configured = status
+                                        .get("has_configured_provider")
+                                        .and_then(|v| v.as_bool())
+                                        .unwrap_or(false);
                                     first_run.set(is_first_run);
                                     has_configured_provider.set(has_configured);
                                     status_ok = true;
@@ -222,7 +276,9 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                 }
 
                 if !status_ok {
-                    tracing::warn!("All status retries failed — showing normal UI with connection bar");
+                    tracing::warn!(
+                        "All status retries failed — showing normal UI with connection bar"
+                    );
                 }
 
                 // Send ping
@@ -271,7 +327,10 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                 // Request tab context - use source_tab_id if in maximized mode
                 let tab_context_result = if maximize_state.is_maximized {
                     if let Some(source_tab_id) = maximize_state.source_tab_id {
-                        tracing::info!("Maximized mode: requesting source tab context for tab {}", source_tab_id);
+                        tracing::info!(
+                            "Maximized mode: requesting source tab context for tab {}",
+                            source_tab_id
+                        );
                         crate::messaging::request_tab_context_for_tab(Some(source_tab_id)).await
                     } else {
                         // Fallback to active tab if no source_tab_id
@@ -284,7 +343,11 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
 
                 // Update tab context from response
                 if let Ok(Some(tab_payload)) = tab_context_result {
-                    tracing::info!("Got tab context: tab_id={}, url={}", tab_payload.tab_id, tab_payload.url);
+                    tracing::info!(
+                        "Got tab context: tab_id={}, url={}",
+                        tab_payload.tab_id,
+                        tab_payload.url
+                    );
                     ctx.tab_context.set(crate::state::TabContext {
                         tab_id: tab_payload.tab_id,
                         zen_sync_id: tab_payload.zen_sync_id,
@@ -302,13 +365,20 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                 for attempt in 0..3 {
                     match crate::messaging::fetch_avatar().await {
                         Ok(Some(url)) => {
-                            tracing::info!("Loaded avatar from settings (len={}, attempt={})", url.len(), attempt);
+                            tracing::info!(
+                                "Loaded avatar from settings (len={}, attempt={})",
+                                url.len(),
+                                attempt
+                            );
                             ctx.avatar_url.set(Some(url));
                             break;
                         }
                         Ok(None) => {
                             if attempt < 2 {
-                                tracing::info!("No avatar yet (attempt {}), retrying after delay...", attempt);
+                                tracing::info!(
+                                    "No avatar yet (attempt {}), retrying after delay...",
+                                    attempt
+                                );
                                 crate::messaging::sleep_ms(1500).await;
                             } else {
                                 tracing::info!("No avatar configured in settings");
@@ -346,8 +416,8 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
 
     // ResizeObserver to detect minimized rail mode (width < 100px)
     use_effect(move || {
-        use wasm_bindgen::prelude::*;
         use wasm_bindgen::closure::Closure;
+        use wasm_bindgen::prelude::*;
 
         let window = match web_sys::window() {
             Some(w) => w,
@@ -368,7 +438,8 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         let cb = Closure::<dyn FnMut(JsValue)>::wrap(Box::new(move |entries: JsValue| {
             if let Ok(arr) = entries.dyn_into::<js_sys::Array>() {
                 if let Some(entry) = arr.get(0).dyn_into::<js_sys::Object>().ok() {
-                    if let Ok(cr) = js_sys::Reflect::get(&entry, &JsValue::from_str("contentRect")) {
+                    if let Ok(cr) = js_sys::Reflect::get(&entry, &JsValue::from_str("contentRect"))
+                    {
                         if let Ok(width) = js_sys::Reflect::get(&cr, &JsValue::from_str("width")) {
                             if let Some(w) = width.as_f64() {
                                 let is_mini = w < 100.0;
@@ -384,14 +455,16 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         }));
 
         // Create ResizeObserver via js_sys
-        let observer_ctor = js_sys::Reflect::get(
-            &js_sys::global(),
-            &JsValue::from_str("ResizeObserver"),
-        );
+        let observer_ctor =
+            js_sys::Reflect::get(&js_sys::global(), &JsValue::from_str("ResizeObserver"));
         if let Ok(ctor) = observer_ctor {
             if let Ok(ctor_fn) = ctor.dyn_into::<js_sys::Function>() {
-                if let Ok(observer) = js_sys::Reflect::construct(&ctor_fn, &js_sys::Array::of1(cb.as_ref())) {
-                    if let Ok(observe_fn) = js_sys::Reflect::get(&observer, &JsValue::from_str("observe")) {
+                if let Ok(observer) =
+                    js_sys::Reflect::construct(&ctor_fn, &js_sys::Array::of1(cb.as_ref()))
+                {
+                    if let Ok(observe_fn) =
+                        js_sys::Reflect::get(&observer, &JsValue::from_str("observe"))
+                    {
                         if let Ok(observe) = observe_fn.dyn_into::<js_sys::Function>() {
                             let _ = observe.call1(&observer, &body);
                         }
@@ -414,6 +487,88 @@ pub fn use_app_context() -> AppContext {
     use_context::<AppContext>()
 }
 
+fn load_initial_theme() -> PanelTheme {
+    read_stored_theme().unwrap_or_else(|| {
+        if system_prefers_dark() {
+            PanelTheme::Dark
+        } else {
+            PanelTheme::Light
+        }
+    })
+}
+
+pub fn persist_panel_theme(theme: PanelTheme) {
+    if let Some(storage) = local_storage() {
+        if let Ok(set_item) = js_sys::Reflect::get(&storage, &JsValue::from_str("setItem"))
+            .and_then(|f| f.dyn_into::<js_sys::Function>().map_err(Into::into))
+        {
+            let _ = set_item.call2(
+                &storage,
+                &JsValue::from_str(THEME_STORAGE_KEY),
+                &JsValue::from_str(theme.as_str()),
+            );
+        }
+    }
+}
+
+fn read_stored_theme() -> Option<PanelTheme> {
+    let storage = local_storage()?;
+    let get_item = js_sys::Reflect::get(&storage, &JsValue::from_str("getItem"))
+        .ok()?
+        .dyn_into::<js_sys::Function>()
+        .ok()?;
+    let value = get_item
+        .call1(&storage, &JsValue::from_str(THEME_STORAGE_KEY))
+        .ok()?
+        .as_string()?;
+
+    PanelTheme::from_str(&value)
+}
+
+fn local_storage() -> Option<JsValue> {
+    let window = web_sys::window()?;
+    let storage = js_sys::Reflect::get(&window, &JsValue::from_str("localStorage")).ok()?;
+    if storage.is_null() || storage.is_undefined() {
+        None
+    } else {
+        Some(storage)
+    }
+}
+
+fn system_prefers_dark() -> bool {
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
+    let Ok(match_media) = js_sys::Reflect::get(&window, &JsValue::from_str("matchMedia"))
+        .and_then(|f| f.dyn_into::<js_sys::Function>().map_err(Into::into))
+    else {
+        return false;
+    };
+    let Ok(query) = match_media.call1(&window, &JsValue::from_str("(prefers-color-scheme: dark)"))
+    else {
+        return false;
+    };
+
+    js_sys::Reflect::get(&query, &JsValue::from_str("matches"))
+        .ok()
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
+}
+
+fn apply_panel_theme(theme: PanelTheme) {
+    let Some(document) = web_sys::window().and_then(|w| w.document()) else {
+        return;
+    };
+
+    if let Some(root) = document.document_element() {
+        let _ = root.set_attribute("data-theme", theme.as_str());
+    }
+
+    if let Some(body) = document.body() {
+        let _ = body.set_attribute("data-theme", theme.as_str());
+    }
+}
+
 /// Parse URL parameters for maximize mode
 pub fn parse_maximize_params() -> MaximizeState {
     let search = web_sys::window()
@@ -422,11 +577,11 @@ pub fn parse_maximize_params() -> MaximizeState {
 
     let is_maximized = search.contains("mode=maximized");
 
-    let source_tab_id = extract_url_param(&search, "source_tab_id")
-        .and_then(|s| s.parse::<i32>().ok());
+    let source_tab_id =
+        extract_url_param(&search, "source_tab_id").and_then(|s| s.parse::<i32>().ok());
 
-    let target_tab_id = extract_url_param(&search, "target_tab_id")
-        .and_then(|s| s.parse::<i32>().ok());
+    let target_tab_id =
+        extract_url_param(&search, "target_tab_id").and_then(|s| s.parse::<i32>().ok());
 
     MaximizeState {
         is_maximized,

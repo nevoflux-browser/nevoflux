@@ -1,0 +1,137 @@
+# NevoFlux Agent Configuration
+#
+# This file should be placed at:
+#   Linux/macOS: ~/.config/nevoflux/config.toml
+#   Windows: %APPDATA%\nevoflux\config.toml
+#
+# All values shown below are defaults. Uncomment and modify as needed.
+
+[daemon]
+# Port range for daemon server connections
+# port_range_start = 19500
+# port_range_end = 19600
+
+# Idle timeout in seconds before daemon shuts down (default: 30 minutes)
+# idle_timeout_secs = 1800
+
+# Heartbeat timeout in seconds for proxy connections
+# heartbeat_timeout_secs = 30
+
+# Heartbeat interval in seconds
+# heartbeat_interval_secs = 10
+
+# Maximum number of concurrent requests
+# max_concurrent_requests = 100
+
+# Whether to keep alive for MCP connections
+# keep_alive_for_mcp = true
+
+[daemon.session]
+# Maximum number of sessions to keep
+# max_sessions = 500
+
+# Days after which inactive sessions are cleaned up
+# inactive_days = 90
+
+# Maximum storage size in MB for sessions
+# max_storage_mb = 500
+
+# Whether to auto-create sessions
+# auto_create = true
+
+[daemon.context]
+# Reserved tokens for system prompt
+# system_prompt_reserve = 2000
+
+# Safety margin tokens
+# safety_margin = 500
+
+# Maximum history messages to include
+# max_history_messages = 50
+
+# Whether to include memory in context
+# include_memory = true
+
+# Whether to include current page info
+# include_current_page = true
+
+[llm]
+# Default LLM provider: "anthropic", "openai", "qwen"
+# default_provider = "anthropic"
+
+# Default model name
+# default_model = "claude-3-5-sonnet-20241022"
+
+# Maximum tokens for responses
+# max_tokens = 4096
+
+# Temperature for generation (0.0 to 1.0)
+# temperature = 0.7
+
+# Request timeout in seconds
+# timeout_secs = 120
+
+# Maximum retries for failed requests
+# max_retries = 3
+
+# Provider-specific settings
+# Each provider section supports an optional context_window override (in tokens).
+# If not set, a sensible default is used per provider
+# (e.g., Anthropic=200K, OpenAI=128K, DeepSeek=64K, Gemini=1M).
+#
+# [llm.anthropic]
+# model = "claude-sonnet-4-20250514"
+# context_window = 200000
+#
+# [llm.openai]
+# model = "gpt-4o"
+# context_window = 128000
+#
+# [llm.claude_code]
+# model = "sonnet"
+# context_window = 200000
+# add_dirs = ["/path/to/allowed/dir"]
+#
+# [llm.gemini_cli]
+# model = "gemini-2.5-pro"
+# context_window = 1000000
+# add_dirs = ["/path/to/allowed/dir"]
+
+[storage]
+# Custom data directory path (default: system data dir)
+# data_dir = "/path/to/custom/data"
+
+# Maximum storage size in MB
+# max_size_mb = 1024
+
+# Whether to enable WAL mode for SQLite
+# wal_mode = true
+
+# Whether to vacuum database on startup
+# vacuum_on_startup = false
+
+[logging]
+# Log level: "trace", "debug", "info", "warn", "error"
+# level = "info"
+
+# Optional log file path
+# file = "/path/to/nevoflux.log"
+
+# Whether to log to stdout
+# stdout = true
+
+# Whether to use JSON format for logs
+# json_format = false
+
+[auth]
+# Auto-allow Read/Grep inside working directory
+# workspace_auto_allow = true
+
+# Global command whitelist (commands matching these are auto-allowed)
+# allowed_commands = ["cargo *", "git *", "npm *", "just *"]
+
+# Sensitive file patterns (always require confirmation)
+# sensitive_patterns = [".env*", "*credential*", "*secret*", "*_key*", "*.pem"]
+
+# Denied command patterns (always denied)
+# denied_commands = []

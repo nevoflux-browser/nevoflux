@@ -10,17 +10,23 @@
    CSS Variables - NevoFlux Daybreak Theme
    ============================================ */
 :root {
+  color-scheme: light;
+
   /* Brand colors - Teal */
-  --nevo-primary: #1a6b6b;
+  --nevo-primary: var(--zen-primary-color, var(--zen-primary, #1a6b6b));
   --nevo-primary-hover: #134e4e;
   --nevo-primary-light: rgba(26, 107, 107, 0.1);
   --nevo-primary-lighter: rgba(26, 107, 107, 0.08);
 
   /* Backgrounds */
-  --nevo-background: #ffffff;
-  --nevo-surface: #f3f4f6;
-  --nevo-surface-hover: #e5e7eb;
-  --nevo-surface-active: #d1d5db;
+  --nevo-background: var(--zen-colors-background, var(--zen-background, #ffffff));
+  --nevo-surface: var(--zen-colors-surface, var(--zen-surface, #f3f4f6));
+  --nevo-surface-hover: var(--zen-colors-surface-hover, #e5e7eb);
+  --nevo-surface-active: var(--zen-colors-surface-active, #d1d5db);
+  --nevo-surface-secondary: #f9fafb;
+  --nevo-surface-elevated: #ffffff;
+  --nevo-bg: var(--nevo-background);
+  --nevo-bg-tertiary: rgba(17, 24, 39, 0.05);
 
   /* Code Blocks */
   --nevo-code-bg: #f6f8fa;
@@ -28,9 +34,11 @@
   --nevo-code-text: #24292f;
 
   /* Text colors */
-  --nevo-text: #1f2937; /* Deep Charcoal */
-  --nevo-text-secondary: #4b5563; /* Cool Grey */
+  --nevo-text: var(--zen-colors-text, var(--zen-text, #1f2937)); /* Deep Charcoal */
+  --nevo-text-primary: var(--nevo-text);
+  --nevo-text-secondary: var(--zen-colors-text-secondary, #4b5563); /* Cool Grey */
   --nevo-text-muted: #9ca3af; /* Light Grey */
+  --nevo-text-tertiary: #6b7280;
 
   /* Semantic colors */
   --nevo-success: #16a34a; /* Slightly darker green for light mode contrast */
@@ -39,8 +47,13 @@
   --nevo-info: #2563eb; /* Slightly darker blue */
 
   /* Borders */
-  --nevo-border: #e5e7eb;
+  --nevo-border: var(--zen-colors-border, var(--zen-border, #e5e7eb));
+  --nevo-border-color: var(--nevo-border);
   --nevo-border-focus: var(--nevo-primary);
+  --nevo-accent: var(--nevo-primary);
+  --nevo-error-surface: #fef2f2;
+  --nevo-scrollbar-thumb: #d1d5db;
+  --nevo-scrollbar-thumb-hover: #9ca3af;
 
   /* Shadows */
   --nevo-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
@@ -76,6 +89,58 @@
   --nevo-transition-fast: 0.1s ease;
   --nevo-transition-normal: 0.2s ease;
   --nevo-transition-slow: 0.3s ease;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* Brand colors - keep Nevoflux teal, tuned for contrast on dark surfaces */
+  --nevo-primary: var(--zen-primary-color, var(--zen-primary, #5fbfc0));
+  --nevo-primary-hover: #7fd3d4;
+  --nevo-primary-light: rgba(95, 191, 192, 0.18);
+  --nevo-primary-lighter: rgba(95, 191, 192, 0.12);
+
+  /* Backgrounds */
+  --nevo-background: var(--zen-colors-background, var(--zen-background, #101416));
+  --nevo-surface: var(--zen-colors-surface, var(--zen-surface, #171d20));
+  --nevo-surface-hover: var(--zen-colors-surface-hover, #20282c);
+  --nevo-surface-active: var(--zen-colors-surface-active, #2a3439);
+  --nevo-surface-secondary: #13191c;
+  --nevo-surface-elevated: #1c2327;
+  --nevo-bg: var(--nevo-background);
+  --nevo-bg-tertiary: rgba(255, 255, 255, 0.07);
+
+  /* Code Blocks */
+  --nevo-code-bg: #0b1012;
+  --nevo-code-header: #151b1e;
+  --nevo-code-text: #e5edf0;
+
+  /* Text colors */
+  --nevo-text: var(--zen-colors-text, var(--zen-text, #eef3f5));
+  --nevo-text-primary: var(--nevo-text);
+  --nevo-text-secondary: var(--zen-colors-text-secondary, #b8c3c8);
+  --nevo-text-muted: #85939a;
+  --nevo-text-tertiary: #6f7d84;
+
+  /* Semantic colors */
+  --nevo-success: #4ade80;
+  --nevo-warning: #fbbf24;
+  --nevo-error: #f87171;
+  --nevo-info: #60a5fa;
+
+  /* Borders */
+  --nevo-border: var(--zen-colors-border, var(--zen-border, rgba(255, 255, 255, 0.12)));
+  --nevo-border-color: var(--nevo-border);
+  --nevo-border-focus: var(--nevo-primary);
+  --nevo-accent: var(--nevo-primary);
+  --nevo-error-surface: rgba(248, 113, 113, 0.12);
+  --nevo-scrollbar-thumb: #364247;
+  --nevo-scrollbar-thumb-hover: #4a5a61;
+
+  /* Shadows */
+  --nevo-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.35);
+  --nevo-shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.45), 0 2px 4px -2px rgba(0, 0, 0, 0.35);
+  --nevo-shadow-lg: 0 16px 30px -12px rgba(0, 0, 0, 0.65), 0 8px 12px -8px rgba(0, 0, 0, 0.45);
 }
 
 /* ============================================
@@ -154,6 +219,7 @@ body {
 .header-left {
   display: flex;
   align-items: center;
+  gap: var(--nevo-space-sm);
 }
 
 .header-avatar {
@@ -203,6 +269,26 @@ body {
 .header-btn:hover {
   background: var(--nevo-surface);
   color: var(--nevo-text);
+}
+
+.header-btn:focus-visible {
+  outline: 2px solid var(--nevo-border-focus);
+  outline-offset: 2px;
+}
+
+.theme-toggle-btn {
+  border: 1px solid transparent;
+}
+
+.theme-toggle-btn.active {
+  background: var(--nevo-primary-light);
+  border-color: color-mix(in srgb, var(--nevo-primary) 35%, transparent);
+  color: var(--nevo-primary);
+}
+
+.theme-toggle-btn.active:hover {
+  background: var(--nevo-primary-lighter);
+  color: var(--nevo-primary-hover);
 }
 
 /* Dropdown Menu */
@@ -471,7 +557,7 @@ body {
 
 .message-bubble.error {
   align-self: flex-start;
-  background: #fef2f2;
+  background: var(--nevo-error-surface);
   border: 1px solid var(--nevo-error);
   color: var(--nevo-text);
 }
@@ -883,7 +969,7 @@ body {
   display: flex;
   gap: var(--nevo-space-md);
   padding: var(--nevo-space-md);
-  background: #fef2f2;
+  background: var(--nevo-error-surface);
   border: 1px solid var(--nevo-error);
   border-radius: var(--nevo-radius-lg);
 }
@@ -2034,12 +2120,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db; /* Light grey thumb */
+  background: var(--nevo-scrollbar-thumb);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af; /* Darker on hover */
+  background: var(--nevo-scrollbar-thumb-hover);
 }
 
 /* ============================================
@@ -3923,26 +4009,24 @@ body {
    Dark Mode Overrides for New Components
    ============================================ */
 
-@media (prefers-color-scheme: dark) {
-  .tool-chip--running {
-    background: rgba(26, 107, 107, 0.15);
-  }
+:root[data-theme='dark'] .tool-chip--running {
+  background: rgba(95, 191, 192, 0.15);
+}
 
-  .tool-chip--waiting-auth {
-    background: rgba(217, 119, 6, 0.12);
-  }
+:root[data-theme='dark'] .tool-chip--waiting-auth {
+  background: rgba(251, 191, 36, 0.12);
+}
 
-  .tool-chip--failed {
-    background: rgba(220, 38, 38, 0.1);
-  }
+:root[data-theme='dark'] .tool-chip--failed {
+  background: rgba(248, 113, 113, 0.1);
+}
 
-  .tool-auth-overlay {
-    background: rgba(0, 0, 0, 0.6);
-  }
+:root[data-theme='dark'] .tool-auth-overlay {
+  background: rgba(0, 0, 0, 0.6);
+}
 
-  .tool-auth-btn--deny:hover {
-    background: rgba(220, 38, 38, 0.1);
-  }
+:root[data-theme='dark'] .tool-auth-btn--deny:hover {
+  background: rgba(248, 113, 113, 0.1);
 }
 
 /* ============================================
@@ -4104,10 +4188,8 @@ body {
 }
 
 /* Dark Mode: Rail */
-@media (prefers-color-scheme: dark) {
-  .rail-status--active .rail-status-dot {
-    box-shadow: 0 0 6px var(--nevo-primary);
-  }
+:root[data-theme='dark'] .rail-status--active .rail-status-dot {
+  box-shadow: 0 0 6px var(--nevo-primary);
 }
 
 /* ============================================

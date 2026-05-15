@@ -40,9 +40,10 @@ progress.md
 # Test lab
 tool_test_lab/
 
-# Distribution extensions — only keep .xpi files
+# Generated extension bundles and WASM panel assets
 build/AppDir/distribution/extensions/*
-!build/AppDir/distribution/extensions/*.xpi
+src/nevoflux/extensions/nevoflux-agent/wasm/
+src/nevoflux/extensions/nevoflux-agent/dioxus-ui/dist/
 
 !src/toolkit/themes/shared/design-system/dist/
 .DS_Store

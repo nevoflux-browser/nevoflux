@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc e37dceb90c2c281ca5085af5ba8d78a0e3a57e009a731545800b3ea973457480 # shrinks to response = JsonRpcResponse { jsonrpc: "2.0", id: Number(1), result: Some(Null), error: None }

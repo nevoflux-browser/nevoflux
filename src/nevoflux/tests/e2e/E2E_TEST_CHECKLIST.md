@@ -4,9 +4,7 @@
 
 ### Setup
 
-- [ ] Browser built: `npm run build`
-- [ ] Extension loaded: `npm run reload-ext`
-- [ ] Browser started: `npm run start`
+- [ ] Browser, native agent, and agent panel built and started: `npm run start:full`
 - [ ] Test page opened: `file://<project-root>/src/nevoflux/tests/e2e/test-page.html`
 - [ ] Browser Console opened: `Ctrl+Shift+J` (or `Cmd+Shift+J` on Mac)
 

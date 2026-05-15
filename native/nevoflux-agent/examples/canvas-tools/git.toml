@@ -1,0 +1,12 @@
+name = "git"
+description = "Git version control (read-only operations)"
+kind = "command"
+binary = "git"
+args_mode = "free"
+allowed_subcommands = ["status", "log", "diff", "branch", "show", "rev-parse", "remote", "tag"]
+
+[constraints]
+timeout_seconds = 30
+cwd = "$SESSION_DIR"
+max_stdout_bytes = 1048576
+max_stderr_bytes = 65536
