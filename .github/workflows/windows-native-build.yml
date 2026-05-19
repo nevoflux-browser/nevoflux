@@ -113,20 +113,37 @@ jobs:
 
       - name: Download Firefox source
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # surfer download on Windows runs 7z twice with -o<dst>.tar; on a
+        # second invocation, 7z prompts to overwrite the existing dir and
+        # hangs forever waiting for stdin (CLAUDE.md pitfall #9b). The
+        # `rm -rf` BEFORE each attempt guarantees a clean 7z run. Also wrap
+        # in `timeout 600` so a hung 7z dies after 10 min rather than burning
+        # the whole job. On total failure, manual GNU-tar extraction is used.
         run: |
+          set +e   # we manage retries explicitly
+          FF_VER=$(node -p "require('./surfer.json').version.version")
           for i in 1 2 3 4 5; do
-            if npm run download; then
-              break
+            echo "=== Download attempt $i/5 ==="
+            rm -rf .surfer/engine/firefox-*.source.tar/ 2>/dev/null
+            timeout 600 npm run download
+            rc=$?
+            if [ $rc -eq 0 ]; then
+              echo "Download succeeded on attempt $i"
+              exit 0
             fi
-            if [ $i -eq 5 ]; then
-              FF_VER=$(node -p "require('./surfer.json').version.version")
-              echo "Falling back to manual tar extraction for $FF_VER"
-              mkdir -p engine
-              tar --strip-components=1 -xf ".surfer/engine/firefox-$FF_VER.source.tar.xz" -C engine/
-              break
-            fi
+            echo "Attempt $i failed (rc=$rc); sleeping $((i*15))s before retry"
             sleep $((i*15))
           done
+          echo "=== All 5 npm-run-download attempts failed; falling back to manual GNU tar ==="
+          if [ ! -f ".surfer/engine/firefox-$FF_VER.source.tar.xz" ]; then
+            echo "ERROR: surfer didn't even download the tarball; nothing to extract"
+            exit 1
+          fi
+          rm -rf .surfer/engine/firefox-*.source.tar/ 2>/dev/null
+          rm -rf engine 2>/dev/null
+          mkdir -p engine
+          tar --strip-components=1 -xf ".surfer/engine/firefox-$FF_VER.source.tar.xz" -C engine/
+          echo "Manual GNU tar extraction succeeded"
 
       - name: Download language packs
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
