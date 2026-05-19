@@ -45,6 +45,11 @@ env:
   # (e.g. `GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=... surfer download`) parses.
   # The default on Windows is cmd.exe, which doesn't understand `KEY=val cmd`.
   NPM_CONFIG_SCRIPT_SHELL: 'C:\mozilla-build\msys2\usr\bin\bash.exe'
+  # Skip sccache wiring in configs/common/mozconfig. The mozconfig adds
+  # --with-ccache=sccache unconditionally unless SCCACHE_GHA_ENABLED=false;
+  # sccache isn't installed on the runner -> configure fails with
+  # "Cannot find ccache". (We're not using sccache for these builds.)
+  SCCACHE_GHA_ENABLED: 'false'
 
 jobs:
   prepare:
