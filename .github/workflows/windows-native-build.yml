@@ -160,8 +160,21 @@ jobs:
         run: bash scripts/download-language-packs.sh
 
       - name: dos2unix patches
-        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
-        run: find src -name '*.patch' -exec dos2unix {} +
+        shell: pwsh
+        # CRLF -> LF conversion on src/**/*.patch. Done in PowerShell because
+        # MSYS2 `find -exec dos2unix` triggers cygwin fork ASLR failure
+        # (msys-iconv-2.dll loaded at different addresses in parent vs child).
+        # Same root cause that broke `timeout` in an earlier iteration.
+        run: |
+          Get-ChildItem -Path src -Recurse -Filter *.patch | ForEach-Object {
+            $bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+            $text  = [System.Text.Encoding]::UTF8.GetString($bytes)
+            $fixed = $text -replace "`r`n", "`n"
+            if ($fixed -ne $text) {
+              [System.IO.File]::WriteAllText($_.FullName, $fixed, [System.Text.UTF8Encoding]::new($false))
+            }
+          }
+          Write-Host "dos2unix done"
 
       - name: Apply patches
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
