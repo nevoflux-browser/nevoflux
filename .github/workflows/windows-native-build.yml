@@ -61,18 +61,18 @@ jobs:
           }
 
       - name: Cleanup stale state
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
           rm -rf .surfer/engine/firefox-*.source.tar/ 2>/dev/null || true
           git config --global core.safecrlf false
           git config --global core.autocrlf false
 
       - name: npm ci
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: npm ci
 
       - name: Surfer CI
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
           npm run surfer -- ci \
             --brand ${{ inputs.release_branch }} \
@@ -80,11 +80,11 @@ jobs:
 
       - id: version
         name: Capture version
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: echo "value=$(npm run --silent surfer -- get version | xargs)" >> $GITHUB_OUTPUT
 
       - name: Download Firefox source
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
           for i in 1 2 3 4 5; do
             if npm run download; then
@@ -101,32 +101,32 @@ jobs:
           done
 
       - name: Download language packs
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: bash scripts/download-language-packs.sh
 
       - name: dos2unix patches
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: find src -name '*.patch' -exec dos2unix {} +
 
       - name: Apply patches
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: npm run import -- --verbose
 
       - name: Inject agent (x86_64)
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         env:
           GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
         run: bash scripts/gha/inject-agent.sh x86_64
 
       - name: Inject agent (aarch64)
         if: ${{ !inputs.skip_arm64 }}
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         env:
           GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
         run: bash scripts/gha/inject-agent.sh aarch64
 
       - name: Initialize engine git repo (for create_rc.py)
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
           cd engine
           git init -q
@@ -137,7 +137,7 @@ jobs:
               commit -q -m "GHA Windows build init"
 
       - name: mach bootstrap + Rust targets
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
           cd engine
           ./mach --no-interactive bootstrap --application-choice browser
@@ -163,19 +163,19 @@ jobs:
       ZEN_RELEASE: '1'
     steps:
       - name: Swap to x86_64 distribution
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
           rm -rf build/AppDir/distribution
           cp -r build/AppDir-x86_64/distribution build/AppDir/
 
       - name: Build (instrumented)
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         env:
           MOZ_BUILD_DATE: ${{ inputs.build_id }}
         run: npm run build
 
       - name: Package
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
           export ZEN_GA_DISABLE_PGO=true
           npm run package
@@ -238,14 +238,14 @@ jobs:
       ZEN_RELEASE: '1'
     steps:
       - name: Clean stale obj + swap distribution
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
           rm -rf engine/obj-x86_64-pc-windows-msvc
           rm -rf build/AppDir/distribution
           cp -r build/AppDir-x86_64/distribution build/AppDir/
 
       - name: Build (PGO-use, or no-PGO if skip_pgo)
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         env:
           MOZ_BUILD_DATE: ${{ inputs.build_id }}
           ZEN_GA_DISABLE_PGO: ${{ inputs.skip_pgo && '1' || '' }}
@@ -260,14 +260,14 @@ jobs:
           npm run build
 
       - name: Diagnostic — PGO engagement
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         if: ${{ !inputs.skip_pgo }}
         run: |
           grep -E 'MOZ_PROFILE_USE|profile-use' engine/obj-x86_64-pc-windows-msvc/config.status || \
             echo "WARN: PGO indicator not found in config.status (PGO may not be active)"
 
       - name: Package
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: npm run package
 
       - name: Stage final x64 artifacts
@@ -290,19 +290,19 @@ jobs:
       ZEN_RELEASE: '1'
     steps:
       - name: Swap to aarch64 distribution
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
           rm -rf build/AppDir/distribution
           cp -r build/AppDir-aarch64/distribution build/AppDir/
 
       - name: Build (no PGO)
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         env:
           MOZ_BUILD_DATE: ${{ inputs.build_id }}
         run: npm run build
 
       - name: Package
-        shell: bash
+        shell: 'C:\Program Files\Git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: npm run package
 
       - name: Stage final arm64 artifacts
