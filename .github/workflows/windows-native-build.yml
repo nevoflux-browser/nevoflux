@@ -1,0 +1,345 @@
+name: Windows Native Build (self-hosted)
+
+permissions:
+  contents: read
+  actions: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      display_version:
+        description: 'Display version (e.g. 0.1.0)'
+        required: true
+        type: string
+      release_branch:
+        description: 'Release branch'
+        required: true
+        type: choice
+        options: [release, twilight]
+        default: release
+      skip_arm64:
+        description: 'Skip arm64 build'
+        type: boolean
+        default: true
+      skip_pgo:
+        description: 'Skip PGO stages 1+2+3 (x64 single-shot, no PGO)'
+        type: boolean
+        default: true
+      build_id:
+        description: 'Override MOZ_BUILD_DATE (timestamp). Empty = auto.'
+        type: string
+        default: ''
+
+concurrency:
+  group: windows-native-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: [self-hosted, nevoflux-windows]
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.DEPLOY_KEY }}
+
+      - name: Runner prerequisite check
+        shell: pwsh
+        run: pwsh "$env:GITHUB_WORKSPACE\scripts\gha\check-windows-runner.ps1"
+
+      - name: Disk free-space gate
+        shell: pwsh
+        run: |
+          $free = (Get-PSDrive C).Free / 1GB
+          Write-Host "C: free = $([math]::Round($free,1)) GB"
+          if ($free -lt 80) {
+            Write-Error "Need >= 80 GB free on C: at workflow start; have $([math]::Round($free,1)) GB"
+            exit 1
+          }
+
+      - name: Cleanup stale state
+        shell: bash
+        run: |
+          rm -rf .surfer/engine/firefox-*.source.tar/ 2>/dev/null || true
+          git config --global core.safecrlf false
+          git config --global core.autocrlf false
+
+      - name: npm ci
+        shell: bash
+        run: npm ci
+
+      - name: Surfer CI
+        shell: bash
+        run: |
+          npm run surfer -- ci \
+            --brand ${{ inputs.release_branch }} \
+            --display-version ${{ inputs.display_version }}
+
+      - id: version
+        name: Capture version
+        shell: bash
+        run: echo "value=$(npm run --silent surfer -- get version | xargs)" >> $GITHUB_OUTPUT
+
+      - name: Download Firefox source
+        shell: bash
+        run: |
+          for i in 1 2 3 4 5; do
+            if npm run download; then
+              break
+            fi
+            if [ $i -eq 5 ]; then
+              FF_VER=$(node -p "require('./surfer.json').version.version")
+              echo "Falling back to manual tar extraction for $FF_VER"
+              mkdir -p engine
+              tar --strip-components=1 -xf ".surfer/engine/firefox-$FF_VER.source.tar.xz" -C engine/
+              break
+            fi
+            sleep $((i*15))
+          done
+
+      - name: Download language packs
+        shell: bash
+        run: bash scripts/download-language-packs.sh
+
+      - name: dos2unix patches
+        shell: bash
+        run: find src -name '*.patch' -exec dos2unix {} +
+
+      - name: Apply patches
+        shell: bash
+        run: npm run import -- --verbose
+
+      - name: Verify patches applied
+        shell: bash
+        run: bash scripts/check-patches-applied.sh
+
+      - name: Inject agent (x86_64)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
+        run: bash scripts/gha/inject-agent.sh x86_64
+
+      - name: Inject agent (aarch64)
+        if: ${{ !inputs.skip_arm64 }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
+        run: bash scripts/gha/inject-agent.sh aarch64
+
+      - name: Initialize engine git repo (for create_rc.py)
+        shell: bash
+        run: |
+          cd engine
+          git init -q
+          git config core.safecrlf false
+          git add -f .
+          git -c user.name='NevoFlux GHA' \
+              -c user.email='nevoflux-gha@nevoflux.com' \
+              commit -q -m "GHA Windows build init"
+
+      - name: mach bootstrap + Rust targets
+        shell: bash
+        run: |
+          cd engine
+          ./mach --no-interactive bootstrap --application-choice browser
+          cd ..
+          rustup target add x86_64-pc-windows-msvc
+          if [ "${{ inputs.skip_arm64 }}" != "true" ]; then
+            rustup target add aarch64-pc-windows-msvc
+          fi
+
+      - name: Create work dirs
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force pgo-cache, out, dist | Out-Null
+
+  # ----- PGO Stage 1: instrument build (skipped when skip_pgo=true) -----
+  x64-stage1:
+    needs: prepare
+    if: ${{ !inputs.skip_pgo }}
+    runs-on: [self-hosted, nevoflux-windows]
+    env:
+      SURFER_COMPAT: x86_64
+      SURFER_PLATFORM: win32
+      ZEN_GA_GENERATE_PROFILE: '1'
+      ZEN_RELEASE: '1'
+    steps:
+      - name: Swap to x86_64 distribution
+        shell: bash
+        run: |
+          rm -rf build/AppDir/distribution
+          cp -r build/AppDir-x86_64/distribution build/AppDir/
+
+      - name: Build (instrumented)
+        shell: bash
+        env:
+          MOZ_BUILD_DATE: ${{ inputs.build_id }}
+        run: npm run build
+
+      - name: Package
+        shell: bash
+        run: |
+          export ZEN_GA_DISABLE_PGO=true
+          npm run package
+
+      - name: Stash PGO stage1 zip
+        shell: pwsh
+        run: |
+          $ver = "${{ needs.prepare.outputs.version }}"
+          Move-Item -Force "dist\nevoflux-$ver.en-US.win64.zip" "pgo-cache\pgo-stage-1.zip"
+
+  # ----- PGO Stage 2: profileserver (skipped when skip_pgo=true) -----
+  x64-stage2:
+    needs: x64-stage1
+    if: ${{ !inputs.skip_pgo }}
+    runs-on: [self-hosted, nevoflux-windows]
+    steps:
+      - name: Expand instrumented binary
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "pgo-cache\instrumented" | Out-Null
+          Expand-Archive -Force "pgo-cache\pgo-stage-1.zip" -DestinationPath "pgo-cache\instrumented"
+
+      - name: Run profileserver via MozillaBuild
+        shell: pwsh
+        run: |
+          $ws_msys = $env:GITHUB_WORKSPACE -replace '\\','/'
+          if ($ws_msys -match '^([A-Za-z]):') {
+            $ws_msys = '/' + $matches[1].ToLower() + $ws_msys.Substring(2)
+          }
+          $script = @"
+          set -ex
+          cd $ws_msys/engine
+          export PATH=/c/mozilla-build/msys2/usr/bin:`$PATH
+          LLVM_PROFDATA=/c/Users/`$USERNAME/.mozbuild/clang/bin/llvm-profdata.exe \
+            JARLOG_FILE=$ws_msys/pgo-cache/en-US.log \
+            ./mach python build/pgo/profileserver.py \
+              --binary $ws_msys/pgo-cache/instrumented/nevoflux/nevoflux.exe
+          cp merged.profdata $ws_msys/pgo-cache/merged.profdata
+          "@
+          Set-Content -Path "pgo-run.sh" -Value $script -Encoding ASCII
+          & "C:\mozilla-build\start-shell.bat" "$env:GITHUB_WORKSPACE\pgo-run.sh"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify profile data + cleanup instrumented
+        shell: pwsh
+        run: |
+          if (!(Test-Path "pgo-cache\merged.profdata")) { Write-Error "merged.profdata missing"; exit 1 }
+          if (!(Test-Path "pgo-cache\en-US.log"))      { Write-Error "en-US.log missing";      exit 1 }
+          Remove-Item -Recurse -Force "pgo-cache\instrumented"
+          Remove-Item -Force "pgo-cache\pgo-stage-1.zip"
+
+  # ----- PGO Stage 3: optimized x64 build (or no-PGO single build if skip_pgo=true) -----
+  x64-stage3:
+    needs: [prepare, x64-stage2]
+    if: ${{ always() && needs.prepare.result == 'success' && (needs.x64-stage2.result == 'success' || inputs.skip_pgo) }}
+    runs-on: [self-hosted, nevoflux-windows]
+    env:
+      SURFER_COMPAT: x86_64
+      SURFER_PLATFORM: win32
+      ZEN_RELEASE: '1'
+    steps:
+      - name: Clean stale obj + swap distribution
+        shell: bash
+        run: |
+          rm -rf engine/obj-x86_64-pc-windows-msvc
+          rm -rf build/AppDir/distribution
+          cp -r build/AppDir-x86_64/distribution build/AppDir/
+
+      - name: Build (PGO-use, or no-PGO if skip_pgo)
+        shell: bash
+        env:
+          MOZ_BUILD_DATE: ${{ inputs.build_id }}
+          ZEN_GA_DISABLE_PGO: ${{ inputs.skip_pgo && '1' || '' }}
+        run: |
+          if [ "${{ inputs.skip_pgo }}" != "true" ]; then
+            WS_MSYS=$(echo "$GITHUB_WORKSPACE" | sed 's|\\|/|g' | sed -E 's|^([A-Za-z]):|/\L\1|')
+            export NEVOFLUX_PGO_PROFILE_DIR="$WS_MSYS/pgo-cache"
+            echo "PGO mode: profile-use from $NEVOFLUX_PGO_PROFILE_DIR"
+          else
+            echo "PGO mode: disabled (skip_pgo=true)"
+          fi
+          npm run build
+
+      - name: Diagnostic — PGO engagement
+        shell: bash
+        if: ${{ !inputs.skip_pgo }}
+        run: |
+          grep -E 'MOZ_PROFILE_USE|profile-use' engine/obj-x86_64-pc-windows-msvc/config.status || \
+            echo "WARN: PGO indicator not found in config.status (PGO may not be active)"
+
+      - name: Package
+        shell: bash
+        run: npm run package
+
+      - name: Stage final x64 artifacts
+        shell: pwsh
+        run: |
+          $ver = "${{ needs.prepare.outputs.version }}"
+          Move-Item -Force "dist\nevoflux-$ver.en-US.win64.zip" "out\nevoflux.win-x86_64-gha.zip"
+          Move-Item -Force "dist\output.mar"                    "out\windows-gha.mar"
+          Move-Item -Force "dist\nevoflux.installer.exe"        "out\nevoflux.installer-gha.exe"
+
+  # ----- arm64 build (skipped when skip_arm64=true) -----
+  arm64-final:
+    needs: x64-stage3
+    if: ${{ !inputs.skip_arm64 }}
+    runs-on: [self-hosted, nevoflux-windows]
+    env:
+      SURFER_COMPAT: aarch64
+      SURFER_PLATFORM: win32
+      ZEN_GA_DISABLE_PGO: '1'
+      ZEN_RELEASE: '1'
+    steps:
+      - name: Swap to aarch64 distribution
+        shell: bash
+        run: |
+          rm -rf build/AppDir/distribution
+          cp -r build/AppDir-aarch64/distribution build/AppDir/
+
+      - name: Build (no PGO)
+        shell: bash
+        env:
+          MOZ_BUILD_DATE: ${{ inputs.build_id }}
+        run: npm run build
+
+      - name: Package
+        shell: bash
+        run: npm run package
+
+      - name: Stage final arm64 artifacts
+        shell: pwsh
+        run: |
+          $ver = "${{ needs.prepare.outputs.version }}"
+          Move-Item -Force "dist\nevoflux-$ver.en-US.win64.zip" "out\nevoflux.win-arm64-gha.zip"
+          Move-Item -Force "dist\output.mar"                    "out\windows-arm64-gha.mar"
+          Move-Item -Force "dist\nevoflux.installer.exe"        "out\nevoflux.installer-arm64-gha.exe"
+
+  collect:
+    needs: [prepare, x64-stage3, arm64-final]
+    if: ${{ always() && needs.x64-stage3.result == 'success' }}
+    runs-on: [self-hosted, nevoflux-windows]
+    steps:
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nevoflux-windows-gha-build-${{ needs.prepare.outputs.version }}
+          path: out/*
+          retention-days: 14
+          if-no-files-found: error
+
+  cleanup:
+    needs: collect
+    if: always()
+    runs-on: [self-hosted, nevoflux-windows]
+    steps:
+      - name: Reclaim disk space
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE\engine\obj-x86_64-pc-windows-msvc"  -EA SilentlyContinue
+          Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE\engine\obj-aarch64-pc-windows-msvc" -EA SilentlyContinue
+          Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE\pgo-cache"                          -EA SilentlyContinue
+          Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE\build\AppDir*"                      -EA SilentlyContinue
+          Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE\dist"                               -EA SilentlyContinue
