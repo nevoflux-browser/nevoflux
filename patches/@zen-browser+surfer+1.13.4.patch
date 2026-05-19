@@ -1,0 +1,116 @@
+diff --git a/node_modules/@zen-browser/surfer/dist/commands/bootstrap.js b/node_modules/@zen-browser/surfer/dist/commands/bootstrap.js
+index 89b3aa8..12f2b32 100644
+--- a/node_modules/@zen-browser/surfer/dist/commands/bootstrap.js
++++ b/node_modules/@zen-browser/surfer/dist/commands/bootstrap.js
+@@ -15,6 +15,7 @@ const bootstrap = async () => {
+   await (0, utils_1.configDispatch)('./mach', {
+     args: ['bootstrap', ...arguments_],
+     cwd: constants_1.ENGINE_DIR,
++    shell: 'unix',
+   })
+ }
+ exports.bootstrap = bootstrap
+diff --git a/node_modules/@zen-browser/surfer/dist/commands/build.js b/node_modules/@zen-browser/surfer/dist/commands/build.js
+index fb336f6..09f1052 100644
+--- a/node_modules/@zen-browser/surfer/dist/commands/build.js
++++ b/node_modules/@zen-browser/surfer/dist/commands/build.js
+@@ -155,6 +155,7 @@ const genericBuild = async (os, fast = false, jobs) => {
+       args: buildOptions,
+       cwd: constants_1.ENGINE_DIR,
+       killOnError: true,
++      shell: 'unix',
+     })
+   ).success
+ }
+diff --git a/node_modules/@zen-browser/surfer/dist/commands/init.js b/node_modules/@zen-browser/surfer/dist/commands/init.js
+index 7429333..5f047ed 100644
+--- a/node_modules/@zen-browser/surfer/dist/commands/init.js
++++ b/node_modules/@zen-browser/surfer/dist/commands/init.js
+@@ -32,7 +32,7 @@ const init = async (directory) => {
+         cwd: absoluteInitDirectory,
+     });
+     await (0, utils_1.configDispatch)('git', {
+-        args: ['add', '-f', '.'],
++        args: ['add', '-f', 'config/milestone.txt'],
+         cwd: absoluteInitDirectory,
+     });
+     await (0, utils_1.configDispatch)('git', {
+diff --git a/node_modules/@zen-browser/surfer/dist/constants/index.js b/node_modules/@zen-browser/surfer/dist/constants/index.js
+index 4e3793a..3371c2d 100644
+--- a/node_modules/@zen-browser/surfer/dist/constants/index.js
++++ b/node_modules/@zen-browser/surfer/dist/constants/index.js
+@@ -92,30 +92,53 @@ exports.FTL_STRING_LINE_REGEX =
+   /(([\dA-Za-z-]*|\.[a-z-]*) =(.*|\.)|\[[\dA-Za-z]*].*(\n\s?\s?})?|\*\[[\dA-Za-z]*] .*(\n\s?\s?})?)/gm
+ // All windows specific code should be located inside of this if statement
+ if (process.platform == 'win32') {
+-  const gitPath = execa_1.default.sync('where.exe git.exe').stdout.toString()
+-  if (gitPath.includes('git.exe')) {
+-    // Git is installed on the computer, the bash terminal is probably located
+-    // somewhere nearby
+-    log_1.log.debug('Fount git at ' + gitPath)
++  const whereGitOutput = execa_1.default
++    .sync('where.exe git.exe')
++    .stdout.toString()
++  const gitPaths = whereGitOutput
++    .split(/\r?\n/)
++    .map((p) => p.trim())
++    .filter((p) => p.toLowerCase().endsWith('git.exe'))
++  if (gitPaths.length > 0) {
++    log_1.log.debug('Found git candidates: ' + gitPaths.join(', '))
+     log_1.log.debug(`Searching for bash`)
+-    exports.BASH_PATH = (0, node_path_1.resolve)(
+-      gitPath,
+-      '../..',
+-      'bin/bash.exe'
+-    )
+-    if (!(0, node_fs_1.existsSync)(exports.BASH_PATH)) {
+-      log_1.log.debug(`Could not find bash at ${exports.BASH_PATH}`)
+-      exports.BASH_PATH = execa_1.default
++    const bashCandidates = []
++    for (const gp of gitPaths) {
++      // C:\Program Files\Git\cmd\git.exe -> C:\Program Files\Git\bin\bash.exe
++      bashCandidates.push(
++        (0, node_path_1.resolve)(gp, '../..', 'bin/bash.exe')
++      )
++      // C:\Program Files\Git\mingw64\bin\git.exe -> C:\Program Files\Git\bin\bash.exe
++      bashCandidates.push(
++        (0, node_path_1.resolve)(gp, '../../..', 'bin/bash.exe')
++      )
++    }
++    exports.BASH_PATH =
++      bashCandidates.find((c) => (0, node_fs_1.existsSync)(c)) || ''
++    if (!exports.BASH_PATH) {
++      log_1.log.debug(`No bash near git, falling back to where.exe bash.exe`)
++      const whereBashOutput = execa_1.default
+         .sync('where.exe bash.exe')
+         .stdout.toString()
+-      if (!exports.BASH_PATH.includes('bash.exe')) {
+-        exports.BASH_PATH = process.env.SURFER_SIGNING_MODE
+-          ? 'C:\\mozilla-build\\msys2\\usr\\bin\\bash.exe'
+-          : ''
+-        if (exports.BASH_PATH === '') {
+-          log_1.log.error('Could not find bash, aborting')
+-        }
+-      }
++      const bashPaths = whereBashOutput
++        .split(/\r?\n/)
++        .map((p) => p.trim())
++        .filter(
++          (p) =>
++            p.toLowerCase().endsWith('bash.exe') &&
++            !p.toLowerCase().includes('system32') &&
++            !p.toLowerCase().includes('windowsapps') &&
++            (0, node_fs_1.existsSync)(p)
++        )
++      exports.BASH_PATH = bashPaths[0] || ''
++    }
++    if (!exports.BASH_PATH) {
++      exports.BASH_PATH = process.env.SURFER_SIGNING_MODE
++        ? 'C:\\mozilla-build\\msys2\\usr\\bin\\bash.exe'
++        : ''
++    }
++    if (!exports.BASH_PATH) {
++      log_1.log.error('Could not find bash, aborting')
+     }
+     // Replace .exe with .EXE
+     exports.BASH_PATH = exports.BASH_PATH.replace(/\.exe$/, '.EXE')

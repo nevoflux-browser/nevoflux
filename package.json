@@ -26,6 +26,7 @@
     "lint": "cd engine && ./mach lint zen",
     "lint:fix": "npm run lint -- --fix",
     "prepare": "husky",
+    "postinstall": "node scripts/maybe-patch-package.cjs",
     "reset-ff": "surfer reset",
     "surfer": "surfer",
     "test": "python3 scripts/run_tests.py",
@@ -68,6 +69,7 @@
     "globals": "^16.3.0",
     "husky": "^9.1.7",
     "lint-staged": "^15.3.0",
+    "patch-package": "^8.0.1",
     "prettier": "^3.4.2",
     "prettier-plugin-sh": "^0.14.0",
     "typescript": "^5.9.3"
