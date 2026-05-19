@@ -34,6 +34,14 @@ concurrency:
   group: windows-native-${{ github.workflow }}
   cancel-in-progress: false
 
+env:
+  # Disable husky setup during `npm ci`. Husky's `prepare` script invokes
+  # `bash` via PATH and on this runner PATH lookup resolves to
+  # C:\Windows\System32\bash.exe (the WSL launcher stub, no distro installed),
+  # which exits 1 and fails npm ci. Husky's git-hooks setup is dev-only;
+  # CI doesn't need it.
+  HUSKY: '0'
+
 jobs:
   prepare:
     runs-on: [self-hosted, nevoflux-windows]
@@ -59,6 +67,14 @@ jobs:
             Write-Error "Need >= 80 GB free on C: at workflow start; have $([math]::Round($free,1)) GB"
             exit 1
           }
+
+      - name: Prepend Git Bash to PATH
+        shell: pwsh
+        # Belt-and-suspenders for the HUSKY=0 fix above. If any other tool we
+        # invoke (npm scripts, surfer, etc.) tries to spawn `bash`/`sh` via
+        # PATH lookup, we want it to find Git Bash, not the WSL launcher stub.
+        run: |
+          "C:\Program Files\Git\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Cleanup stale state
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
