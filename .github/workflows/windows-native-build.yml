@@ -147,12 +147,15 @@ jobs:
             echo "Tarball already present at $TARBALL ($(stat -c%s "$TARBALL") bytes); skipping download"
           fi
 
-          # Extract via GNU tar (no 7z hang risk). Wipe engine/ to guarantee
-          # a clean state across reruns.
+          # Extract via Windows native tar (C:\Windows\System32\tar.exe,
+          # libarchive-based). MSYS2's tar invokes a child to decompress xz
+          # and that child's fork fails with the cygwin DLL ASLR issue
+          # (same root cause that broke `timeout` and `find`). Windows
+          # tar handles .tar.xz in-process with no fork.
           echo "Extracting $TARBALL -> engine/ ..."
           rm -rf engine
           mkdir -p engine
-          tar --strip-components=1 -xf "$TARBALL" -C engine/
+          /c/Windows/System32/tar.exe --strip-components=1 -xf "$TARBALL" -C engine/
           echo "Extraction OK; engine/ has $(ls engine | wc -l) top-level entries"
 
       - name: Download language packs
