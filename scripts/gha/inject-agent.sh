@@ -82,8 +82,16 @@ else
       fi
     done
 
-    # Extract and place agent .exe
-    (cd "$TMP_DIR" && unzip -o "$ARCHIVE_NAME" >/dev/null)
+    # Extract and place agent .exe.
+    # Windows note: Git Bash's `unzip` (cygwin coreutils) crashes with
+    # "cygheap base mismatch" on some hosts (DLL ASLR conflict). Use the
+    # Windows-native tar.exe (libarchive, supports zip) when available;
+    # fall back to unzip on Linux (GCB).
+    if [ -x /c/Windows/System32/tar.exe ]; then
+      (cd "$TMP_DIR" && /c/Windows/System32/tar.exe -xf "$ARCHIVE_NAME")
+    else
+      (cd "$TMP_DIR" && unzip -o "$ARCHIVE_NAME" >/dev/null)
+    fi
     if [ -f "$TMP_DIR/nevoflux-agent.exe" ]; then
       cp "$TMP_DIR/nevoflux-agent.exe" "$BIN_DIR/nevoflux-agent.exe"
       echo "Placed: $BIN_DIR/nevoflux-agent.exe"
