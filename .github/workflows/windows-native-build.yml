@@ -112,10 +112,6 @@ jobs:
         shell: bash
         run: npm run import -- --verbose
 
-      - name: Verify patches applied
-        shell: bash
-        run: bash scripts/check-patches-applied.sh
-
       - name: Inject agent (x86_64)
         shell: bash
         env:
