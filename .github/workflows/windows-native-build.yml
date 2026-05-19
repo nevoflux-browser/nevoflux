@@ -243,6 +243,16 @@ jobs:
       ZEN_GA_GENERATE_PROFILE: '1'
       ZEN_RELEASE: '1'
     steps:
+      - name: Prepend Git Bash + Unix coreutils to PATH
+        shell: pwsh
+        # $GITHUB_PATH is per-job; re-applied in every job that uses bash.
+        run: |
+          @(
+            'C:\Program Files\Git\bin',
+            'C:\Program Files\Git\usr\bin',
+            'C:\mozilla-build\msys2\usr\bin'
+          ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
       - name: Swap to x86_64 distribution
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
@@ -273,6 +283,15 @@ jobs:
     if: ${{ !inputs.skip_pgo }}
     runs-on: [self-hosted, nevoflux-windows]
     steps:
+      - name: Prepend Git Bash + Unix coreutils to PATH
+        shell: pwsh
+        run: |
+          @(
+            'C:\Program Files\Git\bin',
+            'C:\Program Files\Git\usr\bin',
+            'C:\mozilla-build\msys2\usr\bin'
+          ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
       - name: Expand instrumented binary
         shell: pwsh
         run: |
@@ -318,6 +337,15 @@ jobs:
       SURFER_PLATFORM: win32
       ZEN_RELEASE: '1'
     steps:
+      - name: Prepend Git Bash + Unix coreutils to PATH
+        shell: pwsh
+        run: |
+          @(
+            'C:\Program Files\Git\bin',
+            'C:\Program Files\Git\usr\bin',
+            'C:\mozilla-build\msys2\usr\bin'
+          ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
       - name: Clean stale obj + swap distribution
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
@@ -370,6 +398,15 @@ jobs:
       ZEN_GA_DISABLE_PGO: '1'
       ZEN_RELEASE: '1'
     steps:
+      - name: Prepend Git Bash + Unix coreutils to PATH
+        shell: pwsh
+        run: |
+          @(
+            'C:\Program Files\Git\bin',
+            'C:\Program Files\Git\usr\bin',
+            'C:\mozilla-build\msys2\usr\bin'
+          ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
       - name: Swap to aarch64 distribution
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
