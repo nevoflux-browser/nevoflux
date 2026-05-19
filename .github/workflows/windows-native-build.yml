@@ -20,11 +20,11 @@ on:
       skip_arm64:
         description: 'Skip arm64 build'
         type: boolean
-        default: true
+        default: false
       skip_pgo:
         description: 'Skip PGO stages 1+2+3 (x64 single-shot, no PGO)'
         type: boolean
-        default: true
+        default: false
       build_id:
         description: 'Override MOZ_BUILD_DATE (timestamp). Empty = auto.'
         type: string
