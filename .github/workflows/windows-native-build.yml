@@ -113,40 +113,47 @@ jobs:
 
       - name: Download Firefox source
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
-        # surfer download on Windows runs 7z twice with -o<dst>.tar; on a
-        # second invocation, 7z prompts to overwrite the existing dir and
-        # hangs forever waiting for stdin (CLAUDE.md pitfall #9b). The
-        # `rm -rf` BEFORE each attempt guarantees 7z never sees an existing
-        # .tar/ dir, so the hang root cause cannot recur. No need for a
-        # per-attempt timeout wrapper (MSYS2 `timeout` fails with cygwin
-        # fork ASLR errors anyway; previous attempt rc=125 inside timeout
-        # before npm even ran). The GHA step-level timeout is the
-        # ultimate kill.
+        # `npm run download` (surfer) hangs on Windows during the second of
+        # its two 7z invocations - the one decompressing the inner .tar
+        # (CLAUDE.md pitfall #9b). Confirmed in run 26116638863:
+        #   00:03:16 Unpacking Firefox source on Windows (7z)
+        #   00:03:36 Unpacking Firefox source again without the .xz extension
+        #   00:17:23 (operator-cancelled, still hung)
+        # Bypass surfer entirely: curl the tarball directly from Mozilla
+        # archive, extract with GNU tar. This is exactly the manual workaround
+        # CLAUDE.md documents.
         run: |
-          set +e   # we manage retries explicitly
+          set -e
           FF_VER=$(node -p "require('./surfer.json').version.version")
-          for i in 1 2 3 4 5; do
-            echo "=== Download attempt $i/5 ==="
-            rm -rf .surfer/engine/firefox-*.source.tar/ 2>/dev/null
-            npm run download
-            rc=$?
-            if [ $rc -eq 0 ]; then
-              echo "Download succeeded on attempt $i"
-              exit 0
-            fi
-            echo "Attempt $i failed (rc=$rc); sleeping $((i*15))s before retry"
-            sleep $((i*15))
-          done
-          echo "=== All 5 npm-run-download attempts failed; falling back to manual GNU tar ==="
-          if [ ! -f ".surfer/engine/firefox-$FF_VER.source.tar.xz" ]; then
-            echo "ERROR: surfer didn't even download the tarball; nothing to extract"
-            exit 1
+          TAR_URL="https://archive.mozilla.org/pub/firefox/releases/${FF_VER}/source/firefox-${FF_VER}.source.tar.xz"
+          mkdir -p .surfer/engine
+          TARBALL=".surfer/engine/firefox-${FF_VER}.source.tar.xz"
+
+          # Download (curl with built-in retries)
+          if [ ! -s "$TARBALL" ]; then
+            echo "Downloading $TAR_URL ..."
+            for i in 1 2 3 4 5; do
+              if curl --fail --location --silent --show-error \
+                      --retry 3 --retry-delay 10 \
+                      -o "$TARBALL.part" "$TAR_URL"; then
+                mv "$TARBALL.part" "$TARBALL"
+                break
+              fi
+              echo "Download attempt $i failed; sleeping $((i*15))s"
+              sleep $((i*15))
+              [ $i -eq 5 ] && { echo "ERROR: download failed after 5 attempts"; exit 1; }
+            done
+          else
+            echo "Tarball already present at $TARBALL ($(stat -c%s "$TARBALL") bytes); skipping download"
           fi
-          rm -rf .surfer/engine/firefox-*.source.tar/ 2>/dev/null
-          rm -rf engine 2>/dev/null
+
+          # Extract via GNU tar (no 7z hang risk). Wipe engine/ to guarantee
+          # a clean state across reruns.
+          echo "Extracting $TARBALL -> engine/ ..."
+          rm -rf engine
           mkdir -p engine
-          tar --strip-components=1 -xf ".surfer/engine/firefox-$FF_VER.source.tar.xz" -C engine/
-          echo "Manual GNU tar extraction succeeded"
+          tar --strip-components=1 -xf "$TARBALL" -C engine/
+          echo "Extraction OK; engine/ has $(ls engine | wc -l) top-level entries"
 
       - name: Download language packs
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
