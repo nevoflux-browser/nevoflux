@@ -116,16 +116,19 @@ jobs:
         # surfer download on Windows runs 7z twice with -o<dst>.tar; on a
         # second invocation, 7z prompts to overwrite the existing dir and
         # hangs forever waiting for stdin (CLAUDE.md pitfall #9b). The
-        # `rm -rf` BEFORE each attempt guarantees a clean 7z run. Also wrap
-        # in `timeout 600` so a hung 7z dies after 10 min rather than burning
-        # the whole job. On total failure, manual GNU-tar extraction is used.
+        # `rm -rf` BEFORE each attempt guarantees 7z never sees an existing
+        # .tar/ dir, so the hang root cause cannot recur. No need for a
+        # per-attempt timeout wrapper (MSYS2 `timeout` fails with cygwin
+        # fork ASLR errors anyway; previous attempt rc=125 inside timeout
+        # before npm even ran). The GHA step-level timeout is the
+        # ultimate kill.
         run: |
           set +e   # we manage retries explicitly
           FF_VER=$(node -p "require('./surfer.json').version.version")
           for i in 1 2 3 4 5; do
             echo "=== Download attempt $i/5 ==="
             rm -rf .surfer/engine/firefox-*.source.tar/ 2>/dev/null
-            timeout 600 npm run download
+            npm run download
             rc=$?
             if [ $rc -eq 0 ]; then
               echo "Download succeeded on attempt $i"
