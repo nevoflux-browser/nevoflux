@@ -140,21 +140,43 @@ cd "$EXTENSION_DIR"
 rm -f "$BUILD_DIR/$XPI_NAME"
 
 # Package extension (excluding development files and build artifacts)
-zip -r "$BUILD_DIR/$XPI_NAME" . \
-  -x "*.git*" \
-  -x "*.DS_Store" \
-  -x "*.md" \
-  -x "*node_modules*" \
-  -x "*.log" \
-  -x "dioxus-ui/target/*" \
-  -x "dioxus-ui/dist/*" \
-  -x "dioxus-ui/Cargo.lock" \
-  -x "dioxus-ui/chat-sidebar/target/*" \
-  -x "dioxus-ui/content-sidebar/target/*" \
-  -x "dioxus-ui/shared-protocol/target/*" \
-  -x "dioxus-ui/.cargo/*" \
-  -x "package-lock.json" \
-  -x "manifest.json.bak"
+# Prefer `zip` (Linux/macOS); fall back to 7z on Windows where zip is rarely installed
+if command -v zip >/dev/null 2>&1; then
+  zip -r "$BUILD_DIR/$XPI_NAME" . \
+    -x "*.git*" \
+    -x "*.DS_Store" \
+    -x "*.md" \
+    -x "*node_modules*" \
+    -x "*.log" \
+    -x "dioxus-ui/target/*" \
+    -x "dioxus-ui/dist/*" \
+    -x "dioxus-ui/Cargo.lock" \
+    -x "dioxus-ui/chat-sidebar/target/*" \
+    -x "dioxus-ui/content-sidebar/target/*" \
+    -x "dioxus-ui/shared-protocol/target/*" \
+    -x "dioxus-ui/.cargo/*" \
+    -x "package-lock.json" \
+    -x "manifest.json.bak"
+elif command -v 7z >/dev/null 2>&1; then
+  7z a -tzip -bd -bso0 -bsp0 "$BUILD_DIR/$XPI_NAME" . \
+    '-xr!.git' '-xr!.git*' \
+    '-xr!.DS_Store' \
+    '-xr!*.md' \
+    '-xr!node_modules' \
+    '-xr!*.log' \
+    '-xr!dioxus-ui/target' \
+    '-xr!dioxus-ui/dist' \
+    '-xr!dioxus-ui/Cargo.lock' \
+    '-xr!dioxus-ui/chat-sidebar/target' \
+    '-xr!dioxus-ui/content-sidebar/target' \
+    '-xr!dioxus-ui/shared-protocol/target' \
+    '-xr!dioxus-ui/.cargo' \
+    '-xr!package-lock.json' \
+    '-xr!manifest.json.bak'
+else
+  echo "ERROR: neither 'zip' nor '7z' is on PATH; cannot package extension" >&2
+  exit 1
+fi
 
 echo "✓ Extension packaged: $BUILD_DIR/$XPI_NAME"
 
