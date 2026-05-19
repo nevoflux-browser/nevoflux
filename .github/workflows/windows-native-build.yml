@@ -41,6 +41,10 @@ env:
   # which exits 1 and fails npm ci. Husky's git-hooks setup is dev-only;
   # CI doesn't need it.
   HUSKY: '0'
+  # Make `npm run *` use MSYS2 bash so POSIX env-var prefix syntax
+  # (e.g. `GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=... surfer download`) parses.
+  # The default on Windows is cmd.exe, which doesn't understand `KEY=val cmd`.
+  NPM_CONFIG_SCRIPT_SHELL: 'C:\mozilla-build\msys2\usr\bin\bash.exe'
 
 jobs:
   prepare:
@@ -68,13 +72,21 @@ jobs:
             exit 1
           }
 
-      - name: Prepend Git Bash to PATH
+      - name: Prepend Git Bash + Unix coreutils to PATH
         shell: pwsh
-        # Belt-and-suspenders for the HUSKY=0 fix above. If any other tool we
-        # invoke (npm scripts, surfer, etc.) tries to spawn `bash`/`sh` via
-        # PATH lookup, we want it to find Git Bash, not the WSL launcher stub.
+        # Three things on PATH so bash steps + child processes both work:
+        # - C:\Program Files\Git\bin            -> bash.exe, git.exe
+        # - C:\Program Files\Git\usr\bin        -> coreutils (sleep, find, tar, dos2unix)
+        # - C:\mozilla-build\msys2\usr\bin      -> backup coreutils (MozillaBuild ships them too)
+        # Without usr\bin, MSYS2 bash steps can't find `sleep` etc. via PATH.
+        # Without the prepend, anything spawning `bash` finds C:\Windows\System32\bash.exe
+        # (the WSL launcher stub) first and fails.
         run: |
-          "C:\Program Files\Git\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          @(
+            'C:\Program Files\Git\bin',
+            'C:\Program Files\Git\usr\bin',
+            'C:\mozilla-build\msys2\usr\bin'
+          ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Cleanup stale state
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
