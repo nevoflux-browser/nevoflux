@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+# === Cross-compile-only block (GCB: Linux + Wine + VS2022) ===
 if test "$ZEN_CROSS_COMPILING"; then
 
   export WINSYSROOT="$(echo ~)/win-cross/vs2026"
@@ -20,12 +21,14 @@ if test "$ZEN_CROSS_COMPILING"; then
   else
     export WIN32_REDIST_DIR="$(echo ~)/win-cross/vs2026/VC/Redist/MSVC/14.50.35710/x64/Microsoft.VC145.CRT"
   fi
+
+  # sccache wrapping clang-cl through wine is broken (clang-cl gets invoked
+  # without input files). Disable ccache/sccache for C/C++ on cross-compile only.
+  # Native Windows builds (GHA) DO NOT set this flag and CAN use sccache.
+  ac_add_options --without-ccache
 fi
 
-# On Windows cross-compile, sccache wrapping clang-cl through wine is broken
-# (clang-cl gets invoked without input files). Always disable ccache/sccache
-# for C/C++ compilation. Rust still benefits from sccache via RUSTC_WRAPPER=sccache.
-ac_add_options --without-ccache
+# === Shared block (applies to both cross-compile and native Windows builds) ===
 
 ac_add_options --disable-maintenance-service
 ac_add_options --disable-bits-download
@@ -37,23 +40,32 @@ elif test "$SURFER_COMPAT" = "aarch64"; then
   ac_add_options --target=aarch64-pc-windows-msvc
   ac_add_options --enable-eme=widevine
 
-  # override LTO settings
+  # arm64 LTO override (applies to both cross and native cross-target builds)
   export MOZ_LTO=cross,thin
   ac_add_options --enable-lto=cross,thin
 fi
 
-if test "$ZEN_CROSS_COMPILING"; then
-  if test "$ZEN_GA_GENERATE_PROFILE"; then
-    mk_add_options "export MOZ_AUTOMATION_PACKAGE_GENERATED_SOURCES=0"
-    ac_add_options --enable-profile-generate=cross
-  elif test "$SURFER_COMPAT" = "x86_64"; then
-    # Dont use PGO on aarch64 builds and the ZEN_GA_DISABLE_PGO flag is not set
-    if test "$ZEN_GA_DISABLE_PGO"; then
-      export ZEN_DUMMY=1
-    else
-      ac_add_options --enable-profile-use=cross
-      ac_add_options --with-pgo-profile-path=$(echo ~)/artifact/merged.profdata
-      ac_add_options --with-pgo-jarlog=$(echo ~)/artifact/en-US.log
-    fi
+# === PGO block (flattened — works for both cross and native paths) ===
+# Three modes, selected by two env vars:
+#   ZEN_GA_GENERATE_PROFILE=1                  -> Stage 1 (instrument)
+#   ZEN_GA_DISABLE_PGO=1                       -> no PGO (arm64 always, debug builds)
+#   neither set                                -> Stage 3 (profile-use), requires merged.profdata
+#
+# PGO data location:
+#   Native GHA pipeline sets NEVOFLUX_PGO_PROFILE_DIR explicitly to MSYS path of
+#   $GITHUB_WORKSPACE/pgo-cache. The $HOME/artifact fallback exists for GCB
+#   backward compatibility (GCB does cp /workspace/merged.profdata $HOME/artifact/).
+#   DO NOT remove the fallback -- it would silently break GCB.
+
+if test "$ZEN_GA_GENERATE_PROFILE" -a "$SURFER_COMPAT" = "x86_64"; then
+  mk_add_options "export MOZ_AUTOMATION_PACKAGE_GENERATED_SOURCES=0"
+  ac_add_options --enable-profile-generate=cross
+elif test "$SURFER_COMPAT" = "x86_64" -a ! "$ZEN_GA_DISABLE_PGO"; then
+  PGO_DIR="${NEVOFLUX_PGO_PROFILE_DIR:-$(echo ~)/artifact}"
+  if test -f "$PGO_DIR/merged.profdata"; then
+    ac_add_options --enable-profile-use=cross
+    ac_add_options --with-pgo-profile-path="$PGO_DIR/merged.profdata"
+    ac_add_options --with-pgo-jarlog="$PGO_DIR/en-US.log"
   fi
 fi
+# aarch64: no PGO under any path (both cross and native)
