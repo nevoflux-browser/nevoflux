@@ -198,14 +198,24 @@ jobs:
 
       - name: Initialize engine git repo (for create_rc.py)
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # CLAUDE.md pitfall #9b: Mozilla's config/create_rc.py calls
+        #   git log -1 --format=%ad milestone.txt
+        # to embed the file's mtime into the Windows .exe resource. A bare
+        # `git init` (no commits) makes git log exit 128.
+        #
+        # Earlier iterations did `git add -f .` over the entire engine tree
+        # (~100k files) to satisfy this. On this runner that hung at 25+ min
+        # (run 26122415863). Optimization: only milestone.txt needs to be
+        # tracked in a commit to satisfy create_rc.py.
         run: |
           cd engine
           git init -q
           git config core.safecrlf false
-          git add -f .
+          git add -f config/milestone.txt
           git -c user.name='NevoFlux GHA' \
               -c user.email='nevoflux-gha@nevoflux.com' \
-              commit -q -m "GHA Windows build init"
+              commit -q -m "GHA Windows build init (milestone only)"
+          echo "engine git initialized with $(git log --oneline | wc -l) commit(s)"
 
       - name: mach bootstrap + Rust targets
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
