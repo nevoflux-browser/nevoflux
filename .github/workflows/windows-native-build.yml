@@ -263,13 +263,18 @@ jobs:
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         env:
           MOZ_BUILD_DATE: ${{ inputs.build_id }}
-        run: npm run build
+        # surfer build prompts "You have not imported all of your patches.
+        # Are you sure you want to continue? (y/N)" when its tracker thinks
+        # the patch state is incomplete. In CI stdin isn't a TTY so the
+        # prompt sees EOF -> defaults to No -> exits without building.
+        # Pipe "yes\n" so surfer continues regardless.
+        run: yes y | npm run build
 
       - name: Package
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
           export ZEN_GA_DISABLE_PGO=true
-          npm run package
+          yes y | npm run package
 
       - name: Stash PGO stage1 zip
         shell: pwsh
@@ -366,7 +371,8 @@ jobs:
           else
             echo "PGO mode: disabled (skip_pgo=true)"
           fi
-          npm run build
+          # See stage1 comment re: surfer interactive prompt.
+          yes y | npm run build
 
       - name: Diagnostic — PGO engagement
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
@@ -377,7 +383,7 @@ jobs:
 
       - name: Package
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
-        run: npm run package
+        run: yes y | npm run package
 
       - name: Stage final x64 artifacts
         shell: pwsh
@@ -417,11 +423,12 @@ jobs:
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         env:
           MOZ_BUILD_DATE: ${{ inputs.build_id }}
-        run: npm run build
+        # See x64-stage1 Build step comment re: surfer interactive prompt.
+        run: yes y | npm run build
 
       - name: Package
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
-        run: npm run package
+        run: yes y | npm run package
 
       - name: Stage final arm64 artifacts
         shell: pwsh
