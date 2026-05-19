@@ -23,14 +23,24 @@ This is a CHECKLIST, not an installer. Run each section's commands manually
 The check script returns 0 only when every prerequisite is satisfied.
 
 ------------------------------------------------------------------------------
-[1] MozillaBuild (provides MSYS2 bash, used for mach python build/pgo/profileserver.py)
+[1] PowerShell 7+ (pwsh) - required by workflow steps with shell: pwsh
+------------------------------------------------------------------------------
+Without pwsh, every CI step that declares shell: pwsh will fail (GHA does
+NOT auto-fall-back to Windows PowerShell 5.1 / powershell.exe).
+Download:  https://github.com/PowerShell/PowerShell/releases/latest  (PowerShell-*-win-x64.msi)
+Or via winget:
+  winget install --id Microsoft.PowerShell --source winget
+Verify:    pwsh --version  # expect PowerShell 7.x
+
+------------------------------------------------------------------------------
+[2] MozillaBuild (provides MSYS2 bash, used for mach python build/pgo/profileserver.py)
 ------------------------------------------------------------------------------
 Download:  https://ftp.mozilla.org/pub/mozilla/libraries/win32/MozillaBuildSetup-Latest.exe
 Install:   Run installer with defaults (installs to C:\mozilla-build).
 Verify:    Test-Path 'C:\mozilla-build\start-shell.bat'
 
 ------------------------------------------------------------------------------
-[2] Git for Windows (Git Bash, used by npm / surfer / mach)
+[3] Git for Windows (Git Bash, used by npm / surfer / mach)
 ------------------------------------------------------------------------------
 Download:  https://gitforwindows.org/
 Install:   Defaults are fine. ENSURE "Git Bash Here" is enabled and
@@ -38,7 +48,7 @@ Install:   Defaults are fine. ENSURE "Git Bash Here" is enabled and
 Verify:    & 'C:\Program Files\Git\bin\bash.exe' --version
 
 ------------------------------------------------------------------------------
-[3] Node.js v20 (matches .nvmrc)
+[4] Node.js v20 (matches .nvmrc)
 ------------------------------------------------------------------------------
 Recommended: nvm-windows from https://github.com/coreybutler/nvm-windows
   nvm install 20
@@ -47,14 +57,14 @@ Or:  Direct LTS installer from https://nodejs.org/
 Verify:  node --version  # expect v20.x.x
 
 ------------------------------------------------------------------------------
-[4] Python 3.11+ (mach Python runtime)
+[5] Python 3.11+ (mach Python runtime)
 ------------------------------------------------------------------------------
 Download:  https://www.python.org/downloads/windows/  (3.11 or newer)
 Install:   IMPORTANT - check "Add python.exe to PATH" on first installer screen
 Verify:    python --version  # expect 3.11+
 
 ------------------------------------------------------------------------------
-[5] Rust toolchain (rustup-installed, host = x86_64-pc-windows-msvc)
+[6] Rust toolchain (rustup-installed, host = x86_64-pc-windows-msvc)
 ------------------------------------------------------------------------------
 Download:  https://rustup.rs/   (rustup-init.exe)
 Install:   Choose option 1 (default install). Host triple defaults to
@@ -66,7 +76,7 @@ Verify:   rustup target list --installed
           (expect both targets above)
 
 ------------------------------------------------------------------------------
-[6] Visual Studio 2022 Build Tools (MSVC compiler + SDK)
+[7] Visual Studio 2022 Build Tools (MSVC compiler + SDK)
 ------------------------------------------------------------------------------
 Download:  https://visualstudio.microsoft.com/downloads/  (Build Tools for VS2022)
 Install:   Check the following components AT MINIMUM:
@@ -80,7 +90,7 @@ Verify:    pwsh scripts/gha/check-windows-runner.ps1
            (it tests for link.exe at the ARM64 host path)
 
 ------------------------------------------------------------------------------
-[7] GitHub CLI (gh)
+[8] GitHub CLI (gh)
 ------------------------------------------------------------------------------
 Download:  https://cli.github.com/
 Install:   MSI installer; add to PATH.
@@ -88,7 +98,7 @@ Verify:    gh --version
 Note:      No need to ``gh auth login`` interactively - CI passes GH_TOKEN.
 
 ------------------------------------------------------------------------------
-[8] GitHub Actions self-hosted runner agent
+[9] GitHub Actions self-hosted runner agent
 ------------------------------------------------------------------------------
 Register the machine with the GitHub repo:
   Settings -> Actions -> Runners -> New self-hosted runner -> Windows
@@ -103,10 +113,12 @@ Install as a service (recommended):
   .\svc.cmd start
 
 ------------------------------------------------------------------------------
-[9] Disk + reboot
+[10] Disk + reboot
 ------------------------------------------------------------------------------
-Reserve >= 200 GB free on C:\. Initial source download + two obj-* trees +
-caches consume ~150 GB at peak.
+Disk thresholds:
+  >= 80 GB free  - CI gate at workflow start (enforced by prepare job)
+  ~150 GB        - peak usage during full PGO + arm64 build
+  >= 200 GB free - recommended steady-state reserve on C:\
 
 Reboot the machine after all installs to ensure PATH and registered services
 take effect.

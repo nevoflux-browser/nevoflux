@@ -32,6 +32,7 @@ function Test-Path-Exists {
 Write-Host "=== nevoflux-windows runner prerequisite check ==="
 
 # --- Tools on PATH ---
+Test-Cmd 'pwsh (PowerShell 7+)' 'pwsh' '--version'
 Test-Cmd 'node'          'node'   '--version'
 Test-Cmd 'npm'           'npm'    '--version'
 Test-Cmd 'git'           'git'    '--version'
@@ -81,8 +82,10 @@ if (-not $vsFound) {
 }
 
 # --- Disk space ---
+# Disk: 80 GB = CI startup gate; ~150 GB peak during full PGO+arm64 build;
+# 200 GB recommended steady-state reserve (see scripts/setup-windows-runner.ps1 [10]).
 $cFree = (Get-PSDrive C).Free / 1GB
-Write-Host ("INFO C: free = {0:N1} GB" -f $cFree)
+Write-Host ("INFO C: free = {0:N1} GB  (gate: 80 GB, peak: ~150 GB, recommended: 200 GB)" -f $cFree)
 if ($cFree -lt 80) {
   Write-Host "MISSING  >= 80 GB free on C: (have $([math]::Round($cFree,1)) GB)"
   $missing += 'disk-space-80gb'
