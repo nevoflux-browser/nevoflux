@@ -8,13 +8,16 @@ $ErrorActionPreference = 'Stop'
 $missing = @()
 
 function Test-Cmd {
+  # Check command presence via Get-Command (no execution).
+  # We avoid invoking the command + `2>&1` because Windows PowerShell 5.1 wraps
+  # native-exe stderr lines in NativeCommandError records under
+  # $ErrorActionPreference='Stop', causing false MISSING reports for tools that
+  # write info banners to stderr (e.g. `rustup --version`).
   param([string]$Name, [string]$Cmd, [string]$VersionArg = '--version')
-  try {
-    $null = & $Cmd $VersionArg 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "exit $LASTEXITCODE" }
+  if (Get-Command $Cmd -ErrorAction SilentlyContinue) {
     Write-Host "OK  $Name"
-  } catch {
-    Write-Host "MISSING  $Name ($Cmd $VersionArg)"
+  } else {
+    Write-Host "MISSING  $Name (not on PATH)"
     $script:missing += $Name
   }
 }
@@ -65,8 +68,10 @@ $vsFound = $false
 foreach ($edition in @('BuildTools','Community','Professional','Enterprise')) {
   $msvcDir = Join-Path $vsBase "$edition\VC\Tools\MSVC"
   if (Test-Path $msvcDir) {
-    $verDir = Get-ChildItem $msvcDir -Directory | Select-Object -First 1
-    if ($verDir) {
+    # Iterate ALL installed MSVC versions (newest first) - some versions may
+    # ship without the ARM64 toolchain even when newer versions on the same
+    # edition do. Pre-existing fix for a false-MISSING case noted in PR-3 review.
+    foreach ($verDir in (Get-ChildItem $msvcDir -Directory | Sort-Object Name -Descending)) {
       $arm64Link = Join-Path $verDir.FullName 'bin\Hostx64\arm64\link.exe'
       if (Test-Path $arm64Link) {
         Write-Host "OK  VS2022 $edition ARM64 toolchain ($arm64Link)"
@@ -74,6 +79,7 @@ foreach ($edition in @('BuildTools','Community','Professional','Enterprise')) {
         break
       }
     }
+    if ($vsFound) { break }
   }
 }
 if (-not $vsFound) {
