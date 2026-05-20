@@ -222,6 +222,44 @@ jobs:
               commit -q -m "GHA Windows build init (milestone only)"
           echo "engine git initialized with $(git log --oneline | wc -l) commit(s)"
 
+      - name: Stage windows-rs crate (configure requirement)
+        shell: pwsh
+        # Firefox 149 configure unconditionally requires the `windows`
+        # Rust crate source at version 0.62.2 (same crate id from crates.io
+        # that taskcluster's toolchains.yml fetches). Without it, configure
+        # errors:
+        #   ERROR: Cannot find the windows rust crate source.
+        #   ... set `MOZ_WINDOWS_RS_DIR` to location of the
+        #   `windows-0.62.2` directory
+        # The .crate file from crates.io is a tar.gz containing a single
+        # top-level `windows-0.62.2/` directory. Extract to win-rs/ and
+        # MOZ_WINDOWS_RS_DIR points at win-rs.
+        run: |
+          $cacheDir = 'C:\nevoflux-cache\winrs'
+          New-Item -ItemType Directory -Force $cacheDir | Out-Null
+          $crate = Join-Path $cacheDir 'windows-0.62.2.crate'
+          if (-not (Test-Path $crate) -or (Get-Item $crate).Length -lt 1MB) {
+            Write-Host "Downloading windows-0.62.2.crate from crates.io ..."
+            $ProgressPreference = 'SilentlyContinue'
+            Invoke-WebRequest `
+              -Uri 'https://crates.io/api/v1/crates/windows/0.62.2/download' `
+              -OutFile $crate
+          } else {
+            Write-Host "Using cached crate: $crate ($([math]::Round((Get-Item $crate).Length/1MB,2)) MB)"
+          }
+
+          $extractRoot = Join-Path $env:GITHUB_WORKSPACE 'win-rs'
+          if (Test-Path $extractRoot) { Remove-Item -Recurse -Force $extractRoot }
+          New-Item -ItemType Directory -Force $extractRoot | Out-Null
+
+          # The .crate is a gzipped tar; Windows tar handles it in-process.
+          & 'C:\Windows\System32\tar.exe' -xzf $crate -C $extractRoot
+          if ($LASTEXITCODE -ne 0) { throw "tar failed extracting $crate" }
+
+          $expected = Join-Path $extractRoot 'windows-0.62.2'
+          if (-not (Test-Path $expected)) { throw "Expected dir missing: $expected" }
+          Write-Host "Staged windows-rs crate at $expected"
+
       - name: Stage Windows App SDK (configure requirement)
         shell: pwsh
         # toolkit/moz.configure unconditionally requires a Windows App SDK
@@ -369,6 +407,7 @@ jobs:
       ZEN_GA_GENERATE_PROFILE: '1'
       ZEN_RELEASE: '1'
       MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\x64
+      MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs
     steps:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
@@ -475,6 +514,7 @@ jobs:
       SURFER_PLATFORM: win32
       ZEN_RELEASE: '1'
       MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\x64
+      MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs
     steps:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
@@ -540,6 +580,7 @@ jobs:
       ZEN_GA_DISABLE_PGO: '1'
       ZEN_RELEASE: '1'
       MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\arm64
+      MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs
     steps:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
