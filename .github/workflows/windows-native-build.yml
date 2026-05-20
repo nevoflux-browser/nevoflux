@@ -259,6 +259,18 @@ jobs:
             rustup target add aarch64-pc-windows-msvc
           fi
 
+      - name: Install cbindgen (configure requirement)
+        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # mach bootstrap on this self-hosted runner doesn't install cbindgen
+        # (taskgraph fetch fails so no toolchain artifact). Install it directly
+        # via cargo into ~/.cargo/bin (already on system PATH for all jobs).
+        run: |
+          if ! command -v cbindgen >/dev/null 2>&1; then
+            cargo install --locked cbindgen
+          else
+            echo "cbindgen already installed: $(cbindgen --version)"
+          fi
+
       - name: Create work dirs
         shell: pwsh
         run: New-Item -ItemType Directory -Force pgo-cache, out, dist | Out-Null
