@@ -222,6 +222,32 @@ jobs:
               commit -q -m "GHA Windows build init (milestone only)"
           echo "engine git initialized with $(git log --oneline | wc -l) commit(s)"
 
+      - name: Install LLVM/Clang (clang-cl)
+        shell: pwsh
+        # mach bootstrap on Windows doesn't install clang. Firefox 149 configure
+        # requires clang-cl. Install via winget if missing.
+        run: |
+          $clangCl = Get-Command clang-cl -ErrorAction SilentlyContinue
+          if (-not $clangCl) {
+            $defaultLlvmBin = 'C:\Program Files\LLVM\bin'
+            if (Test-Path (Join-Path $defaultLlvmBin 'clang-cl.exe')) {
+              Write-Host "Found LLVM at $defaultLlvmBin (not yet on PATH)"
+              Add-Content -Path $env:GITHUB_PATH -Value $defaultLlvmBin
+            } else {
+              Write-Host "Installing LLVM via winget..."
+              winget install --id LLVM.LLVM --silent --accept-source-agreements --accept-package-agreements
+              if (Test-Path (Join-Path $defaultLlvmBin 'clang-cl.exe')) {
+                Add-Content -Path $env:GITHUB_PATH -Value $defaultLlvmBin
+                Write-Host "LLVM installed at $defaultLlvmBin"
+              } else {
+                Write-Host "::error::LLVM install failed; clang-cl still missing"
+                exit 1
+              }
+            }
+          } else {
+            Write-Host "clang-cl already on PATH: $($clangCl.Source)"
+          }
+
       - name: mach bootstrap + Rust targets
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
