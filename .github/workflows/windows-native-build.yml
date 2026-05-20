@@ -93,6 +93,29 @@ jobs:
             'C:\mozilla-build\msys2\usr\bin'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
+      - name: Locate mozmake (diagnostic + cache GITHUB_ENV)
+        shell: pwsh
+        # MozillaBuild's mozmake.exe / make.exe lives at different paths
+        # across versions. Find it once in prepare and stash the dir for
+        # downstream jobs via a side-channel file in $GITHUB_WORKSPACE.
+        run: |
+          $cands = Get-ChildItem -Path 'C:\mozilla-build' -Recurse -Filter 'mozmake.exe' -ErrorAction SilentlyContinue
+          if (-not $cands) {
+            $cands = Get-ChildItem -Path 'C:\mozilla-build' -Recurse -Filter 'make.exe' -ErrorAction SilentlyContinue |
+                     Where-Object { $_.FullName -notmatch '\\share\\' }
+          }
+          if (-not $cands) {
+            Write-Error "No mozmake.exe or make.exe found under C:\mozilla-build"
+            exit 1
+          }
+          $cands | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+          $dir = ($cands | Select-Object -First 1).Directory.FullName
+          Write-Host "Using mozmake dir: $dir"
+          Set-Content -Path (Join-Path $env:GITHUB_WORKSPACE '.mozmake-dir') -Value $dir -Encoding ascii
+          # Also expose to subsequent steps within prepare (mach bootstrap,
+          # configure invocations, etc.).
+          Add-Content -Path $env:GITHUB_PATH -Value $dir
+
       - name: Cleanup stale state
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
@@ -413,17 +436,22 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM + mozmake to PATH
         shell: pwsh
         # $GITHUB_PATH is per-job; re-applied in every job that uses bash.
-        # LLVM bin (clang-cl), NASM bin (configure prerequisite), and
-        # mozmake bin (MozillaBuild's GNU make) all live at fixed paths.
+        # LLVM bin (clang-cl), NASM bin (configure prerequisite), and the
+        # mozmake dir (discovered by prepare, cached in .mozmake-dir on
+        # the shared self-hosted workspace) all need to land on PATH.
         run: |
-          @(
+          $paths = @(
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
-            'C:\mozilla-build\mozmake',
             'C:\Program Files\LLVM\bin',
             'C:\Program Files\NASM'
-          ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          )
+          $mozmakeFile = Join-Path $env:GITHUB_WORKSPACE '.mozmake-dir'
+          if (Test-Path $mozmakeFile) {
+            $paths += (Get-Content $mozmakeFile).Trim()
+          }
+          $paths | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Swap to x86_64 distribution
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
@@ -463,14 +491,18 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM + mozmake to PATH
         shell: pwsh
         run: |
-          @(
+          $paths = @(
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
-            'C:\mozilla-build\mozmake',
             'C:\Program Files\LLVM\bin',
             'C:\Program Files\NASM'
-          ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          )
+          $mozmakeFile = Join-Path $env:GITHUB_WORKSPACE '.mozmake-dir'
+          if (Test-Path $mozmakeFile) {
+            $paths += (Get-Content $mozmakeFile).Trim()
+          }
+          $paths | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Expand instrumented binary
         shell: pwsh
@@ -522,14 +554,18 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM + mozmake to PATH
         shell: pwsh
         run: |
-          @(
+          $paths = @(
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
-            'C:\mozilla-build\mozmake',
             'C:\Program Files\LLVM\bin',
             'C:\Program Files\NASM'
-          ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          )
+          $mozmakeFile = Join-Path $env:GITHUB_WORKSPACE '.mozmake-dir'
+          if (Test-Path $mozmakeFile) {
+            $paths += (Get-Content $mozmakeFile).Trim()
+          }
+          $paths | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Clean stale obj + swap distribution
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
@@ -589,14 +625,18 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM + mozmake to PATH
         shell: pwsh
         run: |
-          @(
+          $paths = @(
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
-            'C:\mozilla-build\mozmake',
             'C:\Program Files\LLVM\bin',
             'C:\Program Files\NASM'
-          ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          )
+          $mozmakeFile = Join-Path $env:GITHUB_WORKSPACE '.mozmake-dir'
+          if (Test-Path $mozmakeFile) {
+            $paths += (Get-Content $mozmakeFile).Trim()
+          }
+          $paths | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Swap to aarch64 distribution
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
