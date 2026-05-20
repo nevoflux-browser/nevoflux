@@ -513,16 +513,16 @@ jobs:
         # fixed paths. GNU make installed by prepare lives in chocolatey's
         # bin dir which is already on system PATH.
         run: |
-          # LLVM 20 (staged by prepare) FIRST so configure picks Firefox 149's
-          # validated clang version, not winget's bleeding-edge LLVM 22.
-          # Older clang versions don't promote -Wincompatible-pointer-types
-          # to errors and produce correct bindgen output for MSVC STL.
+          # LLVM 20 (staged by prepare) is Firefox 149's validated clang.
+          # `C:\Program Files\LLVM\bin` (winget LLVM 22) is DELIBERATELY
+          # absent: GitHub Actions processes $GITHUB_PATH lines so later
+          # entries end up higher in PATH, so leaving it there would
+          # supersede llvm-20 and pull clang 22 headers into bindgen.
           @(
             'C:\nevoflux-cache\llvm-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
-            'C:\Program Files\LLVM\bin',
             'C:\Program Files\NASM'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
@@ -564,16 +564,16 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
         run: |
-          # LLVM 20 (staged by prepare) FIRST so configure picks Firefox 149's
-          # validated clang version, not winget's bleeding-edge LLVM 22.
-          # Older clang versions don't promote -Wincompatible-pointer-types
-          # to errors and produce correct bindgen output for MSVC STL.
+          # LLVM 20 (staged by prepare) is Firefox 149's validated clang.
+          # `C:\Program Files\LLVM\bin` (winget LLVM 22) is DELIBERATELY
+          # absent: GitHub Actions processes $GITHUB_PATH lines so later
+          # entries end up higher in PATH, so leaving it there would
+          # supersede llvm-20 and pull clang 22 headers into bindgen.
           @(
             'C:\nevoflux-cache\llvm-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
-            'C:\Program Files\LLVM\bin',
             'C:\Program Files\NASM'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
@@ -627,16 +627,16 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
         run: |
-          # LLVM 20 (staged by prepare) FIRST so configure picks Firefox 149's
-          # validated clang version, not winget's bleeding-edge LLVM 22.
-          # Older clang versions don't promote -Wincompatible-pointer-types
-          # to errors and produce correct bindgen output for MSVC STL.
+          # LLVM 20 (staged by prepare) is Firefox 149's validated clang.
+          # `C:\Program Files\LLVM\bin` (winget LLVM 22) is DELIBERATELY
+          # absent: GitHub Actions processes $GITHUB_PATH lines so later
+          # entries end up higher in PATH, so leaving it there would
+          # supersede llvm-20 and pull clang 22 headers into bindgen.
           @(
             'C:\nevoflux-cache\llvm-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
-            'C:\Program Files\LLVM\bin',
             'C:\Program Files\NASM'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
@@ -698,16 +698,16 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
         run: |
-          # LLVM 20 (staged by prepare) FIRST so configure picks Firefox 149's
-          # validated clang version, not winget's bleeding-edge LLVM 22.
-          # Older clang versions don't promote -Wincompatible-pointer-types
-          # to errors and produce correct bindgen output for MSVC STL.
+          # LLVM 20 (staged by prepare) is Firefox 149's validated clang.
+          # `C:\Program Files\LLVM\bin` (winget LLVM 22) is DELIBERATELY
+          # absent: GitHub Actions processes $GITHUB_PATH lines so later
+          # entries end up higher in PATH, so leaving it there would
+          # supersede llvm-20 and pull clang 22 headers into bindgen.
           @(
             'C:\nevoflux-cache\llvm-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
-            'C:\Program Files\LLVM\bin',
             'C:\Program Files\NASM'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
