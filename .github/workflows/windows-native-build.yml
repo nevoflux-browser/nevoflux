@@ -415,12 +415,13 @@ jobs:
             Write-Host "LLVM 20 already staged: $ver"
           } else {
             New-Item -ItemType Directory -Force 'C:\nevoflux-cache' | Out-Null
-            $tarball = 'C:\nevoflux-cache\LLVM-20.1.7-Windows-X64.tar.xz'
+            $tarball = 'C:\nevoflux-cache\clang+llvm-20.1.7-x86_64-pc-windows-msvc.tar.xz'
             if (-not (Test-Path $tarball) -or (Get-Item $tarball).Length -lt 50MB) {
               Write-Host "Downloading LLVM 20.1.7 portable ..."
               $ProgressPreference = 'SilentlyContinue'
+              # `+` URL-encoded as %2B to match GitHub's browser_download_url.
               Invoke-WebRequest `
-                -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.7/LLVM-20.1.7-Windows-X64.tar.xz' `
+                -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.7/clang%2Bllvm-20.1.7-x86_64-pc-windows-msvc.tar.xz' `
                 -OutFile $tarball
             }
             $stageTmp = 'C:\nevoflux-cache\_llvm-20-stage'
