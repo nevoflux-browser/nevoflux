@@ -35,7 +35,16 @@ ac_add_options --disable-bits-download
 
 if test "$SURFER_COMPAT" = "x86_64"; then
   ac_add_options --target=x86_64-pc-windows-msvc
-  ac_add_options --enable-eme=widevine,wmfcdm
+  # wmfcdm requires the Windows App SDK; the cross-compile (GCB) path
+  # picks it up via WINSYSROOT, but native Windows builds don't have a
+  # pre-staged SDK on this runner. Enable wmfcdm only when WINSYSROOT
+  # is set (i.e. ZEN_CROSS_COMPILING). Native runs use widevine only,
+  # which matches arm64 / linux / macos configs in this repo.
+  if test "$WINSYSROOT"; then
+    ac_add_options --enable-eme=widevine,wmfcdm
+  else
+    ac_add_options --enable-eme=widevine
+  fi
 elif test "$SURFER_COMPAT" = "aarch64"; then
   ac_add_options --target=aarch64-pc-windows-msvc
   ac_add_options --enable-eme=widevine
