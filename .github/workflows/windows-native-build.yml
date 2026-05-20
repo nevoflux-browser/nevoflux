@@ -233,7 +233,8 @@ jobs:
         #   `windows-0.62.2` directory
         # The .crate file from crates.io is a tar.gz containing a single
         # top-level `windows-0.62.2/` directory. Extract to win-rs/ and
-        # MOZ_WINDOWS_RS_DIR points at win-rs.
+        # MOZ_WINDOWS_RS_DIR points at win-rs\windows-0.62.2 (must contain
+        # Cargo.toml directly, per toolkit/moz.configure line 4249).
         run: |
           $cacheDir = 'C:\nevoflux-cache\winrs'
           New-Item -ItemType Directory -Force $cacheDir | Out-Null
@@ -407,7 +408,7 @@ jobs:
       ZEN_GA_GENERATE_PROFILE: '1'
       ZEN_RELEASE: '1'
       MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\x64
-      MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs
+      MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs\windows-0.62.2
     steps:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
@@ -514,7 +515,7 @@ jobs:
       SURFER_PLATFORM: win32
       ZEN_RELEASE: '1'
       MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\x64
-      MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs
+      MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs\windows-0.62.2
     steps:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
@@ -580,7 +581,7 @@ jobs:
       ZEN_GA_DISABLE_PGO: '1'
       ZEN_RELEASE: '1'
       MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\arm64
-      MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs
+      MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs\windows-0.62.2
     steps:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
