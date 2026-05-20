@@ -543,6 +543,37 @@ jobs:
         # Pipe "yes\n" so surfer continues regardless.
         run: yes y | npm run build
 
+      - name: Diagnostic — dump failing build-script outputs
+        if: failure()
+        shell: pwsh
+        # When cargo build scripts fail, GHA's log streaming truncates
+        # the stderr. Read the captured `output` file under cargo's
+        # build target dir directly so we get the full bindgen panic.
+        run: |
+          $objDir = 'engine\obj-x86_64-pc-windows-msvc\release\build'
+          if (-not (Test-Path $objDir)) {
+            Write-Host "No cargo build dir at $objDir"
+            return
+          }
+          Get-ChildItem -Directory $objDir | ForEach-Object {
+            $out = Join-Path $_.FullName 'output'
+            $err = Join-Path $_.FullName 'stderr'
+            if (Test-Path $out) {
+              $size = (Get-Item $out).Length
+              if ($size -gt 0) {
+                Write-Host "=== $($_.Name)/output ($size bytes) ==="
+                Get-Content $out -Tail 200
+              }
+            }
+            if (Test-Path $err) {
+              $size = (Get-Item $err).Length
+              if ($size -gt 0) {
+                Write-Host "=== $($_.Name)/stderr ($size bytes) ==="
+                Get-Content $err -Tail 200
+              }
+            }
+          }
+
       - name: Package
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
