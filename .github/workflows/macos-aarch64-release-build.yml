@@ -303,7 +303,7 @@ jobs:
         env:
           SURFER_COMPAT: aarch64
           ZEN_RELEASE_BRANCH: ${{ inputs.release-branch }}
-          RUSTUP_TOOLCHAIN: '1.83'
+          RUSTUP_TOOLCHAIN: '1.90'
           # Disable LTO for macOS: ld64 linker bug check conflicts with MOZ_AUTOMATION
           ZEN_DISABLE_LTO: '1'
           # Disable PGO: instrumented browser hangs on self-hosted runner
