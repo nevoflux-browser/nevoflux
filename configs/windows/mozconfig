@@ -39,6 +39,14 @@ ac_add_options --disable-bits-download
 # Configure even suggests this exact flag as the workaround.
 if test ! "$WINSYSROOT"; then
   ac_add_options --without-wasm-sandboxed-libraries
+
+  # The Gecko Profiler rust-api crate uses bindgen against MSVC STL
+  # headers; the resulting bindings.rs fails to compile on the
+  # native-GHA runner's MSVC 14.44 toolset (build script exits 101
+  # without surfacing a usable error to cargo's persisted output
+  # files). Profiler is a developer-only tool, not user-facing.
+  # Disable on native builds; GCB cross-compile keeps it enabled.
+  ac_add_options --disable-gecko-profiler
 fi
 
 if test "$SURFER_COMPAT" = "x86_64"; then
