@@ -207,6 +207,35 @@ jobs:
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: npm run import -- --verbose
 
+      - name: Blocklist MSVC STL internals in gecko-profiler bindgen
+        shell: pwsh
+        # Bindgen + MSVC 14.44 STL emits broken Rust for std::vector's
+        # internal `_Vector_val<_Val_types>` typedef (a "Scary" cross-
+        # instantiation iterator base) even when std::vector is opaque.
+        # Build fails with:
+        #   error[E0412]: cannot find type `_Val_types` in this scope
+        #   pub type vector__Scary_val = root::std::_Vector_val<_Val_types>;
+        # Patch tools/profiler/rust-api/build.rs to also blocklist the
+        # MSVC STL internals (anything in std::_*). This is a CI-only
+        # patch (engine/ is regenerated each run from patches+overlays).
+        run: |
+          $f = 'engine\tools\profiler\rust-api\build.rs'
+          if (-not (Test-Path $f)) { throw "Missing $f" }
+          $text = Get-Content -Raw $f
+          if ($text -match '\.blocklist_type\("std::_') {
+            Write-Host "build.rs already has MSVC STL blocklist"
+          } else {
+            $inject = @"
+        .blocklist_type("std::_.*")
+        .blocklist_type("std::__.*")
+        .opaque_type("std::vector")
+"@
+            # Insert after the last .opaque_type("std::vector") line.
+            $text = $text -replace '(\.opaque_type\("std::vector"\))', "`$1`r`n$inject"
+            Set-Content -Path $f -Value $text -NoNewline
+            Write-Host "Patched $f with MSVC STL blocklist"
+          }
+
       - name: Inject agent (x86_64)
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         env:
