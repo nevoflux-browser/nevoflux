@@ -274,14 +274,16 @@ jobs:
       ZEN_GA_GENERATE_PROFILE: '1'
       ZEN_RELEASE: '1'
     steps:
-      - name: Prepend Git Bash + Unix coreutils to PATH
+      - name: Prepend Git Bash + Unix coreutils + LLVM to PATH
         shell: pwsh
         # $GITHUB_PATH is per-job; re-applied in every job that uses bash.
+        # LLVM bin is required by configure (clang-cl) — installed once in prepare.
         run: |
           @(
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
-            'C:\mozilla-build\msys2\usr\bin'
+            'C:\mozilla-build\msys2\usr\bin',
+            'C:\Program Files\LLVM\bin'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Swap to x86_64 distribution
@@ -319,13 +321,14 @@ jobs:
     if: ${{ !inputs.skip_pgo }}
     runs-on: [self-hosted, nevoflux-windows]
     steps:
-      - name: Prepend Git Bash + Unix coreutils to PATH
+      - name: Prepend Git Bash + Unix coreutils + LLVM to PATH
         shell: pwsh
         run: |
           @(
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
-            'C:\mozilla-build\msys2\usr\bin'
+            'C:\mozilla-build\msys2\usr\bin',
+            'C:\Program Files\LLVM\bin'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Expand instrumented binary
@@ -373,13 +376,14 @@ jobs:
       SURFER_PLATFORM: win32
       ZEN_RELEASE: '1'
     steps:
-      - name: Prepend Git Bash + Unix coreutils to PATH
+      - name: Prepend Git Bash + Unix coreutils + LLVM to PATH
         shell: pwsh
         run: |
           @(
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
-            'C:\mozilla-build\msys2\usr\bin'
+            'C:\mozilla-build\msys2\usr\bin',
+            'C:\Program Files\LLVM\bin'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Clean stale obj + swap distribution
@@ -435,13 +439,14 @@ jobs:
       ZEN_GA_DISABLE_PGO: '1'
       ZEN_RELEASE: '1'
     steps:
-      - name: Prepend Git Bash + Unix coreutils to PATH
+      - name: Prepend Git Bash + Unix coreutils + LLVM to PATH
         shell: pwsh
         run: |
           @(
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
-            'C:\mozilla-build\msys2\usr\bin'
+            'C:\mozilla-build\msys2\usr\bin',
+            'C:\Program Files\LLVM\bin'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Swap to aarch64 distribution
