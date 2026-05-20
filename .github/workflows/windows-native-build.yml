@@ -222,6 +222,71 @@ jobs:
               commit -q -m "GHA Windows build init (milestone only)"
           echo "engine git initialized with $(git log --oneline | wc -l) commit(s)"
 
+      - name: Stage Windows App SDK (configure requirement)
+        shell: pwsh
+        # toolkit/moz.configure unconditionally requires a Windows App SDK
+        # dir on Windows (raises FatalCheckError if absent). taskcluster
+        # bootstraps it via the "winappsdk-{cpu}-pc-windows-msvc" toolchain
+        # task, which we don't run here. Mirror Mozilla's build-WindowsAppSDK.sh:
+        # download the 1.8 redist zip, extract the per-arch MSIX, copy the 8
+        # DLLs Firefox actually links against. Result dirs are consumed via
+        # MOZ_WINDOWS_APP_SDK_DIR in each build job.
+        # Cache the redist zip on the runner (~450 MB) so we download once.
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+          $cacheDir = 'C:\nevoflux-cache\winappsdk'
+          New-Item -ItemType Directory -Force $cacheDir | Out-Null
+          $redist = Join-Path $cacheDir 'Microsoft.WindowsAppRuntime.Redist.1.8.zip'
+          if (-not (Test-Path $redist) -or (Get-Item $redist).Length -lt 100MB) {
+            Write-Host "Downloading Windows App SDK redist 1.8 ..."
+            $ProgressPreference = 'SilentlyContinue'
+            Invoke-WebRequest `
+              -Uri 'https://aka.ms/windowsappsdk/1.8/1.8.251106002/Microsoft.WindowsAppRuntime.Redist.1.8.zip' `
+              -OutFile $redist
+          } else {
+            Write-Host "Using cached redist: $redist ($([math]::Round((Get-Item $redist).Length/1MB,1)) MB)"
+          }
+
+          $dlls = @(
+            'CoreMessagingXP.dll',
+            'marshal.dll',
+            'Microsoft.InputStateManager.dll',
+            'Microsoft.Internal.FrameworkUdk.dll',
+            'Microsoft.UI.Composition.OSSupport.dll',
+            'Microsoft.UI.Input.dll',
+            'Microsoft.UI.Windowing.Core.dll',
+            'Microsoft.UI.Windowing.dll'
+          )
+
+          $extractRoot = Join-Path $env:GITHUB_WORKSPACE 'win-app-sdk'
+          if (Test-Path $extractRoot) { Remove-Item -Recurse -Force $extractRoot }
+          New-Item -ItemType Directory -Force $extractRoot | Out-Null
+
+          $tmp = (New-Item -ItemType Directory -Force (Join-Path $extractRoot '_tmp')).FullName
+          [System.IO.Compression.ZipFile]::ExtractToDirectory($redist, $tmp)
+
+          function Stage-Arch($archDir, $outName) {
+            $msix = Join-Path $tmp "MSIX\win10-$archDir\Microsoft.WindowsAppRuntime.1.8.msix"
+            if (-not (Test-Path $msix)) { throw "MSIX missing: $msix" }
+            $msixTmp = (New-Item -ItemType Directory -Force (Join-Path $extractRoot "_msix-$archDir")).FullName
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($msix, $msixTmp)
+            $out = (New-Item -ItemType Directory -Force (Join-Path $extractRoot $outName)).FullName
+            foreach ($d in $dlls) {
+              Copy-Item -Force (Join-Path $msixTmp $d) $out
+            }
+            Remove-Item -Recurse -Force $msixTmp
+            Write-Host "Staged $outName -> $out"
+          }
+
+          Stage-Arch 'x64' 'x64'
+          if ('${{ inputs.skip_arm64 }}' -ne 'true') {
+            Stage-Arch 'arm64' 'arm64'
+          }
+
+          Remove-Item -Recurse -Force $tmp
+          Get-ChildItem -Recurse $extractRoot | ForEach-Object { Write-Host $_.FullName }
+
       - name: Install nasm (configure requirement)
         shell: pwsh
         # configure: "Nasm is required to build with AV1, FFVPX, JPEG and VPX,
@@ -303,6 +368,7 @@ jobs:
       SURFER_PLATFORM: win32
       ZEN_GA_GENERATE_PROFILE: '1'
       ZEN_RELEASE: '1'
+      MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\x64
     steps:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
@@ -408,6 +474,7 @@ jobs:
       SURFER_COMPAT: x86_64
       SURFER_PLATFORM: win32
       ZEN_RELEASE: '1'
+      MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\x64
     steps:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
@@ -472,6 +539,7 @@ jobs:
       SURFER_PLATFORM: win32
       ZEN_GA_DISABLE_PGO: '1'
       ZEN_RELEASE: '1'
+      MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\arm64
     steps:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
