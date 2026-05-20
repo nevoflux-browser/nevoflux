@@ -398,23 +398,61 @@ jobs:
             Write-Host "nasm already on PATH: $($nasm.Source)"
           }
 
+      - name: Stage LLVM 20 (matches Firefox 149 taskcluster toolchain)
+        shell: pwsh
+        # Firefox 149 was built/tested with clang 20 (see
+        # taskcluster/kinds/toolchain/clang.yml: build/build-clang/clang-20.json).
+        # Newer clang (e.g. 22 from winget) promotes more warnings to errors
+        # (-Wincompatible-pointer-types in nsprpub) and breaks bindgen on MSVC
+        # STL internals. Stage the official LLVM 20 portable build to a
+        # persistent cache dir on the runner. PATH prepend handled by build
+        # jobs (mozbuild-clang already first in the build-job PATH list).
+        run: |
+          $cacheRoot = 'C:\nevoflux-cache\llvm-20'
+          $clangCl = Join-Path $cacheRoot 'bin\clang-cl.exe'
+          if (Test-Path $clangCl) {
+            $ver = & $clangCl --version 2>&1 | Select-Object -First 1
+            Write-Host "LLVM 20 already staged: $ver"
+          } else {
+            New-Item -ItemType Directory -Force 'C:\nevoflux-cache' | Out-Null
+            $tarball = 'C:\nevoflux-cache\LLVM-20.1.7-Windows-X64.tar.xz'
+            if (-not (Test-Path $tarball) -or (Get-Item $tarball).Length -lt 50MB) {
+              Write-Host "Downloading LLVM 20.1.7 portable ..."
+              $ProgressPreference = 'SilentlyContinue'
+              Invoke-WebRequest `
+                -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.7/LLVM-20.1.7-Windows-X64.tar.xz' `
+                -OutFile $tarball
+            }
+            $stageTmp = 'C:\nevoflux-cache\_llvm-20-stage'
+            if (Test-Path $stageTmp) { Remove-Item -Recurse -Force $stageTmp }
+            New-Item -ItemType Directory -Force $stageTmp | Out-Null
+            Write-Host "Extracting $tarball ..."
+            & 'C:\Windows\System32\tar.exe' -xJf $tarball -C $stageTmp
+            if ($LASTEXITCODE -ne 0) { throw "tar extract failed" }
+            $extractedRoot = Get-ChildItem $stageTmp -Directory | Select-Object -First 1
+            if (-not $extractedRoot) { throw "no dir inside $stageTmp" }
+            if (Test-Path $cacheRoot) { Remove-Item -Recurse -Force $cacheRoot }
+            Move-Item $extractedRoot.FullName $cacheRoot
+            Remove-Item -Recurse -Force $stageTmp
+            $ver = & $clangCl --version 2>&1 | Select-Object -First 1
+            Write-Host "LLVM 20 staged at $cacheRoot ($ver)"
+          }
+
       - name: Install LLVM/Clang (clang-cl)
         shell: pwsh
-        # mach bootstrap on Windows doesn't install clang. Firefox 149 configure
-        # requires clang-cl. Install via winget if missing.
+        # Fallback: ensure SOME clang-cl is on PATH for any pre-bootstrap
+        # step in prepare that may need it. The LLVM 20 from the previous
+        # step takes priority in build jobs via their PATH-prepend list.
         run: |
           $clangCl = Get-Command clang-cl -ErrorAction SilentlyContinue
           if (-not $clangCl) {
             $defaultLlvmBin = 'C:\Program Files\LLVM\bin'
             if (Test-Path (Join-Path $defaultLlvmBin 'clang-cl.exe')) {
-              Write-Host "Found LLVM at $defaultLlvmBin (not yet on PATH)"
               Add-Content -Path $env:GITHUB_PATH -Value $defaultLlvmBin
             } else {
-              Write-Host "Installing LLVM via winget..."
               winget install --id LLVM.LLVM --silent --accept-source-agreements --accept-package-agreements
               if (Test-Path (Join-Path $defaultLlvmBin 'clang-cl.exe')) {
                 Add-Content -Path $env:GITHUB_PATH -Value $defaultLlvmBin
-                Write-Host "LLVM installed at $defaultLlvmBin"
               } else {
                 Write-Host "::error::LLVM install failed; clang-cl still missing"
                 exit 1
@@ -423,6 +461,9 @@ jobs:
           } else {
             Write-Host "clang-cl already on PATH: $($clangCl.Source)"
           }
+          # Ensure LLVM 20 wins in this prepare job too (e.g. for steps that
+          # might invoke clang before mach bootstrap).
+          Add-Content -Path $env:GITHUB_PATH -Value 'C:\nevoflux-cache\llvm-20\bin'
 
       - name: mach bootstrap + Rust targets
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
@@ -471,12 +512,12 @@ jobs:
         # fixed paths. GNU make installed by prepare lives in chocolatey's
         # bin dir which is already on system PATH.
         run: |
-          # mozbuild-clang FIRST so configure picks Mozilla's validated clang
-          # (FF 149: clang ~19) over winget's bleeding-edge LLVM 22. clang 22
-          # promotes more warnings to errors (e.g. -Wincompatible-pointer-types
-          # in nsprpub/w95sock.c) which break the build.
+          # LLVM 20 (staged by prepare) FIRST so configure picks Firefox 149's
+          # validated clang version, not winget's bleeding-edge LLVM 22.
+          # Older clang versions don't promote -Wincompatible-pointer-types
+          # to errors and produce correct bindgen output for MSVC STL.
           @(
-            "$env:USERPROFILE\.mozbuild\clang\bin",
+            'C:\nevoflux-cache\llvm-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
@@ -522,12 +563,12 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
         run: |
-          # mozbuild-clang FIRST so configure picks Mozilla's validated clang
-          # (FF 149: clang ~19) over winget's bleeding-edge LLVM 22. clang 22
-          # promotes more warnings to errors (e.g. -Wincompatible-pointer-types
-          # in nsprpub/w95sock.c) which break the build.
+          # LLVM 20 (staged by prepare) FIRST so configure picks Firefox 149's
+          # validated clang version, not winget's bleeding-edge LLVM 22.
+          # Older clang versions don't promote -Wincompatible-pointer-types
+          # to errors and produce correct bindgen output for MSVC STL.
           @(
-            "$env:USERPROFILE\.mozbuild\clang\bin",
+            'C:\nevoflux-cache\llvm-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
@@ -585,12 +626,12 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
         run: |
-          # mozbuild-clang FIRST so configure picks Mozilla's validated clang
-          # (FF 149: clang ~19) over winget's bleeding-edge LLVM 22. clang 22
-          # promotes more warnings to errors (e.g. -Wincompatible-pointer-types
-          # in nsprpub/w95sock.c) which break the build.
+          # LLVM 20 (staged by prepare) FIRST so configure picks Firefox 149's
+          # validated clang version, not winget's bleeding-edge LLVM 22.
+          # Older clang versions don't promote -Wincompatible-pointer-types
+          # to errors and produce correct bindgen output for MSVC STL.
           @(
-            "$env:USERPROFILE\.mozbuild\clang\bin",
+            'C:\nevoflux-cache\llvm-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
@@ -656,12 +697,12 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
         run: |
-          # mozbuild-clang FIRST so configure picks Mozilla's validated clang
-          # (FF 149: clang ~19) over winget's bleeding-edge LLVM 22. clang 22
-          # promotes more warnings to errors (e.g. -Wincompatible-pointer-types
-          # in nsprpub/w95sock.c) which break the build.
+          # LLVM 20 (staged by prepare) FIRST so configure picks Firefox 149's
+          # validated clang version, not winget's bleeding-edge LLVM 22.
+          # Older clang versions don't promote -Wincompatible-pointer-types
+          # to errors and produce correct bindgen output for MSVC STL.
           @(
-            "$env:USERPROFILE\.mozbuild\clang\bin",
+            'C:\nevoflux-cache\llvm-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
