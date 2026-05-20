@@ -471,7 +471,12 @@ jobs:
         # fixed paths. GNU make installed by prepare lives in chocolatey's
         # bin dir which is already on system PATH.
         run: |
+          # mozbuild-clang FIRST so configure picks Mozilla's validated clang
+          # (FF 149: clang ~19) over winget's bleeding-edge LLVM 22. clang 22
+          # promotes more warnings to errors (e.g. -Wincompatible-pointer-types
+          # in nsprpub/w95sock.c) which break the build.
           @(
+            "$env:USERPROFILE\.mozbuild\clang\bin",
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
@@ -517,7 +522,12 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
         run: |
+          # mozbuild-clang FIRST so configure picks Mozilla's validated clang
+          # (FF 149: clang ~19) over winget's bleeding-edge LLVM 22. clang 22
+          # promotes more warnings to errors (e.g. -Wincompatible-pointer-types
+          # in nsprpub/w95sock.c) which break the build.
           @(
+            "$env:USERPROFILE\.mozbuild\clang\bin",
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
@@ -575,7 +585,12 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
         run: |
+          # mozbuild-clang FIRST so configure picks Mozilla's validated clang
+          # (FF 149: clang ~19) over winget's bleeding-edge LLVM 22. clang 22
+          # promotes more warnings to errors (e.g. -Wincompatible-pointer-types
+          # in nsprpub/w95sock.c) which break the build.
           @(
+            "$env:USERPROFILE\.mozbuild\clang\bin",
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
@@ -641,7 +656,12 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
         run: |
+          # mozbuild-clang FIRST so configure picks Mozilla's validated clang
+          # (FF 149: clang ~19) over winget's bleeding-edge LLVM 22. clang 22
+          # promotes more warnings to errors (e.g. -Wincompatible-pointer-types
+          # in nsprpub/w95sock.c) which break the build.
           @(
+            "$env:USERPROFILE\.mozbuild\clang\bin",
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
