@@ -63,6 +63,14 @@ PYEOF
     )
   fi
 fi
+if [ -z "$EXT_VERSION" ] && [ -n "$GITHUB_SHA" ]; then
+  # CI: derive a deterministic version from the commit SHA so every arch's
+  # build for the same commit produces the same manifest.json. Different
+  # versions across arches make the universal unify step abort with
+  # "Can't unify .../manifest.json: file differs".
+  SHA_NUM=$(printf '%d' "0x$(printf '%s' "$GITHUB_SHA" | cut -c1-7)")
+  EXT_VERSION="0.$(date -u +%Y).${SHA_NUM}"
+fi
 if [ -z "$EXT_VERSION" ]; then
   # Fallback: date-based version (e.g. 0.2026.32706 from YYYY + DDDHH as minor.patch)
   EXT_VERSION="0.$(date -u +%Y).$(date -u +%j%H%M)"
