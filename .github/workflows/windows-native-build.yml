@@ -410,16 +410,17 @@ jobs:
       MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\x64
       MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs\windows-0.62.2
     steps:
-      - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
+      - name: Prepend Git Bash + Unix coreutils + LLVM + NASM + mozmake to PATH
         shell: pwsh
         # $GITHUB_PATH is per-job; re-applied in every job that uses bash.
-        # LLVM bin (clang-cl) and NASM bin (configure prerequisite) are
-        # both installed once in prepare and live at fixed paths.
+        # LLVM bin (clang-cl), NASM bin (configure prerequisite), and
+        # mozmake bin (MozillaBuild's GNU make) all live at fixed paths.
         run: |
           @(
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
+            'C:\mozilla-build\mozmake',
             'C:\Program Files\LLVM\bin',
             'C:\Program Files\NASM'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
@@ -459,13 +460,14 @@ jobs:
     if: ${{ !inputs.skip_pgo }}
     runs-on: [self-hosted, nevoflux-windows]
     steps:
-      - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
+      - name: Prepend Git Bash + Unix coreutils + LLVM + NASM + mozmake to PATH
         shell: pwsh
         run: |
           @(
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
+            'C:\mozilla-build\mozmake',
             'C:\Program Files\LLVM\bin',
             'C:\Program Files\NASM'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
@@ -517,13 +519,14 @@ jobs:
       MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\x64
       MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs\windows-0.62.2
     steps:
-      - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
+      - name: Prepend Git Bash + Unix coreutils + LLVM + NASM + mozmake to PATH
         shell: pwsh
         run: |
           @(
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
+            'C:\mozilla-build\mozmake',
             'C:\Program Files\LLVM\bin',
             'C:\Program Files\NASM'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
@@ -583,13 +586,14 @@ jobs:
       MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\arm64
       MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs\windows-0.62.2
     steps:
-      - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
+      - name: Prepend Git Bash + Unix coreutils + LLVM + NASM + mozmake to PATH
         shell: pwsh
         run: |
           @(
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
+            'C:\mozilla-build\mozmake',
             'C:\Program Files\LLVM\bin',
             'C:\Program Files\NASM'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
