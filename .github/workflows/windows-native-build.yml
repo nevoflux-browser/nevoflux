@@ -222,13 +222,24 @@ jobs:
           $f = 'engine\tools\profiler\rust-api\build.rs'
           if (-not (Test-Path $f)) { throw "Missing $f" }
           $text = Get-Content -Raw $f
-          if ($text -match '\.blocklist_type\("std::_') {
+          if ($text -match '_Vector_val') {
             Write-Host "build.rs already has MSVC STL blocklist"
           } else {
-            $inject = '        .blocklist_type("std::_.*")' + "`r`n" + '        .blocklist_type("std::__.*")'
+            # Target the exact problem types - MSVC STL "Scary" iterator base
+            # plus all underscore-prefixed internals.
+            $lines = @(
+              '        .blocklist_type("std::_.*")',
+              '        .blocklist_type("std::__.*")',
+              '        .blocklist_type(".*_Vector_val.*")',
+              '        .blocklist_type(".*_Val_types.*")',
+              '        .blocklist_type(".*_Scary_val.*")',
+              '        .blocklist_type("std::vector_.*")'
+            )
+            $inject = [string]::Join("`r`n", $lines)
             $text = $text -replace '(\.opaque_type\("std::vector"\))', "`$1`r`n$inject"
             Set-Content -Path $f -Value $text -NoNewline
             Write-Host "Patched $f with MSVC STL blocklist"
+            Get-Content $f | Select-String -Pattern 'opaque_type|blocklist_type' | ForEach-Object { Write-Host $_ }
           }
 
       - name: Inject agent (x86_64)
