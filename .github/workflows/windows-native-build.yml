@@ -222,6 +222,24 @@ jobs:
               commit -q -m "GHA Windows build init (milestone only)"
           echo "engine git initialized with $(git log --oneline | wc -l) commit(s)"
 
+      - name: Install nasm (configure requirement)
+        shell: pwsh
+        # configure: "Nasm is required to build with AV1, FFVPX, JPEG and VPX,
+        # but it was not found." mach bootstrap on Windows doesn't install it
+        # in CI. Use Chocolatey (already provisioned on this runner) — the
+        # shim lands in C:\ProgramData\chocolatey\bin which is on system PATH.
+        run: |
+          $nasm = Get-Command nasm -ErrorAction SilentlyContinue
+          if (-not $nasm) {
+            choco install nasm -y --no-progress
+            $defaultNasm = 'C:\Program Files\NASM'
+            if (Test-Path (Join-Path $defaultNasm 'nasm.exe')) {
+              Add-Content -Path $env:GITHUB_PATH -Value $defaultNasm
+            }
+          } else {
+            Write-Host "nasm already on PATH: $($nasm.Source)"
+          }
+
       - name: Install LLVM/Clang (clang-cl)
         shell: pwsh
         # mach bootstrap on Windows doesn't install clang. Firefox 149 configure
