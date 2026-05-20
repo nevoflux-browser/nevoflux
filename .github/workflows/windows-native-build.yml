@@ -547,31 +547,42 @@ jobs:
         if: failure()
         shell: pwsh
         # When cargo build scripts fail, GHA's log streaming truncates
-        # the stderr. Read the captured `output` file under cargo's
-        # build target dir directly so we get the full bindgen panic.
+        # stderr. Read the captured per-crate output/stderr files
+        # directly. Cargo nests target-triple builds under a SECOND
+        # release/build dir; walk both so we catch gecko-profiler.
         run: |
-          $objDir = 'engine\obj-x86_64-pc-windows-msvc\release\build'
-          if (-not (Test-Path $objDir)) {
-            Write-Host "No cargo build dir at $objDir"
-            return
+          $roots = @(
+            'engine\obj-x86_64-pc-windows-msvc\release\build',
+            'engine\obj-x86_64-pc-windows-msvc\x86_64-pc-windows-msvc\release\build'
+          )
+          foreach ($root in $roots) {
+            if (-not (Test-Path $root)) {
+              Write-Host "(missing) $root"
+              continue
+            }
+            Write-Host "##[group]Build dir: $root"
+            Get-ChildItem -Directory $root | ForEach-Object {
+              foreach ($f in @('output', 'stderr', 'invoked.timestamp')) {
+                $p = Join-Path $_.FullName $f
+                if (Test-Path $p) {
+                  $size = (Get-Item $p).Length
+                  if ($size -gt 0) {
+                    Write-Host "=== $($_.Name)/$f ($size bytes) ==="
+                    Get-Content $p -Tail 300
+                  }
+                }
+              }
+            }
+            Write-Host "##[endgroup]"
           }
-          Get-ChildItem -Directory $objDir | ForEach-Object {
-            $out = Join-Path $_.FullName 'output'
-            $err = Join-Path $_.FullName 'stderr'
-            if (Test-Path $out) {
-              $size = (Get-Item $out).Length
-              if ($size -gt 0) {
-                Write-Host "=== $($_.Name)/output ($size bytes) ==="
-                Get-Content $out -Tail 200
-              }
-            }
-            if (Test-Path $err) {
-              $size = (Get-Item $err).Length
-              if ($size -gt 0) {
-                Write-Host "=== $($_.Name)/stderr ($size bytes) ==="
-                Get-Content $err -Tail 200
-              }
-            }
+          # Also dump the bindings.rs that gecko-profiler emits, if any.
+          $bindings = Get-ChildItem -Recurse -ErrorAction SilentlyContinue `
+            -Path 'engine\obj-x86_64-pc-windows-msvc' -Filter 'bindings.rs' |
+            Where-Object { $_.FullName -match 'gecko-profiler' }
+          foreach ($b in $bindings) {
+            Write-Host "##[group]bindings.rs: $($b.FullName)"
+            Get-Content $b.FullName -TotalCount 400
+            Write-Host "##[endgroup]"
           }
 
       - name: Package
