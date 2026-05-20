@@ -412,4 +412,16 @@ for skip_file in $(find "${ROOT_DIR}/src" -name "*.nevoflux-skip" 2>/dev/null); 
   echo "  Restored skipped patch: ${original#${ROOT_DIR}/}"
 done
 
+# 18. Sync .surfer/patchCount with the actual .patch file count.
+#     surfer import wrote the count BEFORE step 17 restored skipped patches,
+#     so the recorded count is stale. Surfer's patch-check middleware compares
+#     this count to the live count and aborts the build with an interactive
+#     "Are you sure?" prompt when they disagree (non-TTY CI silently exits 0).
+PATCH_COUNT_FILE="${ROOT_DIR}/.surfer/patchCount"
+if [ -d "${ROOT_DIR}/.surfer" ]; then
+  ACTUAL_PATCH_COUNT=$(find "${ROOT_DIR}/src" -name "*.patch" -type f 2>/dev/null | wc -l | tr -d ' ')
+  echo "${ACTUAL_PATCH_COUNT}" > "${PATCH_COUNT_FILE}"
+  echo "  Synced .surfer/patchCount to ${ACTUAL_PATCH_COUNT}"
+fi
+
 echo "All nevoflux patches applied successfully."
