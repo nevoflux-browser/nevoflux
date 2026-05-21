@@ -235,22 +235,35 @@ jobs:
             # auto-pulling referenced types. Without it, gecko_profiler_*
             # function signatures reference mozilla::TimeStamp etc., so
             # we explicitly allowlist every type the signatures need.
+            # Allowlist each referenced type AND mark mozilla types opaque
+            # so generated structs become [u8; N] blobs (auto-derive Debug).
+            # Without opaque_type, allowlist_recursively(false) emits
+            # type-name placeholders that fail "doesn't implement Debug".
             $lines = @(
               '        .allowlist_recursively(false)',
-              '        .blocklist_type("std::.*")',
               '        .blocklist_type(".*_Vector_val.*")',
               '        .blocklist_type(".*_Val_types.*")',
               '        .blocklist_type(".*_Scary_val.*")',
+              '        .allowlist_type("std::string")',
               '        .allowlist_type("mozilla::TimeStamp")',
+              '        .opaque_type("mozilla::TimeStamp")',
+              '        .allowlist_type("mozilla::TimeStampValue")',
+              '        .opaque_type("mozilla::TimeStampValue")',
+              '        .allowlist_type("mozilla::TimeDuration")',
+              '        .opaque_type("mozilla::TimeDuration")',
               '        .allowlist_type("mozilla::AutoProfilerLabel")',
+              '        .opaque_type("mozilla::AutoProfilerLabel")',
               '        .allowlist_type("mozilla::MarkerTiming")',
+              '        .opaque_type("mozilla::MarkerTiming")',
               '        .allowlist_type("mozilla::MarkerSchema")',
+              '        .opaque_type("mozilla::MarkerSchema")',
               '        .allowlist_type("mozilla::MarkerSchema_Location")',
               '        .allowlist_type("mozilla::MarkerSchema_Format")',
               '        .allowlist_type("mozilla::MarkerSchema_PayloadFlags")',
               '        .allowlist_type("mozilla::StackCaptureOptions")',
               '        .allowlist_type("mozilla::baseprofiler::ProfilingCategoryPair")',
               '        .allowlist_type("mozilla::baseprofiler::SpliceableJSONWriter")',
+              '        .allowlist_type("mozilla::baseprofiler::UniqueJSONStrings")',
               '        .allowlist_type("JS::ProfilingCategoryPair")'
             )
             $inject = [string]::Join("`r`n", $lines)
