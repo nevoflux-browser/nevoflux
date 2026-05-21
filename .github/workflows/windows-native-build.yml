@@ -229,25 +229,35 @@ jobs:
             # _Scary_val) that bindgen + LLVM 20 libclang traverse from
             # allowlisted gecko_profiler_* fns -> std::vector typedefs ->
             # panic in builder.generate(). opaque_type/blocklist_type
-            # patterns aren't sufficient.
+            # patterns alone don't prevent the recursion.
             #
-            # Two-pronged fix:
-            #  - allowlist_recursively(false): only generate items that
-            #    match an explicit allowlist; do NOT pull in referenced
-            #    types like std::vector. Bindgen no longer enters STL.
-            #  - blocklist_type patterns kept as defence-in-depth.
+            # Fix: allowlist_recursively(false) stops bindgen from
+            # auto-pulling referenced types. Without it, gecko_profiler_*
+            # function signatures reference mozilla::TimeStamp etc., so
+            # we explicitly allowlist every type the signatures need.
             $lines = @(
               '        .allowlist_recursively(false)',
               '        .blocklist_type("std::.*")',
               '        .blocklist_type(".*_Vector_val.*")',
               '        .blocklist_type(".*_Val_types.*")',
-              '        .blocklist_type(".*_Scary_val.*")'
+              '        .blocklist_type(".*_Scary_val.*")',
+              '        .allowlist_type("mozilla::TimeStamp")',
+              '        .allowlist_type("mozilla::AutoProfilerLabel")',
+              '        .allowlist_type("mozilla::MarkerTiming")',
+              '        .allowlist_type("mozilla::MarkerSchema")',
+              '        .allowlist_type("mozilla::MarkerSchema_Location")',
+              '        .allowlist_type("mozilla::MarkerSchema_Format")',
+              '        .allowlist_type("mozilla::MarkerSchema_PayloadFlags")',
+              '        .allowlist_type("mozilla::StackCaptureOptions")',
+              '        .allowlist_type("mozilla::baseprofiler::ProfilingCategoryPair")',
+              '        .allowlist_type("mozilla::baseprofiler::SpliceableJSONWriter")',
+              '        .allowlist_type("JS::ProfilingCategoryPair")'
             )
             $inject = [string]::Join("`r`n", $lines)
             $text = $text -replace '(\.opaque_type\("std::vector"\))', "`$1`r`n$inject"
             Set-Content -Path $f -Value $text -NoNewline
-            Write-Host "Patched $f with allowlist_recursively(false) + STL blocklist"
-            Get-Content $f | Select-String -Pattern 'opaque_type|blocklist_type|allowlist_recursively' | ForEach-Object { Write-Host $_ }
+            Write-Host "Patched $f"
+            Get-Content $f | Select-String -Pattern 'opaque_type|blocklist_type|allowlist_recursively|allowlist_type' | ForEach-Object { Write-Host $_ }
           }
 
       - name: Inject agent (x86_64)
