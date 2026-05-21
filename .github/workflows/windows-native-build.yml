@@ -263,6 +263,7 @@ jobs:
               '        .allowlist_type("mozilla::StackCaptureOptions")',
               '        .allowlist_type("mozilla::baseprofiler::ProfilingCategoryPair")',
               '        .allowlist_type("mozilla::baseprofiler::SpliceableJSONWriter")',
+              '        .opaque_type("mozilla::baseprofiler::SpliceableJSONWriter")',
               '        .allowlist_type("mozilla::baseprofiler::UniqueJSONStrings")',
               '        .allowlist_type("JS::ProfilingCategoryPair")'
             )
