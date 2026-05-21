@@ -47,6 +47,15 @@ if test ! "$WINSYSROOT"; then
   # files). Profiler is a developer-only tool, not user-facing.
   # Disable on native builds; GCB cross-compile keeps it enabled.
   ac_add_options --disable-gecko-profiler
+
+  # libwebrtc moz.build at third_party/libwebrtc/modules/audio_processing/
+  # capture_levels_adjuster/capture_levels_adjuster_gn declares an obj
+  # (Unified_cpp_e_levels_adjuster_gn0.obj) that no rule actually
+  # produces; the link phase for xul.dll dies with "No rule to make
+  # target" after 3+ hours of compile. The native build doesn't need
+  # WebRTC support to be functional, so disable it here. GCB keeps
+  # WebRTC.
+  ac_add_options --disable-webrtc
 fi
 
 if test "$SURFER_COMPAT" = "x86_64"; then
