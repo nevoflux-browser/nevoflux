@@ -619,9 +619,26 @@ jobs:
 
       - name: Package
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # surfer/mach's package eventually invokes `make -C browser/
+        # installer windows` (the NSIS installer subtarget) which fails
+        # on this configure with "windows: No such file or directory" -
+        # the configure for the stage1 instrumented build emits no
+        # `windows:` rule. The .zip stage1 actually needs for stage2's
+        # profileserver IS produced earlier in the same package run.
+        # Tolerate the installer-subtarget failure if the zip exists.
         run: |
+          set +e
           export ZEN_GA_DISABLE_PGO=true
           npm run package < <(yes y)
+          pkg_rc=$?
+          set -e
+          ver=$(npm run --silent surfer -- get version | xargs)
+          if ls "dist/nevoflux-${ver}.en-US.win64.zip" >/dev/null 2>&1; then
+            echo "Package zip present (rc=$pkg_rc); proceeding to Stash"
+          else
+            echo "Package failed (rc=$pkg_rc) AND no zip produced"
+            exit "$pkg_rc"
+          fi
 
       - name: Stash PGO stage1 zip
         shell: pwsh
