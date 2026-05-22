@@ -511,14 +511,25 @@ jobs:
 
       - name: mach bootstrap + Rust targets
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # Pin Rust to 1.90 - the stage3 PGO-LTO link needs the rust
+        # bitcode emitter version to match our LLVM 20 lld-link.
+        # Rust 1.91 ships LLVM 21 internally and produces bitcode with
+        # attribute kind 103 that LLVM 20 lld-link can't read:
+        #   lld-link: error: Unknown attribute kind (103)
+        #     (Producer: LLVM21.1.2-rust-1.91.0-stable
+        #      Reader:   LLVM 20.1.7)
+        # Mozilla's MINIMUM_RUST_VERSION is 1.90.0, so 1.90 is fine.
         run: |
           cd engine
           ./mach --no-interactive bootstrap --application-choice browser
           cd ..
+          rustup install 1.90.0 --no-self-update
+          rustup default 1.90.0
           rustup target add x86_64-pc-windows-msvc
           if [ "${{ inputs.skip_arm64 }}" != "true" ]; then
             rustup target add aarch64-pc-windows-msvc
           fi
+          rustc --version
 
       - name: Install cbindgen (configure requirement)
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
