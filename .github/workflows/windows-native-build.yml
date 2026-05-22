@@ -133,7 +133,18 @@ jobs:
       - id: version
         name: Capture version
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
-        run: echo "value=$(npm run --silent surfer -- get version | xargs)" >> $GITHUB_OUTPUT
+        # Avoid `xargs` - msys2 cygwin fork-ASLR bug on this runner
+        # makes it fail intermittently. Capture into a var, then echo
+        # without trailing whitespace via parameter expansion.
+        run: |
+          raw=$(npm run --silent surfer -- get version)
+          ver="${raw//[[:space:]]/}"
+          if [ -z "$ver" ]; then
+            echo "::error::surfer get version returned empty"
+            exit 1
+          fi
+          echo "value=$ver" >> "$GITHUB_OUTPUT"
+          echo "Captured version: $ver"
 
       - name: Download Firefox source
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
