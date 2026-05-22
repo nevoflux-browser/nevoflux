@@ -626,17 +626,21 @@ jobs:
         # `windows:` rule. The .zip stage1 actually needs for stage2's
         # profileserver IS produced earlier in the same package run.
         # Tolerate the installer-subtarget failure if the zip exists.
+        # Use the prepare-job version output directly - avoid xargs
+        # which hits msys2's cygwin fork-ASLR bug on this runner.
         run: |
           set +e
           export ZEN_GA_DISABLE_PGO=true
           npm run package < <(yes y)
           pkg_rc=$?
           set -e
-          ver=$(npm run --silent surfer -- get version | xargs)
-          if ls "dist/nevoflux-${ver}.en-US.win64.zip" >/dev/null 2>&1; then
-            echo "Package zip present (rc=$pkg_rc); proceeding to Stash"
+          ver='${{ needs.prepare.outputs.version }}'
+          zip="dist/nevoflux-${ver}.en-US.win64.zip"
+          if [ -f "$zip" ]; then
+            echo "Package zip present at $zip (rc=$pkg_rc); proceeding to Stash"
           else
-            echo "Package failed (rc=$pkg_rc) AND no zip produced"
+            echo "Package failed (rc=$pkg_rc) AND no zip at $zip"
+            ls -la dist/ 2>/dev/null || true
             exit "$pkg_rc"
           fi
 
