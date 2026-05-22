@@ -631,26 +631,28 @@ jobs:
       - name: Package
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         # surfer/mach's package eventually invokes `make -C browser/
-        # installer windows` (the NSIS installer subtarget) which fails
-        # on this configure with "windows: No such file or directory" -
-        # the configure for the stage1 instrumented build emits no
-        # `windows:` rule. The .zip stage1 actually needs for stage2's
-        # profileserver IS produced earlier in the same package run.
-        # Tolerate the installer-subtarget failure if the zip exists.
-        # Use the prepare-job version output directly - avoid xargs
-        # which hits msys2's cygwin fork-ASLR bug on this runner.
+        # installer windows` (NSIS subtarget) which fails on this
+        # configure with "windows: No such file or directory" - no
+        # `windows:` rule is emitted. The .zip stage1 actually needs
+        # for stage2's profileserver IS produced earlier in the same
+        # package run. Tolerate the installer-subtarget failure if a
+        # zip exists. Use a GLOB - Mozilla labels the zip with the
+        # internal browser app-version (e.g. 0.0.1), not the
+        # surfer --display-version we passed.
         run: |
           set +e
           export ZEN_GA_DISABLE_PGO=true
           npm run package < <(yes y)
           pkg_rc=$?
           set -e
-          ver='${{ needs.prepare.outputs.version }}'
-          zip="dist/nevoflux-${ver}.en-US.win64.zip"
-          if [ -f "$zip" ]; then
-            echo "Package zip present at $zip (rc=$pkg_rc); proceeding to Stash"
+          shopt -s nullglob
+          zips=(dist/nevoflux-*.en-US.win64.zip)
+          shopt -u nullglob
+          if [ ${#zips[@]} -gt 0 ] && [ -f "${zips[0]}" ]; then
+            echo "Package zip present at ${zips[0]} (rc=$pkg_rc); proceeding to Stash"
+            echo "PGO_STAGE1_ZIP=${zips[0]}" >> "$GITHUB_ENV"
           else
-            echo "Package failed (rc=$pkg_rc) AND no zip at $zip"
+            echo "Package failed (rc=$pkg_rc) AND no zip in dist/"
             ls -la dist/ 2>/dev/null || true
             exit "$pkg_rc"
           fi
@@ -658,8 +660,10 @@ jobs:
       - name: Stash PGO stage1 zip
         shell: pwsh
         run: |
-          $ver = "${{ needs.prepare.outputs.version }}"
-          Move-Item -Force "dist\nevoflux-$ver.en-US.win64.zip" "pgo-cache\pgo-stage-1.zip"
+          if (-not $env:PGO_STAGE1_ZIP) {
+            throw "PGO_STAGE1_ZIP env var not set by Package step"
+          }
+          Move-Item -Force $env:PGO_STAGE1_ZIP "pgo-cache\pgo-stage-1.zip"
 
   # ----- PGO Stage 2: profileserver (skipped when skip_pgo=true) -----
   x64-stage2:
@@ -783,8 +787,12 @@ jobs:
       - name: Stage final x64 artifacts
         shell: pwsh
         run: |
-          $ver = "${{ needs.prepare.outputs.version }}"
-          Move-Item -Force "dist\nevoflux-$ver.en-US.win64.zip" "out\nevoflux.win-x86_64-gha.zip"
+          # Mozilla labels the zip with its internal app-version,
+          # which may differ from the surfer --display-version we set.
+          # Glob the actual file.
+          $zip = Get-ChildItem -Path 'dist' -Filter 'nevoflux-*.en-US.win64.zip' -ErrorAction Stop | Select-Object -First 1
+          if (-not $zip) { throw "No nevoflux-*.en-US.win64.zip in dist\" }
+          Move-Item -Force $zip.FullName                        "out\nevoflux.win-x86_64-gha.zip"
           Move-Item -Force "dist\output.mar"                    "out\windows-gha.mar"
           Move-Item -Force "dist\nevoflux.installer.exe"        "out\nevoflux.installer-gha.exe"
 
@@ -837,8 +845,11 @@ jobs:
       - name: Stage final arm64 artifacts
         shell: pwsh
         run: |
-          $ver = "${{ needs.prepare.outputs.version }}"
-          Move-Item -Force "dist\nevoflux-$ver.en-US.win64.zip" "out\nevoflux.win-arm64-gha.zip"
+          # Glob the actual zip - Mozilla labels it with internal
+          # app-version not the surfer --display-version.
+          $zip = Get-ChildItem -Path 'dist' -Filter 'nevoflux-*.en-US.win64.zip' -ErrorAction Stop | Select-Object -First 1
+          if (-not $zip) { throw "No nevoflux-*.en-US.win64.zip in dist\" }
+          Move-Item -Force $zip.FullName                        "out\nevoflux.win-arm64-gha.zip"
           Move-Item -Force "dist\output.mar"                    "out\windows-arm64-gha.mar"
           Move-Item -Force "dist\nevoflux.installer.exe"        "out\nevoflux.installer-arm64-gha.exe"
 
