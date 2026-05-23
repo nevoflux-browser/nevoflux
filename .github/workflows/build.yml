@@ -342,9 +342,22 @@ jobs:
       profile-data-path-archive: nevoflux.win64-pgo-stage-1.zip
       release-branch: ${{ inputs.update_branch }}
 
-  linux:
-    name: Linux build
-    uses: ./.github/workflows/linux-release-build.yml
+  linux-x86_64:
+    name: Linux build (x86_64)
+    uses: ./.github/workflows/linux-x86_64-release-build.yml
+    permissions:
+      contents: write
+    secrets: inherit
+    needs: [build-data, buildid]
+    with:
+      build-version: ${{ needs.build-data.outputs.version }}
+      release-branch: ${{ inputs.update_branch }}
+      MOZ_BUILD_DATE: ${{needs.buildid.outputs.buildids}}
+      use-sccache: ${{ inputs.use-sccache }}
+
+  linux-aarch64:
+    name: Linux build (aarch64)
+    uses: ./.github/workflows/linux-aarch64-release-build.yml
     permissions:
       contents: write
     secrets: inherit
@@ -400,7 +413,7 @@ jobs:
     strategy:
       matrix:
         arch: [x86_64, aarch64]
-    needs: [linux, build-data]
+    needs: [linux-x86_64, linux-aarch64, build-data]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -477,7 +490,7 @@ jobs:
 
   stop-self-hosted:
     runs-on: blacksmith-2vcpu-ubuntu-2404
-    needs: [linux]
+    needs: [linux-x86_64, linux-aarch64]
     if: always()
     steps:
       - name: Download aws-cli
@@ -508,7 +521,8 @@ jobs:
     needs:
       [
         build-data,
-        linux,
+        linux-x86_64,
+        linux-aarch64,
         check-release,
         mac-uni,
         appimage,
@@ -642,7 +656,7 @@ jobs:
     if: ${{ inputs.create_release && inputs.update_branch == 'release' }}
     permissions: write-all
     name: Prepare Flatpak
-    needs: [release, linux, build-data]
+    needs: [release, linux-x86_64, linux-aarch64, build-data]
     runs-on: blacksmith-2vcpu-ubuntu-2404
 
     steps:

@@ -1,0 +1,295 @@
+name: Linux x86_64 Release Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build-version:
+        description: "The version to build"
+        required: true
+        type: string
+        default: "0.0.1"
+      release-branch:
+        description: "The branch to build"
+        required: true
+        type: string
+        default: "release"
+      MOZ_BUILD_DATE:
+        description: "Build date (leave empty to auto-generate)"
+        type: string
+        required: false
+        default: ""
+      use-sccache:
+        description: "Use sccache"
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      build-version:
+        description: "The version to build"
+        required: true
+        type: string
+      release-branch:
+        description: "The branch to build"
+        required: true
+        type: string
+      MOZ_BUILD_DATE:
+        type: string
+        required: true
+        default: ""
+      use-sccache:
+        description: "Use sccache"
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  linux-x86_64-build:
+    name: Build Linux - x86_64
+    permissions:
+      contents: write
+    runs-on: [self-hosted, linux]
+    env:
+      SCCACHE_GHA_ENABLED: ${{ inputs.use-sccache && 'true' || 'false' }}
+      CARGO_TERM_COLOR: always
+      RUSTC_WRAPPER: ${{ inputs.use-sccache && 'sccache' || '' }}
+      CARGO_INCREMENTAL: 0
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.DEPLOY_KEY }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@main
+        if: ${{ inputs.use-sccache }}
+        with:
+          disable_annotations: true
+
+      - name: Expose actions cache variables
+        uses: actions/github-script@v6
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env['ACTIONS_CACHE_URL'])
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env['ACTIONS_RUNTIME_TOKEN'])
+
+      - name: Setup Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install system dependencies
+        run: |
+          set -x
+          # On self-hosted runners, dependencies should be pre-installed.
+          # Only run apt-get if available (skip on non-Debian or restricted environments).
+          if command -v apt-get &> /dev/null; then
+            sudo apt-get update --fix-missing || true
+            sudo apt-get install -y python3 python3-pip dos2unix yasm nasm build-essential libgtk2.0-dev libpython3-dev m4 uuid libasound2-dev libcurl4-openssl-dev libdbus-1-dev libdrm-dev libdbus-glib-1-dev libgtk-3-dev libpulse-dev libx11-xcb-dev libxt-dev xvfb lld llvm || true
+          else
+            echo "apt-get not available, assuming dependencies are pre-installed"
+          fi
+
+      - name: Install dependencies
+        run: |
+          npm ci
+
+      - name: Load Surfer CI setup
+        run: npm run surfer -- ci --brand ${{ inputs.release-branch }} --display-version ${{ inputs.build-version }}
+
+      - name: Download Firefox source and dependencies
+        run: npm run download
+
+      - name: Fix Rust version
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $(cat .rust-toolchain)
+          source $HOME/.cargo/env
+          rustup target add x86_64-unknown-linux-gnu
+
+      - name: Import
+        env:
+          SURFER_COMPAT: x86_64
+        run: |
+          . "$HOME/.cargo/env"
+          npm run import
+
+      - name: Download NevoFlux Agent binary
+        run: |
+          PLATFORM="linux"
+          ARCH="x86_64"
+          ARCHIVE_NAME="nevoflux-agent-${PLATFORM}-${ARCH}.tar.gz"
+          mkdir -p /tmp/agent/
+
+          # Find the latest release tag
+          LATEST_TAG=$(gh release view --repo dorisgyl/nevoflux-agent --json tagName --jq '.tagName' 2>/dev/null || true)
+          if [ -z "$LATEST_TAG" ]; then
+            echo "::warning::No releases found in nevoflux-agent repo, skipping agent download."
+          else
+            echo "Latest release tag: $LATEST_TAG"
+            ASSET_EXISTS=$(gh release view "$LATEST_TAG" --repo dorisgyl/nevoflux-agent --json assets --jq ".assets[].name" 2>/dev/null | grep -c "^${ARCHIVE_NAME}$" || true)
+            if [ "$ASSET_EXISTS" = "0" ]; then
+              echo "::warning::Asset ${ARCHIVE_NAME} not found in release ${LATEST_TAG}, skipping agent download."
+            else
+              for attempt in 1 2 3; do
+                gh release download "$LATEST_TAG" \
+                  --repo dorisgyl/nevoflux-agent \
+                  --pattern "${ARCHIVE_NAME}" \
+                  --dir /tmp/agent/ --clobber && break
+                if [ $attempt -lt 3 ]; then
+                  echo "::warning::Download attempt $attempt/3 failed. Retrying in $((attempt * 10))s..."
+                  sleep $((attempt * 10))
+                else
+                  echo "::warning::Agent binary download failed after 3 attempts, continuing..."
+                fi
+              done
+            fi
+          fi
+
+          if [ -f "/tmp/agent/${ARCHIVE_NAME}" ]; then
+            mkdir -p build/AppDir/distribution/bin/
+            echo "Archive contents:"
+            tar -tzf "/tmp/agent/${ARCHIVE_NAME}" | head -20
+            tar -xzf "/tmp/agent/${ARCHIVE_NAME}" -C /tmp/agent/
+            echo "Extracted contents of /tmp/agent/:"
+            ls -la /tmp/agent/
+            mv /tmp/agent/nevoflux-agent build/AppDir/distribution/bin/nevoflux-agent
+            chmod +x build/AppDir/distribution/bin/nevoflux-agent
+            echo "Agent binary installed: build/AppDir/distribution/bin/nevoflux-agent"
+            # Copy models directory if present in release archive
+            if [ -d "/tmp/agent/models" ]; then
+              cp -r /tmp/agent/models build/AppDir/distribution/bin/models
+              echo "Models directory installed"
+            fi
+          else
+            echo "::notice::No agent binary available for ${PLATFORM}-${ARCH}, build continues without it."
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Copy soul templates to distribution
+        run: |
+          mkdir -p build/AppDir/distribution/bin/defaults/soul
+          if [ -d "docs/reference/templates" ]; then
+            cp docs/reference/templates/*.md build/AppDir/distribution/bin/defaults/soul/
+            echo "Soul templates copied to distribution:"
+            ls -la build/AppDir/distribution/bin/defaults/soul/
+          else
+            echo "::warning::docs/reference/templates/ not found, skipping soul templates"
+          fi
+
+      - name: Copy built-in skills to distribution
+        run: |
+          if [ -d "docs/reference/skills" ]; then
+            mkdir -p build/AppDir/distribution/bin/defaults/skills
+            cp -r docs/reference/skills/* build/AppDir/distribution/bin/defaults/skills/
+            echo "Built-in skills copied to distribution:"
+            find build/AppDir/distribution/bin/defaults/skills -type f | head -20
+          else
+            echo "::warning::docs/reference/skills/ not found, skipping skills"
+          fi
+
+      - name: Verify distribution essentials
+        run: |
+          set -e
+          echo "Checking distribution directory contents:"
+          find build/AppDir/distribution -type f | head -30
+          if [ ! -d "build/AppDir/distribution/bin/models" ]; then
+            echo "::warning::models directory missing from distribution — agent release archive may not include it"
+          else
+            echo "models directory present"
+          fi
+
+      - name: Build language packs
+        run: sh scripts/download-language-packs.sh
+
+      - name: Bootstrap
+        run: |
+          cd engine
+          export SURFER_PLATFORM="linux"
+          ./mach --no-interactive bootstrap --application-choice browser
+          cd ..
+
+      - name: Insert API Keys
+        run: |
+          mkdir -p ~/.zen-keys
+          echo "${{ secrets.ZEN_SAFEBROWSING_API_KEY }}" > ~/.zen-keys/safebrowsing.dat
+
+      - name: Build
+        env:
+          SURFER_COMPAT: x86_64
+          ZEN_RELEASE_BRANCH: ${{ inputs.release-branch }}
+        continue-on-error: true
+        run: |
+          export SURFER_PLATFORM="linux"
+          if [[ -n "${{ inputs.MOZ_BUILD_DATE }}" ]]; then
+            export MOZ_BUILD_DATE="${{ inputs.MOZ_BUILD_DATE }}"
+          fi
+          bash .github/workflows/src/release-build.sh
+
+      - name: Package
+        env:
+          SURFER_COMPAT: x86_64
+          ZEN_GA_DISABLE_PGO: true
+        run: |
+          export SURFER_PLATFORM="linux"
+          export ZEN_RELEASE=1
+          npm run package
+
+      - name: Remove API Keys
+        run: |
+          rm -rf ~/.zen-keys
+
+      - name: Inject distribution files into package
+        run: |
+          set -ex
+          # Extract tar.xz, inject distribution/, repack
+          TARXZ=$(ls dist/nevoflux-*.tar.xz)
+          TMPDIR=$(mktemp -d)
+          tar -xJf "$TARXZ" -C "$TMPDIR"
+          # Find the top-level directory inside the archive (e.g., "nevoflux")
+          TOP=$(ls "$TMPDIR")
+          if [ -d "build/AppDir/distribution" ]; then
+            cp -r build/AppDir/distribution "$TMPDIR/$TOP/distribution"
+            echo "Distribution contents injected:"
+            find "$TMPDIR/$TOP/distribution" -type f | head -20
+          else
+            echo "::warning::No distribution directory found"
+          fi
+          # Repack
+          rm -f "$TARXZ"
+          tar -cJf "$TARXZ" -C "$TMPDIR" "$TOP"
+          rm -rf "$TMPDIR"
+          echo "Repacked: $(ls -lh "$TARXZ")"
+
+      - name: Rename artifacts
+        run: |
+          mv dist/nevoflux-*.tar.xz "nevoflux.linux-x86_64.tar.xz"
+          mv dist/output.mar linux.mar
+
+      - name: Upload build artifact (binary)
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 5
+          name: nevoflux.linux-x86_64.tar.xz
+          path: ./nevoflux.linux-x86_64.tar.xz
+
+      - name: Upload build artifact (.mar)
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 5
+          name: linux.mar
+          path: ./linux.mar
+
+      - name: Upload build artifact (update manifests)
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 5
+          name: linux_update_manifest_x86_64
+          path: ./dist/update
