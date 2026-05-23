@@ -412,4 +412,20 @@ for skip_file in $(find "${ROOT_DIR}/src" -name "*.nevoflux-skip" 2>/dev/null); 
   echo "  Restored skipped patch: ${original#${ROOT_DIR}/}"
 done
 
+# 18. Sync .surfer/patchCount with the actual .patch count.
+#     surfer import records the count BEFORE step 17 restores skipped files,
+#     so .surfer/patchCount is stale by the number of restored patches. surfer
+#     build's patchCheck middleware would then fire hardWarning(), whose
+#     interactive prompts() call exits with code 0 in CI's non-TTY environment
+#     — silently skipping mach build entirely.
+PATCH_COUNT_FILE="${ROOT_DIR}/.surfer/patchCount"
+if [ -f "${PATCH_COUNT_FILE}" ]; then
+  ACTUAL=$(find "${ROOT_DIR}/src" -type f -name "*.patch" 2>/dev/null | wc -l | tr -d ' ')
+  RECORDED=$(tr -d ' \n' < "${PATCH_COUNT_FILE}")
+  if [ "${ACTUAL}" != "${RECORDED}" ]; then
+    echo "Syncing .surfer/patchCount: ${RECORDED} → ${ACTUAL}"
+    echo "${ACTUAL}" > "${PATCH_COUNT_FILE}"
+  fi
+fi
+
 echo "All nevoflux patches applied successfully."

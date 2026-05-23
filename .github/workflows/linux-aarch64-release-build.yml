@@ -226,7 +226,6 @@ jobs:
         env:
           SURFER_COMPAT: aarch64
           ZEN_RELEASE_BRANCH: ${{ inputs.release-branch }}
-        continue-on-error: true
         run: |
           export SURFER_PLATFORM="linux"
           if [[ -n "${{ inputs.MOZ_BUILD_DATE }}" ]]; then
