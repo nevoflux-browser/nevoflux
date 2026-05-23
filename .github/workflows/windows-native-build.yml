@@ -423,6 +423,24 @@ jobs:
           Remove-Item -Recurse -Force $tmp
           Get-ChildItem -Recurse $extractRoot | ForEach-Object { Write-Host $_.FullName }
 
+      - name: Install NSIS (Windows installer prerequisite)
+        shell: pwsh
+        # browser/moz.build only adds installer/windows to DIRS when
+        # CONFIG["MAKENSISU"] is set. configure picks MAKENSISU up
+        # from NSIS's makensis.exe on PATH. Without NSIS installed,
+        # browser/installer/windows/Makefile is never generated, and
+        # packager.mk's `make -C windows installer` fails with
+        #   make[3]: *** windows: No such file or directory.
+        # Install via Chocolatey - shim lands in
+        # C:\ProgramData\chocolatey\bin (already on system PATH).
+        run: |
+          $nsis = Get-Command makensis -ErrorAction SilentlyContinue
+          if (-not $nsis) {
+            choco install nsis -y --no-progress
+          } else {
+            Write-Host "NSIS already on PATH: $($nsis.Source)"
+          }
+
       - name: Install nasm (configure requirement)
         shell: pwsh
         # configure: "Nasm is required to build with AV1, FFVPX, JPEG and VPX,
