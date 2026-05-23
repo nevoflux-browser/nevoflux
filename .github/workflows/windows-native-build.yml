@@ -431,14 +431,25 @@ jobs:
         # browser/installer/windows/Makefile is never generated, and
         # packager.mk's `make -C windows installer` fails with
         #   make[3]: *** windows: No such file or directory.
-        # Install via Chocolatey - shim lands in
-        # C:\ProgramData\chocolatey\bin (already on system PATH).
+        # Chocolatey installs makensis.exe but doesn't refresh the
+        # current process PATH, AND doesn't auto-shim makensis.exe.
+        # Add NSIS bin dir to GITHUB_PATH so subsequent jobs see it.
         run: |
+          $nsisBin = 'C:\Program Files (x86)\NSIS'
           $nsis = Get-Command makensis -ErrorAction SilentlyContinue
           if (-not $nsis) {
-            choco install nsis -y --no-progress
+            if (-not (Test-Path (Join-Path $nsisBin 'makensis.exe'))) {
+              choco install nsis -y --no-progress
+            }
           } else {
             Write-Host "NSIS already on PATH: $($nsis.Source)"
+          }
+          if (Test-Path (Join-Path $nsisBin 'makensis.exe')) {
+            Add-Content -Path $env:GITHUB_PATH -Value $nsisBin
+            Write-Host "NSIS bin added to GITHUB_PATH: $nsisBin"
+          } else {
+            Write-Error "makensis.exe still not present after install"
+            exit 1
           }
 
       - name: Install nasm (configure requirement)
@@ -595,7 +606,8 @@ jobs:
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
-            'C:\Program Files\NASM'
+            'C:\Program Files\NASM',
+            'C:\Program Files (x86)\NSIS'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Swap to x86_64 distribution
@@ -713,7 +725,8 @@ jobs:
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
-            'C:\Program Files\NASM'
+            'C:\Program Files\NASM',
+            'C:\Program Files (x86)\NSIS'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Expand instrumented binary
@@ -776,7 +789,8 @@ jobs:
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
-            'C:\Program Files\NASM'
+            'C:\Program Files\NASM',
+            'C:\Program Files (x86)\NSIS'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Clean stale obj + swap distribution
@@ -851,7 +865,8 @@ jobs:
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
-            'C:\Program Files\NASM'
+            'C:\Program Files\NASM',
+            'C:\Program Files (x86)\NSIS'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Swap to aarch64 distribution
