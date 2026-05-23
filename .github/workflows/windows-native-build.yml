@@ -825,19 +825,47 @@ jobs:
 
       - name: Package
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
-        run: npm run package < <(yes y)
+        # mach package + NSIS installer build are succeeding now, but
+        # surfer's post-make MAR creation step hits a path-conversion
+        # bug (passes a path missing the drive letter to make_full_
+        # update.sh, which then fails pushd). The zip and installer.exe
+        # are produced before MAR creation, so accept rc!=0 iff the
+        # primary artifacts exist.
+        run: |
+          set +e
+          npm run package < <(yes y)
+          pkg_rc=$?
+          set -e
+          shopt -s nullglob
+          zips=(dist/nevoflux-*.en-US.win64.zip)
+          shopt -u nullglob
+          have_zip=0; have_inst=0
+          [ ${#zips[@]} -gt 0 ] && [ -f "${zips[0]}" ] && have_zip=1
+          [ -f dist/nevoflux.installer.exe ] && have_inst=1
+          if [ "$have_zip" -eq 1 ] && [ "$have_inst" -eq 1 ]; then
+            echo "Primary artifacts present (zip + installer.exe), pkg rc=$pkg_rc"
+            echo "X64_ZIP=${zips[0]}" >> "$GITHUB_ENV"
+            ls -la dist/ 2>/dev/null || true
+          else
+            echo "Package failed (rc=$pkg_rc) and missing primary artifact(s):"
+            echo "  zip=$have_zip  installer.exe=$have_inst"
+            ls -la dist/ 2>/dev/null || true
+            exit "$pkg_rc"
+          fi
 
       - name: Stage final x64 artifacts
         shell: pwsh
         run: |
-          # Mozilla labels the zip with its internal app-version,
-          # which may differ from the surfer --display-version we set.
-          # Glob the actual file.
-          $zip = Get-ChildItem -Path 'dist' -Filter 'nevoflux-*.en-US.win64.zip' -ErrorAction Stop | Select-Object -First 1
-          if (-not $zip) { throw "No nevoflux-*.en-US.win64.zip in dist\" }
-          Move-Item -Force $zip.FullName                        "out\nevoflux.win-x86_64-gha.zip"
-          Move-Item -Force "dist\output.mar"                    "out\windows-gha.mar"
+          if (-not $env:X64_ZIP) { throw "X64_ZIP env not set by Package step" }
+          Move-Item -Force $env:X64_ZIP                         "out\nevoflux.win-x86_64-gha.zip"
           Move-Item -Force "dist\nevoflux.installer.exe"        "out\nevoflux.installer-gha.exe"
+          # MAR may be missing if surfer's post-make MAR step hit the
+          # path-conversion bug; stage if present, otherwise skip.
+          if (Test-Path "dist\output.mar") {
+            Move-Item -Force "dist\output.mar"                  "out\windows-gha.mar"
+          } else {
+            Write-Host "::warning::dist\output.mar missing - partial update MAR not produced"
+          }
 
   # ----- arm64 build (skipped when skip_arm64=true) -----
   arm64-final:
@@ -884,18 +912,38 @@ jobs:
 
       - name: Package
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
-        run: npm run package < <(yes y)
+        # Tolerate surfer's post-make MAR path bug - see x64-stage3 Package.
+        run: |
+          set +e
+          npm run package < <(yes y)
+          pkg_rc=$?
+          set -e
+          shopt -s nullglob
+          zips=(dist/nevoflux-*.en-US.win64.zip)
+          shopt -u nullglob
+          have_zip=0; have_inst=0
+          [ ${#zips[@]} -gt 0 ] && [ -f "${zips[0]}" ] && have_zip=1
+          [ -f dist/nevoflux.installer.exe ] && have_inst=1
+          if [ "$have_zip" -eq 1 ] && [ "$have_inst" -eq 1 ]; then
+            echo "Primary arm64 artifacts present, pkg rc=$pkg_rc"
+            echo "ARM64_ZIP=${zips[0]}" >> "$GITHUB_ENV"
+          else
+            echo "arm64 package failed (rc=$pkg_rc): zip=$have_zip installer=$have_inst"
+            ls -la dist/ 2>/dev/null || true
+            exit "$pkg_rc"
+          fi
 
       - name: Stage final arm64 artifacts
         shell: pwsh
         run: |
-          # Glob the actual zip - Mozilla labels it with internal
-          # app-version not the surfer --display-version.
-          $zip = Get-ChildItem -Path 'dist' -Filter 'nevoflux-*.en-US.win64.zip' -ErrorAction Stop | Select-Object -First 1
-          if (-not $zip) { throw "No nevoflux-*.en-US.win64.zip in dist\" }
-          Move-Item -Force $zip.FullName                        "out\nevoflux.win-arm64-gha.zip"
-          Move-Item -Force "dist\output.mar"                    "out\windows-arm64-gha.mar"
+          if (-not $env:ARM64_ZIP) { throw "ARM64_ZIP env not set by Package step" }
+          Move-Item -Force $env:ARM64_ZIP                       "out\nevoflux.win-arm64-gha.zip"
           Move-Item -Force "dist\nevoflux.installer.exe"        "out\nevoflux.installer-arm64-gha.exe"
+          if (Test-Path "dist\output.mar") {
+            Move-Item -Force "dist\output.mar"                  "out\windows-arm64-gha.mar"
+          } else {
+            Write-Host "::warning::dist\output.mar missing - partial update MAR not produced (arm64)"
+          }
 
   collect:
     needs: [prepare, x64-stage3, arm64-final]
