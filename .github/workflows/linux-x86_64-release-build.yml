@@ -225,6 +225,11 @@ jobs:
         env:
           SURFER_COMPAT: x86_64
           ZEN_RELEASE_BRANCH: ${{ inputs.release-branch }}
+          # PGO disabled: the 3-pass instrumented build pushes peak RAM past
+          # what the self-hosted runner can hold during the full-LTO link
+          # phase, causing the runner agent to be killed mid-step (job ends
+          # with no completion log). Full LTO is retained for release perf.
+          ZEN_GA_DISABLE_PGO: 'true'
         run: |
           export SURFER_PLATFORM="linux"
           if [[ -n "${{ inputs.MOZ_BUILD_DATE }}" ]]; then
