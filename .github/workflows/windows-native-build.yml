@@ -580,11 +580,20 @@ jobs:
             exit 1
           }
           Write-Host "Adding ARM64 VC tools + ATL to $vsInstall ..."
-          # NOTE: $vsArgs (not $args) — $args is an automatic variable in
-          # PowerShell scriptblocks. The previous `& $vsInstaller @args` also
-          # exited in ~30ms because vs_installer.exe is a thin launcher that
-          # forks the real "setup.exe" / "vs_installer_servicer" process and
-          # returns immediately; --wait is unreliable through that wrapper.
+          # vs_installer.exe is a thin launcher that forks the real
+          # setup.exe / vs_installer_servicer and returns within ~30ms;
+          # --wait is unreliable through this wrapper, so we poll for
+          # the spawned child processes ourselves.
+          #
+          # Use the PowerShell call operator with @-splatting (NOT
+          # Start-Process -ArgumentList <array>) — Start-Process's array
+          # form fails to quote args containing spaces, so
+          # `--installPath C:\Program Files\...` parses as 3 separate
+          # args and vs_installer aborts with rc=87 INVALID_PARAMETER.
+          # The call operator preserves the array boundary natively.
+          #
+          # NOTE: variable name is $vsArgs (not $args) — $args is an
+          # automatic variable inside PowerShell scriptblocks.
           $vsArgs = @(
             'modify',
             '--installPath', $vsInstall,
@@ -592,20 +601,18 @@ jobs:
             '--add', 'Microsoft.VisualStudio.Component.VC.ATL.ARM64',
             '--quiet', '--norestart', '--wait'
           )
-          $proc = Start-Process -FilePath $vsInstaller -ArgumentList $vsArgs `
-                                -Wait -NoNewWindow -PassThru
-          $rc = $proc.ExitCode
-          Write-Host "vs_installer launcher exited (rc=$rc); polling for child installer processes..."
-          # Poll until the actual installer children exit. Without this the
-          # immediately-following steps see the half-installed VS state.
+          & $vsInstaller @vsArgs | Out-Host
+          $rc = $LASTEXITCODE
+          Write-Host "vs_installer launcher exited (rc=$rc); waiting briefly for children to spawn, then polling..."
+          Start-Sleep -Seconds 10
           $deadline = (Get-Date).AddMinutes(45)
           $childNames = @('setup','vs_installer','vs_installershell','vs_installer_servicer','vs_setup_bootstrapper')
           do {
-            Start-Sleep -Seconds 20
             $running = Get-Process -Name $childNames -ErrorAction SilentlyContinue
             if ($running) {
               Write-Host ("{0}: waiting for {1} installer process(es): {2}" -f `
                 (Get-Date -Format HH:mm:ss), $running.Count, (($running.Name | Sort-Object -Unique) -join ', '))
+              Start-Sleep -Seconds 30
             }
           } while ($running -and (Get-Date) -lt $deadline)
           if ($running) {
@@ -613,7 +620,7 @@ jobs:
             exit 1
           }
           if ($rc -ne 0 -and $rc -ne 3010) {
-            Write-Error "vs_installer modify launcher returned exit $rc"
+            Write-Error "vs_installer launcher returned exit $rc"
             exit $rc
           }
           Write-Host "vs_installer completed (rc=$rc); re-verifying ARM64 cross-compiler..."
