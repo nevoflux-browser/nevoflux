@@ -1078,6 +1078,79 @@ jobs:
             exit "$pkg_rc"
           fi
 
+      - name: Diagnostic — verify distribution baked into x64 package
+        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # Even if our "Inject distribution + patch package-manifest" step
+        # ran, the packager may have ignored the manifest patch. Verify
+        # the produced zip + installer.exe actually contain
+        # distribution/extensions/agent@nevoflux.com.xpi.
+        run: |
+          fail=0
+          ZIP="$X64_ZIP"
+          echo "::group::zip ($ZIP) contents under distribution/"
+          if [ ! -f "$ZIP" ]; then
+            echo "::error::zip missing at $ZIP"
+            fail=1
+          else
+            # Windows native tar can list zip via libarchive on newer builds;
+            # use unzip for content listing (available in Git Bash usr/bin).
+            if command -v unzip >/dev/null 2>&1; then
+              entries=$(unzip -l "$ZIP" 2>/dev/null | grep -i 'distribution/' || true)
+              echo "$entries" | head -20
+              count=$(echo "$entries" | grep -c .)
+              xpi_present=$(echo "$entries" | grep -c 'agent@nevoflux.com.xpi' || true)
+              echo "total distribution/* entries: $count"
+              echo "agent xpi present: $xpi_present"
+              if [ "$count" = "0" ]; then
+                echo "::error::zip has NO distribution/* entries — packager dropped it"
+                fail=1
+              elif [ "$xpi_present" = "0" ]; then
+                echo "::warning::distribution/ present but agent xpi missing"
+                fail=1
+              fi
+            else
+              echo "::warning::unzip not available; skipping zip content check"
+            fi
+          fi
+          echo "::endgroup::"
+
+          echo "::group::installer.exe (NSIS) contents under distribution/"
+          INST="dist/nevoflux.installer.exe"
+          if [ ! -f "$INST" ]; then
+            echo "::error::installer missing at $INST"
+            fail=1
+          elif command -v 7z >/dev/null 2>&1; then
+            # NSIS exe is a self-extracting 7z-like archive
+            entries=$(7z l "$INST" 2>/dev/null | grep -i 'distribution[\/]' || true)
+            echo "$entries" | head -20
+            xpi=$(echo "$entries" | grep -c 'agent@nevoflux.com.xpi' || true)
+            count=$(echo "$entries" | grep -c .)
+            echo "total entries: $count  xpi: $xpi"
+            if [ "$count" = "0" ]; then
+              echo "::warning::installer.exe has NO distribution/* — NSIS bundle didn't pick it up"
+              fail=1
+            fi
+          else
+            echo "::warning::7z not available; skipping installer content check"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::source-of-truth on disk: engine/obj-*/dist/bin/distribution/"
+          DIST="engine/obj-x86_64-pc-windows-msvc/dist/bin/distribution"
+          if [ -d "$DIST" ]; then
+            find "$DIST" -maxdepth 3 -type f | head -20
+          else
+            echo "MISSING — inject step apparently didn't run or got wiped"
+            fail=1
+          fi
+          echo "::endgroup::"
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::distribution not in produced x64 artifacts — installer will lack agent xpi"
+            exit 1
+          fi
+          echo "distribution verified in x64 zip + installer"
+
       - name: Stage final x64 artifacts
         shell: pwsh
         run: |
@@ -1187,6 +1260,61 @@ jobs:
             ls -la dist/ 2>/dev/null || true
             exit "$pkg_rc"
           fi
+
+      - name: Diagnostic — verify distribution baked into arm64 package
+        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # See x64-stage3 step for rationale.
+        run: |
+          fail=0
+          ZIP="$ARM64_ZIP"
+          echo "::group::zip ($ZIP) contents under distribution/"
+          if [ ! -f "$ZIP" ]; then
+            echo "::error::zip missing at $ZIP"
+            fail=1
+          elif command -v unzip >/dev/null 2>&1; then
+            entries=$(unzip -l "$ZIP" 2>/dev/null | grep -i 'distribution/' || true)
+            echo "$entries" | head -20
+            count=$(echo "$entries" | grep -c .)
+            xpi_present=$(echo "$entries" | grep -c 'agent@nevoflux.com.xpi' || true)
+            echo "total distribution/* entries: $count  xpi: $xpi_present"
+            if [ "$count" = "0" ]; then
+              echo "::error::arm64 zip has NO distribution/*"
+              fail=1
+            elif [ "$xpi_present" = "0" ]; then
+              echo "::warning::arm64 distribution/ present but agent xpi missing"
+              fail=1
+            fi
+          fi
+          echo "::endgroup::"
+
+          echo "::group::installer.exe contents under distribution/"
+          INST="dist/nevoflux.installer.exe"
+          if [ -f "$INST" ] && command -v 7z >/dev/null 2>&1; then
+            entries=$(7z l "$INST" 2>/dev/null | grep -i 'distribution[\/]' || true)
+            echo "$entries" | head -20
+            count=$(echo "$entries" | grep -c .)
+            if [ "$count" = "0" ]; then
+              echo "::warning::arm64 installer.exe has NO distribution/*"
+              fail=1
+            fi
+          fi
+          echo "::endgroup::"
+
+          echo "::group::engine/obj-aarch64-pc-windows-msvc/dist/bin/distribution/"
+          DIST="engine/obj-aarch64-pc-windows-msvc/dist/bin/distribution"
+          if [ -d "$DIST" ]; then
+            find "$DIST" -maxdepth 3 -type f | head -20
+          else
+            echo "MISSING — inject step apparently didn't run"
+            fail=1
+          fi
+          echo "::endgroup::"
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::distribution not in produced arm64 artifacts"
+            exit 1
+          fi
+          echo "distribution verified in arm64 zip + installer"
 
       - name: Stage final arm64 artifacts
         shell: pwsh
