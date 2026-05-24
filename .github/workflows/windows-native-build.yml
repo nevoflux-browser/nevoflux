@@ -526,12 +526,24 @@ jobs:
       - name: Install ARM64 VC build tools (if !skip_arm64)
         if: ${{ !inputs.skip_arm64 }}
         shell: pwsh
-        # arm64-final cross-compiles from x64 to aarch64 and configure
-        # errors with "Cannot find a Visual C++ install for e.g. ATL
-        # headers" when the runner's VS install is missing the ARM64
-        # build tools / ATL component. Use vswhere to locate VS and
-        # vs_installer.exe modify to add the missing components.
-        # Idempotent - silently no-ops on already-installed components.
+        # Firefox's build/moz.configure/toolchain.configure picks the MSVC
+        # version named in VC/Auxiliary/Build/Microsoft.VCToolsVersion.default.txt
+        # and looks for bin/Hostx64/arm64/cl.exe under it. If that cross-
+        # compiler is missing, configure dies with
+        #   ERROR: Cannot find a Visual C++ install for e.g. ATL headers.
+        # (The "ATL headers" wording in build/moz.configure/windows.configure:271
+        # is misleading — the actual failure is `find_program("cl.exe", ...)`
+        # returning nothing because the target's cl.exe is absent.)
+        #
+        # Previous detection scanned every MSVC version subdir for any
+        # atlmfc/lib/arm64 directory and short-circuited if one was found.
+        # That matched leftover atl bits in old MSVC 14.30.30705 while the
+        # default tools version (14.44.35207) was missing both the ARM64
+        # cross-compiler AND atlmfc/lib/arm64 — so vs_installer modify was
+        # never run, and arm64-final kept failing at configure.
+        #
+        # Correct check: ONLY look at the default-tools-version subdir
+        # (the one Mozilla actually uses) and require bin/Hostx64/arm64/cl.exe.
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           if (-not (Test-Path $vswhere)) {
@@ -544,26 +556,30 @@ jobs:
             return
           }
           Write-Host "VS install path: $vsInstall"
-          $atlArm64 = Join-Path $vsInstall 'VC\Tools\MSVC'
-          $hasArm64Atl = $false
-          if (Test-Path $atlArm64) {
-            # Check any MSVC version subdir for an arm64 ATL folder.
-            Get-ChildItem $atlArm64 -Directory | ForEach-Object {
-              if (Test-Path (Join-Path $_.FullName 'atlmfc\lib\arm64')) {
-                $hasArm64Atl = $true
-              }
+          $defaultVerFile = Join-Path $vsInstall 'VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt'
+          $defaultVer = $null
+          if (Test-Path $defaultVerFile) {
+            $defaultVer = (Get-Content -Raw $defaultVerFile).Trim()
+          }
+          Write-Host "Default MSVC tools version: $defaultVer"
+          $needInstall = $true
+          if ($defaultVer) {
+            $arm64Cl = Join-Path $vsInstall "VC\Tools\MSVC\$defaultVer\bin\Hostx64\arm64\cl.exe"
+            $arm64Atl = Join-Path $vsInstall "VC\Tools\MSVC\$defaultVer\atlmfc\lib\arm64"
+            if ((Test-Path $arm64Cl) -and (Test-Path $arm64Atl)) {
+              Write-Host "ARM64 cross-compiler + ATL already present in default tools $defaultVer; skipping vs_installer modify"
+              $needInstall = $false
+            } else {
+              Write-Host "Missing in $defaultVer -> cl.exe present: $(Test-Path $arm64Cl), ATL/arm64 present: $(Test-Path $arm64Atl)"
             }
           }
-          if ($hasArm64Atl) {
-            Write-Host "ARM64 ATL already installed; skipping vs_installer modify"
-            return
-          }
+          if (-not $needInstall) { return }
           $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
           if (-not (Test-Path $vsInstaller)) {
             Write-Error "vs_installer.exe not found; can't add ARM64 components"
             exit 1
           }
-          Write-Host "Adding ARM64 VC tools to $vsInstall ..."
+          Write-Host "Adding ARM64 VC tools + ATL to $vsInstall ..."
           $args = @(
             'modify',
             '--installPath', $vsInstall,
@@ -572,11 +588,20 @@ jobs:
             '--quiet', '--norestart', '--wait'
           )
           & $vsInstaller @args
-          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
-            Write-Error "vs_installer modify failed: exit $LASTEXITCODE"
-            exit $LASTEXITCODE
+          $rc = $LASTEXITCODE
+          if ($rc -ne 0 -and $rc -ne 3010) {
+            Write-Error "vs_installer modify failed: exit $rc"
+            exit $rc
           }
-          Write-Host "vs_installer completed (exit $LASTEXITCODE)"
+          Write-Host "vs_installer completed (exit $rc); re-verifying ARM64 cross-compiler ..."
+          if ($defaultVer) {
+            $arm64Cl = Join-Path $vsInstall "VC\Tools\MSVC\$defaultVer\bin\Hostx64\arm64\cl.exe"
+            if (-not (Test-Path $arm64Cl)) {
+              Write-Error "vs_installer claimed success but $arm64Cl still missing"
+              exit 1
+            }
+            Write-Host "OK: $arm64Cl present"
+          }
 
       - name: Install NSIS (Windows installer prerequisite)
         shell: pwsh
