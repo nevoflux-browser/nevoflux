@@ -136,27 +136,44 @@ if [ -d "${NEVOFLUX_DIR}/root-overlays" ]; then
   fi
 fi
 
-# 3b. Replace ALL symlinks in engine/ with real file copies.
-#     Firefox's preprocessor does not follow symlinks when expanding #include
-#     directives. surfer import creates symlinks (engine/zen/ → src/zen/,
-#     engine/browser/base/content/ → src/browser/base/content/) which cause
-#     FILE_NOT_FOUND errors and deadlocks during config.status generation.
-#     Replace every symlink under engine/zen/ and engine/browser/base/content/
-#     with a copy of its target.
-echo "Replacing symlinks with real files for preprocessor compatibility..."
-SYMLINK_COUNT=0
-for dir in "${ENGINE_DIR}/zen" "${ENGINE_DIR}/browser/base/content"; do
-  if [ -d "$dir" ]; then
-    find "$dir" -type l | while read -r link; do
-      target=$(readlink "$link")
-      if [ -f "$target" ]; then
-        cp "$target" "$link.tmp" && rm "$link" && mv "$link.tmp" "$link"
-        SYMLINK_COUNT=$((SYMLINK_COUNT + 1))
-      fi
-    done
-  fi
-done
-echo "  Replaced symlinks with real files in engine/zen/ and engine/browser/base/content/"
+# 3b. Sync src/zen → engine/zen as real file copies.
+#     - On Linux/macOS, surfer creates engine/zen entries as symlinks → src/zen.
+#       Firefox's preprocessor doesn't follow symlinks during #include expansion,
+#       which causes FILE_NOT_FOUND errors during config.status generation.
+#     - On Windows (MSYS2 bash), surfer creates engine/zen as REAL FILE COPIES
+#       at import time (no symlinks). Our step 1b sed and step 2 overlay-cp
+#       update src/zen, but the engine/zen copies stay stale unless we re-sync.
+#       The previous "find -type l" loop did nothing on Windows because there
+#       were no symlinks to replace — engine/zen/common/jar.inc.mn shipped
+#       without the zen-sidebar-right.css entry the overlay had added.
+#     Unified fix: walk every src/zen file and force-replace the engine/zen
+#     counterpart with a real-file copy. Works on both symlink and non-symlink
+#     platforms.
+echo "Syncing src/zen → engine/zen as real file copies (overlays + sed edits)..."
+ENGINE_ZEN_DIR_SYNC="${ENGINE_DIR}/zen"
+if [ -d "${ZEN_DIR}" ] && [ -d "${ENGINE_ZEN_DIR_SYNC}" ]; then
+  (cd "${ZEN_DIR}" && find . -type f) | while read -r rel_file; do
+    rel_file="${rel_file#./}"
+    src_file="$(cd "${ZEN_DIR}" && pwd)/${rel_file}"
+    engine_file="${ENGINE_ZEN_DIR_SYNC}/${rel_file}"
+    mkdir -p "$(dirname "${engine_file}")"
+    # rm -f handles both symlinks (Linux/macOS) and stale real-file copies (Windows)
+    rm -f "${engine_file}"
+    cp "${src_file}" "${engine_file}"
+  done
+fi
+# engine/browser/base/content also has symlinks on Linux/macOS pointing into
+# src/browser/base/content. Windows builds use the engine-overlays mechanism
+# for files outside src/zen, so this only matters when symlinks exist.
+if [ -d "${ENGINE_DIR}/browser/base/content" ]; then
+  find "${ENGINE_DIR}/browser/base/content" -type l 2>/dev/null | while read -r link; do
+    target=$(readlink "$link")
+    if [ -f "$target" ]; then
+      cp "$target" "$link.tmp" && rm "$link" && mv "$link.tmp" "$link"
+    fi
+  done
+fi
+echo "  Synced engine/zen ← src/zen; replaced symlinks in engine/browser/base/content"
 
 # 4. Copy engine-overlays to engine/ directory
 if [ -d "${NEVOFLUX_DIR}/engine-overlays" ]; then
