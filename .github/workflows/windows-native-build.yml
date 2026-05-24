@@ -633,8 +633,11 @@ jobs:
 
   # ----- PGO Stage 1: instrument build (skipped when skip_pgo=true) -----
   x64-stage1:
-    needs: prepare
-    if: ${{ !inputs.skip_pgo }}
+    # arm64-final runs before x64 PGO stages so a quick (no-PGO) arm64
+    # failure surfaces in <1h instead of after a 5h x64 PGO run. When
+    # skip_arm64=true, arm64-final is skipped and x64 still proceeds.
+    needs: [prepare, arm64-final]
+    if: ${{ !inputs.skip_pgo && always() && needs.prepare.result == 'success' && (needs.arm64-final.result == 'success' || needs.arm64-final.result == 'skipped') }}
     runs-on: [self-hosted, nevoflux-windows]
     env:
       SURFER_COMPAT: x86_64
@@ -858,8 +861,8 @@ jobs:
 
   # ----- PGO Stage 3: optimized x64 build (or no-PGO single build if skip_pgo=true) -----
   x64-stage3:
-    needs: [prepare, x64-stage2]
-    if: ${{ always() && needs.prepare.result == 'success' && (needs.x64-stage2.result == 'success' || inputs.skip_pgo) }}
+    needs: [prepare, x64-stage2, arm64-final]
+    if: ${{ always() && needs.prepare.result == 'success' && (needs.arm64-final.result == 'success' || needs.arm64-final.result == 'skipped') && (needs.x64-stage2.result == 'success' || inputs.skip_pgo) }}
     runs-on: [self-hosted, nevoflux-windows]
     env:
       SURFER_COMPAT: x86_64
@@ -991,7 +994,10 @@ jobs:
 
   # ----- arm64 build (skipped when skip_arm64=true) -----
   arm64-final:
-    needs: x64-stage3
+    # Runs BEFORE x64 PGO stages so a fast (no-PGO) arm64 failure
+    # short-circuits the longer x64 pipeline. x64 stages gate on
+    # arm64-final's result being either success OR skipped.
+    needs: prepare
     if: ${{ !inputs.skip_arm64 }}
     runs-on: [self-hosted, nevoflux-windows]
     env:
