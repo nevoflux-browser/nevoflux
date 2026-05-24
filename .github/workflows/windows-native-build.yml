@@ -523,126 +523,77 @@ jobs:
           Remove-Item -Recurse -Force $tmp
           Get-ChildItem -Recurse $extractRoot | ForEach-Object { Write-Host $_.FullName }
 
-      - name: Install ARM64 VC build tools (if !skip_arm64)
+      - name: Verify ARM64 VC build tools (if !skip_arm64)
         if: ${{ !inputs.skip_arm64 }}
         shell: pwsh
-        # Firefox's build/moz.configure/toolchain.configure picks the MSVC
-        # version named in VC/Auxiliary/Build/Microsoft.VCToolsVersion.default.txt
-        # and looks for bin/Hostx64/arm64/cl.exe under it. If that cross-
-        # compiler is missing, configure dies with
+        # Mozilla's build/moz.configure/toolchain.configure reads the version
+        # named in VC/Auxiliary/Build/Microsoft.VCToolsVersion.default.txt and
+        # looks for bin/Hostx64/arm64/cl.exe + atlmfc/lib/arm64 under it. If
+        # either is missing the arm64-final configure dies with
         #   ERROR: Cannot find a Visual C++ install for e.g. ATL headers.
-        # (The "ATL headers" wording in build/moz.configure/windows.configure:271
-        # is misleading — the actual failure is `find_program("cl.exe", ...)`
-        # returning nothing because the target's cl.exe is absent.)
         #
-        # Previous detection scanned every MSVC version subdir for any
-        # atlmfc/lib/arm64 directory and short-circuited if one was found.
-        # That matched leftover atl bits in old MSVC 14.30.30705 while the
-        # default tools version (14.44.35207) was missing both the ARM64
-        # cross-compiler AND atlmfc/lib/arm64 — so vs_installer modify was
-        # never run, and arm64-final kept failing at configure.
+        # Earlier iterations tried to install these via `vs_installer.exe
+        # modify --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 ...`
+        # from inside the job. That kept failing on this runner: the launcher
+        # either returned rc=0 in 30ms (fork-and-forget; nothing actually
+        # installed) or rc=87 INVALID_PARAMETER. Multiple invocation styles
+        # (call operator, Start-Process array, Start-Process string) all hit
+        # one or the other failure mode — apparently the runner's vs_installer
+        # state requires manual repair from a real TTY/admin session.
         #
-        # Correct check: ONLY look at the default-tools-version subdir
-        # (the one Mozilla actually uses) and require bin/Hostx64/arm64/cl.exe.
+        # ARM64 toolchain is now a runner-level prerequisite. This step only
+        # verifies the bits are in place and fails loudly if not — install
+        # manually on the runner via vs_installer.exe modify in an elevated
+        # PowerShell session.
         run: |
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           if (-not (Test-Path $vswhere)) {
-            Write-Host "vswhere.exe not found; skipping VS ARM64 component install"
-            return
+            Write-Error "vswhere.exe not found"
+            exit 1
           }
           $vsInstall = & $vswhere -latest -property installationPath
           if (-not $vsInstall) {
-            Write-Host "No VS install found via vswhere; skipping"
-            return
+            Write-Error "No VS install found via vswhere"
+            exit 1
           }
           Write-Host "VS install path: $vsInstall"
           $defaultVerFile = Join-Path $vsInstall 'VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt'
-          $defaultVer = $null
-          if (Test-Path $defaultVerFile) {
-            $defaultVer = (Get-Content -Raw $defaultVerFile).Trim()
+          if (-not (Test-Path $defaultVerFile)) {
+            Write-Error "Missing default-tools-version file: $defaultVerFile"
+            exit 1
           }
+          $defaultVer = (Get-Content -Raw $defaultVerFile).Trim()
           Write-Host "Default MSVC tools version: $defaultVer"
-          $needInstall = $true
-          if ($defaultVer) {
-            $arm64Cl = Join-Path $vsInstall "VC\Tools\MSVC\$defaultVer\bin\Hostx64\arm64\cl.exe"
-            $arm64Atl = Join-Path $vsInstall "VC\Tools\MSVC\$defaultVer\atlmfc\lib\arm64"
-            if ((Test-Path $arm64Cl) -and (Test-Path $arm64Atl)) {
-              Write-Host "ARM64 cross-compiler + ATL already present in default tools $defaultVer; skipping vs_installer modify"
-              $needInstall = $false
-            } else {
-              Write-Host "Missing in $defaultVer -> cl.exe present: $(Test-Path $arm64Cl), ATL/arm64 present: $(Test-Path $arm64Atl)"
-            }
-          }
-          if (-not $needInstall) { return }
-          $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-          if (-not (Test-Path $vsInstaller)) {
-            Write-Error "vs_installer.exe not found; can't add ARM64 components"
-            exit 1
-          }
-          Write-Host "Adding ARM64 VC tools + ATL to $vsInstall ..."
-          # vs_installer.exe is a thin launcher that forks the real
-          # setup.exe / vs_installer_servicer and returns within ~30ms;
-          # --wait is unreliable through this wrapper, so we poll for
-          # the spawned child processes ourselves.
-          #
-          # Use the PowerShell call operator with @-splatting (NOT
-          # Start-Process -ArgumentList <array>) — Start-Process's array
-          # form fails to quote args containing spaces, so
-          # `--installPath C:\Program Files\...` parses as 3 separate
-          # args and vs_installer aborts with rc=87 INVALID_PARAMETER.
-          # The call operator preserves the array boundary natively.
-          #
-          # NOTE: variable name is $vsArgs (not $args) — $args is an
-          # automatic variable inside PowerShell scriptblocks.
-          $vsArgs = @(
-            'modify',
-            '--installPath', $vsInstall,
-            '--add', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64',
-            '--add', 'Microsoft.VisualStudio.Component.VC.ATL.ARM64',
-            '--quiet', '--norestart', '--wait'
-          )
-          & $vsInstaller @vsArgs | Out-Host
-          $rc = $LASTEXITCODE
-          Write-Host "vs_installer launcher exited (rc=$rc); waiting briefly for children to spawn, then polling..."
-          Start-Sleep -Seconds 10
-          $deadline = (Get-Date).AddMinutes(45)
-          $childNames = @('setup','vs_installer','vs_installershell','vs_installer_servicer','vs_setup_bootstrapper')
-          do {
-            $running = Get-Process -Name $childNames -ErrorAction SilentlyContinue
-            if ($running) {
-              Write-Host ("{0}: waiting for {1} installer process(es): {2}" -f `
-                (Get-Date -Format HH:mm:ss), $running.Count, (($running.Name | Sort-Object -Unique) -join ', '))
-              Start-Sleep -Seconds 30
-            }
-          } while ($running -and (Get-Date) -lt $deadline)
-          if ($running) {
-            Write-Error "vs_installer children still running after 45 min; aborting"
-            exit 1
-          }
-          if ($rc -ne 0 -and $rc -ne 3010) {
-            Write-Error "vs_installer launcher returned exit $rc"
-            exit $rc
-          }
-          Write-Host "vs_installer completed (rc=$rc); re-verifying ARM64 cross-compiler..."
-          # Default tools version may have advanced if the modify also pulled
-          # in a newer MSVC. Re-read it.
-          if (Test-Path $defaultVerFile) {
-            $defaultVer = (Get-Content -Raw $defaultVerFile).Trim()
-          }
           $arm64Cl = Join-Path $vsInstall "VC\Tools\MSVC\$defaultVer\bin\Hostx64\arm64\cl.exe"
           $arm64Atl = Join-Path $vsInstall "VC\Tools\MSVC\$defaultVer\atlmfc\lib\arm64"
-          if (-not (Test-Path $arm64Cl)) {
-            Write-Error "Post-install verify failed: $arm64Cl still missing"
-            Write-Host "MSVC subdirs present:"
+          $hostX64Cl = Join-Path $vsInstall "VC\Tools\MSVC\$defaultVer\bin\Hostx64\x64\cl.exe"
+          $clOk = Test-Path $arm64Cl
+          $atlOk = Test-Path $arm64Atl
+          $hostOk = Test-Path $hostX64Cl
+          Write-Host "Hostx64/arm64/cl.exe present: $clOk"
+          Write-Host "atlmfc/lib/arm64 present:     $atlOk"
+          Write-Host "Hostx64/x64/cl.exe present:   $hostOk"
+          if (-not ($clOk -and $atlOk -and $hostOk)) {
+            Write-Host ""
+            Write-Host "MSVC subdirs present on runner:"
             Get-ChildItem (Join-Path $vsInstall 'VC\Tools\MSVC') -Directory | ForEach-Object {
               $cl = Join-Path $_.FullName 'bin\Hostx64\arm64\cl.exe'
               $atl = Join-Path $_.FullName 'atlmfc\lib\arm64'
-              Write-Host ("  {0}: cl={1} atl={2}" -f $_.Name, (Test-Path $cl), (Test-Path $atl))
+              $xcl = Join-Path $_.FullName 'bin\Hostx64\x64\cl.exe'
+              Write-Host ("  {0}: arm64-cl={1} atl-arm64={2} x64-cl={3}" -f `
+                $_.Name, (Test-Path $cl), (Test-Path $atl), (Test-Path $xcl))
             }
+            Write-Host ""
+            Write-Host "To fix: on the runner, open an elevated PowerShell and run:"
+            Write-Host "  & `"$($env:ProgramFiles + ' (x86)')\Microsoft Visual Studio\Installer\vs_installer.exe`" ``"
+            Write-Host "    modify --installPath `"$vsInstall`" ``"
+            Write-Host "    --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 ``"
+            Write-Host "    --add Microsoft.VisualStudio.Component.VC.ATL.ARM64 ``"
+            Write-Host "    --quiet --norestart --wait"
+            Write-Error "Required ARM64 VC components missing in default MSVC tools ($defaultVer)"
             exit 1
           }
-          Write-Host "OK: $arm64Cl present"
-          Write-Host "OK: $arm64Atl present: $(Test-Path $arm64Atl)"
+          Write-Host "OK: ARM64 cross-compiler + ATL present in $defaultVer"
 
       - name: Install NSIS (Windows installer prerequisite)
         shell: pwsh
