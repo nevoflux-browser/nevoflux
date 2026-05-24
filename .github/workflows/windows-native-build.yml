@@ -218,6 +218,106 @@ jobs:
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: npm run import -- --verbose
 
+      - name: Diagnostic — verify zen overlays applied to engine
+        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # apply-patches.sh uses `ln -s` to overlay src/zen onto engine/zen
+        # and `cp -r ... 2>/dev/null || true` for engine-overlays. On
+        # MSYS2 bash the ln -s behavior depends on MSYS=winsymlinks:...
+        # and the cp errors are silently swallowed. Verify the actual
+        # state of engine/ BEFORE the 5h build so we fail fast.
+        run: |
+          fail=0
+          echo "::group::engine/zen/ dir layout"
+          if [ -d engine/zen ]; then
+            find engine/zen -maxdepth 2 -type d | head -20
+          else
+            echo "MISSING — engine/zen/ doesn't exist"
+            fail=1
+          fi
+          echo "::endgroup::"
+
+          echo "::group::engine/zen/common/styles/ (zen UI CSS)"
+          if [ -d engine/zen/common/styles ]; then
+            ls -la engine/zen/common/styles/ | head -10
+            file_count=$(find engine/zen/common/styles -type f | wc -l)
+            echo "file count: $file_count"
+            if [ "$file_count" -lt 3 ]; then
+              echo "::warning::engine/zen/common/styles has <3 files — overlay may be incomplete"
+              fail=1
+            fi
+          else
+            echo "MISSING — engine/zen/common/styles doesn't exist"
+            fail=1
+          fi
+          echo "::endgroup::"
+
+          echo "::group::symlinks still under engine/zen (step 3b should have replaced all)"
+          symlink_count=$(find engine/zen -type l 2>/dev/null | wc -l)
+          echo "symlink count: $symlink_count"
+          if [ "$symlink_count" -gt 0 ]; then
+            echo "::warning::$symlink_count symlinks remain — preprocessor will fail #include"
+            find engine/zen -type l | head -10
+            fail=1
+          fi
+          echo "::endgroup::"
+
+          echo "::group::engine-overlays applied (zen-assets.inc.xhtml)"
+          if [ -f engine/browser/base/content/zen-assets.inc.xhtml ]; then
+            echo "FOUND — engine-overlays cp succeeded"
+            wc -l engine/browser/base/content/zen-assets.inc.xhtml
+          else
+            echo "::error::MISSING — engine/browser/base/content/zen-assets.inc.xhtml"
+            echo "engine-overlays cp -r failed silently (apply-patches.sh:164 uses 2>/dev/null || true)"
+            fail=1
+          fi
+          echo "::endgroup::"
+
+          echo "::group::ZenComponents.manifest"
+          if [ -f engine/zen/ZenComponents.manifest ]; then
+            echo "FOUND"
+          else
+            echo "::error::MISSING — engine/zen/ZenComponents.manifest"
+            fail=1
+          fi
+          echo "::endgroup::"
+
+          echo "::group::jar.inc.mn has zen-sidebar-right.css?"
+          if [ -f engine/zen/common/jar.inc.mn ]; then
+            c=$(grep -c 'zen-sidebar-right.css' engine/zen/common/jar.inc.mn || true)
+            echo "occurrences: $c"
+            if [ "$c" = "0" ]; then
+              echo "::warning::zen-sidebar-right.css not in jar.inc.mn (step 1b sed didn't run)"
+              fail=1
+            fi
+          else
+            echo "MISSING — engine/zen/common/jar.inc.mn"
+            fail=1
+          fi
+          echo "::endgroup::"
+
+          echo "::group::sample zen overlay file check"
+          # Verify a representative overlay file is a real file with content
+          # (not a broken cygwin-emulation symlink or empty placeholder).
+          for f in engine/zen/ZenComponents.manifest engine/zen/common/jar.inc.mn; do
+            if [ -e "$f" ]; then
+              size=$(stat -c%s "$f" 2>/dev/null || echo 0)
+              type=$(stat -c%F "$f" 2>/dev/null || echo unknown)
+              echo "$f: type=$type size=$size"
+              if [ "$size" -lt 10 ]; then
+                echo "::warning::$f has size <10 — broken symlink/empty file"
+                fail=1
+              fi
+            fi
+          done
+          echo "::endgroup::"
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Zen overlay state is NOT clean — build will likely ship without Zen UI"
+            echo "::error::Fix apply-patches.sh OR the workflow's npm-run-import step before continuing"
+            exit 1
+          fi
+          echo "Zen overlays verified OK — engine has all expected files"
+
       - name: Blocklist MSVC STL internals in gecko-profiler bindgen
         shell: pwsh
         # Bindgen + MSVC 14.44 STL emits broken Rust for std::vector's
