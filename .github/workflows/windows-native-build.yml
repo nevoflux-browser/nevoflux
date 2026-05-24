@@ -423,6 +423,61 @@ jobs:
           Remove-Item -Recurse -Force $tmp
           Get-ChildItem -Recurse $extractRoot | ForEach-Object { Write-Host $_.FullName }
 
+      - name: Install ARM64 VC build tools (if !skip_arm64)
+        if: ${{ !inputs.skip_arm64 }}
+        shell: pwsh
+        # arm64-final cross-compiles from x64 to aarch64 and configure
+        # errors with "Cannot find a Visual C++ install for e.g. ATL
+        # headers" when the runner's VS install is missing the ARM64
+        # build tools / ATL component. Use vswhere to locate VS and
+        # vs_installer.exe modify to add the missing components.
+        # Idempotent - silently no-ops on already-installed components.
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) {
+            Write-Host "vswhere.exe not found; skipping VS ARM64 component install"
+            return
+          }
+          $vsInstall = & $vswhere -latest -property installationPath
+          if (-not $vsInstall) {
+            Write-Host "No VS install found via vswhere; skipping"
+            return
+          }
+          Write-Host "VS install path: $vsInstall"
+          $atlArm64 = Join-Path $vsInstall 'VC\Tools\MSVC'
+          $hasArm64Atl = $false
+          if (Test-Path $atlArm64) {
+            # Check any MSVC version subdir for an arm64 ATL folder.
+            Get-ChildItem $atlArm64 -Directory | ForEach-Object {
+              if (Test-Path (Join-Path $_.FullName 'atlmfc\lib\arm64')) {
+                $hasArm64Atl = $true
+              }
+            }
+          }
+          if ($hasArm64Atl) {
+            Write-Host "ARM64 ATL already installed; skipping vs_installer modify"
+            return
+          }
+          $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+          if (-not (Test-Path $vsInstaller)) {
+            Write-Error "vs_installer.exe not found; can't add ARM64 components"
+            exit 1
+          }
+          Write-Host "Adding ARM64 VC tools to $vsInstall ..."
+          $args = @(
+            'modify',
+            '--installPath', $vsInstall,
+            '--add', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64',
+            '--add', 'Microsoft.VisualStudio.Component.VC.ATL.ARM64',
+            '--quiet', '--norestart', '--wait'
+          )
+          & $vsInstaller @args
+          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
+            Write-Error "vs_installer modify failed: exit $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
+          Write-Host "vs_installer completed (exit $LASTEXITCODE)"
+
       - name: Install NSIS (Windows installer prerequisite)
         shell: pwsh
         # browser/moz.build only adds installer/windows to DIRS when
