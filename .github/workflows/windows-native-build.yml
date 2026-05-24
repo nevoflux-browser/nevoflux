@@ -665,11 +665,22 @@ jobs:
             'C:\Program Files (x86)\NSIS'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      - name: Swap to x86_64 distribution
+      - name: Swap per-arch agent into AppDir/distribution/bin (x86_64)
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # Preserve build/AppDir/distribution/{extensions,policies.json} (VCS).
+        # Only refresh the per-arch bin/ subdir from the prepare-staged
+        # per-arch directory. The previous "rm -rf build/AppDir/distribution"
+        # was wiping the agent xpi + policies.
         run: |
-          rm -rf build/AppDir/distribution
-          cp -r build/AppDir-x86_64/distribution build/AppDir/
+          if [ ! -d build/AppDir-x86_64/distribution/bin ]; then
+            echo "::error::missing build/AppDir-x86_64/distribution/bin (prepare's inject-agent didn't run?)"
+            exit 1
+          fi
+          rm -rf build/AppDir/distribution/bin
+          mkdir -p build/AppDir/distribution
+          cp -r build/AppDir-x86_64/distribution/bin build/AppDir/distribution/bin
+          echo "AppDir/distribution after swap:"
+          find build/AppDir/distribution -maxdepth 3 -type f | head -20
 
       - name: Build (instrumented)
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
@@ -681,6 +692,32 @@ jobs:
         # prompt sees EOF -> defaults to No -> exits without building.
         # Pipe "yes\n" so surfer continues regardless.
         run: npm run build < <(yes y)
+
+      - name: Inject distribution + patch package-manifest (x86_64)
+        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # Mirror GCB cross-compile pipeline: after build, before package,
+        # copy build/AppDir/distribution/* into engine's dist/bin/
+        # distribution/, AND append @RESPATH@/distribution/** to
+        # browser/installer/package-manifest.in so the packager bundles
+        # it. Without these two steps, the produced installer has no
+        # distribution/ directory (no agent xpi, no policies, no skills).
+        run: |
+          OBJ_DIR="engine/obj-x86_64-pc-windows-msvc"
+          if [ -d build/AppDir/distribution ] && [ -d "$OBJ_DIR/dist/bin" ]; then
+            mkdir -p "$OBJ_DIR/dist/bin/distribution"
+            cp -r build/AppDir/distribution/* "$OBJ_DIR/dist/bin/distribution/"
+            echo "Distribution injected into $OBJ_DIR/dist/bin/distribution/:"
+            find "$OBJ_DIR/dist/bin/distribution" -maxdepth 3 -type f | head -20
+          else
+            echo "::warning::skipping distribution inject (src or dst missing)"
+          fi
+          MANIFEST="engine/browser/installer/package-manifest.in"
+          if [ -f "$MANIFEST" ] && ! grep -q '@RESPATH@/distribution/' "$MANIFEST"; then
+            printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$MANIFEST"
+            echo "Appended distribution/** to $MANIFEST"
+          else
+            echo "package-manifest.in already has distribution entry (or missing)"
+          fi
 
       - name: Diagnostic — dump failing build-script outputs
         if: failure()
@@ -848,12 +885,21 @@ jobs:
             'C:\Program Files (x86)\NSIS'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      - name: Clean stale obj + swap distribution
+      - name: Clean stale obj + swap per-arch agent (x86_64)
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # Wipe stage1's instrumented obj dir. For distribution: preserve
+        # build/AppDir/distribution/{extensions,policies.json} (VCS) and
+        # only swap the per-arch bin/ subdir. Previous rm -rf wiped the
+        # agent xpi too.
         run: |
           rm -rf engine/obj-x86_64-pc-windows-msvc
-          rm -rf build/AppDir/distribution
-          cp -r build/AppDir-x86_64/distribution build/AppDir/
+          if [ ! -d build/AppDir-x86_64/distribution/bin ]; then
+            echo "::error::missing build/AppDir-x86_64/distribution/bin"
+            exit 1
+          fi
+          rm -rf build/AppDir/distribution/bin
+          mkdir -p build/AppDir/distribution
+          cp -r build/AppDir-x86_64/distribution/bin build/AppDir/distribution/bin
 
       - name: Build (PGO-use, or no-PGO if skip_pgo)
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
@@ -870,6 +916,27 @@ jobs:
           fi
           # See stage1 comment re: surfer interactive prompt.
           npm run build < <(yes y)
+
+      - name: Inject distribution + patch package-manifest (x86_64)
+        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # Mirror GCB pipeline - see stage1 step for rationale.
+        run: |
+          OBJ_DIR="engine/obj-x86_64-pc-windows-msvc"
+          if [ -d build/AppDir/distribution ] && [ -d "$OBJ_DIR/dist/bin" ]; then
+            mkdir -p "$OBJ_DIR/dist/bin/distribution"
+            cp -r build/AppDir/distribution/* "$OBJ_DIR/dist/bin/distribution/"
+            echo "Distribution injected:"
+            find "$OBJ_DIR/dist/bin/distribution" -maxdepth 3 -type f | head -20
+          else
+            echo "::warning::skipping distribution inject (src or dst missing)"
+          fi
+          MANIFEST="engine/browser/installer/package-manifest.in"
+          if [ -f "$MANIFEST" ] && ! grep -q '@RESPATH@/distribution/' "$MANIFEST"; then
+            printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$MANIFEST"
+            echo "Appended distribution/** to $MANIFEST"
+          else
+            echo "package-manifest.in already has distribution entry (or missing)"
+          fi
 
       - name: Diagnostic — PGO engagement
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
@@ -952,11 +1019,17 @@ jobs:
             'C:\Program Files (x86)\NSIS'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      - name: Swap to aarch64 distribution
+      - name: Swap per-arch agent into AppDir/distribution/bin (aarch64)
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # See x64-stage1 swap-step comment for rationale.
         run: |
-          rm -rf build/AppDir/distribution
-          cp -r build/AppDir-aarch64/distribution build/AppDir/
+          if [ ! -d build/AppDir-aarch64/distribution/bin ]; then
+            echo "::error::missing build/AppDir-aarch64/distribution/bin"
+            exit 1
+          fi
+          rm -rf build/AppDir/distribution/bin
+          mkdir -p build/AppDir/distribution
+          cp -r build/AppDir-aarch64/distribution/bin build/AppDir/distribution/bin
 
       - name: Build (no PGO)
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
@@ -964,6 +1037,27 @@ jobs:
           MOZ_BUILD_DATE: ${{ inputs.build_id }}
         # See x64-stage1 Build step comment re: surfer interactive prompt.
         run: npm run build < <(yes y)
+
+      - name: Inject distribution + patch package-manifest (aarch64)
+        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # Mirror GCB pipeline - see x64-stage1 step for rationale.
+        run: |
+          OBJ_DIR="engine/obj-aarch64-pc-windows-msvc"
+          if [ -d build/AppDir/distribution ] && [ -d "$OBJ_DIR/dist/bin" ]; then
+            mkdir -p "$OBJ_DIR/dist/bin/distribution"
+            cp -r build/AppDir/distribution/* "$OBJ_DIR/dist/bin/distribution/"
+            echo "Distribution injected:"
+            find "$OBJ_DIR/dist/bin/distribution" -maxdepth 3 -type f | head -20
+          else
+            echo "::warning::skipping distribution inject (src or dst missing)"
+          fi
+          MANIFEST="engine/browser/installer/package-manifest.in"
+          if [ -f "$MANIFEST" ] && ! grep -q '@RESPATH@/distribution/' "$MANIFEST"; then
+            printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$MANIFEST"
+            echo "Appended distribution/** to $MANIFEST"
+          else
+            echo "package-manifest.in already has distribution entry (or missing)"
+          fi
 
       - name: Package
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
