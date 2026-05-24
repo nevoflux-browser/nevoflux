@@ -580,28 +580,62 @@ jobs:
             exit 1
           }
           Write-Host "Adding ARM64 VC tools + ATL to $vsInstall ..."
-          $args = @(
+          # NOTE: $vsArgs (not $args) — $args is an automatic variable in
+          # PowerShell scriptblocks. The previous `& $vsInstaller @args` also
+          # exited in ~30ms because vs_installer.exe is a thin launcher that
+          # forks the real "setup.exe" / "vs_installer_servicer" process and
+          # returns immediately; --wait is unreliable through that wrapper.
+          $vsArgs = @(
             'modify',
             '--installPath', $vsInstall,
             '--add', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64',
             '--add', 'Microsoft.VisualStudio.Component.VC.ATL.ARM64',
             '--quiet', '--norestart', '--wait'
           )
-          & $vsInstaller @args
-          $rc = $LASTEXITCODE
+          $proc = Start-Process -FilePath $vsInstaller -ArgumentList $vsArgs `
+                                -Wait -NoNewWindow -PassThru
+          $rc = $proc.ExitCode
+          Write-Host "vs_installer launcher exited (rc=$rc); polling for child installer processes..."
+          # Poll until the actual installer children exit. Without this the
+          # immediately-following steps see the half-installed VS state.
+          $deadline = (Get-Date).AddMinutes(45)
+          $childNames = @('setup','vs_installer','vs_installershell','vs_installer_servicer','vs_setup_bootstrapper')
+          do {
+            Start-Sleep -Seconds 20
+            $running = Get-Process -Name $childNames -ErrorAction SilentlyContinue
+            if ($running) {
+              Write-Host ("{0}: waiting for {1} installer process(es): {2}" -f `
+                (Get-Date -Format HH:mm:ss), $running.Count, (($running.Name | Sort-Object -Unique) -join ', '))
+            }
+          } while ($running -and (Get-Date) -lt $deadline)
+          if ($running) {
+            Write-Error "vs_installer children still running after 45 min; aborting"
+            exit 1
+          }
           if ($rc -ne 0 -and $rc -ne 3010) {
-            Write-Error "vs_installer modify failed: exit $rc"
+            Write-Error "vs_installer modify launcher returned exit $rc"
             exit $rc
           }
-          Write-Host "vs_installer completed (exit $rc); re-verifying ARM64 cross-compiler ..."
-          if ($defaultVer) {
-            $arm64Cl = Join-Path $vsInstall "VC\Tools\MSVC\$defaultVer\bin\Hostx64\arm64\cl.exe"
-            if (-not (Test-Path $arm64Cl)) {
-              Write-Error "vs_installer claimed success but $arm64Cl still missing"
-              exit 1
-            }
-            Write-Host "OK: $arm64Cl present"
+          Write-Host "vs_installer completed (rc=$rc); re-verifying ARM64 cross-compiler..."
+          # Default tools version may have advanced if the modify also pulled
+          # in a newer MSVC. Re-read it.
+          if (Test-Path $defaultVerFile) {
+            $defaultVer = (Get-Content -Raw $defaultVerFile).Trim()
           }
+          $arm64Cl = Join-Path $vsInstall "VC\Tools\MSVC\$defaultVer\bin\Hostx64\arm64\cl.exe"
+          $arm64Atl = Join-Path $vsInstall "VC\Tools\MSVC\$defaultVer\atlmfc\lib\arm64"
+          if (-not (Test-Path $arm64Cl)) {
+            Write-Error "Post-install verify failed: $arm64Cl still missing"
+            Write-Host "MSVC subdirs present:"
+            Get-ChildItem (Join-Path $vsInstall 'VC\Tools\MSVC') -Directory | ForEach-Object {
+              $cl = Join-Path $_.FullName 'bin\Hostx64\arm64\cl.exe'
+              $atl = Join-Path $_.FullName 'atlmfc\lib\arm64'
+              Write-Host ("  {0}: cl={1} atl={2}" -f $_.Name, (Test-Path $cl), (Test-Path $atl))
+            }
+            exit 1
+          }
+          Write-Host "OK: $arm64Cl present"
+          Write-Host "OK: $arm64Atl present: $(Test-Path $arm64Atl)"
 
       - name: Install NSIS (Windows installer prerequisite)
         shell: pwsh
