@@ -303,7 +303,7 @@ jobs:
         env:
           SURFER_COMPAT: x86_64
           ZEN_RELEASE_BRANCH: ${{ inputs.release-branch }}
-          RUSTUP_TOOLCHAIN: '1.83'
+          RUSTUP_TOOLCHAIN: '1.90'
           # Disable PGO for x86_64 cross-compile: can't run x86_64 binary on ARM64 runner
           ZEN_GA_DISABLE_PGO: 'true'
           # Disable LTO for macOS: ld64 linker bug check conflicts with MOZ_AUTOMATION

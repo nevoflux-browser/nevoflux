@@ -49,4 +49,12 @@ else
 fi
 
 # Keep using ld64 on PGO/LTO builds because of performance regressions when using lld.
-ac_add_options --enable-linker=ld64
+# When both LTO and PGO are disabled (CI cross-compile builds set ZEN_DISABLE_LTO
+# and ZEN_GA_DISABLE_PGO), the bootstrapped clang's "-fuse-ld=ld" probe fails
+# ("Could not use ld64 as linker"), so fall back to lld which ships with the
+# Mozilla bootstrap toolchain.
+if test "$ZEN_RELEASE" && ! test "$ZEN_DISABLE_LTO" && ! test "$ZEN_GA_DISABLE_PGO"; then
+  ac_add_options --enable-linker=ld64
+else
+  ac_add_options --enable-linker=lld
+fi
