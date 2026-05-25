@@ -1258,13 +1258,15 @@ jobs:
       - name: Package
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         # Tolerate surfer's post-make MAR path bug - see x64-stage3 Package.
+        # arm64 zip is named nevoflux-<ver>.en-US.win64-aarch64.zip (NOT plain
+        # win64.zip — Mozilla's packager suffixes the host arch on cross-builds).
         run: |
           set +e
           npm run package < <(yes y)
           pkg_rc=$?
           set -e
           shopt -s nullglob
-          zips=(dist/nevoflux-*.en-US.win64.zip)
+          zips=(dist/nevoflux-*.en-US.win64-aarch64.zip)
           shopt -u nullglob
           have_zip=0; have_inst=0
           [ ${#zips[@]} -gt 0 ] && [ -f "${zips[0]}" ] && have_zip=1
