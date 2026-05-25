@@ -832,11 +832,16 @@ jobs:
             echo "::warning::skipping distribution inject (src or dst missing)"
           fi
           MANIFEST="engine/browser/installer/package-manifest.in"
-          if [ -f "$MANIFEST" ] && ! grep -q '@RESPATH@/distribution/' "$MANIFEST"; then
+          # Use the literal marker comment for idempotency — the previous
+          # check `grep -q '@RESPATH@/distribution/'` matched any unrelated
+          # upstream entry (e.g. `@RESPATH@/distribution/searchplugins/*`),
+          # so the append was skipped and the produced zip shipped without
+          # distribution/extensions/agent@nevoflux.com.xpi.
+          if [ -f "$MANIFEST" ] && ! grep -qF '; NevoFlux distribution files' "$MANIFEST"; then
             printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$MANIFEST"
             echo "Appended distribution/** to $MANIFEST"
           else
-            echo "package-manifest.in already has distribution entry (or missing)"
+            echo "package-manifest.in already has the NevoFlux distribution marker (or file missing)"
           fi
 
       - name: Diagnostic — dump failing build-script outputs
@@ -1051,11 +1056,16 @@ jobs:
             echo "::warning::skipping distribution inject (src or dst missing)"
           fi
           MANIFEST="engine/browser/installer/package-manifest.in"
-          if [ -f "$MANIFEST" ] && ! grep -q '@RESPATH@/distribution/' "$MANIFEST"; then
+          # Use the literal marker comment for idempotency — the previous
+          # check `grep -q '@RESPATH@/distribution/'` matched any unrelated
+          # upstream entry (e.g. `@RESPATH@/distribution/searchplugins/*`),
+          # so the append was skipped and the produced zip shipped without
+          # distribution/extensions/agent@nevoflux.com.xpi.
+          if [ -f "$MANIFEST" ] && ! grep -qF '; NevoFlux distribution files' "$MANIFEST"; then
             printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$MANIFEST"
             echo "Appended distribution/** to $MANIFEST"
           else
-            echo "package-manifest.in already has distribution entry (or missing)"
+            echo "package-manifest.in already has the NevoFlux distribution marker (or file missing)"
           fi
 
       - name: Diagnostic — PGO engagement
@@ -1114,7 +1124,7 @@ jobs:
             if command -v unzip >/dev/null 2>&1; then
               entries=$(unzip -l "$ZIP" 2>/dev/null | grep -i 'distribution/' || true)
               echo "$entries" | head -20
-              count=$(echo "$entries" | grep -c .)
+              count=$(echo "$entries" | grep -c . || true)
               xpi_present=$(echo "$entries" | grep -c 'agent@nevoflux.com.xpi' || true)
               echo "total distribution/* entries: $count"
               echo "agent xpi present: $xpi_present"
@@ -1141,7 +1151,7 @@ jobs:
             entries=$(7z l "$INST" 2>/dev/null | grep -i 'distribution[\/]' || true)
             echo "$entries" | head -20
             xpi=$(echo "$entries" | grep -c 'agent@nevoflux.com.xpi' || true)
-            count=$(echo "$entries" | grep -c .)
+            count=$(echo "$entries" | grep -c . || true)
             echo "total entries: $count  xpi: $xpi"
             if [ "$count" = "0" ]; then
               echo "::warning::installer.exe has NO distribution/* — NSIS bundle didn't pick it up"
@@ -1248,11 +1258,16 @@ jobs:
             echo "::warning::skipping distribution inject (src or dst missing)"
           fi
           MANIFEST="engine/browser/installer/package-manifest.in"
-          if [ -f "$MANIFEST" ] && ! grep -q '@RESPATH@/distribution/' "$MANIFEST"; then
+          # Use the literal marker comment for idempotency — the previous
+          # check `grep -q '@RESPATH@/distribution/'` matched any unrelated
+          # upstream entry (e.g. `@RESPATH@/distribution/searchplugins/*`),
+          # so the append was skipped and the produced zip shipped without
+          # distribution/extensions/agent@nevoflux.com.xpi.
+          if [ -f "$MANIFEST" ] && ! grep -qF '; NevoFlux distribution files' "$MANIFEST"; then
             printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$MANIFEST"
             echo "Appended distribution/** to $MANIFEST"
           else
-            echo "package-manifest.in already has distribution entry (or missing)"
+            echo "package-manifest.in already has the NevoFlux distribution marker (or file missing)"
           fi
 
       - name: Package
@@ -1293,7 +1308,7 @@ jobs:
           elif command -v unzip >/dev/null 2>&1; then
             entries=$(unzip -l "$ZIP" 2>/dev/null | grep -i 'distribution/' || true)
             echo "$entries" | head -20
-            count=$(echo "$entries" | grep -c .)
+            count=$(echo "$entries" | grep -c . || true)
             xpi_present=$(echo "$entries" | grep -c 'agent@nevoflux.com.xpi' || true)
             echo "total distribution/* entries: $count  xpi: $xpi_present"
             if [ "$count" = "0" ]; then
@@ -1311,7 +1326,7 @@ jobs:
           if [ -f "$INST" ] && command -v 7z >/dev/null 2>&1; then
             entries=$(7z l "$INST" 2>/dev/null | grep -i 'distribution[\/]' || true)
             echo "$entries" | head -20
-            count=$(echo "$entries" | grep -c .)
+            count=$(echo "$entries" | grep -c . || true)
             if [ "$count" = "0" ]; then
               echo "::warning::arm64 installer.exe has NO distribution/*"
               fail=1
