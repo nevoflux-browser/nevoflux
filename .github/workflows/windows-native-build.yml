@@ -785,6 +785,30 @@ jobs:
             'C:\Program Files (x86)\NSIS'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
+      - name: Wipe stale arm64 obj + leftover dist artifacts
+        shell: pwsh
+        # surfer derives OBJ_DIR by globbing engine/obj-* and taking the
+        # alphabetically-first entry (constants/index.js:62-89). After
+        # arm64-final succeeds, both obj-aarch64-pc-windows-msvc and the
+        # about-to-be-built obj-x86_64-pc-windows-msvc are present, so
+        # surfer picks aarch64. mach package's MAR creation then looks at
+        # the arm64 dist/nevoflux/ staging dir (which Stage final moved out),
+        # fails with ENOENT, and surfer aborts before producing the x64
+        # win64.zip. dist/ is also full of arm64 leftovers from arm64-final.
+        # Wipe both so x64 mach + surfer start clean.
+        run: |
+          $staleArm64Obj = 'engine\obj-aarch64-pc-windows-msvc'
+          if (Test-Path $staleArm64Obj) {
+            Write-Host "Removing stale arm64 obj dir: $staleArm64Obj"
+            Remove-Item -Recurse -Force $staleArm64Obj
+          }
+          if (Test-Path 'dist') {
+            Get-ChildItem 'dist' | ForEach-Object {
+              Write-Host "Removing stale dist/ entry: $($_.Name)"
+              Remove-Item -Recurse -Force $_.FullName
+            }
+          }
+
       - name: Swap per-arch agent into AppDir/distribution/bin (x86_64)
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         # Preserve build/AppDir/distribution/{extensions,policies.json} (VCS).
@@ -1016,8 +1040,14 @@ jobs:
         # build/AppDir/distribution/{extensions,policies.json} (VCS) and
         # only swap the per-arch bin/ subdir. Previous rm -rf wiped the
         # agent xpi too.
+        # Also wipe obj-aarch64 + dist/ leftovers — defense in depth in
+        # case stage1's cleanup missed them. surfer's OBJ_DIR globs obj-*
+        # alphabetically and arm64 wins if present (see x64-stage1 step
+        # "Wipe stale arm64 obj + leftover dist artifacts").
         run: |
           rm -rf engine/obj-x86_64-pc-windows-msvc
+          rm -rf engine/obj-aarch64-pc-windows-msvc
+          rm -rf dist/* 2>/dev/null || true
           if [ ! -d build/AppDir-x86_64/distribution/bin ]; then
             echo "::error::missing build/AppDir-x86_64/distribution/bin"
             exit 1
