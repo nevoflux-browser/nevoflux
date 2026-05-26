@@ -1158,79 +1158,92 @@ jobs:
           }
 
       - name: Diagnostic — verify distribution baked into x64 package
-        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
-        # Even if our "Inject distribution + patch package-manifest" step
-        # ran, the packager may have ignored the manifest patch. Verify
-        # the produced zip + installer.exe actually contain
-        # distribution/extensions/agent@nevoflux.com.xpi.
+        shell: pwsh
+        # See arm64-final's matching diagnostic — bash + unzip silently reports
+        # 0 distribution entries on the .NET-rewritten zip even though .NET
+        # OpenRead confirms entries are present. Use pwsh + .NET ZipFile
+        # (same API as the inject step) to eliminate the tool mismatch.
         run: |
-          fail=0
-          ZIP="$X64_ZIP"
-          echo "::group::zip ($ZIP) contents under distribution/"
-          if [ ! -f "$ZIP" ]; then
-            echo "::error::zip missing at $ZIP"
-            fail=1
-          else
-            # Windows native tar can list zip via libarchive on newer builds;
-            # use unzip for content listing (available in Git Bash usr/bin).
-            if command -v unzip >/dev/null 2>&1; then
-              entries=$(unzip -l "$ZIP" 2>/dev/null | grep -i 'distribution/' || true)
-              echo "$entries" | head -20
-              count=$(echo "$entries" | grep -c . || true)
-              xpi_present=$(echo "$entries" | grep -c 'agent@nevoflux.com.xpi' || true)
-              echo "total distribution/* entries: $count"
-              echo "agent xpi present: $xpi_present"
-              if [ "$count" = "0" ]; then
-                echo "::error::zip has NO distribution/* entries — packager dropped it"
-                fail=1
-              elif [ "$xpi_present" = "0" ]; then
-                echo "::warning::distribution/ present but agent xpi missing"
-                fail=1
-              fi
-            else
-              echo "::warning::unzip not available; skipping zip content check"
-            fi
-          fi
-          echo "::endgroup::"
+          $ErrorActionPreference = 'Stop'
+          $fail = 0
+          $zip = $env:X64_ZIP
+          Write-Host "::group::zip ($zip) contents under distribution/"
+          if (-not (Test-Path $zip)) {
+            Write-Host "::error::zip missing at $zip"
+            $fail = 1
+          } else {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $absZip = (Resolve-Path $zip).Path
+            $zipObj = [System.IO.Compression.ZipFile]::OpenRead($absZip)
+            try {
+              $distEntries = @($zipObj.Entries | Where-Object { $_.FullName -like '*distribution/*' })
+              $distEntries | Select-Object -First 20 | ForEach-Object { Write-Host "  $($_.FullName)" }
+              $count = $distEntries.Count
+              $xpi = @($distEntries | Where-Object { $_.FullName -like '*agent@nevoflux.com.xpi' }).Count
+              $policies = @($distEntries | Where-Object { $_.FullName -like '*policies.json' }).Count
+              $agentExe = @($distEntries | Where-Object { $_.FullName -like '*nevoflux-agent.exe' }).Count
+              $skillsCount = @($distEntries | Where-Object { $_.FullName -like '*distribution/bin/defaults/skills/*' }).Count
+              $modelsCount = @($distEntries | Where-Object { $_.FullName -like '*distribution/bin/models/*' }).Count
+              Write-Host "total distribution/* entries:  $count"
+              Write-Host "  agent@nevoflux.com.xpi:      $xpi"
+              Write-Host "  policies.json:               $policies"
+              Write-Host "  nevoflux-agent.exe:          $agentExe"
+              Write-Host "  bin/defaults/skills entries: $skillsCount"
+              Write-Host "  bin/models entries:          $modelsCount"
+              if ($count -eq 0) {
+                Write-Host "::error::x64 zip has NO distribution/*"
+                $fail = 1
+              } elseif ($xpi -eq 0) {
+                Write-Host "::warning::x64 distribution/ present but agent@nevoflux.com.xpi missing"
+                $fail = 1
+              }
+            } finally {
+              $zipObj.Dispose()
+            }
+          }
+          Write-Host "::endgroup::"
 
-          echo "::group::installer.exe (NSIS) contents under distribution/"
-          INST="dist/nevoflux.installer.exe"
-          if [ ! -f "$INST" ]; then
-            echo "::error::installer missing at $INST"
-            fail=1
-          elif command -v 7z >/dev/null 2>&1; then
-            # NSIS exe is a self-extracting 7z-like archive
-            entries=$(7z l "$INST" 2>/dev/null | grep -i 'distribution[\/]' || true)
-            echo "$entries" | head -20
-            xpi=$(echo "$entries" | grep -c 'agent@nevoflux.com.xpi' || true)
-            count=$(echo "$entries" | grep -c . || true)
-            echo "total entries: $count  xpi: $xpi"
-            if [ "$count" = "0" ]; then
-              # Non-fatal: zip post-inject already covered the primary artifact.
-              # Installer-distribution injection is a TODO (NSIS post-build edit
-              # is non-trivial; rebuilding via mach's NSIS rule is the next step).
-              echo "::warning::installer.exe has NO distribution/* — not fatal, zip is primary artifact"
-            fi
-          else
-            echo "::warning::7z not available; skipping installer content check"
-          fi
-          echo "::endgroup::"
+          Write-Host "::group::installer.exe (NSIS) contents under distribution/"
+          $inst = 'dist/nevoflux.installer.exe'
+          if (-not (Test-Path $inst)) {
+            Write-Host "::error::installer missing at $inst"
+            $fail = 1
+          } else {
+            $sevenZ = Get-Command 7z -ErrorAction SilentlyContinue
+            if ($sevenZ) {
+              $allLines = & $sevenZ.Source l $inst 2>$null
+              $distLines = @($allLines | Where-Object { $_ -match '(?i)distribution[\\/]' })
+              $distLines | Select-Object -First 20 | ForEach-Object { Write-Host "  $_" }
+              Write-Host "installer distribution lines: $($distLines.Count)"
+              if ($distLines.Count -eq 0) {
+                Write-Host "::warning::installer.exe has NO distribution/* — not fatal, zip is primary artifact"
+              }
+            } else {
+              Write-Host "::warning::7z not on PATH — skipping installer content check"
+            }
+          }
+          Write-Host "::endgroup::"
 
-          echo "::group::source-of-truth on disk: engine/obj-*/dist/bin/distribution/"
-          DIST="engine/obj-x86_64-pc-windows-msvc/dist/bin/distribution"
-          if [ -d "$DIST" ]; then
-            find "$DIST" -maxdepth 3 -type f | head -20
-          else
-            echo "MISSING — inject step apparently didn't run or got wiped"
-            fail=1
-          fi
-          echo "::endgroup::"
+          Write-Host "::group::source-of-truth on disk: engine/obj-*/dist/bin/distribution/"
+          $diskDist = 'engine/obj-x86_64-pc-windows-msvc/dist/bin/distribution'
+          if (Test-Path $diskDist) {
+            Get-ChildItem -Recurse -File $diskDist | Select-Object -First 20 | ForEach-Object {
+              Write-Host "  $($_.FullName.Substring((Resolve-Path '.').Path.Length).TrimStart('\','/'))"
+            }
+          } else {
+            Write-Host "MISSING — inject step apparently didn't run or got wiped"
+            $fail = 1
+          }
+          Write-Host "::endgroup::"
 
-          if [ "$fail" -ne 0 ]; then
-            echo "::error::distribution not in produced x64 artifacts — installer will lack agent xpi"
+          if ($fail -ne 0) {
+            Write-Host "::error::distribution not in produced x64 artifacts"
             exit 1
-          fi
-          echo "distribution verified in x64 zip + installer"
+          }
+          Write-Host "distribution verified in x64 zip + installer"
+          # Explicit clean exit — native tools (e.g. 7z) may leave $LASTEXITCODE
+          # non-zero even when we semantically succeeded.
+          exit 0
 
       - name: Stage final x64 artifacts
         shell: pwsh
@@ -1414,60 +1427,95 @@ jobs:
           }
 
       - name: Diagnostic — verify distribution baked into arm64 package
-        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
-        # See x64-stage3 step for rationale.
+        shell: pwsh
+        # Use the same .NET System.IO.Compression.ZipFile API as the post-Package
+        # inject step. Previous bash + `unzip -l` approach silently reported 0
+        # distribution entries on CI even when the inject step (also using .NET)
+        # confirmed the zip had 89 entries — same zip file, different tools,
+        # different answers. Suspected cause: cygwin-fork ASLR mismatch when
+        # MSYS2 bash spawns Git Bash's unzip (CLAUDE.md documents this same
+        # bug for xargs/find/timeout). Switching to pure pwsh.NET eliminates
+        # the tool mismatch.
         run: |
-          fail=0
-          ZIP="$ARM64_ZIP"
-          echo "::group::zip ($ZIP) contents under distribution/"
-          if [ ! -f "$ZIP" ]; then
-            echo "::error::zip missing at $ZIP"
-            fail=1
-          elif command -v unzip >/dev/null 2>&1; then
-            entries=$(unzip -l "$ZIP" 2>/dev/null | grep -i 'distribution/' || true)
-            echo "$entries" | head -20
-            count=$(echo "$entries" | grep -c . || true)
-            xpi_present=$(echo "$entries" | grep -c 'agent@nevoflux.com.xpi' || true)
-            echo "total distribution/* entries: $count  xpi: $xpi_present"
-            if [ "$count" = "0" ]; then
-              echo "::error::arm64 zip has NO distribution/*"
-              fail=1
-            elif [ "$xpi_present" = "0" ]; then
-              echo "::warning::arm64 distribution/ present but agent xpi missing"
-              fail=1
-            fi
-          fi
-          echo "::endgroup::"
+          $ErrorActionPreference = 'Stop'
+          $fail = 0
+          $zip = $env:ARM64_ZIP
+          Write-Host "::group::zip ($zip) contents under distribution/"
+          if (-not (Test-Path $zip)) {
+            Write-Host "::error::zip missing at $zip"
+            $fail = 1
+          } else {
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $absZip = (Resolve-Path $zip).Path
+            $zipObj = [System.IO.Compression.ZipFile]::OpenRead($absZip)
+            try {
+              $distEntries = @($zipObj.Entries | Where-Object { $_.FullName -like '*distribution/*' })
+              $distEntries | Select-Object -First 20 | ForEach-Object { Write-Host "  $($_.FullName)" }
+              $count = $distEntries.Count
+              $xpi = @($distEntries | Where-Object { $_.FullName -like '*agent@nevoflux.com.xpi' }).Count
+              $policies = @($distEntries | Where-Object { $_.FullName -like '*policies.json' }).Count
+              $agentExe = @($distEntries | Where-Object { $_.FullName -like '*nevoflux-agent.exe' }).Count
+              $skillsCount = @($distEntries | Where-Object { $_.FullName -like '*distribution/bin/defaults/skills/*' }).Count
+              $modelsCount = @($distEntries | Where-Object { $_.FullName -like '*distribution/bin/models/*' }).Count
+              Write-Host "total distribution/* entries:  $count"
+              Write-Host "  agent@nevoflux.com.xpi:      $xpi"
+              Write-Host "  policies.json:               $policies"
+              Write-Host "  nevoflux-agent.exe:          $agentExe"
+              Write-Host "  bin/defaults/skills entries: $skillsCount"
+              Write-Host "  bin/models entries:          $modelsCount"
+              if ($count -eq 0) {
+                Write-Host "::error::arm64 zip has NO distribution/*"
+                $fail = 1
+              } elseif ($xpi -eq 0) {
+                Write-Host "::warning::arm64 distribution/ present but agent@nevoflux.com.xpi missing"
+                $fail = 1
+              }
+            } finally {
+              $zipObj.Dispose()
+            }
+          }
+          Write-Host "::endgroup::"
 
-          echo "::group::installer.exe contents under distribution/"
-          INST="dist/nevoflux.installer.exe"
-          if [ -f "$INST" ] && command -v 7z >/dev/null 2>&1; then
-            entries=$(7z l "$INST" 2>/dev/null | grep -i 'distribution[\/]' || true)
-            echo "$entries" | head -20
-            count=$(echo "$entries" | grep -c . || true)
-            if [ "$count" = "0" ]; then
-              # Non-fatal — zip post-inject already covered the primary artifact.
-              # NSIS installer.exe distribution injection is a follow-up TODO.
-              echo "::warning::arm64 installer.exe has NO distribution/* — not fatal, zip is primary artifact"
-            fi
-          fi
-          echo "::endgroup::"
+          Write-Host "::group::installer.exe contents under distribution/"
+          $inst = 'dist/nevoflux.installer.exe'
+          if (Test-Path $inst) {
+            $sevenZ = Get-Command 7z -ErrorAction SilentlyContinue
+            if ($sevenZ) {
+              $allLines = & $sevenZ.Source l $inst 2>$null
+              $distLines = @($allLines | Where-Object { $_ -match '(?i)distribution[\\/]' })
+              $distLines | Select-Object -First 20 | ForEach-Object { Write-Host "  $_" }
+              Write-Host "installer distribution lines: $($distLines.Count)"
+              if ($distLines.Count -eq 0) {
+                # Non-fatal — zip post-inject covered the primary artifact;
+                # NSIS installer.exe distribution injection is a follow-up TODO.
+                Write-Host "::warning::arm64 installer.exe has NO distribution/* — not fatal, zip is primary artifact"
+              }
+            } else {
+              Write-Host "7z not on PATH — skipping installer content check"
+            }
+          }
+          Write-Host "::endgroup::"
 
-          echo "::group::engine/obj-aarch64-pc-windows-msvc/dist/bin/distribution/"
-          DIST="engine/obj-aarch64-pc-windows-msvc/dist/bin/distribution"
-          if [ -d "$DIST" ]; then
-            find "$DIST" -maxdepth 3 -type f | head -20
-          else
-            echo "MISSING — inject step apparently didn't run"
-            fail=1
-          fi
-          echo "::endgroup::"
+          Write-Host "::group::engine/obj-aarch64-pc-windows-msvc/dist/bin/distribution/"
+          $diskDist = 'engine/obj-aarch64-pc-windows-msvc/dist/bin/distribution'
+          if (Test-Path $diskDist) {
+            Get-ChildItem -Recurse -File $diskDist | Select-Object -First 20 | ForEach-Object {
+              Write-Host "  $($_.FullName.Substring((Resolve-Path '.').Path.Length).TrimStart('\','/'))"
+            }
+          } else {
+            Write-Host "MISSING — inject step apparently didn't run"
+            $fail = 1
+          }
+          Write-Host "::endgroup::"
 
-          if [ "$fail" -ne 0 ]; then
-            echo "::error::distribution not in produced arm64 artifacts"
+          if ($fail -ne 0) {
+            Write-Host "::error::distribution not in produced arm64 artifacts"
             exit 1
-          fi
-          echo "distribution verified in arm64 zip + installer"
+          }
+          Write-Host "distribution verified in arm64 zip + installer"
+          # Explicit clean exit — native tools (e.g. 7z) may leave $LASTEXITCODE
+          # non-zero even when we semantically succeeded.
+          exit 0
 
       - name: Stage final arm64 artifacts
         shell: pwsh
