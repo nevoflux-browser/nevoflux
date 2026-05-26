@@ -1109,8 +1109,7 @@ jobs:
         shell: pwsh
         # See arm64-final's matching post-package step for rationale.
         # apply-patches.sh:331-343 documents post-package injection as the
-        # canonical approach. Use Python's zipfile because the zip CLI isn't
-        # on PATH on this runner.
+        # canonical approach.
         run: |
           $zip = $env:X64_ZIP
           if (-not $zip -or -not (Test-Path $zip)) {
@@ -1123,33 +1122,32 @@ jobs:
           }
           $absZip = (Resolve-Path $zip).Path
           $absDist = (Resolve-Path 'build/AppDir/distribution').Path
-          $py = @"
-import os, sys, zipfile
-zip_path = r'''$absZip'''
-dist_root = r'''$absDist'''
-added = 0
-with zipfile.ZipFile(zip_path, 'a', zipfile.ZIP_DEFLATED) as zf:
-    existing = set(zf.namelist())
-    for root, dirs, files in os.walk(dist_root):
-        for f in files:
-            full = os.path.join(root, f)
-            rel = os.path.relpath(full, dist_root).replace(os.sep, '/')
-            arcname = 'nevoflux/distribution/' + rel
-            if arcname in existing:
-                continue
-            zf.write(full, arcname)
-            added += 1
-print(f'Added {added} distribution files to {zip_path}')
-with zipfile.ZipFile(zip_path, 'r') as zf:
-    dist_entries = [n for n in zf.namelist() if 'distribution/' in n]
-    print(f'Total distribution entries now in zip: {len(dist_entries)}')
-    for n in dist_entries[:10]:
-        print('  ' + n)
-"@
-          $py | python -
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Python inject failed: exit $LASTEXITCODE"
-            exit $LASTEXITCODE
+          Add-Type -AssemblyName System.IO.Compression
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zipObj = [System.IO.Compression.ZipFile]::Open($absZip, 'Update')
+          $added = 0
+          try {
+            $existing = @{}
+            foreach ($entry in $zipObj.Entries) { $existing[$entry.FullName] = $true }
+            Get-ChildItem -Recurse -File $absDist | ForEach-Object {
+              $rel = $_.FullName.Substring($absDist.Length).TrimStart('\','/').Replace('\','/')
+              $arc = 'nevoflux/distribution/' + $rel
+              if (-not $existing.ContainsKey($arc)) {
+                [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zipObj, $_.FullName, $arc, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+                $added++
+              }
+            }
+          } finally {
+            $zipObj.Dispose()
+          }
+          Write-Host "Added $added distribution files to $absZip"
+          $zipObj = [System.IO.Compression.ZipFile]::OpenRead($absZip)
+          try {
+            $distEntries = @($zipObj.Entries | Where-Object { $_.FullName -like '*distribution/*' })
+            Write-Host "Total distribution entries now in zip: $($distEntries.Count)"
+            $distEntries | Select-Object -First 10 | ForEach-Object { Write-Host "  $($_.FullName)" }
+          } finally {
+            $zipObj.Dispose()
           }
           $staging = 'engine/obj-x86_64-pc-windows-msvc/dist/nevoflux'
           if (Test-Path $staging) {
@@ -1360,10 +1358,11 @@ with zipfile.ZipFile(zip_path, 'r') as zf:
         # processing silently drops it on this Windows native arm64 cross-build
         # (zip and installer ship without distribution/extensions/agent.xpi).
         #
-        # Use Python's zipfile module (always available — mach itself runs on it)
-        # rather than the zip CLI, which isn't on PATH on this runner (Git Bash
-        # ships unzip/zipinfo but not zip; MozillaBuild's MSYS2 doesn't ship zip
-        # either). Run #26425283951 failed here with "zip CLI not on PATH".
+        # Use System.IO.Compression.ZipFile (built into .NET, always present
+        # on Windows) rather than the zip CLI — Git Bash and MozillaBuild MSYS2
+        # ship unzip/zipinfo but not zip. A Python here-doc was tried in
+        # 26425283951 but the column-0 Python lines break YAML's block scalar
+        # indentation.
         run: |
           $zip = $env:ARM64_ZIP
           if (-not $zip -or -not (Test-Path $zip)) {
@@ -1376,33 +1375,33 @@ with zipfile.ZipFile(zip_path, 'r') as zf:
           }
           $absZip = (Resolve-Path $zip).Path
           $absDist = (Resolve-Path 'build/AppDir/distribution').Path
-          $py = @"
-import os, sys, zipfile
-zip_path = r'''$absZip'''
-dist_root = r'''$absDist'''
-added = 0
-with zipfile.ZipFile(zip_path, 'a', zipfile.ZIP_DEFLATED) as zf:
-    existing = set(zf.namelist())
-    for root, dirs, files in os.walk(dist_root):
-        for f in files:
-            full = os.path.join(root, f)
-            rel = os.path.relpath(full, dist_root).replace(os.sep, '/')
-            arcname = 'nevoflux/distribution/' + rel
-            if arcname in existing:
-                continue
-            zf.write(full, arcname)
-            added += 1
-print(f'Added {added} distribution files to {zip_path}')
-with zipfile.ZipFile(zip_path, 'r') as zf:
-    dist_entries = [n for n in zf.namelist() if 'distribution/' in n]
-    print(f'Total distribution entries now in zip: {len(dist_entries)}')
-    for n in dist_entries[:10]:
-        print('  ' + n)
-"@
-          $py | python -
-          if ($LASTEXITCODE -ne 0) {
-            Write-Error "Python inject failed: exit $LASTEXITCODE"
-            exit $LASTEXITCODE
+          Add-Type -AssemblyName System.IO.Compression
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zipObj = [System.IO.Compression.ZipFile]::Open($absZip, 'Update')
+          $added = 0
+          try {
+            $existing = @{}
+            foreach ($entry in $zipObj.Entries) { $existing[$entry.FullName] = $true }
+            Get-ChildItem -Recurse -File $absDist | ForEach-Object {
+              $rel = $_.FullName.Substring($absDist.Length).TrimStart('\','/').Replace('\','/')
+              $arc = 'nevoflux/distribution/' + $rel
+              if (-not $existing.ContainsKey($arc)) {
+                [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zipObj, $_.FullName, $arc, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+                $added++
+              }
+            }
+          } finally {
+            $zipObj.Dispose()
+          }
+          Write-Host "Added $added distribution files to $absZip"
+          # Re-open read-only to list what's in there now
+          $zipObj = [System.IO.Compression.ZipFile]::OpenRead($absZip)
+          try {
+            $distEntries = @($zipObj.Entries | Where-Object { $_.FullName -like '*distribution/*' })
+            Write-Host "Total distribution entries now in zip: $($distEntries.Count)"
+            $distEntries | Select-Object -First 10 | ForEach-Object { Write-Host "  $($_.FullName)" }
+          } finally {
+            $zipObj.Dispose()
           }
           # Also inject into staging dir so a future installer-rebuild step has
           # current files. Non-fatal if staging dir missing.
