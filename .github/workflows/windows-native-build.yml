@@ -1106,44 +1106,58 @@ jobs:
           fi
 
       - name: Post-package — force-inject distribution into x64 zip
-        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
-        # See arm64-final's matching post-package step — apply-patches.sh:331-343
-        # documents post-package injection as the canonical approach.
-        # mach package's @RESPATH@/distribution/** handling silently drops files
-        # on this Windows native build setup; we directly add distribution/ to
-        # the produced zip via the zip CLI.
+        shell: pwsh
+        # See arm64-final's matching post-package step for rationale.
+        # apply-patches.sh:331-343 documents post-package injection as the
+        # canonical approach. Use Python's zipfile because the zip CLI isn't
+        # on PATH on this runner.
         run: |
-          ZIP="$X64_ZIP"
-          if [ -z "$ZIP" ] || [ ! -f "$ZIP" ]; then
-            echo "::error::X64_ZIP not set or zip missing"
+          $zip = $env:X64_ZIP
+          if (-not $zip -or -not (Test-Path $zip)) {
+            Write-Error "X64_ZIP not set or zip missing: $zip"
             exit 1
-          fi
-          if [ ! -d build/AppDir/distribution ]; then
-            echo "::error::build/AppDir/distribution missing"
+          }
+          if (-not (Test-Path 'build/AppDir/distribution')) {
+            Write-Error "build/AppDir/distribution missing"
             exit 1
-          fi
-          if ! command -v zip >/dev/null 2>&1; then
-            echo "::error::zip CLI not on PATH (expected from Git Bash usr/bin)"
-            exit 1
-          fi
-          ABS_ZIP="$(cd "$(dirname "$ZIP")" && pwd)/$(basename "$ZIP")"
-          TMP=$(mktemp -d)
-          mkdir -p "$TMP/nevoflux"
-          cp -r build/AppDir/distribution "$TMP/nevoflux/"
-          (cd "$TMP" && zip -r -q "$ABS_ZIP" "nevoflux/distribution")
-          rm -rf "$TMP"
-          echo "Injected distribution/ into $ZIP"
-          if command -v unzip >/dev/null 2>&1; then
-            echo "Distribution entries now present in zip:"
-            unzip -l "$ZIP" 2>/dev/null | grep -i 'distribution/' | head -10 || true
-            echo "Total distribution entries: $(unzip -l "$ZIP" 2>/dev/null | grep -c 'distribution/' || true)"
-          fi
-          STAGING="engine/obj-x86_64-pc-windows-msvc/dist/nevoflux"
-          if [ -d "$STAGING" ]; then
-            mkdir -p "$STAGING/distribution"
-            cp -r build/AppDir/distribution/* "$STAGING/distribution/"
-            echo "Injected distribution/ into staging dir $STAGING"
-          fi
+          }
+          $absZip = (Resolve-Path $zip).Path
+          $absDist = (Resolve-Path 'build/AppDir/distribution').Path
+          $py = @"
+import os, sys, zipfile
+zip_path = r'''$absZip'''
+dist_root = r'''$absDist'''
+added = 0
+with zipfile.ZipFile(zip_path, 'a', zipfile.ZIP_DEFLATED) as zf:
+    existing = set(zf.namelist())
+    for root, dirs, files in os.walk(dist_root):
+        for f in files:
+            full = os.path.join(root, f)
+            rel = os.path.relpath(full, dist_root).replace(os.sep, '/')
+            arcname = 'nevoflux/distribution/' + rel
+            if arcname in existing:
+                continue
+            zf.write(full, arcname)
+            added += 1
+print(f'Added {added} distribution files to {zip_path}')
+with zipfile.ZipFile(zip_path, 'r') as zf:
+    dist_entries = [n for n in zf.namelist() if 'distribution/' in n]
+    print(f'Total distribution entries now in zip: {len(dist_entries)}')
+    for n in dist_entries[:10]:
+        print('  ' + n)
+"@
+          $py | python -
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Python inject failed: exit $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
+          $staging = 'engine/obj-x86_64-pc-windows-msvc/dist/nevoflux'
+          if (Test-Path $staging) {
+            $dst = Join-Path $staging 'distribution'
+            if (-not (Test-Path $dst)) { New-Item -ItemType Directory -Force $dst | Out-Null }
+            Copy-Item -Recurse -Force 'build/AppDir/distribution/*' $dst
+            Write-Host "Injected distribution/ into staging dir $staging"
+          }
 
       - name: Diagnostic — verify distribution baked into x64 package
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
@@ -1337,52 +1351,68 @@ jobs:
             exit "$pkg_rc"
           fi
 
-      - name: Post-package — force-inject distribution into arm64 zip + installer
-        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+      - name: Post-package — force-inject distribution into arm64 zip
+        shell: pwsh
         # apply-patches.sh:331-343 documents the canonical approach: distribution
         # files are "injected into the final package by CI workflows AFTER mach
         # package completes." Earlier iterations tried to bake it in via
         # @RESPATH@/distribution/** in package-manifest.in, but mach's manifest
-        # processing silently drops it on Windows native arm64 cross-builds
+        # processing silently drops it on this Windows native arm64 cross-build
         # (zip and installer ship without distribution/extensions/agent.xpi).
         #
-        # Deterministic fix: directly add distribution/ to the produced zip
-        # using the zip CLI, then rebuild the installer from the modified
-        # staging dir via mach's NSIS rule.
+        # Use Python's zipfile module (always available — mach itself runs on it)
+        # rather than the zip CLI, which isn't on PATH on this runner (Git Bash
+        # ships unzip/zipinfo but not zip; MozillaBuild's MSYS2 doesn't ship zip
+        # either). Run #26425283951 failed here with "zip CLI not on PATH".
         run: |
-          ZIP="$ARM64_ZIP"
-          if [ -z "$ZIP" ] || [ ! -f "$ZIP" ]; then
-            echo "::error::ARM64_ZIP not set or zip missing"
+          $zip = $env:ARM64_ZIP
+          if (-not $zip -or -not (Test-Path $zip)) {
+            Write-Error "ARM64_ZIP not set or zip missing: $zip"
             exit 1
-          fi
-          if [ ! -d build/AppDir/distribution ]; then
-            echo "::error::build/AppDir/distribution missing"
+          }
+          if (-not (Test-Path 'build/AppDir/distribution')) {
+            Write-Error "build/AppDir/distribution missing"
             exit 1
-          fi
-          if ! command -v zip >/dev/null 2>&1; then
-            echo "::error::zip CLI not on PATH (expected from Git Bash usr/bin)"
-            exit 1
-          fi
-          ABS_ZIP="$(cd "$(dirname "$ZIP")" && pwd)/$(basename "$ZIP")"
-          TMP=$(mktemp -d)
-          mkdir -p "$TMP/nevoflux"
-          cp -r build/AppDir/distribution "$TMP/nevoflux/"
-          (cd "$TMP" && zip -r -q "$ABS_ZIP" "nevoflux/distribution")
-          rm -rf "$TMP"
-          echo "Injected distribution/ into $ZIP"
-          if command -v unzip >/dev/null 2>&1; then
-            echo "Distribution entries now present in zip:"
-            unzip -l "$ZIP" 2>/dev/null | grep -i 'distribution/' | head -10 || true
-            echo "Total distribution entries: $(unzip -l "$ZIP" 2>/dev/null | grep -c 'distribution/' || true)"
-          fi
-          # Inject into staging dir so a follow-up installer rebuild (if any)
-          # picks it up — also makes the installer-listing diagnostic happier.
-          STAGING="engine/obj-aarch64-pc-windows-msvc/dist/nevoflux"
-          if [ -d "$STAGING" ]; then
-            mkdir -p "$STAGING/distribution"
-            cp -r build/AppDir/distribution/* "$STAGING/distribution/"
-            echo "Injected distribution/ into staging dir $STAGING"
-          fi
+          }
+          $absZip = (Resolve-Path $zip).Path
+          $absDist = (Resolve-Path 'build/AppDir/distribution').Path
+          $py = @"
+import os, sys, zipfile
+zip_path = r'''$absZip'''
+dist_root = r'''$absDist'''
+added = 0
+with zipfile.ZipFile(zip_path, 'a', zipfile.ZIP_DEFLATED) as zf:
+    existing = set(zf.namelist())
+    for root, dirs, files in os.walk(dist_root):
+        for f in files:
+            full = os.path.join(root, f)
+            rel = os.path.relpath(full, dist_root).replace(os.sep, '/')
+            arcname = 'nevoflux/distribution/' + rel
+            if arcname in existing:
+                continue
+            zf.write(full, arcname)
+            added += 1
+print(f'Added {added} distribution files to {zip_path}')
+with zipfile.ZipFile(zip_path, 'r') as zf:
+    dist_entries = [n for n in zf.namelist() if 'distribution/' in n]
+    print(f'Total distribution entries now in zip: {len(dist_entries)}')
+    for n in dist_entries[:10]:
+        print('  ' + n)
+"@
+          $py | python -
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Python inject failed: exit $LASTEXITCODE"
+            exit $LASTEXITCODE
+          }
+          # Also inject into staging dir so a future installer-rebuild step has
+          # current files. Non-fatal if staging dir missing.
+          $staging = 'engine/obj-aarch64-pc-windows-msvc/dist/nevoflux'
+          if (Test-Path $staging) {
+            $dst = Join-Path $staging 'distribution'
+            if (-not (Test-Path $dst)) { New-Item -ItemType Directory -Force $dst | Out-Null }
+            Copy-Item -Recurse -Force 'build/AppDir/distribution/*' $dst
+            Write-Host "Injected distribution/ into staging dir $staging"
+          }
 
       - name: Diagnostic — verify distribution baked into arm64 package
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
