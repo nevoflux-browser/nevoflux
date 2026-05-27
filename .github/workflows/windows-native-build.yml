@@ -234,14 +234,16 @@ jobs:
           git init -q
           git config core.safecrlf false
           git config core.autocrlf false
+          # The workflow shell runs with `set -e -o pipefail`, so wrap any
+          # command-substitution pipelines that might have grep-not-found in
+          # `|| true` — grep -c on empty returns 1, killing the script.
           # Gather the set of files targeted by any patch in src/, dedupe.
           # Each git-format patch starts with `diff --git a/<path> b/<path>`.
-          # Use `find` to enumerate patches (bash `**` doesn't recurse without
-          # `shopt -s globstar`, and even then is fragile across shells).
-          PATCH_FILES=$(find ../src -type f -name '*.patch' -print0 \
-                       | xargs -0 grep -hE '^diff --git a/' 2>/dev/null \
-                       | awk '{print $3}' | sed 's|^a/||' | sort -u)
-          COUNT=$(echo "$PATCH_FILES" | grep -c .)
+          PATCH_LIST=$(mktemp)
+          find ../src -type f -name '*.patch' -print0 \
+            | xargs -0 grep -hE '^diff --git a/' 2>/dev/null \
+            | awk '{print $3}' | sed 's|^a/||' | sort -u > "$PATCH_LIST" || true
+          COUNT=$(wc -l < "$PATCH_LIST" | tr -d ' ')
           echo "Tracking $COUNT patch-target files plus config/milestone.txt"
           # Add config/milestone.txt for create_rc.py (Windows .exe resource mtime).
           git add -f config/milestone.txt
@@ -249,13 +251,17 @@ jobs:
           # may target files not in this Firefox version).
           ADDED=0
           MISSING=0
-          for f in $PATCH_FILES; do
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
             if [ -f "$f" ]; then
-              git add -f "$f" 2>/dev/null && ADDED=$((ADDED+1)) || true
+              if git add -f "$f" 2>/dev/null; then
+                ADDED=$((ADDED+1))
+              fi
             else
               MISSING=$((MISSING+1))
             fi
-          done
+          done < "$PATCH_LIST"
+          rm -f "$PATCH_LIST"
           echo "git add: $ADDED tracked, $MISSING missing (patches targeting non-existent files)"
           git -c user.name='NevoFlux GHA' \
               -c user.email='nevoflux-gha@nevoflux.com' \
