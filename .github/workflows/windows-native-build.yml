@@ -300,7 +300,12 @@ jobs:
           check_patch_applied browser/base/jar.mn          '#include content/zen-assets.jar.inc.mn'
           check_patch_applied browser/base/moz.build       'DIRS += ["../../zen"]'
           check_patch_applied modules/libpref/moz.build    '"zen",'
-          check_patch_applied toolkit/moz.configure        'default="Zen Team"'
+          # apply-patches.sh step 14 rewrites Zen patch's `default="Zen Team"` →
+          # `default="NevoFlux Team"`. If patch applied, step 14's grep matches
+          # and sed runs; if patch didn't apply, original `default="Mozilla"`
+          # remains. So checking for the final NevoFlux Team string verifies
+          # both surfer apply AND step 14 succeeded.
+          check_patch_applied toolkit/moz.configure        'default="NevoFlux Team"'
           echo "::endgroup::"
           if [ "$fail" -ne 0 ]; then
             echo "::error::Patches were reported applied by surfer but didn't take effect."
