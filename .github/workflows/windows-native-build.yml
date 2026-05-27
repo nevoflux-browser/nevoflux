@@ -214,9 +214,94 @@ jobs:
           }
           Write-Host "dos2unix done"
 
+      - name: Initialize engine git repo BEFORE Apply patches
+        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # CLAUDE.md pitfall #9b: `git apply` silently skips every patch when
+        # engine/ isn't a git repo (no error, exit code 0). Until this step
+        # was moved BEFORE `npm run import`, run 26469372275 reported
+        # "[FINISH] Apply 187 git patches" but none of the 3 sampled patches
+        # actually changed their target files (sample: src/browser/base/
+        # jar-mn.patch, src/browser/base/moz-build.patch, src/toolkit/
+        # moz-configure.patch). Result: vanilla Firefox + overlays only,
+        # no Zen UI in produced binary.
+        #
+        # Earlier iterations did `git add -f .` over the 100k-file engine
+        # tree, which hung at 25+ min on this runner (run 26122415863).
+        # Targeted approach: only track files that any src/**/*.patch
+        # touches (~193 files). git add of that set is seconds.
+        run: |
+          cd engine
+          git init -q
+          git config core.safecrlf false
+          git config core.autocrlf false
+          # Gather the set of files targeted by any patch in src/, dedupe.
+          # Each git-format patch starts with `diff --git a/<path> b/<path>`.
+          # Use `find` to enumerate patches (bash `**` doesn't recurse without
+          # `shopt -s globstar`, and even then is fragile across shells).
+          PATCH_FILES=$(find ../src -type f -name '*.patch' -print0 \
+                       | xargs -0 grep -hE '^diff --git a/' 2>/dev/null \
+                       | awk '{print $3}' | sed 's|^a/||' | sort -u)
+          COUNT=$(echo "$PATCH_FILES" | grep -c .)
+          echo "Tracking $COUNT patch-target files plus config/milestone.txt"
+          # Add config/milestone.txt for create_rc.py (Windows .exe resource mtime).
+          git add -f config/milestone.txt
+          # Add each patch-target file that exists; skip missing (some patches
+          # may target files not in this Firefox version).
+          ADDED=0
+          MISSING=0
+          for f in $PATCH_FILES; do
+            if [ -f "$f" ]; then
+              git add -f "$f" 2>/dev/null && ADDED=$((ADDED+1)) || true
+            else
+              MISSING=$((MISSING+1))
+            fi
+          done
+          echo "git add: $ADDED tracked, $MISSING missing (patches targeting non-existent files)"
+          git -c user.name='NevoFlux GHA' \
+              -c user.email='nevoflux-gha@nevoflux.com' \
+              commit -q -m "GHA Windows build init ($ADDED patch targets + milestone)"
+          echo "engine git initialized with $(git log --oneline | wc -l) commit(s)"
+
       - name: Apply patches
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: npm run import -- --verbose
+
+      - name: Diagnostic — sample patches actually applied
+        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # surfer's TaskList logs `[FINISH] Apply <patch>` unconditionally
+        # after each try/catch, so the workflow log claiming "Apply 187
+        # git patches" succeeded is NOT proof patches actually applied.
+        # Sample 3 critical patches and grep their expected added lines.
+        # If any sampled patch didn't take effect, fail fast — better than
+        # discovering it 5h later in the produced installer.
+        run: |
+          fail=0
+          check_patch_applied() {
+            local target="$1"; local needle="$2"
+            if [ ! -f "engine/$target" ]; then
+              echo "::error::engine/$target missing (cannot verify patch)"
+              fail=1
+              return
+            fi
+            if grep -qF "$needle" "engine/$target"; then
+              echo "  OK    engine/$target has '$needle'"
+            else
+              echo "::error::engine/$target MISSING '$needle' — patch didn't apply"
+              fail=1
+            fi
+          }
+          echo "::group::Sampling 4 critical patches' expected effects"
+          check_patch_applied browser/base/jar.mn          '#include content/zen-assets.jar.inc.mn'
+          check_patch_applied browser/base/moz.build       'DIRS += ["../../zen"]'
+          check_patch_applied modules/libpref/moz.build    '"zen",'
+          check_patch_applied toolkit/moz.configure        'default="Zen Team"'
+          echo "::endgroup::"
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Patches were reported applied by surfer but didn't take effect."
+            echo "::error::Check the 'Initialize engine git repo BEFORE Apply patches' step."
+            exit 1
+          fi
+          echo "All 4 sampled patches applied correctly."
 
       - name: Diagnostic — verify zen overlays applied to engine
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
@@ -397,27 +482,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
         run: bash scripts/gha/inject-agent.sh aarch64
-
-      - name: Initialize engine git repo (for create_rc.py)
-        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
-        # CLAUDE.md pitfall #9b: Mozilla's config/create_rc.py calls
-        #   git log -1 --format=%ad milestone.txt
-        # to embed the file's mtime into the Windows .exe resource. A bare
-        # `git init` (no commits) makes git log exit 128.
-        #
-        # Earlier iterations did `git add -f .` over the entire engine tree
-        # (~100k files) to satisfy this. On this runner that hung at 25+ min
-        # (run 26122415863). Optimization: only milestone.txt needs to be
-        # tracked in a commit to satisfy create_rc.py.
-        run: |
-          cd engine
-          git init -q
-          git config core.safecrlf false
-          git add -f config/milestone.txt
-          git -c user.name='NevoFlux GHA' \
-              -c user.email='nevoflux-gha@nevoflux.com' \
-              commit -q -m "GHA Windows build init (milestone only)"
-          echo "engine git initialized with $(git log --oneline | wc -l) commit(s)"
 
       - name: Stage windows-rs crate (configure requirement)
         shell: pwsh
