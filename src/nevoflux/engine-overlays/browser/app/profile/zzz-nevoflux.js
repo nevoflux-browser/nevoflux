@@ -18,17 +18,15 @@ pref('sidebar.maxWidth', 960);
 // Keep default (false) so the Zen sidebar stays on the left.
 pref('zen.tabs.vertical.right-side', false);
 
-// Allow bundled extensions in distribution/extensions/ to auto-install.
+// Allow any extension shipped under distribution/extensions/ to auto-install
+// (we don't currently ship any there — nevoflux-agent is a built-in system
+// addon bundled into omni.ja — but keep these on so future side-loaded
+// extensions work without prompting).
 pref('extensions.autoDisableScopes', 0);
 pref('extensions.installDistroAddons', true);
 pref('extensions.startupScanScopes', 15);
 pref('xpinstall.signatures.required', false);
 pref('extensions.logging.enabled', true);
-// Hide the about:addons "could not be verified" warning for our unsigned
-// system extensions. apply-patches.sh strips the (isInAutomation ||
-// !MOZILLA_OFFICIAL) gate in aboutaddons.js so this pref takes effect
-// in our MOZILLA_OFFICIAL=1 build channel.
-pref('extensions.ui.disableUnsignedWarnings', true);
 
 // NevoFlux Agent settings
 pref('extensions.nevoflux.sidebar.position', 'right');

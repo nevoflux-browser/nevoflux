@@ -380,20 +380,6 @@ if [ -f "${RULES_MK}" ]; then
   fi
 fi
 
-# 13b. Strip aboutaddons.js gate so extensions.ui.disableUnsignedWarnings works.
-#      Firefox only honors that pref when isInAutomation OR !MOZILLA_OFFICIAL.
-#      We set MOZILLA_OFFICIAL=1 in mozconfig, so the pref alone is ignored
-#      and the "could not be verified for use in NevoFlux. Proceed with
-#      caution." badge shows on our unsigned distribution-bundled
-#      agent@nevoflux.com.xpi. Removing the gate (and the pref in
-#      zzz-nevoflux.js) suppresses the warning. Idempotent — re-running
-#      finds nothing to replace.
-ABOUTADDONS_JS="${ENGINE_DIR}/toolkit/mozapps/extensions/content/aboutaddons.js"
-if [ -f "${ABOUTADDONS_JS}" ] && grep -q '(Cu\.isInAutomation || !AppConstants\.MOZILLA_OFFICIAL) &&' "${ABOUTADDONS_JS}"; then
-  echo "Stripping aboutaddons.js MOZILLA_OFFICIAL gate so disableUnsignedWarnings works..."
-  sedi 's#(Cu\.isInAutomation || !AppConstants\.MOZILLA_OFFICIAL) \&\&#/* NevoFlux: gate removed for disableUnsignedWarnings */#' "${ABOUTADDONS_JS}"
-fi
-
 # 14. Patch toolkit/moz.configure: set NevoFlux vendor and profile names
 #     Uses sed instead of git patch for cross-platform reliability (engine file
 #     state differs between Linux and macOS after Zen upstream patches).
@@ -409,10 +395,123 @@ if [ -f "${MOZ_CONFIGURE}" ]; then
   fi
 fi
 
-# 15. Package nevoflux-agent extension as XPI
-if [ -f "${ROOT_DIR}/scripts/package-extension.sh" ]; then
-  echo "Packaging nevoflux-agent extension..."
-  bash "${ROOT_DIR}/scripts/package-extension.sh"
+# 15. Install nevoflux-agent as a built-in (system) WebExtension.
+#     Replaces the old XPI packaging in distribution/extensions/ which left
+#     Firefox showing "could not be verified for use in NevoFlux" because the
+#     XPI wasn't AMO-signed. Built-in extensions live under
+#     browser/extensions/<name>/, get bundled into omni.ja at
+#     builtin-addons/<name>/ via jar.mn, and are treated as
+#     SIGNEDSTATE_SYSTEM = 3 by XPIProvider — no warning, privileged WebExt
+#     APIs available, and the addon is discovered automatically by
+#     gen_built_in_addons.py walking builtin-addons/*/manifest.json.
+#
+#     moz.build + jar.mn for the addon are placed by step 4 (engine-overlays
+#     cp) from src/nevoflux/engine-overlays/browser/extensions/nevoflux-agent/.
+#     Here we stage the runtime extension files alongside them, excluding the
+#     dioxus-ui/ Rust source (only its compiled WASM bundle ships) and other
+#     dev artifacts.
+AGENT_SRC="${ROOT_DIR}/src/nevoflux/extensions/nevoflux-agent"
+AGENT_DST="${ENGINE_DIR}/browser/extensions/nevoflux-agent"
+if [ -d "${AGENT_SRC}" ]; then
+  echo "Installing nevoflux-agent as built-in extension..."
+  mkdir -p "${AGENT_DST}"
+  # Copy each runtime entry individually so we don't clobber the moz.build /
+  # jar.mn that step 4 already placed from engine-overlays.
+  for entry in manifest.json background content icons lib scripts utils wasm; do
+    if [ -e "${AGENT_SRC}/${entry}" ]; then
+      rm -rf "${AGENT_DST:?}/${entry}"
+      cp -r "${AGENT_SRC}/${entry}" "${AGENT_DST}/${entry}"
+    fi
+  done
+
+  # CSP fix on dioxus dist output (port from old package-extension.sh)
+  DIOXUS_DIST="${AGENT_SRC}/dioxus-ui/dist/chat-sidebar"
+  WASM_DIR="${AGENT_DST}/wasm/chat-sidebar"
+  FIX_CSP_SCRIPT="${AGENT_SRC}/dioxus-ui/scripts/fix-csp.py"
+  if [ -d "${DIOXUS_DIST}" ]; then
+    if [ -f "${FIX_CSP_SCRIPT}" ] && command -v python3 > /dev/null 2>&1; then
+      echo "  Fixing CSP in dioxus dist..."
+      python3 "${FIX_CSP_SCRIPT}" "${DIOXUS_DIST}"
+    fi
+    echo "  Copying WASM bundle from dioxus dist into wasm/chat-sidebar/..."
+    mkdir -p "${WASM_DIR}"
+    cp -r "${DIOXUS_DIST}/"* "${WASM_DIR}/"
+  fi
+
+  # Version injection — give every build a distinct manifest.json version so
+  # Firefox re-extracts on upgrade. Priority: env > surfer.json displayVersion
+  # > date-based fallback.
+  AGENT_MANIFEST="${AGENT_DST}/manifest.json"
+  AGENT_EXT_VERSION="${NEVOFLUX_EXT_VERSION:-}"
+  if [ -z "${AGENT_EXT_VERSION}" ]; then
+    AGENT_SURFER_JSON="${ROOT_DIR}/surfer.json"
+    if [ -f "${AGENT_SURFER_JSON}" ] && command -v python3 > /dev/null 2>&1; then
+      AGENT_EXT_VERSION=$(python3 - "${AGENT_SURFER_JSON}" <<'PYEOF'
+import json, sys
+s = json.load(open(sys.argv[1]))
+for b in s.get('brands', {}).values():
+    dv = b.get('release', {}).get('displayVersion', '')
+    if dv and dv != '0.0.1' and dv != '0.0.1-dev':
+        print(dv); break
+PYEOF
+)
+    fi
+  fi
+  if [ -z "${AGENT_EXT_VERSION}" ] && [ -n "${GITHUB_SHA:-}" ]; then
+    AGENT_SHA_NUM=$(printf '%d' "0x$(printf '%s' "$GITHUB_SHA" | cut -c1-7)")
+    AGENT_EXT_VERSION="0.$(date -u +%Y).${AGENT_SHA_NUM}"
+  fi
+  if [ -z "${AGENT_EXT_VERSION}" ]; then
+    AGENT_EXT_VERSION="0.$(date -u +%Y).$(date -u +%j%H%M)"
+  fi
+  if [ -f "${AGENT_MANIFEST}" ] && command -v python3 > /dev/null 2>&1; then
+    echo "  Injecting manifest.json version: ${AGENT_EXT_VERSION}"
+    python3 - "${AGENT_MANIFEST}" "${AGENT_EXT_VERSION}" <<'PYEOF'
+import json, sys
+p, ver = sys.argv[1], sys.argv[2]
+m = json.load(open(p))
+m['version'] = ver
+json.dump(m, open(p, 'w'), indent=2)
+open(p, 'a').write('\n')
+PYEOF
+  fi
+
+  # SRI refresh in chat-sidebar/index.html so the integrity= attrs match
+  # whatever bytes we just shipped under wasm/chat-sidebar/.
+  SIDEBAR_INDEX="${WASM_DIR}/index.html"
+  if [ -f "${SIDEBAR_INDEX}" ] && command -v python3 > /dev/null 2>&1; then
+    echo "  Refreshing SRI hashes in chat-sidebar/index.html..."
+    python3 - "${SIDEBAR_INDEX}" "${WASM_DIR}" <<'PYEOF'
+import base64, hashlib, pathlib, re, sys
+index_path = pathlib.Path(sys.argv[1])
+base_dir = pathlib.Path(sys.argv[2])
+html = index_path.read_text(encoding='utf-8')
+def sri(p):
+    return 'sha384-' + base64.b64encode(hashlib.sha384(p.read_bytes()).digest()).decode('ascii')
+pattern = re.compile(
+    r'(<link[^>]*?\shref=)(["\']?)(\.\/[^\s"\'>]+)\2'
+    r'([^>]*?\sintegrity=)(["\']?)[^"\'>\s]+\5',
+    re.DOTALL,
+)
+def replace(m):
+    href = m.group(3).lstrip('./')
+    target = base_dir / href
+    if not target.is_file():
+        return m.group(0)
+    return (m.group(1) + m.group(2) + m.group(3) + m.group(2) +
+            m.group(4) + m.group(5) + sri(target) + m.group(5))
+index_path.write_text(pattern.sub(replace, html), encoding='utf-8')
+PYEOF
+  fi
+  echo "  Done: nevoflux-agent staged at ${AGENT_DST}"
+fi
+
+# 15b. Register nevoflux-agent in engine/browser/extensions/moz.build's DIRS
+#      so mach traverses our overlay and packs the addon into omni.ja.
+EXT_MOZBUILD="${ENGINE_DIR}/browser/extensions/moz.build"
+if [ -f "${EXT_MOZBUILD}" ] && ! grep -q '"nevoflux-agent"' "${EXT_MOZBUILD}"; then
+  echo "Adding nevoflux-agent to browser/extensions/moz.build DIRS..."
+  sedi 's/"newtab",/"newtab",\'$'\n''    "nevoflux-agent",/' "${EXT_MOZBUILD}"
 fi
 
 # 16. Copy en-US locale files to engine (Zen FTL files for menus, settings, etc.)

@@ -307,64 +307,43 @@ jobs:
           # both surfer apply AND step 14 succeeded.
           check_patch_applied toolkit/moz.configure        'default="NevoFlux Team"'
           echo "::endgroup::"
-          if [ "$fail" -ne 0 ]; then
-            echo "::error::Patches were reported applied by surfer but didn't take effect."
-            echo "::error::Check the 'Initialize engine git repo BEFORE Apply patches' step."
-            exit 1
-          fi
-          echo "All 4 sampled patches applied correctly."
 
-      - name: Sign agent xpi via AMO (if AMO_API_KEY secret set)
-        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
-        env:
-          AMO_API_KEY: ${{ secrets.AMO_API_KEY }}
-          AMO_API_SECRET: ${{ secrets.AMO_API_SECRET }}
-        # Sign the bundled agent@nevoflux.com.xpi via AMO's self-distribution
-        # API (channel=unlisted). Without a signed xpi, about:addons shows
-        # "could not be verified for use in NevoFlux. Proceed with caution."
-        # — even with extensions.ui.disableUnsignedWarnings pref enabled,
-        # because Firefox gates that pref on !MOZILLA_OFFICIAL (our build
-        # sets MOZILLA_OFFICIAL=1). apply-patches.sh step 13b strips that
-        # gate as a fallback for unsigned local-dev builds; signed CI
-        # builds don't need the fallback because isCorrectlySigned() returns
-        # true and no warning is shown.
-        #
-        # If secrets aren't configured, skip cleanly — the disableUnsignedWarnings
-        # fallback still hides the warning, just at the cost of weaker
-        # signature enforcement UX.
-        run: |
-          if [ -z "$AMO_API_KEY" ] || [ -z "$AMO_API_SECRET" ]; then
-            echo "AMO_API_KEY/SECRET not configured; skipping AMO signing"
-            echo "(unsigned xpi ships; about:addons warning suppressed via pref+sed fallback)"
-            exit 0
+          echo "::group::Verify nevoflux-agent built-in extension staged"
+          # built-in extension goes into engine/browser/extensions/nevoflux-agent/
+          # with moz.build + jar.mn from engine-overlays (step 4) and runtime
+          # files from apply-patches.sh step 15. mach jar then packs them into
+          # omni.ja at builtin-addons/nevoflux-agent/, and
+          # gen_built_in_addons.py auto-registers them via manifest.json.
+          builtin_check() {
+            local target="$1"
+            if [ -e "engine/browser/extensions/nevoflux-agent/$target" ]; then
+              echo "  OK    engine/browser/extensions/nevoflux-agent/$target"
+            else
+              echo "::error::engine/browser/extensions/nevoflux-agent/$target MISSING"
+              fail=1
+            fi
+          }
+          builtin_check moz.build
+          builtin_check jar.mn
+          builtin_check manifest.json
+          builtin_check background
+          builtin_check content
+          builtin_check wasm
+          if [ -f "engine/browser/extensions/moz.build" ] && \
+             grep -q '"nevoflux-agent"' "engine/browser/extensions/moz.build"; then
+            echo "  OK    engine/browser/extensions/moz.build DIRS has 'nevoflux-agent'"
+          else
+            echo "::error::engine/browser/extensions/moz.build DIRS lacks 'nevoflux-agent' — mach won't traverse"
+            fail=1
           fi
-          XPI="build/AppDir/distribution/extensions/agent@nevoflux.com.xpi"
-          if [ ! -f "$XPI" ]; then
-            echo "::error::expected unsigned xpi not found at $XPI"
+          echo "::endgroup::"
+
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Patches and/or built-in addon staging didn't take effect."
+            echo "::error::Check 'Initialize engine git repo' and apply-patches.sh step 15."
             exit 1
           fi
-          echo "Pre-sign xpi size: $(stat -c%s "$XPI") bytes"
-          mkdir -p signed-xpi
-          # web-ext sign --channel=unlisted uploads source, AMO signs it
-          # without listing in the public catalog, downloads back the signed
-          # .xpi into --artifacts-dir. ~30-180s depending on AMO queue.
-          npx --yes web-ext@latest sign \
-            --source-dir=src/nevoflux/extensions/nevoflux-agent \
-            --artifacts-dir=signed-xpi \
-            --channel=unlisted \
-            --api-key="$AMO_API_KEY" \
-            --api-secret="$AMO_API_SECRET" \
-            --no-input
-          SIGNED=$(ls signed-xpi/*.xpi 2>/dev/null | head -1)
-          if [ -z "$SIGNED" ] || [ ! -f "$SIGNED" ]; then
-            echo "::error::web-ext sign produced no xpi in signed-xpi/"
-            ls -la signed-xpi/ 2>&1 || true
-            exit 1
-          fi
-          echo "Replacing unsigned $XPI with signed $SIGNED ($(stat -c%s "$SIGNED") bytes)"
-          cp "$SIGNED" "$XPI"
-          rm -rf signed-xpi
-          echo "Agent xpi signed successfully (channel=unlisted)"
+          echo "All sampled patches + built-in addon staging verified."
 
       - name: Diagnostic — verify zen overlays applied to engine
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'

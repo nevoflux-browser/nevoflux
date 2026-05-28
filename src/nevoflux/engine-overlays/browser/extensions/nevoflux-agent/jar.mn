@@ -1,0 +1,22 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Built-in extension layout — gen_built_in_addons.py auto-registers anything
+# under builtin-addons/<id>/manifest.json into chrome://browser/content/
+# built_in_addons.json, and XPIProvider treats it as SIGNEDSTATE_SYSTEM.
+#
+# Runtime files (manifest.json, background/, content/, icons/, lib/, scripts/,
+# utils/, wasm/) are staged into engine/browser/extensions/nevoflux-agent/
+# by apply-patches.sh (step 15). dioxus-ui/ and node_modules/ are dev-only
+# and intentionally excluded — only the compiled WASM under wasm/ ships.
+
+browser.jar:
+    builtin-addons/nevoflux-agent/manifest.json (manifest.json)
+    builtin-addons/nevoflux-agent/background/   (background/**)
+    builtin-addons/nevoflux-agent/content/      (content/**)
+    builtin-addons/nevoflux-agent/icons/        (icons/**)
+    builtin-addons/nevoflux-agent/lib/          (lib/**)
+    builtin-addons/nevoflux-agent/scripts/      (scripts/**)
+    builtin-addons/nevoflux-agent/utils/        (utils/**)
+    builtin-addons/nevoflux-agent/wasm/         (wasm/**)
