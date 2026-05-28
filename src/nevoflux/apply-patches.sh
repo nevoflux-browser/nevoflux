@@ -380,6 +380,20 @@ if [ -f "${RULES_MK}" ]; then
   fi
 fi
 
+# 13b. Strip aboutaddons.js gate so extensions.ui.disableUnsignedWarnings works.
+#      Firefox only honors that pref when isInAutomation OR !MOZILLA_OFFICIAL.
+#      We set MOZILLA_OFFICIAL=1 in mozconfig, so the pref alone is ignored
+#      and the "could not be verified for use in NevoFlux. Proceed with
+#      caution." badge shows on our unsigned distribution-bundled
+#      agent@nevoflux.com.xpi. Removing the gate (and the pref in
+#      zzz-nevoflux.js) suppresses the warning. Idempotent — re-running
+#      finds nothing to replace.
+ABOUTADDONS_JS="${ENGINE_DIR}/toolkit/mozapps/extensions/content/aboutaddons.js"
+if [ -f "${ABOUTADDONS_JS}" ] && grep -q '(Cu\.isInAutomation || !AppConstants\.MOZILLA_OFFICIAL) &&' "${ABOUTADDONS_JS}"; then
+  echo "Stripping aboutaddons.js MOZILLA_OFFICIAL gate so disableUnsignedWarnings works..."
+  sedi 's#(Cu\.isInAutomation || !AppConstants\.MOZILLA_OFFICIAL) \&\&#/* NevoFlux: gate removed for disableUnsignedWarnings */#' "${ABOUTADDONS_JS}"
+fi
+
 # 14. Patch toolkit/moz.configure: set NevoFlux vendor and profile names
 #     Uses sed instead of git patch for cross-platform reliability (engine file
 #     state differs between Linux and macOS after Zen upstream patches).

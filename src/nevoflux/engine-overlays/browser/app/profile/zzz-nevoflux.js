@@ -24,6 +24,11 @@ pref('extensions.installDistroAddons', true);
 pref('extensions.startupScanScopes', 15);
 pref('xpinstall.signatures.required', false);
 pref('extensions.logging.enabled', true);
+// Hide the about:addons "could not be verified" warning for our unsigned
+// system extensions. apply-patches.sh strips the (isInAutomation ||
+// !MOZILLA_OFFICIAL) gate in aboutaddons.js so this pref takes effect
+// in our MOZILLA_OFFICIAL=1 build channel.
+pref('extensions.ui.disableUnsignedWarnings', true);
 
 // NevoFlux Agent settings
 pref('extensions.nevoflux.sidebar.position', 'right');
