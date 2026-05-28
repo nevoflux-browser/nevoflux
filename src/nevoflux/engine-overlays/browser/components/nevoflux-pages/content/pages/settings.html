@@ -1439,6 +1439,160 @@
     .kb-refresh-btn:hover {
       background: var(--nevoflux-bg-tertiary);
     }
+
+    /* ── KB Install Wizard Modal (M4-3) ──────────────── */
+
+    .kb-wizard-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .kb-wizard-modal.show {
+      display: flex;
+    }
+
+    .kb-wizard-modal-content {
+      background: var(--nevoflux-bg);
+      border-radius: var(--nevoflux-radius-lg, 12px);
+      padding: var(--nevoflux-space-2xl);
+      width: 90%;
+      max-width: 520px;
+      max-height: 85vh;
+      overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }
+
+    .kb-wizard-header {
+      margin-bottom: var(--nevoflux-space-xl);
+    }
+
+    .kb-wizard-header h2 {
+      font-size: var(--nevoflux-font-size-xl);
+      font-weight: 600;
+      color: var(--nevoflux-text);
+      margin-bottom: var(--nevoflux-space-xs);
+    }
+
+    .kb-wizard-subtitle {
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+    }
+
+    .kb-wizard-steps {
+      list-style: none;
+      padding: 0;
+      margin: var(--nevoflux-space-lg) 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--nevoflux-space-sm);
+    }
+
+    .kb-wizard-step {
+      display: flex;
+      align-items: center;
+      gap: var(--nevoflux-space-sm);
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-md);
+      border-radius: var(--nevoflux-radius-sm);
+      background: var(--nevoflux-bg-secondary);
+      border: 1px solid var(--nevoflux-border);
+      font-size: var(--nevoflux-font-size-base);
+      color: var(--nevoflux-text);
+      transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+    }
+
+    .kb-wizard-step[data-status="pending"] {
+      opacity: 0.55;
+    }
+
+    .kb-wizard-step[data-status="running"] {
+      background: color-mix(in srgb, var(--nevoflux-accent) 12%, var(--nevoflux-bg-secondary));
+      border-color: var(--nevoflux-accent);
+    }
+
+    .kb-wizard-step[data-status="ok"] {
+      background: light-dark(#e6f7ec, #1f3a2a);
+      border-color: light-dark(#1e8e3e, #6fcf97);
+    }
+
+    .kb-wizard-step[data-status="failed"] {
+      background: light-dark(#fde7e7, #3a1f1f);
+      border-color: light-dark(#d93025, #f88);
+    }
+
+    .kb-wizard-step-icon {
+      display: inline-block;
+      width: 1.4em;
+      text-align: center;
+      font-weight: 600;
+      font-family: var(--nevoflux-font-family-mono, monospace);
+    }
+
+    .kb-wizard-step[data-status="running"] .kb-wizard-step-icon {
+      color: var(--nevoflux-accent);
+    }
+
+    .kb-wizard-step[data-status="ok"] .kb-wizard-step-icon {
+      color: light-dark(#1e8e3e, #6fcf97);
+    }
+
+    .kb-wizard-step[data-status="failed"] .kb-wizard-step-icon {
+      color: light-dark(#d93025, #f88);
+    }
+
+    .kb-wizard-step-label {
+      flex: 1;
+    }
+
+    .kb-wizard-progress {
+      height: 6px;
+      background: var(--nevoflux-bg-tertiary);
+      border-radius: 3px;
+      overflow: hidden;
+      margin: var(--nevoflux-space-md) 0;
+    }
+
+    .kb-wizard-progress-bar {
+      height: 100%;
+      width: 0%;
+      background: var(--nevoflux-accent);
+      transition: width 200ms ease;
+    }
+
+    .kb-wizard-log {
+      font-family: var(--nevoflux-font-family-mono, monospace);
+      font-size: var(--nevoflux-font-size-sm);
+      height: 9em;
+      overflow-y: auto;
+      background: var(--nevoflux-bg-secondary);
+      border: 1px solid var(--nevoflux-border);
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-md);
+      border-radius: var(--nevoflux-radius-sm);
+      white-space: pre-wrap;
+      color: var(--nevoflux-text-secondary);
+      margin: var(--nevoflux-space-md) 0 var(--nevoflux-space-sm);
+    }
+
+    .kb-wizard-status {
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+      min-height: 1.4em;
+      margin-bottom: var(--nevoflux-space-md);
+    }
+
+    .kb-wizard-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: var(--nevoflux-space-sm);
+      margin-top: var(--nevoflux-space-md);
+    }
   </style>
 </head>
 <body>

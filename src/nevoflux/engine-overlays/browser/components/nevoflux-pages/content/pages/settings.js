@@ -3188,16 +3188,600 @@ const Settings = {
   },
 
   _onKbEnableClick() {
-    // M4-3 will replace this with a real install-wizard modal.
-    // For M4-1 we just notify the user that the wizard isn't wired yet.
-    console.warn(
-      '[nevoflux] kb install wizard modal not yet implemented (M4-3)'
+    // M4-3: open the install wizard modal. The modal drives the daemon
+    // RPCs (kb.wizard.*) and subscribes to system:kb-wizard:progress for
+    // live frames.
+    this._openKbWizardModal();
+  },
+
+  // ── KB Install Wizard Modal (M4-3) ──────────────────────
+  //
+  // Drives the user through:
+  //   install_bun -> install_gbrain -> init_brain
+  //
+  // For each step we fire `kb.wizard.<step>` (which returns immediately
+  // with { started: true }), then watch the EventBus topic
+  // `system:kb-wizard:progress` for frames { step, status, progress_pct,
+  // log }. After all steps `ok` we re-probe `kb.wizard.status` and only
+  // declare success when `overall == "ready"`.
+
+  // Section node from M4-1 (`_renderKnowledgeBaseSection`) — used by
+  // cleanup to refresh the badge + version lines.
+  _kbSection() {
+    return document.getElementById('section-knowledge-base');
+  },
+
+  _openKbWizardModal() {
+    if (this._kbWizardState) {
+      // Already open — bring to front, no-op.
+      return;
+    }
+    const modal = this._buildKbWizardModal();
+    document.body.appendChild(modal);
+    // Use the .show class to flip display:none -> flex.
+    requestAnimationFrame(() => modal.classList.add('show'));
+
+    this._kbWizardState = {
+      modal,
+      currentStep: null,
+      cancelled: false,
+      finished: false,
+      // EventBus subscription bookkeeping.
+      channelId: null,
+      subscriptionId: null,
+      messageListener: null,
+      // Per-step resolver and watchdog timer.
+      stepResolver: null,
+      stepTimeout: null,
+      logLines: [],
+    };
+
+    // Kick off subscribe + step machine in parallel; both are async
+    // and the step machine waits for resolver invocations triggered
+    // by the subscription's progress frames.
+    this._kbWizardSubscribe()
+      .catch((e) => {
+        console.warn('[kb-wizard] subscribe failed, falling back to polling:', e);
+        this._kbWizardStartPolling();
+      })
+      .finally(() => {
+        // _kbWizardStart is safe to call even before subscribe completes —
+        // the daemon buffers initial progress lines internally.
+        this._kbWizardStart();
+      });
+  },
+
+  _buildKbWizardModal() {
+    const modal = document.createElement('div');
+    modal.className = 'kb-wizard-modal';
+    modal.id = 'kb-wizard-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'kb-wizard-title');
+
+    // Don't close on backdrop click while installing — too easy to lose
+    // progress. The Cancel button is the explicit affordance.
+    modal.addEventListener('click', (e) => {
+      if (e.target !== modal) return;
+      if (this._kbWizardState?.finished) {
+        this._kbWizardClose();
+      }
+    });
+
+    const content = document.createElement('div');
+    content.className = 'kb-wizard-modal-content';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'kb-wizard-header';
+    const title = document.createElement('h2');
+    title.id = 'kb-wizard-title';
+    title.textContent = 'Set up Knowledge Base';
+    const subtitle = document.createElement('p');
+    subtitle.className = 'kb-wizard-subtitle';
+    subtitle.textContent =
+      'Installing bun runtime + gbrain CLI, then initializing your brain. ' +
+      'You can cancel at any time.';
+    header.appendChild(title);
+    header.appendChild(subtitle);
+    content.appendChild(header);
+
+    // Step list
+    const steps = document.createElement('ul');
+    steps.className = 'kb-wizard-steps';
+    for (const [key, label] of [
+      ['install_bun', 'Install bun runtime'],
+      ['install_gbrain', 'Install gbrain'],
+      ['init_brain', 'Initialize your brain'],
+    ]) {
+      const li = document.createElement('li');
+      li.className = 'kb-wizard-step';
+      li.dataset.step = key;
+      li.dataset.status = 'pending';
+
+      const icon = document.createElement('span');
+      icon.className = 'kb-wizard-step-icon';
+      icon.textContent = '○'; // ○ for pending
+      li.appendChild(icon);
+
+      const labelEl = document.createElement('span');
+      labelEl.className = 'kb-wizard-step-label';
+      labelEl.textContent = label;
+      li.appendChild(labelEl);
+
+      steps.appendChild(li);
+    }
+    content.appendChild(steps);
+
+    // Progress bar
+    const progressWrap = document.createElement('div');
+    progressWrap.className = 'kb-wizard-progress';
+    const progressBar = document.createElement('div');
+    progressBar.className = 'kb-wizard-progress-bar';
+    progressBar.style.width = '0%';
+    progressWrap.appendChild(progressBar);
+    content.appendChild(progressWrap);
+
+    // Log box
+    const log = document.createElement('pre');
+    log.className = 'kb-wizard-log';
+    log.textContent = '';
+    content.appendChild(log);
+
+    // Status text (last status line, separate from log for prominence)
+    const statusMsg = document.createElement('div');
+    statusMsg.className = 'kb-wizard-status';
+    statusMsg.textContent = 'Checking current state…';
+    content.appendChild(statusMsg);
+
+    // Actions
+    const actions = document.createElement('div');
+    actions.className = 'kb-wizard-actions';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'mcp-btn-secondary kb-wizard-cancel-btn';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => this._kbWizardCancel());
+    actions.appendChild(cancelBtn);
+
+    const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.className = 'mcp-btn-primary kb-wizard-retry-btn';
+    retryBtn.textContent = 'Retry';
+    retryBtn.style.display = 'none';
+    retryBtn.addEventListener('click', () => this._kbWizardRetry());
+    actions.appendChild(retryBtn);
+
+    const doneBtn = document.createElement('button');
+    doneBtn.type = 'button';
+    doneBtn.className = 'mcp-btn-primary kb-wizard-done-btn';
+    doneBtn.textContent = 'Done';
+    doneBtn.style.display = 'none';
+    doneBtn.addEventListener('click', () => this._kbWizardClose());
+    actions.appendChild(doneBtn);
+
+    content.appendChild(actions);
+    modal.appendChild(content);
+    return modal;
+  },
+
+  async _kbWizardSubscribe() {
+    // Path 1: persistent EventBus channel via NevofluxParent's
+    // events:channel_open + bridge events.subscribe (mirrors the canvas.js
+    // SDK shim, see canvas.js ~line 932). The channel keeps push frames
+    // flowing past bridge:request's 5-second push grace window.
+    const state = this._kbWizardState;
+    if (!state) return;
+    const channelId =
+      'kbwiz_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+
+    await NevofluxPage.sendQuery('events:channel_open', { channelId });
+    state.channelId = channelId;
+
+    // Install the message listener BEFORE issuing subscribe, so we don't
+    // miss any early-arriving frames.
+    state.messageListener = (event) => {
+      const detail = event.detail;
+      if (!detail || detail.type !== 'bridge:push') return;
+      const msg = detail.msg;
+      if (!msg || msg.type !== 'events:delivery') return;
+      const ev = msg.payload?.event;
+      if (!ev || ev.topic !== 'system:kb-wizard:progress') return;
+      // ev.payload is the WizardProgress JSON (snake_case from Rust serde).
+      try {
+        this._kbWizardOnProgress(ev.payload);
+      } catch (err) {
+        console.warn('[kb-wizard] progress handler failed:', err);
+      }
+    };
+    window.addEventListener('NevofluxMessage', state.messageListener);
+
+    // Subscribe via the daemon's EventBus. background.js's
+    // events.subscribe handler accepts our channel_id and routes
+    // matching deliveries back through bridge:push.
+    const res = await NevofluxPage.sendQuery('bridge:request', {
+      type: 'events.subscribe',
+      payload: {
+        patterns: ['system:kb-wizard:progress'],
+        replay_sticky: false,
+        channel_id: channelId,
+      },
+    });
+    if (!res || res.success === false) {
+      // Tear down the channel; caller will fall back to polling.
+      try {
+        await NevofluxPage.sendQuery('events:channel_close', { channelId });
+      } catch (_e) {}
+      state.channelId = null;
+      window.removeEventListener('NevofluxMessage', state.messageListener);
+      state.messageListener = null;
+      throw new Error(res?.error?.message || 'events.subscribe failed');
+    }
+    const data = res.data?.data !== undefined ? res.data.data : res.data;
+    state.subscriptionId = data?.subscription_id || data?.subscriptionId || null;
+  },
+
+  _kbWizardStartPolling() {
+    // Polling fallback: re-probe kb.wizard.status every 1s while a step
+    // is running. This loses the per-line `log` text from upstream
+    // stderr — we only get status transitions (running -> ok / failed).
+    const state = this._kbWizardState;
+    if (!state) return;
+    this._kbWizardAppendLog(
+      '[wizard] EventBus subscribe unavailable; using polling. ' +
+        'Step transitions will be reported but command output will not stream.'
     );
-    // Use alert here because we don't yet have a generic toast helper in
-    // this page; M4-3 will introduce the modal and remove this.
-    alert(
-      'Knowledge Base install wizard is being implemented. Coming next.'
+    state.pollHandle = setInterval(async () => {
+      if (!this._kbWizardState || this._kbWizardState.cancelled) return;
+      try {
+        const status = await this._sendMcpCommand('kb.wizard.status', {});
+        const cur = this._kbWizardState.currentStep;
+        if (!cur) return;
+        // Translate overall + per-component flags into a synthetic frame.
+        const stepDone =
+          (cur === 'install_bun' && status.bun_installed) ||
+          (cur === 'install_gbrain' && status.gbrain_installed) ||
+          (cur === 'init_brain' && status.brain_initialized);
+        const frameStatus = stepDone
+          ? 'ok'
+          : status.overall === 'failed'
+            ? 'failed'
+            : 'running';
+        this._kbWizardOnProgress({
+          step: cur,
+          status: frameStatus,
+          progress_pct: stepDone ? 100 : 50,
+          log:
+            frameStatus === 'ok'
+              ? `[poll] ${cur} complete`
+              : frameStatus === 'failed'
+                ? `[poll] ${cur} failed (overall=${status.overall})`
+                : `[poll] ${cur} still running…`,
+        });
+      } catch (e) {
+        console.warn('[kb-wizard] poll failed:', e);
+      }
+    }, 1000);
+  },
+
+  async _kbWizardStart() {
+    try {
+      const status = await this._sendMcpCommand('kb.wizard.status', {});
+      if (this._kbWizardState?.cancelled) return;
+      this._kbWizardSetStatus(`Current state: ${status.overall}`);
+
+      if (status.overall === 'ready') {
+        this._kbWizardAppendLog('[wizard] Already installed — nothing to do.');
+        this._kbWizardComplete();
+        return;
+      }
+
+      if (!status.bun_installed) {
+        await this._kbWizardRunStep('install_bun');
+      } else {
+        this._kbWizardSetStepDone('install_bun');
+      }
+      if (this._kbWizardState?.cancelled) return;
+
+      if (!status.gbrain_installed) {
+        await this._kbWizardRunStep('install_gbrain');
+      } else {
+        this._kbWizardSetStepDone('install_gbrain');
+      }
+      if (this._kbWizardState?.cancelled) return;
+
+      if (!status.brain_initialized) {
+        await this._kbWizardRunStep('init_brain');
+      } else {
+        this._kbWizardSetStepDone('init_brain');
+      }
+      if (this._kbWizardState?.cancelled) return;
+
+      // Verify
+      const finalStatus = await this._sendMcpCommand('kb.wizard.status', {});
+      if (finalStatus.overall === 'ready') {
+        this._kbWizardComplete();
+      } else {
+        this._kbWizardFail(
+          `Final status was ${finalStatus.overall}, expected ready`
+        );
+      }
+    } catch (e) {
+      if (this._kbWizardState?.cancelled) return;
+      this._kbWizardFail(e?.message ? e.message : String(e));
+    }
+  },
+
+  _kbWizardRunStep(step) {
+    return new Promise((resolve, reject) => {
+      if (!this._kbWizardState) {
+        reject(new Error('wizard state gone'));
+        return;
+      }
+      if (this._kbWizardState.cancelled) {
+        reject(new Error('cancelled by user'));
+        return;
+      }
+      this._kbWizardState.currentStep = step;
+      this._kbWizardState.stepResolver = { resolve, reject };
+      this._kbWizardSetStepActive(step);
+      this._kbWizardSetStatus(`Running: ${step}`);
+
+      // install_bun + init_brain can be slow on cold disks / slow networks.
+      // install_gbrain is dominated by bun's network fetch; cap at 5min.
+      const TIMEOUT =
+        step === 'install_gbrain' ? 5 * 60 * 1000 : 10 * 60 * 1000;
+      this._kbWizardState.stepTimeout = setTimeout(() => {
+        if (this._kbWizardState?.stepResolver) {
+          this._kbWizardState.stepResolver.reject(
+            new Error(`step ${step} timed out after ${TIMEOUT / 60000}min`)
+          );
+          this._kbWizardState.stepResolver = null;
+        }
+      }, TIMEOUT);
+
+      // Fire the RPC. The response is `{ started: true }`; the actual work
+      // streams progress via the EventBus subscription set up earlier.
+      this._sendMcpCommand(`kb.wizard.${step}`, {}).catch((e) => {
+        if (this._kbWizardState?.stepResolver) {
+          clearTimeout(this._kbWizardState.stepTimeout);
+          this._kbWizardState.stepResolver.reject(e);
+          this._kbWizardState.stepResolver = null;
+        }
+      });
+    });
+  },
+
+  _kbWizardOnProgress(frame) {
+    const state = this._kbWizardState;
+    if (!state || state.cancelled) return;
+    if (!frame || typeof frame !== 'object') return;
+
+    if (frame.log) this._kbWizardAppendLog(frame.log);
+    if (typeof frame.progress_pct === 'number') {
+      this._kbWizardSetProgress(frame.progress_pct);
+    }
+
+    // Map detect_bun frames into the install_bun step row so the user
+    // gets some visual feedback even when bun is already present.
+    const frameStep = frame.step === 'detect_bun' ? 'install_bun' : frame.step;
+
+    if (frameStep === state.currentStep) {
+      if (frame.status === 'ok') {
+        this._kbWizardSetStepDone(frameStep);
+        clearTimeout(state.stepTimeout);
+        if (state.stepResolver) {
+          state.stepResolver.resolve();
+          state.stepResolver = null;
+        }
+      } else if (frame.status === 'failed') {
+        this._kbWizardSetStepFailed(frameStep, frame.log);
+        clearTimeout(state.stepTimeout);
+        if (state.stepResolver) {
+          state.stepResolver.reject(
+            new Error(`step ${frameStep} failed: ${frame.log || ''}`)
+          );
+          state.stepResolver = null;
+        }
+      } else if (frame.status === 'cancelled') {
+        state.cancelled = true;
+        clearTimeout(state.stepTimeout);
+        if (state.stepResolver) {
+          state.stepResolver.reject(new Error('cancelled'));
+          state.stepResolver = null;
+        }
+      }
+    }
+  },
+
+  _kbWizardAppendLog(line) {
+    const state = this._kbWizardState;
+    if (!state || !line) return;
+    state.logLines.push(String(line));
+    // Cap at 30 most-recent lines to keep the box bounded.
+    if (state.logLines.length > 30) {
+      state.logLines.splice(0, state.logLines.length - 30);
+    }
+    const logEl = state.modal.querySelector('.kb-wizard-log');
+    if (logEl) {
+      logEl.textContent = state.logLines.join('\n');
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+  },
+
+  _kbWizardSetProgress(pct) {
+    const bar = this._kbWizardState?.modal?.querySelector(
+      '.kb-wizard-progress-bar'
     );
+    if (!bar) return;
+    const clamped = Math.max(0, Math.min(100, Number(pct) || 0));
+    bar.style.width = `${clamped}%`;
+  },
+
+  _kbWizardSetStatus(text) {
+    const el = this._kbWizardState?.modal?.querySelector('.kb-wizard-status');
+    if (el) el.textContent = text;
+  },
+
+  _kbWizardSetStepActive(step) {
+    const li = this._kbWizardState?.modal?.querySelector(
+      `.kb-wizard-step[data-step="${step}"]`
+    );
+    if (!li) return;
+    li.dataset.status = 'running';
+    const icon = li.querySelector('.kb-wizard-step-icon');
+    if (icon) icon.textContent = '◒'; // ◒ for in-progress
+  },
+
+  _kbWizardSetStepDone(step) {
+    const li = this._kbWizardState?.modal?.querySelector(
+      `.kb-wizard-step[data-step="${step}"]`
+    );
+    if (!li) return;
+    li.dataset.status = 'ok';
+    const icon = li.querySelector('.kb-wizard-step-icon');
+    if (icon) icon.textContent = '✓'; // ✓
+  },
+
+  _kbWizardSetStepFailed(step, msg) {
+    const li = this._kbWizardState?.modal?.querySelector(
+      `.kb-wizard-step[data-step="${step}"]`
+    );
+    if (!li) return;
+    li.dataset.status = 'failed';
+    const icon = li.querySelector('.kb-wizard-step-icon');
+    if (icon) icon.textContent = '✗'; // ✗
+    this._kbWizardSetStatus(`Failed at ${step}${msg ? ': ' + msg : ''}`);
+  },
+
+  async _kbWizardCancel() {
+    const state = this._kbWizardState;
+    if (!state) return;
+    state.cancelled = true;
+    this._kbWizardAppendLog('[wizard] Cancellation requested…');
+    try {
+      await this._sendMcpCommand('kb.wizard.cancel', {});
+    } catch (e) {
+      // Non-fatal — the daemon may have already finished or the RPC may
+      // simply not be available. We still tear down the UI.
+      console.warn('[kb-wizard] cancel rpc failed:', e);
+    }
+    // Reject any in-flight step so _kbWizardStart bails out.
+    if (state.stepResolver) {
+      clearTimeout(state.stepTimeout);
+      state.stepResolver.reject(new Error('cancelled by user'));
+      state.stepResolver = null;
+    }
+    this._kbWizardSetStatus('Cancelled.');
+    this._kbWizardShowDone(/* labelOverride */ 'Close');
+    state.finished = true;
+  },
+
+  _kbWizardRetry() {
+    // Reset visible state and restart the step machine from scratch.
+    const state = this._kbWizardState;
+    if (!state) return;
+    state.cancelled = false;
+    state.finished = false;
+    state.currentStep = null;
+    state.logLines = [];
+    for (const li of state.modal.querySelectorAll('.kb-wizard-step')) {
+      li.dataset.status = 'pending';
+      const icon = li.querySelector('.kb-wizard-step-icon');
+      if (icon) icon.textContent = '○';
+    }
+    const log = state.modal.querySelector('.kb-wizard-log');
+    if (log) log.textContent = '';
+    this._kbWizardSetProgress(0);
+    this._kbWizardSetStatus('Retrying…');
+    state.modal.querySelector('.kb-wizard-retry-btn').style.display = 'none';
+    state.modal.querySelector('.kb-wizard-done-btn').style.display = 'none';
+    state.modal.querySelector('.kb-wizard-cancel-btn').style.display = '';
+    this._kbWizardStart();
+  },
+
+  _kbWizardComplete() {
+    const state = this._kbWizardState;
+    if (!state) return;
+    state.finished = true;
+    this._kbWizardSetProgress(100);
+    this._kbWizardSetStatus('Knowledge Base is ready.');
+    this._kbWizardAppendLog('[wizard] All steps complete. Ready.');
+    this._kbWizardShowDone('Done');
+  },
+
+  _kbWizardFail(msg) {
+    const state = this._kbWizardState;
+    if (!state) return;
+    state.finished = true;
+    this._kbWizardSetStatus(`Install failed: ${msg}`);
+    this._kbWizardAppendLog(`[wizard] FAILED: ${msg}`);
+    // Show Retry + Close (re-labelled Done).
+    state.modal.querySelector('.kb-wizard-retry-btn').style.display = '';
+    state.modal.querySelector('.kb-wizard-done-btn').style.display = '';
+    state.modal.querySelector('.kb-wizard-done-btn').textContent = 'Close';
+    state.modal.querySelector('.kb-wizard-cancel-btn').style.display = 'none';
+  },
+
+  _kbWizardShowDone(label) {
+    const state = this._kbWizardState;
+    if (!state) return;
+    const cancel = state.modal.querySelector('.kb-wizard-cancel-btn');
+    const done = state.modal.querySelector('.kb-wizard-done-btn');
+    if (cancel) cancel.style.display = 'none';
+    if (done) {
+      done.textContent = label || 'Done';
+      done.style.display = '';
+    }
+  },
+
+  async _kbWizardCleanup() {
+    const state = this._kbWizardState;
+    if (!state) return;
+    if (state.stepTimeout) clearTimeout(state.stepTimeout);
+    if (state.pollHandle) clearInterval(state.pollHandle);
+    if (state.messageListener) {
+      window.removeEventListener('NevofluxMessage', state.messageListener);
+      state.messageListener = null;
+    }
+    // Unsubscribe and close the EventBus channel. Both calls are
+    // best-effort — failure here just leaks a server-side handle until
+    // the page closes.
+    if (state.subscriptionId) {
+      try {
+        await NevofluxPage.sendQuery('bridge:request', {
+          type: 'events.unsubscribe',
+          payload: { subscription_id: state.subscriptionId },
+        });
+      } catch (e) {
+        console.warn('[kb-wizard] unsubscribe failed:', e);
+      }
+    }
+    if (state.channelId) {
+      try {
+        await NevofluxPage.sendQuery('events:channel_close', {
+          channelId: state.channelId,
+        });
+      } catch (e) {
+        console.warn('[kb-wizard] channel_close failed:', e);
+      }
+    }
+  },
+
+  async _kbWizardClose() {
+    const state = this._kbWizardState;
+    if (!state) return;
+    await this._kbWizardCleanup();
+    state.modal.classList.remove('show');
+    state.modal.remove();
+    this._kbWizardState = null;
+    // Refresh the KB section so the badge + version lines reflect the
+    // post-install state.
+    const section = this._kbSection();
+    if (section) {
+      this._refreshKbStatus(section);
+    }
   },
 };
 
