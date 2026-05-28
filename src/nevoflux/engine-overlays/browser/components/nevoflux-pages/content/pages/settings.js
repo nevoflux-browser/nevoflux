@@ -129,6 +129,7 @@ const Settings = {
     container.appendChild(this._renderMcpSection());
     container.appendChild(this._renderCanvasToolsSection());
     container.appendChild(this._renderMyCanvasSection());
+    container.appendChild(this._renderKnowledgeBaseSection());
     container.appendChild(this._renderShortcutsSection());
   },
 
@@ -2986,6 +2987,217 @@ const Settings = {
       current = current[keys[i]];
     }
     current[keys[keys.length - 1]] = value;
+  },
+
+  // ── Knowledge Base Section (M4-1) ───────────────────────
+  //
+  // Shows install-state of the gbrain-backed knowledge base.
+  // Status is driven by daemon RPC `kb.wizard.status`.
+  // The "Enable Knowledge Base" button is a stub for M4-3, which
+  // will wire it to the install wizard modal.
+
+  _renderKnowledgeBaseSection() {
+    const section = this._createSection('knowledge-base', 'Knowledge Base');
+
+    const group = this._createGroup('Knowledge Base');
+
+    // Description
+    const desc = document.createElement('p');
+    desc.className = 'section-desc';
+    desc.textContent =
+      'Save web pages, conversations, and ideas to a long-term, ' +
+      'searchable knowledge base powered by gbrain. Local-first; ' +
+      'your data stays on your machine.';
+    group.appendChild(desc);
+
+    // Status row
+    const statusRow = document.createElement('div');
+    statusRow.className = 'kb-status-row';
+
+    const statusLabel = document.createElement('span');
+    statusLabel.className = 'kb-status-label';
+    statusLabel.textContent = 'Status:';
+    statusRow.appendChild(statusLabel);
+
+    const badge = document.createElement('span');
+    badge.className = 'kb-status-badge';
+    badge.dataset.state = 'unknown';
+
+    const dot = document.createElement('span');
+    dot.className = 'kb-status-dot';
+    badge.appendChild(dot);
+
+    const text = document.createElement('span');
+    text.className = 'kb-status-text';
+    text.textContent = 'Checking…';
+    badge.appendChild(text);
+
+    statusRow.appendChild(badge);
+    group.appendChild(statusRow);
+
+    // Detail lines (versions + paths)
+    const details = document.createElement('div');
+    details.className = 'kb-details';
+    for (const [key, label] of [
+      ['bun-version', 'bun'],
+      ['gbrain-version', 'gbrain'],
+      ['brain-dir', 'brain dir'],
+    ]) {
+      const line = document.createElement('div');
+      line.className = 'kb-detail-line';
+      line.dataset.key = key;
+      const k = document.createElement('span');
+      k.className = 'kb-detail-key';
+      k.textContent = `${label}: `;
+      const v = document.createElement('span');
+      v.className = 'kb-detail-value';
+      v.textContent = '—';
+      line.appendChild(k);
+      line.appendChild(v);
+      details.appendChild(line);
+    }
+    group.appendChild(details);
+
+    // Action row
+    const actions = document.createElement('div');
+    actions.className = 'kb-actions';
+
+    const enableBtn = document.createElement('button');
+    enableBtn.type = 'button';
+    enableBtn.className = 'kb-enable-btn';
+    enableBtn.textContent = 'Enable Knowledge Base';
+    enableBtn.disabled = true; // until status loads
+    enableBtn.addEventListener('click', () => this._onKbEnableClick());
+    actions.appendChild(enableBtn);
+
+    const refreshBtn = document.createElement('button');
+    refreshBtn.type = 'button';
+    refreshBtn.className = 'kb-refresh-btn';
+    refreshBtn.textContent = 'Refresh';
+    refreshBtn.addEventListener('click', () => this._refreshKbStatus(section));
+    actions.appendChild(refreshBtn);
+
+    group.appendChild(actions);
+
+    section.appendChild(group);
+
+    // Kick off initial status fetch (fire-and-forget; errors handled inside).
+    this._refreshKbStatus(section);
+
+    return section;
+  },
+
+  async _refreshKbStatus(section) {
+    try {
+      // _sendMcpCommand unwraps both envelope layers ({success,data} ->
+      // agent { success, data }) and throws on failure, so a thrown error
+      // here means "couldn't reach daemon or RPC failed".
+      const report = await this._sendMcpCommand('kb.wizard.status', {});
+      this._renderKbStatus(section, report);
+    } catch (e) {
+      this._renderKbError(section, e?.message ? e.message : String(e));
+    }
+  },
+
+  _renderKbStatus(section, report) {
+    const badge = section.querySelector('.kb-status-badge');
+    const text = section.querySelector('.kb-status-text');
+    const enableBtn = section.querySelector('.kb-enable-btn');
+    if (!badge || !text || !enableBtn) return;
+
+    const stateMap = {
+      ready: {
+        label: 'Ready',
+        color: 'green',
+        btnText: 'Enabled',
+        btnDisabled: true,
+      },
+      needs_install: {
+        label: 'Not installed',
+        color: 'grey',
+        btnText: 'Enable Knowledge Base',
+        btnDisabled: false,
+      },
+      needs_init: {
+        label: 'Setup required',
+        color: 'amber',
+        btnText: 'Complete setup',
+        btnDisabled: false,
+      },
+      in_progress: {
+        label: 'Installing…',
+        color: 'blue',
+        btnText: 'Installing…',
+        btnDisabled: true,
+      },
+      failed: {
+        label: 'Install failed',
+        color: 'red',
+        btnText: 'Retry install',
+        btnDisabled: false,
+      },
+    };
+
+    const overall = report && report.overall;
+    const s = stateMap[overall] || {
+      label: 'Unknown',
+      color: 'grey',
+      btnText: 'Enable Knowledge Base',
+      btnDisabled: false,
+    };
+
+    badge.dataset.state = overall || 'unknown';
+    badge.style.setProperty('--kb-badge-color', s.color);
+    text.textContent = s.label;
+    enableBtn.textContent = s.btnText;
+    enableBtn.disabled = s.btnDisabled;
+
+    this._setKbDetail(
+      section,
+      'bun-version',
+      report.bun_version || (report.bun_installed ? 'installed' : 'not installed')
+    );
+    this._setKbDetail(
+      section,
+      'gbrain-version',
+      report.gbrain_version ||
+        (report.gbrain_installed ? 'installed' : 'not installed')
+    );
+    this._setKbDetail(section, 'brain-dir', report.brain_dir || '—');
+  },
+
+  _setKbDetail(section, key, value) {
+    const el = section.querySelector(
+      `.kb-detail-line[data-key="${key}"] .kb-detail-value`
+    );
+    if (el) el.textContent = value;
+  },
+
+  _renderKbError(section, msg) {
+    const badge = section.querySelector('.kb-status-badge');
+    const text = section.querySelector('.kb-status-text');
+    const enableBtn = section.querySelector('.kb-enable-btn');
+    if (!badge || !text) return;
+    badge.dataset.state = 'error';
+    badge.style.setProperty('--kb-badge-color', 'red');
+    text.textContent = `Status error: ${msg}`;
+    if (enableBtn) {
+      enableBtn.disabled = false;
+      enableBtn.textContent = 'Enable Knowledge Base';
+    }
+  },
+
+  _onKbEnableClick() {
+    // M4-3 will replace this with a real install-wizard modal.
+    // For M4-1 we just notify the user that the wizard isn't wired yet.
+    console.warn(
+      '[nevoflux] kb install wizard modal not yet implemented (M4-3)'
+    );
+    // Use alert here because we don't yet have a generic toast helper in
+    // this page; M4-3 will introduce the modal and remove this.
+    alert(
+      'Knowledge Base install wizard is being implemented. Coming next.'
+    );
   },
 };
 

@@ -1330,6 +1330,115 @@
       background: color-mix(in srgb, var(--zen-primary-color) 25%, transparent);
       color: var(--zen-branding-bg-reverse);
     }
+
+    /* ── Knowledge Base Section (M4-1) ────────────── */
+    .kb-status-row {
+      display: flex;
+      align-items: center;
+      gap: var(--nevoflux-space-sm);
+      margin: var(--nevoflux-space-md) 0;
+    }
+
+    .kb-status-label {
+      font-weight: 500;
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-base);
+    }
+
+    .kb-status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4em;
+      padding: 0.25em 0.7em;
+      border-radius: 999px;
+      background: var(--kb-badge-color, var(--nevoflux-bg-tertiary));
+      color: white;
+      font-size: var(--nevoflux-font-size-sm);
+      font-weight: 500;
+      line-height: 1.4;
+    }
+
+    .kb-status-badge[data-state="unknown"],
+    .kb-status-badge[data-state="needs_install"] {
+      background: var(--nevoflux-bg-tertiary);
+      color: var(--nevoflux-text);
+    }
+
+    .kb-status-dot {
+      width: 0.55em;
+      height: 0.55em;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.85;
+      flex-shrink: 0;
+    }
+
+    .kb-details {
+      font-family: var(--nevoflux-font-family-mono, monospace);
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+      margin: var(--nevoflux-space-md) 0;
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-md);
+      background: var(--nevoflux-bg-secondary);
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+    }
+
+    .kb-detail-line {
+      line-height: 1.6;
+      word-break: break-all;
+    }
+
+    .kb-detail-key {
+      color: var(--nevoflux-text-secondary);
+    }
+
+    .kb-detail-value {
+      color: var(--nevoflux-text);
+    }
+
+    .kb-actions {
+      display: flex;
+      gap: var(--nevoflux-space-md);
+      margin-top: var(--nevoflux-space-lg);
+      align-items: center;
+    }
+
+    .kb-enable-btn {
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-xl);
+      border-radius: var(--nevoflux-radius-sm);
+      border: none;
+      font-size: var(--nevoflux-font-size-base);
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s ease, opacity 0.15s ease;
+      background: var(--nevoflux-accent);
+      color: white;
+    }
+
+    .kb-enable-btn:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--nevoflux-accent) 85%, black);
+    }
+
+    .kb-enable-btn:disabled {
+      opacity: 0.4;
+      cursor: default;
+    }
+
+    .kb-refresh-btn {
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-lg);
+      border-radius: var(--nevoflux-radius-sm);
+      border: 1px solid var(--nevoflux-border);
+      font-size: var(--nevoflux-font-size-base);
+      cursor: pointer;
+      background: var(--nevoflux-bg);
+      color: var(--nevoflux-text);
+      transition: background 0.15s ease;
+    }
+
+    .kb-refresh-btn:hover {
+      background: var(--nevoflux-bg-tertiary);
+    }
   </style>
 </head>
 <body>
@@ -1340,6 +1449,7 @@
     <a href="#" data-section="mcp">MCP Servers</a>
     <a href="#" data-section="canvas-tools">Canvas Tools</a>
     <a href="#" data-section="my-canvas">My Canvas</a>
+    <a href="#" data-section="knowledge-base">Knowledge Base</a>
     <a href="#" data-section="shortcuts">Shortcuts</a>
   </nav>
   <main class="settings-content">
