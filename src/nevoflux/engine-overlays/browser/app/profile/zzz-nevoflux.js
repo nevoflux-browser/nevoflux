@@ -19,13 +19,12 @@ pref('sidebar.maxWidth', 960);
 pref('zen.tabs.vertical.right-side', false);
 
 // Allow any extension shipped under distribution/extensions/ to auto-install
-// (we don't currently ship any there — nevoflux-agent is a built-in system
-// addon bundled into omni.ja — but keep these on so future side-loaded
-// extensions work without prompting).
+// without prompting. nevoflux-agent is a built-in system addon bundled into
+// omni.ja, so these only matter for any future side-loaded distribution xpi
+// — which MUST be AMO-signed (we no longer override xpinstall.signatures.required).
 pref('extensions.autoDisableScopes', 0);
 pref('extensions.installDistroAddons', true);
 pref('extensions.startupScanScopes', 15);
-pref('xpinstall.signatures.required', false);
 pref('extensions.logging.enabled', true);
 
 // NevoFlux Agent settings

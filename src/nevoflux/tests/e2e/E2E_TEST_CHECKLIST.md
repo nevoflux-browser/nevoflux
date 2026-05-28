@@ -4,8 +4,8 @@
 
 ### Setup
 
-- [ ] Browser built: `npm run build`
-- [ ] Extension loaded: `npm run reload-ext`
+- [ ] Browser built: `npm run build` (omni.ja contains the built-in
+      nevoflux-agent; no separate extension load step needed)
 - [ ] Browser started: `npm run start`
 - [ ] Test page opened: `file://<project-root>/src/nevoflux/tests/e2e/test-page.html`
 - [ ] Browser Console opened: `Ctrl+Shift+J` (or `Cmd+Shift+J` on Mac)

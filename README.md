@@ -413,7 +413,6 @@ git commit -m "patch(feature): description"
 | `npm run build`      | Full browser build              |
 | `npm run build:ui`   | UI-only rebuild (faster)        |
 | `npm run start`      | Launch the browser              |
-| `npm run reload-ext` | Reload extension + clear caches |
 | `npm run test`       | Run tests                       |
 | `npm run lint`       | Run ESLint/Prettier             |
 

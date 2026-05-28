@@ -6,9 +6,11 @@ verification during implementation and smoke testing.
 
 ## How to run
 
-1. Build the browser: `npm run build`
-2. Reload the extension: `npm run reload-ext`
-3. Start the browser: `npm run start`
+1. Build the browser: `npm run build` (rebuilds omni.ja with the latest
+   built-in nevoflux-agent payload — there is no separate "reload extension"
+   step for built-in WebExtensions; the jar manifest is baked into omni.ja).
+   For UI-only changes, `npm run build:ui` is faster.
+2. Start the browser: `npm run start`
 4. Open the fixture: e.g.
    `file:///ai/project/nevoflux/src/nevoflux/tests/e2e/fixtures/editors/draft-js.html`
 5. Open the browser console (Ctrl+Shift+J)

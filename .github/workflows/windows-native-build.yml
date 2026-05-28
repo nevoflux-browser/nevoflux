@@ -966,7 +966,9 @@ jobs:
           # check `grep -q '@RESPATH@/distribution/'` matched any unrelated
           # upstream entry (e.g. `@RESPATH@/distribution/searchplugins/*`),
           # so the append was skipped and the produced zip shipped without
-          # distribution/extensions/agent@nevoflux.com.xpi.
+          # the NevoFlux distribution payload (policies.json, agent binary,
+          # skills, soul). nevoflux-agent itself is a built-in inside
+          # omni.ja, not under distribution/extensions/.
           if [ -f "$MANIFEST" ] && ! grep -qF '; NevoFlux distribution files' "$MANIFEST"; then
             printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$MANIFEST"
             echo "Appended distribution/** to $MANIFEST"
@@ -1196,7 +1198,9 @@ jobs:
           # check `grep -q '@RESPATH@/distribution/'` matched any unrelated
           # upstream entry (e.g. `@RESPATH@/distribution/searchplugins/*`),
           # so the append was skipped and the produced zip shipped without
-          # distribution/extensions/agent@nevoflux.com.xpi.
+          # the NevoFlux distribution payload (policies.json, agent binary,
+          # skills, soul). nevoflux-agent itself is a built-in inside
+          # omni.ja, not under distribution/extensions/.
           if [ -f "$MANIFEST" ] && ! grep -qF '; NevoFlux distribution files' "$MANIFEST"; then
             printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$MANIFEST"
             echo "Appended distribution/** to $MANIFEST"
@@ -1315,13 +1319,11 @@ jobs:
               $distEntries = @($zipObj.Entries | Where-Object { $_.FullName -like '*distribution/*' })
               $distEntries | Select-Object -First 20 | ForEach-Object { Write-Host "  $($_.FullName)" }
               $count = $distEntries.Count
-              $xpi = @($distEntries | Where-Object { $_.FullName -like '*agent@nevoflux.com.xpi' }).Count
               $policies = @($distEntries | Where-Object { $_.FullName -like '*policies.json' }).Count
               $agentExe = @($distEntries | Where-Object { $_.FullName -like '*nevoflux-agent.exe' }).Count
               $skillsCount = @($distEntries | Where-Object { $_.FullName -like '*distribution/bin/defaults/skills/*' }).Count
               $modelsCount = @($distEntries | Where-Object { $_.FullName -like '*distribution/bin/models/*' }).Count
               Write-Host "total distribution/* entries:  $count"
-              Write-Host "  agent@nevoflux.com.xpi:      $xpi"
               Write-Host "  policies.json:               $policies"
               Write-Host "  nevoflux-agent.exe:          $agentExe"
               Write-Host "  bin/defaults/skills entries: $skillsCount"
@@ -1329,8 +1331,8 @@ jobs:
               if ($count -eq 0) {
                 Write-Host "::error::x64 zip has NO distribution/*"
                 $fail = 1
-              } elseif ($xpi -eq 0) {
-                Write-Host "::warning::x64 distribution/ present but agent@nevoflux.com.xpi missing"
+              } elseif ($policies -eq 0 -or $agentExe -eq 0) {
+                Write-Host "::warning::x64 distribution/ present but policies.json or nevoflux-agent.exe missing"
                 $fail = 1
               }
             } finally {
@@ -1465,7 +1467,9 @@ jobs:
           # check `grep -q '@RESPATH@/distribution/'` matched any unrelated
           # upstream entry (e.g. `@RESPATH@/distribution/searchplugins/*`),
           # so the append was skipped and the produced zip shipped without
-          # distribution/extensions/agent@nevoflux.com.xpi.
+          # the NevoFlux distribution payload (policies.json, agent binary,
+          # skills, soul). nevoflux-agent itself is a built-in inside
+          # omni.ja, not under distribution/extensions/.
           if [ -f "$MANIFEST" ] && ! grep -qF '; NevoFlux distribution files' "$MANIFEST"; then
             printf '\n; NevoFlux distribution files\n@RESPATH@/distribution/**\n' >> "$MANIFEST"
             echo "Appended distribution/** to $MANIFEST"
@@ -1505,7 +1509,7 @@ jobs:
         # package completes." Earlier iterations tried to bake it in via
         # @RESPATH@/distribution/** in package-manifest.in, but mach's manifest
         # processing silently drops it on this Windows native arm64 cross-build
-        # (zip and installer ship without distribution/extensions/agent.xpi).
+        # (zip and installer ship without distribution/{policies.json,bin/}).
         #
         # Use System.IO.Compression.ZipFile (built into .NET, always present
         # on Windows) rather than the zip CLI — Git Bash and MozillaBuild MSYS2
@@ -1588,13 +1592,11 @@ jobs:
               $distEntries = @($zipObj.Entries | Where-Object { $_.FullName -like '*distribution/*' })
               $distEntries | Select-Object -First 20 | ForEach-Object { Write-Host "  $($_.FullName)" }
               $count = $distEntries.Count
-              $xpi = @($distEntries | Where-Object { $_.FullName -like '*agent@nevoflux.com.xpi' }).Count
               $policies = @($distEntries | Where-Object { $_.FullName -like '*policies.json' }).Count
               $agentExe = @($distEntries | Where-Object { $_.FullName -like '*nevoflux-agent.exe' }).Count
               $skillsCount = @($distEntries | Where-Object { $_.FullName -like '*distribution/bin/defaults/skills/*' }).Count
               $modelsCount = @($distEntries | Where-Object { $_.FullName -like '*distribution/bin/models/*' }).Count
               Write-Host "total distribution/* entries:  $count"
-              Write-Host "  agent@nevoflux.com.xpi:      $xpi"
               Write-Host "  policies.json:               $policies"
               Write-Host "  nevoflux-agent.exe:          $agentExe"
               Write-Host "  bin/defaults/skills entries: $skillsCount"
@@ -1602,8 +1604,8 @@ jobs:
               if ($count -eq 0) {
                 Write-Host "::error::arm64 zip has NO distribution/*"
                 $fail = 1
-              } elseif ($xpi -eq 0) {
-                Write-Host "::warning::arm64 distribution/ present but agent@nevoflux.com.xpi missing"
+              } elseif ($policies -eq 0 -or $agentExe -eq 0) {
+                Write-Host "::warning::arm64 distribution/ present but policies.json or nevoflux-agent.exe missing"
                 $fail = 1
               }
             } finally {

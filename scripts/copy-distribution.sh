@@ -28,5 +28,6 @@ cp -r "$SOURCE_DIST/"* "$TARGET_DIST/"
 
 echo "✓ Distribution files copied successfully"
 echo ""
-echo "Extension XPI location: $TARGET_DIST/extensions/agent@nevoflux.com.xpi"
 echo "Policies file location: $TARGET_DIST/policies.json"
+echo "Agent binary location:  $TARGET_DIST/bin/nevoflux-agent[.exe]"
+echo "(nevoflux-agent WebExtension is built into omni.ja, not copied as xpi)"

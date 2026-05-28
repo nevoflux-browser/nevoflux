@@ -9,7 +9,3 @@
 FINAL_TARGET_FILES.distribution += [
     'distribution/policies.json',
 ]
-
-FINAL_TARGET_FILES.distribution.extensions += [
-    'distribution/extensions/agent@nevoflux.com.xpi',
-]
