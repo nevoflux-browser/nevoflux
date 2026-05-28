@@ -40,9 +40,15 @@ progress.md
 # Test lab
 tool_test_lab/
 
-# Distribution extensions — only keep .xpi files
-build/AppDir/distribution/extensions/*
-!build/AppDir/distribution/extensions/*.xpi
+# Distribution extensions — nevoflux-agent is now a built-in (system)
+# extension bundled into omni.ja at builtin-addons/nevoflux-agent/ via
+# src/nevoflux/engine-overlays/browser/extensions/nevoflux-agent/.
+# distribution/extensions/ should stay empty; any *.xpi sitting here is
+# a stale leftover from the old package-extension.sh path and (if
+# shipped) gets auto-copied into the user profile on first launch,
+# shadowing the built-in registration and triggering the
+# "could not be verified" warning.
+build/AppDir/distribution/extensions/
 
 !src/toolkit/themes/shared/design-system/dist/
 .DS_Store
