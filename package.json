@@ -7,8 +7,8 @@
   },
   "type": "module",
   "scripts": {
-    "build": "surfer build",
-    "build:ui": "surfer build --ui",
+    "build": "surfer build && bash scripts/deref-builtin-addon-symlinks.sh",
+    "build:ui": "surfer build --ui && bash scripts/deref-builtin-addon-symlinks.sh",
     "start": "cd engine && python3 ./mach run",
     "setup": "bash scripts/setup-native-host.sh",
     "import": "npm run ffprefs && npm run import:dumps && bash src/nevoflux/pre-import.sh && surfer import && bash src/nevoflux/apply-patches.sh",
