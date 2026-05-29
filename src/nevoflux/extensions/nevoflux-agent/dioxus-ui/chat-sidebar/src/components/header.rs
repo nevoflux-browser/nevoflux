@@ -8,6 +8,59 @@ use dioxus::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 use crate::bindings::nevoflux_api;
 use crate::context::{use_app_context, AppContext};
+use crate::state::{Message, MessageContent, MessageRole};
+
+/// Render the current conversation as a markdown transcript and derive a title.
+///
+/// Title = the first user message (trimmed/truncated), or a timestamped
+/// fallback if there is none. Content = a `**Role:** text` transcript of all
+/// text-bearing messages.
+fn build_conversation_markdown(messages: &[Message]) -> Option<(String, String)> {
+    let mut lines: Vec<String> = Vec::new();
+    let mut title: Option<String> = None;
+
+    for msg in messages {
+        let text = match &msg.content {
+            MessageContent::Text(t) | MessageContent::Markdown(t) => t.clone(),
+            MessageContent::Code { language, code } => {
+                format!("```{}\n{}\n```", language, code)
+            }
+            // Skip non-textual cards (plan/artifact/error) in the transcript.
+            _ => continue,
+        };
+        if text.trim().is_empty() {
+            continue;
+        }
+
+        let role = match msg.role {
+            MessageRole::User => "User",
+            MessageRole::Assistant => "Assistant",
+            MessageRole::System => "System",
+        };
+
+        if title.is_none() && msg.role == MessageRole::User {
+            let t = text.trim();
+            let truncated: String = t.chars().take(80).collect();
+            title = Some(if t.chars().count() > 80 {
+                format!("{}…", truncated)
+            } else {
+                truncated
+            });
+        }
+
+        lines.push(format!("**{}:** {}", role, text.trim()));
+    }
+
+    if lines.is_empty() {
+        return None;
+    }
+
+    let title = title.unwrap_or_else(|| {
+        let iso = String::from(js_sys::Date::new_0().to_iso_string());
+        format!("Conversation {}", iso)
+    });
+    Some((title, lines.join("\n\n")))
+}
 
 /// Header component with History and Maximize buttons
 #[component]
@@ -77,6 +130,56 @@ pub fn Header() -> Element {
         }
     };
 
+    // "Save as concept" feedback state: None = idle, Some(true) = saving,
+    // Some(false) handled via title text below.
+    let mut kb_saving = use_signal(|| false);
+    let mut kb_status: Signal<Option<String>> = use_signal(|| None);
+
+    // Handle "Save as concept": serialize the conversation and call the daemon
+    // brain.save_conversation RPC via the existing bg:system_command path.
+    let handle_save_concept = {
+        let ctx = ctx.clone();
+        move |_| {
+            if *kb_saving.read() {
+                return;
+            }
+            let messages = ctx.messages.read().clone();
+            let session_id = ctx.session.read().id.clone();
+
+            let Some((title, content)) = build_conversation_markdown(&messages) else {
+                kb_status.set(Some("Nothing to save yet".to_string()));
+                return;
+            };
+
+            kb_saving.set(true);
+            kb_status.set(Some("Saving…".to_string()));
+            spawn_local(async move {
+                match crate::messaging::save_conversation_to_kb(
+                    &title,
+                    &content,
+                    Some(&session_id),
+                )
+                .await
+                {
+                    Ok(slug) => {
+                        tracing::info!("Saved conversation to KB: {}", slug);
+                        kb_status.set(Some(format!("Saved: {}", slug)));
+                    }
+                    Err(e) => {
+                        tracing::error!("Save as concept failed: {}", e);
+                        kb_status.set(Some(e));
+                    }
+                }
+                kb_saving.set(false);
+            });
+        }
+    };
+
+    let kb_title = kb_status
+        .read()
+        .clone()
+        .unwrap_or_else(|| "Save conversation as concept".to_string());
+
     // Read avatar
     let avatar = ctx.avatar_url.read();
 
@@ -97,6 +200,27 @@ pub fn Header() -> Element {
 
             // Right side: Action buttons
             div { class: "header-right",
+                // Save as concept button (M4-5 A3): save conversation to KB
+                button {
+                    class: "header-btn save-concept-btn",
+                    aria_label: "Save as concept",
+                    title: "{kb_title}",
+                    disabled: *kb_saving.read(),
+                    onclick: handle_save_concept,
+                    // Bookmark / save icon
+                    svg {
+                        width: "16",
+                        height: "16",
+                        view_box: "0 0 24 24",
+                        fill: "none",
+                        stroke: "currentColor",
+                        stroke_width: "2",
+                        stroke_linecap: "round",
+                        stroke_linejoin: "round",
+                        path { d: "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" }
+                    }
+                }
+
                 // History button
                 button {
                     class: "header-btn history-btn",

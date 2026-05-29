@@ -7532,6 +7532,200 @@ browser.tabs.onCreated.addListener((tab) => {
 });
 
 // =============================================================================
+// Knowledge Base — "Save to knowledge base" context menu (M4-5 A2)
+// =============================================================================
+
+// Firefox prefers the `menus` namespace; fall back to `contextMenus` for
+// portability across engines.
+const menusApi =
+  (typeof browser !== 'undefined' && browser.menus) ||
+  (typeof browser !== 'undefined' && browser.contextMenus) ||
+  null;
+
+const KB_MENU_SAVE_PAGE = 'nevoflux-kb-save-page';
+const KB_MENU_SAVE_SELECTION = 'nevoflux-kb-save-selection';
+
+/**
+ * Send a system_command to the native agent and await the matching
+ * system_response. Resolves with the inner payload { success, data, error }.
+ *
+ * Reuses the same pendingSystemCommands correlation map that the sidebar's
+ * bg:system_command path uses — the SYSTEM_RESPONSE interceptor in
+ * handleChatMessage resolves the entry by request_id.
+ */
+function callDaemonSystemCommand(command, params, timeoutMs = 15000) {
+  const requestId = `kbcmd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendingSystemCommands.delete(requestId);
+      reject(new Error(`system_command ${command} timed out`));
+    }, timeoutMs);
+
+    pendingSystemCommands.set(requestId, {
+      sendResponse: (payload) => resolve(payload),
+      timeout: timer,
+    });
+
+    const sent = channelManager.sendToAgent({
+      type: MessageTypes.SYSTEM_COMMAND,
+      payload: { command, request_id: requestId, params: params || {} },
+    });
+
+    if (!sent) {
+      clearTimeout(timer);
+      pendingSystemCommands.delete(requestId);
+      reject(new Error('Not connected to agent'));
+    }
+  });
+}
+
+/** Show a notification toast (best-effort; never throws). */
+function notifyKb(title, messageText) {
+  try {
+    if (typeof browser !== 'undefined' && browser.notifications) {
+      browser.notifications
+        .create(`nevoflux-kb-${Date.now()}`, {
+          type: 'basic',
+          iconUrl: browser.runtime.getURL('icons/icon-48.png'),
+          title,
+          message: messageText,
+        })
+        .catch((err) => console.warn('[NevoFlux] KB notification failed:', err));
+    } else {
+      console.log(`[NevoFlux] ${title}: ${messageText}`);
+    }
+  } catch (err) {
+    console.warn('[NevoFlux] KB notification error:', err);
+  }
+}
+
+/** Map a daemon error payload to a user-facing notification message. */
+function kbErrorMessage(payload) {
+  const code = payload?.error?.code;
+  const msg = payload?.error?.message || 'Unknown error';
+  if (code === 'BRAIN_DISABLED') {
+    return 'Enable Knowledge Base in Settings first';
+  }
+  return msg;
+}
+
+/**
+ * Handle a "Save to knowledge base" context menu click.
+ * Captures url + title + content for the page or the current selection, then
+ * calls the daemon brain.save_webpage RPC and reports the result.
+ */
+async function handleKbMenuClick(info, tab) {
+  try {
+    const tabId = tab?.id;
+    if (tabId == null) {
+      notifyKb('Save to knowledge base', 'No active tab to save.');
+      return;
+    }
+
+    const url = tab.url || '';
+    const title = tab.title || url || 'Untitled';
+    const isSelection = info.menuItemId === KB_MENU_SAVE_SELECTION;
+
+    let content;
+    if (isSelection) {
+      // Prefer the selection text the menu click already carries.
+      content = (info.selectionText || '').trim();
+      if (!content) {
+        // Fallback: pull selected text via the content-capture API.
+        try {
+          const res = await browser.nevoflux.getText(tabId, null);
+          content =
+            typeof res === 'string' ? res : res?.text || res?.result || '';
+        } catch (_e) {
+          content = '';
+        }
+      }
+      if (!content) {
+        notifyKb('Save to knowledge base', 'No text selected to save.');
+        return;
+      }
+    } else {
+      // Full page as markdown via the content-capture API.
+      const res = await browser.nevoflux.getMarkdown(tabId, {});
+      if (res && res.success === false) {
+        notifyKb(
+          'Save to knowledge base',
+          `Failed to read page: ${res.error?.message || 'getMarkdown failed'}`
+        );
+        return;
+      }
+      content =
+        (typeof res === 'string' && res) ||
+        res?.markdown ||
+        res?.result?.markdown ||
+        (typeof res?.result === 'string' ? res.result : '') ||
+        '';
+      if (!content) {
+        notifyKb('Save to knowledge base', 'Page had no readable content.');
+        return;
+      }
+    }
+
+    const payload = await callDaemonSystemCommand('brain.save_webpage', {
+      url,
+      title,
+      content,
+      directory: 'inbox',
+    });
+
+    if (payload?.success) {
+      const slug = payload.data?.slug || 'entry';
+      notifyKb('Saved to knowledge base', slug);
+    } else {
+      notifyKb('Save to knowledge base failed', kbErrorMessage(payload));
+    }
+  } catch (err) {
+    notifyKb('Save to knowledge base failed', err.message || String(err));
+  }
+}
+
+/** Register the knowledge-base context menu items (idempotent). */
+function setupKnowledgeBaseMenus() {
+  if (!menusApi) {
+    console.warn('[NevoFlux] menus API unavailable — KB context menu disabled');
+    return;
+  }
+  try {
+    // removeAll first so reloads/updates don't duplicate items.
+    menusApi.removeAll(() => {
+      menusApi.create({
+        id: KB_MENU_SAVE_PAGE,
+        title: 'Save page to knowledge base',
+        contexts: ['page'],
+      });
+      menusApi.create({
+        id: KB_MENU_SAVE_SELECTION,
+        title: 'Save selection to knowledge base',
+        contexts: ['selection'],
+      });
+    });
+  } catch (err) {
+    console.error('[NevoFlux] Failed to create KB context menus:', err);
+  }
+}
+
+if (menusApi && menusApi.onClicked) {
+  menusApi.onClicked.addListener((info, tab) => {
+    if (
+      info.menuItemId === KB_MENU_SAVE_PAGE ||
+      info.menuItemId === KB_MENU_SAVE_SELECTION
+    ) {
+      handleKbMenuClick(info, tab).catch((err) =>
+        console.error('[NevoFlux] KB menu click handler failed:', err)
+      );
+    }
+  });
+}
+
+setupKnowledgeBaseMenus();
+
+// =============================================================================
 // Initialization
 // =============================================================================
 

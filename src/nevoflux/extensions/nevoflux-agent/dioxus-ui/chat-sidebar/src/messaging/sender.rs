@@ -1104,6 +1104,73 @@ pub async fn query_agent_status() -> Result<serde_json::Value, String> {
     }
 }
 
+/// Save the current conversation to the knowledge base as a concept (M4-5 A3).
+///
+/// Sends a `bg:system_command` with command "brain.save_conversation" to
+/// background.js, which forwards it to the native agent and returns the inner
+/// system_response payload { success, data, error }.
+///
+/// On success returns the created/updated slug. On failure returns the daemon
+/// error message; a `BRAIN_DISABLED` code is surfaced as a friendly hint.
+pub async fn save_conversation_to_kb(
+    title: &str,
+    content: &str,
+    conversation_id: Option<&str>,
+) -> Result<String, String> {
+    let mut params = serde_json::json!({
+        "title": title,
+        "content": content,
+        "directory": "concepts",
+    });
+    if let Some(id) = conversation_id {
+        params["conversation_id"] = serde_json::Value::String(id.to_string());
+    }
+
+    let request = serde_json::json!({
+        "type": "bg:system_command",
+        "command": "brain.save_conversation",
+        "params": params,
+    });
+
+    let js_value = to_js_value(&request)
+        .map_err(|e| format!("Serialize error: {:?}", e))?;
+
+    let response = JsFuture::from(runtime_send_message(js_value))
+        .await
+        .map_err(|e| format!("Send failed: {:?}", e))?;
+
+    if response.is_undefined() || response.is_null() {
+        return Err("bg:system_command returned undefined/null".to_string());
+    }
+
+    let response_obj: serde_json::Value = from_js_value(response)
+        .map_err(|e| format!("Parse save_conversation response error: {}", e))?;
+
+    if response_obj.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+        let slug = response_obj
+            .get("data")
+            .and_then(|d| d.get("slug"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("entry")
+            .to_string();
+        Ok(slug)
+    } else {
+        let code = response_obj
+            .get("error")
+            .and_then(|e| e.get("code"))
+            .and_then(|c| c.as_str());
+        if code == Some("BRAIN_DISABLED") {
+            return Err("Enable Knowledge Base in Settings first".to_string());
+        }
+        Err(response_obj
+            .get("error")
+            .and_then(|e| e.get("message"))
+            .and_then(|m| m.as_str())
+            .unwrap_or("unknown error")
+            .to_string())
+    }
+}
+
 // ============================================
 // Browser Tool Messages (Legacy - Deprecated)
 // ============================================

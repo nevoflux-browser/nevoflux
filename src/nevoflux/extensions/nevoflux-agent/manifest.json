@@ -19,7 +19,10 @@
     "scripting",
     "tabs",
     "clipboardWrite",
-    "sessions"
+    "sessions",
+    "menus",
+    "contextMenus",
+    "notifications"
   ],
   "host_permissions": ["<all_urls>"],
   "optional_permissions": ["webNavigation"],
