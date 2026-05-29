@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Knowledge Base · NevoFlux</title>
+  <link rel="stylesheet" href="chrome://nevoflux/content/pages/common.css">
+  <style>
+    body {
+      display: block;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .brain-page {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      height: 100vh;
+      background: var(--nevoflux-bg);
+      color: var(--nevoflux-text);
+    }
+
+    /* ── Toolbar ────────────────────────────────────── */
+    .brain-toolbar {
+      display: flex;
+      align-items: center;
+      gap: var(--nevoflux-space-md);
+      padding: var(--nevoflux-space-md) var(--nevoflux-space-xl);
+      border-bottom: 1px solid var(--nevoflux-border);
+      background: var(--nevoflux-bg-secondary);
+    }
+
+    .brain-toolbar h1 {
+      margin: 0;
+      font-size: var(--nevoflux-font-size-lg);
+      font-weight: 600;
+      flex: 1;
+      color: var(--nevoflux-text);
+    }
+
+    .brain-btn {
+      padding: var(--nevoflux-space-xs) var(--nevoflux-space-md);
+      border-radius: var(--nevoflux-radius-sm);
+      border: 1px solid var(--nevoflux-border);
+      background: var(--nevoflux-bg);
+      color: var(--nevoflux-text);
+      font-family: var(--nevoflux-font-family);
+      font-size: var(--nevoflux-font-size-base);
+      cursor: pointer;
+      transition: background 0.15s ease;
+      text-decoration: none;
+      line-height: 1.4;
+    }
+
+    .brain-btn:hover {
+      background: var(--nevoflux-bg-tertiary);
+    }
+
+    .brain-btn--primary {
+      background: var(--nevoflux-accent);
+      color: white;
+      border-color: transparent;
+    }
+
+    .brain-btn--primary:hover {
+      background: var(--nevoflux-accent-hover);
+    }
+
+    /* ── Body / 3-pane grid ─────────────────────────── */
+    .brain-body {
+      display: grid;
+      grid-template-columns: 180px 280px 1fr;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .brain-sidebar,
+    .brain-list,
+    .brain-preview {
+      overflow-y: auto;
+      padding: var(--nevoflux-space-md);
+    }
+
+    .brain-sidebar {
+      background: var(--nevoflux-bg-secondary);
+      border-right: 1px solid var(--nevoflux-border);
+    }
+
+    .brain-sidebar-title {
+      font-size: var(--nevoflux-font-size-sm);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: var(--nevoflux-text-secondary);
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-sm);
+      margin-bottom: var(--nevoflux-space-xs);
+    }
+
+    .brain-sidebar-item {
+      display: block;
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-md);
+      border-radius: var(--nevoflux-radius-sm);
+      cursor: pointer;
+      color: var(--nevoflux-text);
+      font-size: var(--nevoflux-font-size-base);
+      user-select: none;
+    }
+
+    .brain-sidebar-item:hover {
+      background: var(--nevoflux-bg-tertiary);
+    }
+
+    .brain-sidebar-item--active {
+      background: var(--nevoflux-accent);
+      color: white;
+    }
+
+    .brain-list {
+      border-right: 1px solid var(--nevoflux-border);
+    }
+
+    .brain-list-empty,
+    .brain-list-loading {
+      padding: var(--nevoflux-space-xl) var(--nevoflux-space-md);
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-sm);
+      text-align: center;
+    }
+
+    .brain-list-item {
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-md);
+      border-radius: var(--nevoflux-radius-sm);
+      cursor: pointer;
+      margin-bottom: 2px;
+      transition: background 0.15s ease;
+    }
+
+    .brain-list-item:hover {
+      background: var(--nevoflux-bg-tertiary);
+    }
+
+    .brain-list-item--active {
+      background: color-mix(in srgb, var(--nevoflux-accent) 15%, transparent);
+      border: 1px solid color-mix(in srgb, var(--nevoflux-accent) 40%, transparent);
+    }
+
+    .brain-list-item__slug {
+      font-weight: 600;
+      font-size: var(--nevoflux-font-size-base);
+      color: var(--nevoflux-text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .brain-list-item__title {
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .brain-list-item__time {
+      font-size: 11px;
+      color: var(--nevoflux-text-secondary);
+      opacity: 0.7;
+      margin-top: 2px;
+    }
+
+    /* ── Preview pane ───────────────────────────────── */
+    .brain-preview {
+      padding: var(--nevoflux-space-xl);
+    }
+
+    .brain-preview-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: var(--nevoflux-space-md);
+    }
+
+    .brain-preview h2 {
+      font-size: var(--nevoflux-font-size-xl);
+      font-weight: 600;
+      margin-bottom: var(--nevoflux-space-md);
+      color: var(--nevoflux-text);
+    }
+
+    .brain-preview pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-family: var(--nevoflux-font-family);
+      font-size: var(--nevoflux-font-size-base);
+      line-height: 1.6;
+      color: var(--nevoflux-text);
+      background: var(--nevoflux-bg-secondary);
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      padding: var(--nevoflux-space-lg);
+      margin-bottom: var(--nevoflux-space-lg);
+    }
+
+    .brain-preview details {
+      margin-top: var(--nevoflux-space-lg);
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-md);
+      background: var(--nevoflux-bg-secondary);
+    }
+
+    .brain-preview details summary {
+      cursor: pointer;
+      font-weight: 500;
+      color: var(--nevoflux-text);
+      padding: var(--nevoflux-space-xs) 0;
+    }
+
+    .brain-preview details pre {
+      margin-top: var(--nevoflux-space-sm);
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: var(--nevoflux-font-size-sm);
+      background: var(--nevoflux-bg);
+      padding: var(--nevoflux-space-md);
+    }
+
+    .brain-preview-empty {
+      text-align: center;
+      padding: 4em 2em;
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-base);
+      line-height: 1.6;
+    }
+
+    .brain-preview-empty h2 {
+      font-size: var(--nevoflux-font-size-lg);
+      color: var(--nevoflux-text);
+      margin-bottom: var(--nevoflux-space-md);
+      font-weight: 500;
+    }
+
+    .brain-preview-empty code {
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: var(--nevoflux-font-size-sm);
+      background: var(--nevoflux-bg-secondary);
+      padding: 2px 6px;
+      border-radius: 4px;
+      border: 1px solid var(--nevoflux-border);
+    }
+
+    .brain-preview-empty .brain-empty-hint {
+      margin-top: var(--nevoflux-space-md);
+      font-size: var(--nevoflux-font-size-sm);
+      opacity: 0.8;
+    }
+
+    .brain-preview-empty .brain-btn {
+      margin-top: var(--nevoflux-space-lg);
+      display: inline-block;
+    }
+
+    .brain-preview-error {
+      text-align: center;
+      padding: 3em 2em;
+      color: light-dark(#d93025, #f88);
+      font-size: var(--nevoflux-font-size-base);
+    }
+
+    .brain-preview-error .brain-btn {
+      margin-top: var(--nevoflux-space-md);
+    }
+
+    /* ── Status bar ─────────────────────────────────── */
+    .brain-status {
+      display: flex;
+      align-items: center;
+      gap: var(--nevoflux-space-md);
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-xl);
+      border-top: 1px solid var(--nevoflux-border);
+      background: var(--nevoflux-bg-secondary);
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+    }
+
+    .brain-status__badge {
+      font-weight: 600;
+    }
+
+    .brain-status__badge--ready {
+      color: light-dark(#1e8e3e, #6fcf97);
+    }
+
+    .brain-status__badge--disabled {
+      color: light-dark(#b07000, #fdd663);
+    }
+
+    .brain-status__badge--error {
+      color: light-dark(#d93025, #f88);
+    }
+
+    .brain-status__sep {
+      opacity: 0.5;
+    }
+
+    .brain-status__dir {
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: var(--nevoflux-font-size-sm);
+      opacity: 0.85;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+      min-width: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="brain-page">
+    <!-- Toolbar -->
+    <header class="brain-toolbar">
+      <h1>Knowledge Base</h1>
+      <button type="button" class="brain-btn" id="brain-refresh-btn">Refresh</button>
+      <a href="nevoflux://settings/knowledge-base" class="brain-btn" id="brain-settings-link">Settings</a>
+    </header>
+
+    <!-- 3-pane body -->
+    <div class="brain-body">
+      <nav class="brain-sidebar" id="brain-sidebar">
+        <div class="brain-sidebar-title">Library</div>
+        <div class="brain-sidebar-item brain-sidebar-item--active" data-filter="all">All pages</div>
+      </nav>
+
+      <section class="brain-list" id="brain-list" aria-label="Page list">
+        <div class="brain-list-loading">Loading…</div>
+      </section>
+
+      <section class="brain-preview" id="brain-preview" aria-label="Page preview">
+        <div class="brain-preview-empty">
+          <h2>Knowledge Base</h2>
+          <p>Loading…</p>
+        </div>
+      </section>
+    </div>
+
+    <!-- Status bar -->
+    <footer class="brain-status" id="brain-status">
+      <span>Status:</span>
+      <span class="brain-status__badge" id="brain-status-badge">…</span>
+      <span class="brain-status__sep">·</span>
+      <span>Pages: <span id="brain-status-count">0</span></span>
+      <span class="brain-status__sep">·</span>
+      <span class="brain-status__dir" id="brain-status-dir">brain_dir: —</span>
+    </footer>
+  </div>
+
+  <script src="chrome://nevoflux/content/pages/common.js"></script>
+  <script src="chrome://nevoflux/content/pages/brain.js"></script>
+</body>
+</html>

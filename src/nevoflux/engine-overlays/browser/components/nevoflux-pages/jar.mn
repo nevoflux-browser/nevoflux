@@ -17,6 +17,8 @@ nevoflux.jar:
     content/nevoflux/pages/render.html               (content/pages/render.html)
     content/nevoflux/pages/render.js                 (content/pages/render.js)
     content/nevoflux/pages/render-patches.js         (content/pages/render-patches.js)
+    content/nevoflux/pages/brain.html                (content/pages/brain.html)
+    content/nevoflux/pages/brain.js                  (content/pages/brain.js)
     content/nevoflux/pages/virtual-fs.js             (content/pages/virtual-fs.js)
     content/nevoflux/pages/bundler.js                (content/pages/bundler.js)
     content/nevoflux/pages/canvas-runtime.js         (content/pages/canvas-runtime.js)

@@ -3077,6 +3077,16 @@ const Settings = {
     refreshBtn.addEventListener('click', () => this._refreshKbStatus(section));
     actions.appendChild(refreshBtn);
 
+    // Discoverability hook for nevoflux://brain (M4-4b).
+    // Hidden until status === ready; toggled inside _renderKbStatus.
+    const browseBtn = document.createElement('a');
+    browseBtn.className = 'kb-refresh-btn kb-browse-btn';
+    browseBtn.href = 'nevoflux://brain';
+    browseBtn.textContent = 'Browse Knowledge Base →';
+    browseBtn.style.display = 'none';
+    browseBtn.style.textDecoration = 'none';
+    actions.appendChild(browseBtn);
+
     group.appendChild(actions);
 
     section.appendChild(group);
@@ -3152,6 +3162,12 @@ const Settings = {
     enableBtn.textContent = s.btnText;
     enableBtn.disabled = s.btnDisabled;
 
+    // M4-4b: surface the "Browse" link only when KB is ready.
+    const browseBtn = section.querySelector('.kb-browse-btn');
+    if (browseBtn) {
+      browseBtn.style.display = overall === 'ready' ? '' : 'none';
+    }
+
     this._setKbDetail(
       section,
       'bun-version',
@@ -3185,6 +3201,8 @@ const Settings = {
       enableBtn.disabled = false;
       enableBtn.textContent = 'Enable Knowledge Base';
     }
+    const browseBtn = section.querySelector('.kb-browse-btn');
+    if (browseBtn) browseBtn.style.display = 'none';
   },
 
   _onKbEnableClick() {
