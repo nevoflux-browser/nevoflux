@@ -314,6 +314,623 @@
       flex: 1;
       min-width: 0;
     }
+
+    /* ─────────────────────────────────────────────────────────────
+       Share / Import Dialogs — "Cryptographic Vault Terminal"
+       Mirrors canvas.html's .nevoflux-modal vault theme verbatim so the
+       brain share UX matches the proven canvas-share dialog.
+       ───────────────────────────────────────────────────────────── */
+    .nevoflux-modal {
+      --vault-ink:       #0a0b0f;
+      --vault-surface:   #101219;
+      --vault-surface-2: #161923;
+      --vault-hairline:  rgba(126, 240, 197, 0.14);
+      --vault-hairline-strong: rgba(126, 240, 197, 0.28);
+      --vault-text:      #e6eaf2;
+      --vault-text-dim:  rgba(230, 234, 242, 0.58);
+      --vault-text-mute: rgba(230, 234, 242, 0.38);
+      --vault-mint:      #7ef0c5;
+      --vault-mint-soft: rgba(126, 240, 197, 0.10);
+      --vault-amber:     #f5b544;
+      --vault-amber-soft:rgba(245, 181, 68, 0.09);
+      --vault-danger:    #ff8a8a;
+      --vault-danger-soft:rgba(255, 138, 138, 0.08);
+      --vault-mono:      "JetBrains Mono", "Cascadia Code", "SF Mono", ui-monospace, "Menlo", monospace;
+
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--vault-mono);
+    }
+    .nevoflux-modal[hidden] { display: none; }
+    .nevoflux-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(120% 80% at 50% 0%, rgba(126, 240, 197, 0.06), transparent 60%),
+        rgba(5, 6, 10, 0.72);
+      backdrop-filter: blur(8px) saturate(120%);
+      -webkit-backdrop-filter: blur(8px) saturate(120%);
+    }
+    .nevoflux-modal-content {
+      position: relative;
+      background: linear-gradient(180deg, var(--vault-surface) 0%, var(--vault-ink) 100%);
+      color: var(--vault-text);
+      border: 1px solid var(--vault-hairline);
+      border-radius: 4px;
+      padding: 32px 36px 28px;
+      max-width: 540px;
+      width: 92%;
+      max-height: 86vh;
+      overflow-y: auto;
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.02) inset,
+        0 0 0 1px rgba(0,0,0,0.4),
+        0 40px 80px -20px rgba(0,0,0,0.75),
+        0 0 120px -40px rgba(126, 240, 197, 0.25);
+      animation: vault-enter 340ms cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+    .nevoflux-modal-content::before,
+    .nevoflux-modal-content::after {
+      content: "";
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-color: var(--vault-hairline-strong);
+      pointer-events: none;
+    }
+    .nevoflux-modal-content::before {
+      top: -1px; left: -1px;
+      border-top: 1px solid;
+      border-left: 1px solid;
+    }
+    .nevoflux-modal-content::after {
+      bottom: -1px; right: -1px;
+      border-bottom: 1px solid;
+      border-right: 1px solid;
+    }
+    @keyframes vault-enter {
+      from { opacity: 0; transform: translateY(8px) scale(0.985); filter: blur(4px); }
+      to   { opacity: 1; transform: translateY(0)    scale(1);     filter: blur(0); }
+    }
+
+    .nevoflux-modal-close {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--vault-text-mute);
+      font-size: 16px;
+      font-family: var(--vault-mono);
+      cursor: pointer;
+      width: 28px;
+      height: 28px;
+      border-radius: 2px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+    }
+    .nevoflux-modal-close:hover {
+      color: var(--vault-mint);
+      border-color: var(--vault-hairline-strong);
+      background: var(--vault-mint-soft);
+    }
+
+    .nevoflux-modal .vault-kicker {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 14px;
+      font-family: var(--vault-mono);
+      font-size: 10px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--vault-mint);
+    }
+    .nevoflux-modal .vault-kicker .vault-dot {
+      width: 6px; height: 6px;
+      background: var(--vault-mint);
+      border-radius: 50%;
+      box-shadow: 0 0 12px var(--vault-mint);
+      animation: vault-pulse 1.8s ease-in-out infinite;
+    }
+    @keyframes vault-pulse {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.35; }
+    }
+    .nevoflux-modal .vault-kicker .vault-rule {
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, var(--vault-hairline-strong), transparent);
+    }
+
+    .nevoflux-modal h2 {
+      margin: 0 0 22px;
+      font-family: var(--vault-mono);
+      font-size: 22px;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      color: var(--vault-text);
+      line-height: 1.2;
+    }
+    .nevoflux-modal h2 .vault-mark {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      background: var(--vault-mint);
+      margin-left: 8px;
+      vertical-align: middle;
+      transform: rotate(45deg);
+      box-shadow: 0 0 16px var(--vault-mint);
+    }
+
+    .vault-stepper {
+      display: flex;
+      gap: 0;
+      margin: 0 0 24px;
+      padding: 0;
+      list-style: none;
+      border-top: 1px solid var(--vault-hairline);
+      border-bottom: 1px solid var(--vault-hairline);
+    }
+    .vault-stepper li {
+      flex: 1;
+      padding: 10px 12px;
+      font-family: var(--vault-mono);
+      font-size: 10px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--vault-text-mute);
+      border-right: 1px dashed var(--vault-hairline);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: color 220ms ease, background 220ms ease;
+    }
+    .vault-stepper li:last-child { border-right: none; }
+    .vault-stepper li .vault-step-num {
+      font-variant-numeric: tabular-nums;
+      color: var(--vault-text-mute);
+      transition: color 220ms ease;
+    }
+    .vault-stepper li.is-active {
+      color: var(--vault-mint);
+      background: linear-gradient(180deg, var(--vault-mint-soft), transparent);
+    }
+    .vault-stepper li.is-active .vault-step-num { color: var(--vault-mint); }
+    .vault-stepper li.is-done { color: var(--vault-text-dim); }
+    .vault-stepper li.is-done .vault-step-num::before {
+      content: "✓ ";
+      color: var(--vault-mint);
+    }
+
+    .share-step, .import-step { display: block; }
+    .share-step[hidden], .import-step[hidden] { display: none; }
+    .share-step p, .import-step p {
+      margin: 0 0 12px;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      font-size: 13.5px;
+      line-height: 1.6;
+      color: var(--vault-text-dim);
+    }
+    .share-step p strong, .import-step p strong {
+      color: var(--vault-text);
+      font-weight: 500;
+    }
+
+    .share-warning {
+      position: relative;
+      background: var(--vault-amber-soft);
+      border: 1px solid rgba(245, 181, 68, 0.28);
+      border-left: 3px solid var(--vault-amber);
+      color: #f3c67c;
+      padding: 12px 14px 12px 38px;
+      border-radius: 2px;
+      margin: 0 0 22px;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .share-warning::before {
+      content: "";
+      position: absolute;
+      left: 14px;
+      top: 13px;
+      width: 14px;
+      height: 14px;
+      background:
+        linear-gradient(var(--vault-amber), var(--vault-amber)) center 2px / 2px 7px no-repeat,
+        linear-gradient(var(--vault-amber), var(--vault-amber)) center 11px / 2px 2px no-repeat;
+      border: 1px solid var(--vault-amber);
+      border-radius: 50%;
+    }
+    .share-warning strong { color: #fad28a; font-weight: 600; }
+
+    .share-error, .import-error {
+      background: var(--vault-danger-soft);
+      border: 1px solid rgba(255, 138, 138, 0.28);
+      border-left: 3px solid var(--vault-danger);
+      color: #ffbcbc;
+      padding: 12px 14px;
+      border-radius: 2px;
+      margin: 0 0 16px;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .share-error strong, .import-error strong { color: var(--vault-danger); font-weight: 600; }
+
+    .import-success {
+      background: var(--vault-mint-soft);
+      border: 1px solid var(--vault-hairline-strong);
+      border-left: 3px solid var(--vault-mint);
+      color: var(--vault-mint);
+      padding: 12px 14px;
+      border-radius: 2px;
+      margin: 0 0 16px;
+      font-family: var(--vault-mono);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .nevoflux-modal label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--vault-mono);
+      font-size: 10px;
+      color: var(--vault-text-mute);
+      margin: 18px 0 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.22em;
+    }
+    .nevoflux-modal label.vault-check {
+      text-transform: none;
+      letter-spacing: 0.02em;
+      font-size: 12px;
+      color: var(--vault-text-dim);
+      cursor: pointer;
+    }
+    .nevoflux-modal label.vault-check::before { content: none; }
+    .nevoflux-modal label:not(.vault-check)::before {
+      content: "";
+      width: 4px;
+      height: 4px;
+      background: var(--vault-mint);
+      border-radius: 50%;
+    }
+
+    .share-field {
+      display: flex;
+      gap: 0;
+      margin: 0 0 4px;
+      align-items: stretch;
+      background: var(--vault-ink);
+      border: 1px solid var(--vault-hairline);
+      border-radius: 2px;
+      overflow: hidden;
+      transition: border-color 160ms ease, box-shadow 160ms ease;
+    }
+    .share-field:focus-within {
+      border-color: var(--vault-hairline-strong);
+      box-shadow: 0 0 0 3px var(--vault-mint-soft);
+    }
+    .share-field input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      color: var(--vault-text);
+      padding: 12px 14px;
+      font-family: var(--vault-mono);
+      font-size: 13px;
+      letter-spacing: 0.02em;
+      outline: none;
+      min-width: 0;
+    }
+    .share-field .nevoflux-btn-secondary {
+      border-radius: 0;
+      border: none;
+      border-left: 1px solid var(--vault-hairline);
+      padding: 0 16px;
+      background: transparent;
+      color: var(--vault-text-dim);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .share-field .nevoflux-btn-secondary:hover {
+      background: var(--vault-mint-soft);
+      color: var(--vault-mint);
+    }
+
+    .share-info, .import-info {
+      font-family: var(--vault-mono);
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      color: var(--vault-text-mute);
+      margin: 14px 0 0;
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+    }
+    .share-info strong, .import-info strong {
+      color: var(--vault-text-dim);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      font-size: 10px;
+    }
+
+    .share-actions, .import-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px dashed var(--vault-hairline);
+    }
+
+    .nevoflux-modal input[type="text"]:not(.share-field input) {
+      width: 100%;
+      background: var(--vault-ink);
+      border: 1px solid var(--vault-hairline);
+      color: var(--vault-text);
+      padding: 13px 14px;
+      border-radius: 2px;
+      font-family: var(--vault-mono);
+      font-size: 14px;
+      letter-spacing: 0.05em;
+      margin-bottom: 0;
+      box-sizing: border-box;
+      outline: none;
+      transition: border-color 160ms ease, box-shadow 160ms ease;
+    }
+    .nevoflux-modal input[type="text"]:not(.share-field input):focus {
+      border-color: var(--vault-hairline-strong);
+      box-shadow: 0 0 0 3px var(--vault-mint-soft);
+    }
+    .nevoflux-modal input[type="text"]::placeholder {
+      color: var(--vault-text-mute);
+      letter-spacing: 0.1em;
+    }
+    .nevoflux-modal select.vault-select {
+      width: 100%;
+      background: var(--vault-ink);
+      border: 1px solid var(--vault-hairline);
+      color: var(--vault-text);
+      padding: 12px 14px;
+      border-radius: 2px;
+      font-family: var(--vault-mono);
+      font-size: 13px;
+      outline: none;
+      box-sizing: border-box;
+    }
+
+    .nevoflux-btn-primary, .nevoflux-btn-secondary {
+      padding: 11px 22px;
+      border-radius: 2px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      font-family: var(--vault-mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 80ms ease;
+    }
+    .nevoflux-btn-primary {
+      background: var(--vault-mint);
+      color: var(--vault-ink);
+      border-color: var(--vault-mint);
+      box-shadow:
+        0 0 0 1px rgba(0,0,0,0.2) inset,
+        0 0 24px -6px var(--vault-mint);
+    }
+    .nevoflux-btn-primary:hover {
+      background: #a8f5d4;
+      border-color: #a8f5d4;
+    }
+    .nevoflux-btn-primary:active { transform: translateY(1px); }
+    .nevoflux-btn-primary:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    .nevoflux-btn-secondary {
+      background: transparent;
+      color: var(--vault-text-dim);
+      border-color: var(--vault-hairline);
+    }
+    .nevoflux-btn-secondary:hover {
+      color: var(--vault-mint);
+      border-color: var(--vault-hairline-strong);
+      background: var(--vault-mint-soft);
+    }
+    .nevoflux-btn-secondary:active { transform: translateY(1px); }
+
+    .vault-primary-block {
+      display: inline-flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 22px;
+    }
+    .vault-primary-block::after {
+      content: "→";
+      font-size: 14px;
+      transform: translateX(0);
+      transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .vault-primary-block:hover::after { transform: translateX(4px); }
+
+    .nevoflux-spinner {
+      position: relative;
+      display: block;
+      width: 70px;
+      height: 10px;
+      margin: 32px auto;
+      padding: 0;
+      border: none;
+      border-radius: 0;
+      background: radial-gradient(circle, var(--vault-mint) 5px, transparent 5.5px) center / 10px 10px no-repeat;
+      animation: vault-encode 1.2s ease-in-out 0.2s infinite;
+    }
+    .nevoflux-spinner::before,
+    .nevoflux-spinner::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      width: 10px;
+      height: 10px;
+      background: var(--vault-mint);
+      border-radius: 50%;
+      box-shadow: 0 0 12px var(--vault-mint);
+      animation: vault-encode 1.2s ease-in-out infinite;
+    }
+    .nevoflux-spinner::before { left: 0;  animation-delay: 0s; }
+    .nevoflux-spinner::after  { right: 0; animation-delay: 0.4s; }
+    @keyframes vault-encode {
+      0%, 80%, 100% { transform: scale(0.5); opacity: 0.35; }
+      40%           { transform: scale(1);   opacity: 1; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .nevoflux-modal-content,
+      .vault-kicker .vault-dot,
+      .nevoflux-spinner,
+      .nevoflux-spinner::before,
+      .nevoflux-spinner::after { animation: none !important; }
+    }
+
+    /* ── Page multi-select (share-create step) ──────────── */
+    .brain-pageselect {
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid var(--vault-hairline);
+      border-radius: 2px;
+      background: var(--vault-ink);
+      padding: 4px;
+      margin: 0 0 4px;
+    }
+    .brain-pageselect-empty {
+      padding: 18px 12px;
+      text-align: center;
+      color: var(--vault-text-mute);
+      font-size: 12px;
+      font-family: var(--vault-mono);
+    }
+    .brain-pageselect-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 10px;
+      border-radius: 2px;
+      cursor: pointer;
+      font-family: var(--vault-mono);
+      font-size: 12px;
+      color: var(--vault-text-dim);
+    }
+    .brain-pageselect-item:hover { background: var(--vault-mint-soft); }
+    .brain-pageselect-item input { accent-color: var(--vault-mint); }
+    .brain-pageselect-item .ps-slug { color: var(--vault-text); }
+    .brain-pageselect-item .ps-title { color: var(--vault-text-mute); font-size: 11px; }
+    .brain-pageselect-toolbar {
+      display: flex;
+      gap: 12px;
+      margin: 0 0 8px;
+      font-family: var(--vault-mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .brain-pageselect-toolbar a {
+      color: var(--vault-mint);
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .brain-pageselect-toolbar a:hover { text-decoration: underline; }
+    .brain-pageselect-count {
+      margin-left: auto;
+      color: var(--vault-text-mute);
+    }
+
+    .vault-checks {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 4px 0 0;
+    }
+    .vault-audit {
+      font-family: var(--vault-mono);
+      font-size: 11px;
+      line-height: 1.7;
+      color: var(--vault-text-dim);
+      background: var(--vault-ink);
+      border: 1px solid var(--vault-hairline);
+      border-left: 3px solid var(--vault-mint);
+      border-radius: 2px;
+      padding: 10px 14px;
+      margin: 4px 0 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* ── Shares list overlay ────────────────────────────── */
+    .brain-shares-list { margin: 8px 0 0; }
+    .brain-shares-empty {
+      padding: 24px 12px;
+      text-align: center;
+      color: var(--vault-text-mute);
+      font-family: var(--vault-mono);
+      font-size: 12px;
+    }
+    .brain-share-row {
+      border: 1px solid var(--vault-hairline);
+      border-radius: 2px;
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      background: var(--vault-ink);
+    }
+    .brain-share-row__title {
+      font-family: var(--vault-mono);
+      font-size: 13px;
+      color: var(--vault-text);
+      margin-bottom: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .brain-share-row__url {
+      font-family: var(--vault-mono);
+      font-size: 10.5px;
+      color: var(--vault-text-mute);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-bottom: 6px;
+    }
+    .brain-share-row__meta {
+      display: flex;
+      gap: 12px;
+      font-family: var(--vault-mono);
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      color: var(--vault-text-mute);
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .brain-share-row__actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .brain-share-row__actions .nevoflux-btn-secondary { padding: 7px 14px; }
   </style>
 </head>
 <body>
@@ -321,6 +938,9 @@
     <!-- Toolbar -->
     <header class="brain-toolbar">
       <h1>Knowledge Base</h1>
+      <button type="button" class="brain-btn" id="brain-shares-btn">Shares</button>
+      <button type="button" class="brain-btn" id="brain-import-btn">Import…</button>
+      <button type="button" class="brain-btn brain-btn--primary" id="brain-share-btn">Share…</button>
       <button type="button" class="brain-btn" id="brain-refresh-btn">Refresh</button>
       <a href="nevoflux://settings/knowledge-base" class="brain-btn" id="brain-settings-link">Settings</a>
     </header>
@@ -353,6 +973,223 @@
       <span class="brain-status__sep">·</span>
       <span class="brain-status__dir" id="brain-status-dir">brain_dir: —</span>
     </footer>
+  </div>
+
+  <!-- ───────────────────── Share Brain Dialog ───────────────────── -->
+  <div id="nevoflux-brainshare-dialog" class="nevoflux-modal" hidden>
+    <div class="nevoflux-modal-backdrop" data-close-dialog></div>
+    <div class="nevoflux-modal-content">
+      <button class="nevoflux-modal-close" data-close-dialog aria-label="Close">×</button>
+
+      <div class="vault-kicker">
+        <span class="vault-dot" aria-hidden="true"></span>
+        <span>Encrypted .nbrain · Zero-Knowledge</span>
+        <span class="vault-rule" aria-hidden="true"></span>
+        <span>AES-GCM</span>
+      </div>
+
+      <h2>Share Knowledge<span class="vault-mark" aria-hidden="true"></span></h2>
+
+      <ol class="vault-stepper" id="brainshare-stepper" aria-hidden="true">
+        <li data-step="confirm"><span class="vault-step-num">01</span><span>Select</span></li>
+        <li data-step="loading"><span class="vault-step-num">02</span><span>Seal</span></li>
+        <li data-step="result"><span class="vault-step-num">03</span><span>Reveal</span></li>
+      </ol>
+
+      <div id="brainshare-step-confirm" class="share-step">
+        <p>Export selected pages into an end-to-end encrypted <strong>.nbrain</strong> bundle. The content key lives only in the link's <strong>#fragment</strong> — it is never sent to the server.</p>
+
+        <label>Pages to share</label>
+        <div class="brain-pageselect-toolbar">
+          <a id="brainshare-select-all">Select all</a>
+          <a id="brainshare-select-none">Clear</a>
+          <span class="brain-pageselect-count" id="brainshare-count">0 selected</span>
+        </div>
+        <div class="brain-pageselect" id="brainshare-pages">
+          <div class="brain-pageselect-empty">Loading pages…</div>
+        </div>
+        <p class="share-info"><strong>Tip</strong> Leave all unchecked to share the entire brain.</p>
+
+        <label>Strip rules</label>
+        <div class="vault-checks">
+          <label class="vault-check">
+            <input type="checkbox" id="brainshare-compiled-only" checked>
+            Compiled-only — export distilled truth, omit raw timeline
+          </label>
+        </div>
+
+        <label for="brainshare-fm-whitelist">Frontmatter whitelist <span style="opacity:.5">(optional, comma-separated)</span></label>
+        <input id="brainshare-fm-whitelist" type="text" placeholder="title, tags, source" autocomplete="off" spellcheck="false">
+
+        <label for="brainshare-title-input">Title <span style="opacity:.5">(optional)</span></label>
+        <input id="brainshare-title-input" type="text" placeholder="My shared notes" autocomplete="off">
+
+        <div class="share-actions">
+          <button data-close-dialog class="nevoflux-btn-secondary">Cancel</button>
+          <button id="brainshare-confirm-btn" class="nevoflux-btn-primary vault-primary-block">Create Share Link</button>
+        </div>
+      </div>
+
+      <div id="brainshare-step-loading" class="share-step" hidden>
+        <p>Sealing the <strong>.nbrain</strong> bundle, deriving a content key on your device, and uploading the opaque ciphertext.</p>
+        <div class="nevoflux-spinner" aria-label="Encrypting"></div>
+      </div>
+
+      <div id="brainshare-step-result" class="share-step" hidden>
+        <div class="share-warning">
+          <strong>Save this link now.</strong> The decryption key is in the <strong>#fragment</strong>. Anyone with the full URL can import this knowledge — we cannot recover it for you.
+        </div>
+
+        <label>Share URL</label>
+        <div class="share-field">
+          <input id="brainshare-url-input" type="text" readonly>
+          <button id="brainshare-copy-url-btn" class="nevoflux-btn-secondary">Copy</button>
+        </div>
+
+        <p class="share-info"><strong>Expires</strong> <span id="brainshare-expires-date"></span></p>
+        <p class="share-info"><strong>Size</strong> <span id="brainshare-size"></span></p>
+
+        <div class="share-actions">
+          <button class="nevoflux-btn-secondary" data-close-dialog>Close</button>
+          <button id="brainshare-copy-link-btn" class="nevoflux-btn-primary vault-primary-block">Copy Link</button>
+        </div>
+      </div>
+
+      <div id="brainshare-step-error" class="share-step" hidden>
+        <div class="share-error">
+          <strong>Failed to share:</strong> <span id="brainshare-error-msg"></span>
+        </div>
+        <div class="share-actions">
+          <button id="brainshare-retry-btn" class="nevoflux-btn-secondary">Try Again</button>
+          <button class="nevoflux-btn-secondary" data-close-dialog>Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────────────── Manage Shares Dialog ──────────────────── -->
+  <div id="nevoflux-brainshares-dialog" class="nevoflux-modal" hidden>
+    <div class="nevoflux-modal-backdrop" data-close-dialog></div>
+    <div class="nevoflux-modal-content">
+      <button class="nevoflux-modal-close" data-close-dialog aria-label="Close">×</button>
+
+      <div class="vault-kicker">
+        <span class="vault-dot" aria-hidden="true"></span>
+        <span>Your Brain Shares</span>
+        <span class="vault-rule" aria-hidden="true"></span>
+        <span>LOCAL VAULT</span>
+      </div>
+
+      <h2>Manage Shares<span class="vault-mark" aria-hidden="true"></span></h2>
+
+      <div class="brain-shares-list" id="brainshares-list">
+        <div class="brain-shares-empty">Loading…</div>
+      </div>
+
+      <div class="share-actions">
+        <button class="nevoflux-btn-secondary" data-close-dialog>Close</button>
+        <button id="brainshares-refresh-btn" class="nevoflux-btn-secondary">Refresh</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ───────────────────── Import Brain Dialog ───────────────────── -->
+  <div id="nevoflux-brainimport-dialog" class="nevoflux-modal" hidden>
+    <div class="nevoflux-modal-backdrop" data-close-dialog></div>
+    <div class="nevoflux-modal-content">
+      <button class="nevoflux-modal-close" data-close-dialog aria-label="Close">×</button>
+
+      <div class="vault-kicker">
+        <span class="vault-dot" aria-hidden="true"></span>
+        <span>Import Shared Knowledge</span>
+        <span class="vault-rule" aria-hidden="true"></span>
+        <span>AES-GCM</span>
+      </div>
+
+      <h2>Import .nbrain<span class="vault-mark" aria-hidden="true"></span></h2>
+
+      <ol class="vault-stepper" id="brainimport-stepper" aria-hidden="true">
+        <li data-step="prompt"><span class="vault-step-num">01</span><span>Link</span></li>
+        <li data-step="preview"><span class="vault-step-num">02</span><span>Review</span></li>
+        <li data-step="success"><span class="vault-step-num">03</span><span>Done</span></li>
+      </ol>
+
+      <!-- Step 1: paste / enter URL -->
+      <div id="brainimport-step-prompt" class="import-step">
+        <p>Paste a brain share link (ends with <strong>#key</strong>). The key in the fragment decrypts the bundle locally on your device.</p>
+
+        <label for="brainimport-url-input">Share URL</label>
+        <input id="brainimport-url-input" type="text" placeholder="https://share.nevoflux.app/b/…#key" autocomplete="off" spellcheck="false">
+
+        <div class="import-actions">
+          <button data-close-dialog class="nevoflux-btn-secondary">Cancel</button>
+          <button id="brainimport-next-btn" class="nevoflux-btn-primary vault-primary-block">Review</button>
+        </div>
+      </div>
+
+      <!-- Step 2: preview + source name + trust -->
+      <div id="brainimport-step-preview" class="import-step" hidden>
+        <p>You are about to import knowledge from this share. Choose a source name and a trust level before importing.</p>
+        <p class="import-info"><strong>Share ID</strong> <span id="brainimport-share-id"></span></p>
+
+        <div class="vault-audit" id="brainimport-audit">Strip rules: the bundle's manifest records exactly which fields were stripped by the sender. They will be applied as the sender configured.</div>
+
+        <label for="brainimport-source-input">Source name</label>
+        <input id="brainimport-source-input" type="text" value="shared" autocomplete="off" spellcheck="false">
+
+        <label for="brainimport-trust-select">Trust</label>
+        <select id="brainimport-trust-select" class="vault-select">
+          <option value="read_only" selected>Read-only (recommended)</option>
+          <option value="full_merge">Full merge into my brain</option>
+        </select>
+
+        <div class="import-actions">
+          <button id="brainimport-back-btn" class="nevoflux-btn-secondary">Back</button>
+          <button id="brainimport-submit-btn" class="nevoflux-btn-primary vault-primary-block">Import</button>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div id="brainimport-step-loading" class="import-step" hidden>
+        <p>Downloading the encrypted bundle and decrypting locally on your device.</p>
+        <div class="nevoflux-spinner" aria-label="Decrypting"></div>
+      </div>
+
+      <!-- Success summary -->
+      <div id="brainimport-step-success" class="import-step" hidden>
+        <div class="import-success">✓ Knowledge imported</div>
+        <p class="import-info"><strong>Files imported</strong> <span id="brainimport-files-count"></span></p>
+        <p class="import-info"><strong>Conflicts</strong> <span id="brainimport-conflicts-count"></span></p>
+        <div class="vault-audit" id="brainimport-success-audit" hidden></div>
+        <div class="import-actions">
+          <button data-close-dialog class="nevoflux-btn-secondary">Close</button>
+          <button id="brainimport-done-btn" class="nevoflux-btn-primary vault-primary-block">View Pages</button>
+        </div>
+      </div>
+
+      <!-- Onboarding: brain disabled -->
+      <div id="brainimport-step-onboarding" class="import-step" hidden>
+        <div class="share-warning">
+          <strong>Enable Knowledge Base first.</strong> Your local brain is not enabled yet, so there is nowhere to import into.
+        </div>
+        <p>Open Settings to install gbrain and create your local brain, then return here to import.</p>
+        <div class="import-actions">
+          <button data-close-dialog class="nevoflux-btn-secondary">Close</button>
+          <a href="nevoflux://settings/knowledge-base" class="nevoflux-btn-primary vault-primary-block">Open Settings</a>
+        </div>
+      </div>
+
+      <!-- Error -->
+      <div id="brainimport-step-error" class="import-step" hidden>
+        <div class="import-error">
+          <strong>Import failed:</strong> <span id="brainimport-error-msg"></span>
+        </div>
+        <div class="import-actions">
+          <button id="brainimport-retry-btn" class="nevoflux-btn-secondary">Try Again</button>
+          <button data-close-dialog class="nevoflux-btn-secondary">Close</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="chrome://nevoflux/content/pages/common.js"></script>
