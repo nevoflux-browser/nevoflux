@@ -26,6 +26,13 @@ const Brain = {
     error: null,       // string | null  (backend/network error, NOT disabled state)
     loading: false,
     previewLoading: false,
+    // Pagination + filter (M-pagination). Drives the paginated brain.list
+    // { q, sort, offset, limit } -> { pages, total, offset, limit } contract.
+    offset: 0,
+    limit: 50,
+    q: '',
+    sort: 'updated_desc',
+    total: 0,
   },
 
   // ── Lifecycle ───────────────────────────────────────────
@@ -59,6 +66,46 @@ const Brain = {
     }
     // The settings link is an <a href="nevoflux://settings/knowledge-base"> —
     // the browser handles navigation natively. Nothing to bind.
+
+    // Filter bar + pagination controls (M-pagination).
+    const qInput = document.getElementById('brain-q');
+    if (qInput) {
+      qInput.addEventListener('input', () => {
+        this.state.q = qInput.value;
+        this.state.offset = 0; // new filter resets to page 1
+        this._debouncedRefresh();
+      });
+    }
+    const sortSel = document.getElementById('brain-sort');
+    if (sortSel) {
+      sortSel.addEventListener('change', () => {
+        this.state.sort = sortSel.value;
+        this.state.offset = 0;
+        this._refresh();
+      });
+    }
+    const prevBtn = document.getElementById('brain-prev');
+    if (prevBtn) {
+      prevBtn.addEventListener('click', () => {
+        this.state.offset = Math.max(0, this.state.offset - this.state.limit);
+        this._refresh();
+      });
+    }
+    const nextBtn = document.getElementById('brain-next');
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => {
+        if (this.state.offset + this.state.limit < this.state.total) {
+          this.state.offset += this.state.limit;
+          this._refresh();
+        }
+      });
+    }
+  },
+
+  // Debounce the search input so each keystroke doesn't fire a brain.list.
+  _debouncedRefresh() {
+    clearTimeout(this._qTimer);
+    this._qTimer = setTimeout(() => this._refresh(), 200);
   },
 
   // ── Data fetch ──────────────────────────────────────────
@@ -77,24 +124,37 @@ const Brain = {
 
       if (health && health.ok) {
         try {
-          const list = await this._call('brain.list', {});
+          const list = await this._call('brain.list', {
+            q: this.state.q,
+            sort: this.state.sort,
+            offset: this.state.offset,
+            limit: this.state.limit,
+          });
           this.state.pages = (list && list.pages) || [];
+          this.state.total =
+            list && typeof list.total === 'number'
+              ? list.total
+              : this.state.pages.length;
         } catch (listErr) {
           this.state.pages = [];
+          this.state.total = 0;
           this.state.error = this._errMsg(listErr);
         }
       } else {
         // Disabled: clear pages, clear error (this is not an error state).
         this.state.pages = [];
+        this.state.total = 0;
       }
     } catch (e) {
       // brain.health itself failed — treat as backend error.
       this.state.health = null;
       this.state.pages = [];
+      this.state.total = 0;
       this.state.error = this._errMsg(e);
     } finally {
       this.state.loading = false;
       this._renderList();
+      this._renderPagination();
       this._renderPreview();
       this._renderStatus();
     }
@@ -200,6 +260,31 @@ const Brain = {
     for (const p of this.state.pages) {
       list.appendChild(this._createListItem(p));
     }
+  },
+
+  // ── Render: pagination controls ─────────────────────────
+
+  _renderPagination() {
+    const bar = document.getElementById('brain-pagination');
+    const info = document.getElementById('brain-pageinfo');
+    const prev = document.getElementById('brain-prev');
+    const next = document.getElementById('brain-next');
+    if (!bar || !info || !prev || !next) return;
+
+    const ready = this.state.health && this.state.health.ok;
+    const total = this.state.total || 0;
+    const limit = this.state.limit || 50;
+    // Hide pagination entirely when disabled or everything fits one page.
+    if (!ready || total <= limit) {
+      bar.hidden = true;
+      return;
+    }
+    bar.hidden = false;
+    const pageCount = Math.max(1, Math.ceil(total / limit));
+    const currentPage = Math.floor(this.state.offset / limit) + 1;
+    info.textContent = `Page ${currentPage} of ${pageCount}`;
+    prev.disabled = this.state.offset <= 0;
+    next.disabled = this.state.offset + limit >= total;
   },
 
   _createListItem(page) {
@@ -484,7 +569,7 @@ const Brain = {
       badge.textContent = 'Unknown';
     }
 
-    count.textContent = String(this.state.pages.length || 0);
+    count.textContent = String(this.state.total || 0);
 
     const brainDir =
       (this.state.health && this.state.health.brain_dir) || '—';

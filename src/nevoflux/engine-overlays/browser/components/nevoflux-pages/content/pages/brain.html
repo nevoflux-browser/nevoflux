@@ -171,6 +171,62 @@
       margin-top: 2px;
     }
 
+    /* ── List pane: filter bar + pagination ─────────── */
+    .brain-list-pane {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border-right: 1px solid var(--nevoflux-border);
+      overflow: hidden;
+    }
+    .brain-list-pane .brain-list {
+      border-right: none;
+      flex: 1;
+      min-height: 0;
+    }
+    .brain-filterbar {
+      display: flex;
+      gap: var(--nevoflux-space-xs);
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-md);
+      border-bottom: 1px solid var(--nevoflux-border);
+      background: var(--nevoflux-bg-secondary);
+    }
+    .brain-q {
+      flex: 1;
+      min-width: 0;
+      padding: var(--nevoflux-space-xs) var(--nevoflux-space-sm);
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      background: var(--nevoflux-bg);
+      color: var(--nevoflux-text);
+      font-family: var(--nevoflux-font-family);
+      font-size: var(--nevoflux-font-size-sm);
+    }
+    .brain-sort {
+      padding: var(--nevoflux-space-xs) var(--nevoflux-space-sm);
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-sm);
+      background: var(--nevoflux-bg);
+      color: var(--nevoflux-text);
+      font-size: var(--nevoflux-font-size-sm);
+    }
+    .brain-pagination {
+      display: flex;
+      align-items: center;
+      gap: var(--nevoflux-space-sm);
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-md);
+      border-top: 1px solid var(--nevoflux-border);
+      background: var(--nevoflux-bg-secondary);
+    }
+    .brain-pagination[hidden] { display: none; }
+    .brain-pageinfo {
+      flex: 1;
+      text-align: center;
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+    }
+    .brain-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
     /* ── Preview pane ───────────────────────────────── */
     .brain-preview {
       padding: var(--nevoflux-space-xl);
@@ -952,9 +1008,24 @@
         <div class="brain-sidebar-item brain-sidebar-item--active" data-filter="all">All pages</div>
       </nav>
 
-      <section class="brain-list" id="brain-list" aria-label="Page list">
-        <div class="brain-list-loading">Loading…</div>
-      </section>
+      <div class="brain-list-pane">
+        <div class="brain-filterbar" id="brain-filterbar">
+          <input type="search" id="brain-q" class="brain-q" placeholder="Filter by slug or title…" autocomplete="off" spellcheck="false">
+          <select id="brain-sort" class="brain-sort">
+            <option value="updated_desc" selected>Newest</option>
+            <option value="updated_asc">Oldest</option>
+            <option value="slug">Slug A→Z</option>
+          </select>
+        </div>
+        <section class="brain-list" id="brain-list" aria-label="Page list">
+          <div class="brain-list-loading">Loading…</div>
+        </section>
+        <div class="brain-pagination" id="brain-pagination" hidden>
+          <button type="button" class="brain-btn" id="brain-prev" disabled>Prev</button>
+          <span class="brain-pageinfo" id="brain-pageinfo">Page 1 of 1</span>
+          <button type="button" class="brain-btn" id="brain-next" disabled>Next</button>
+        </div>
+      </div>
 
       <section class="brain-preview" id="brain-preview" aria-label="Page preview">
         <div class="brain-preview-empty">
