@@ -3035,6 +3035,29 @@ const Settings = {
     statusRow.appendChild(badge);
     group.appendChild(statusRow);
 
+    // Runtime (server) status row — live SupervisorState, distinct from
+    // the install/setup badge above.
+    const runtimeRow = document.createElement('div');
+    runtimeRow.className = 'kb-status-row kb-runtime-row';
+
+    const runtimeLabel = document.createElement('span');
+    runtimeLabel.className = 'kb-status-label';
+    runtimeLabel.textContent = 'Server:';
+    runtimeRow.appendChild(runtimeLabel);
+
+    const runtimeBadge = document.createElement('span');
+    runtimeBadge.className = 'kb-status-badge kb-runtime-badge';
+    runtimeBadge.dataset.state = 'unknown';
+    const runtimeDot = document.createElement('span');
+    runtimeDot.className = 'kb-status-dot';
+    runtimeBadge.appendChild(runtimeDot);
+    const runtimeText = document.createElement('span');
+    runtimeText.className = 'kb-status-text kb-runtime-text';
+    runtimeText.textContent = '—';
+    runtimeBadge.appendChild(runtimeText);
+    runtimeRow.appendChild(runtimeBadge);
+    group.appendChild(runtimeRow);
+
     // Detail lines (versions + paths)
     const details = document.createElement('div');
     details.className = 'kb-details';
@@ -3077,6 +3100,24 @@ const Settings = {
     refreshBtn.addEventListener('click', () => this._refreshKbStatus(section));
     actions.appendChild(refreshBtn);
 
+    // Operational controls — shown only when overall === ready
+    // (toggled inside _renderKbStatus).
+    const restartBtn = document.createElement('button');
+    restartBtn.type = 'button';
+    restartBtn.className = 'kb-refresh-btn kb-restart-btn';
+    restartBtn.textContent = 'Restart server';
+    restartBtn.style.display = 'none';
+    restartBtn.addEventListener('click', () => this._onKbRestartClick());
+    actions.appendChild(restartBtn);
+
+    const updateBtn = document.createElement('button');
+    updateBtn.type = 'button';
+    updateBtn.className = 'kb-refresh-btn kb-update-btn';
+    updateBtn.textContent = 'Update gbrain…';
+    updateBtn.style.display = 'none';
+    updateBtn.addEventListener('click', () => this._onKbUpdateToggle(section));
+    actions.appendChild(updateBtn);
+
     // Discoverability hook for nevoflux://brain (M4-4b).
     // Hidden until status === ready; toggled inside _renderKbStatus.
     const browseBtn = document.createElement('a');
@@ -3088,6 +3129,38 @@ const Settings = {
     actions.appendChild(browseBtn);
 
     group.appendChild(actions);
+
+    // Update gbrain ref input (revealed by "Update gbrain…").
+    const updatePanel = document.createElement('div');
+    updatePanel.className = 'kb-update-panel';
+    updatePanel.style.display = 'none';
+
+    const updateWarn = document.createElement('div');
+    updateWarn.className = 'kb-update-warning';
+    updateWarn.textContent =
+      '⚠ Updating to a non-default version may break compatibility with this ' +
+      'browser’s knowledge-base integration. Leave blank to reinstall the ' +
+      'pinned version.';
+    updatePanel.appendChild(updateWarn);
+
+    const updateField = document.createElement('div');
+    updateField.className = 'kb-update-field';
+    const updateInput = document.createElement('input');
+    updateInput.type = 'text';
+    updateInput.className = 'kb-update-input';
+    updateInput.placeholder =
+      'gbrain ref (e.g. af5ee1e) — blank = reinstall pinned';
+    updateField.appendChild(updateInput);
+    const updateConfirm = document.createElement('button');
+    updateConfirm.type = 'button';
+    updateConfirm.className = 'kb-enable-btn kb-update-confirm';
+    updateConfirm.textContent = 'Update';
+    updateConfirm.addEventListener('click', () =>
+      this._onKbUpdateConfirm(section, updateInput.value.trim())
+    );
+    updateField.appendChild(updateConfirm);
+    updatePanel.appendChild(updateField);
+    group.appendChild(updatePanel);
 
     section.appendChild(group);
 
@@ -3168,6 +3241,42 @@ const Settings = {
       browseBtn.style.display = overall === 'ready' ? '' : 'none';
     }
 
+    // Operational controls (restart / update) only make sense when ready.
+    const ready = overall === 'ready';
+    const restartBtn = section.querySelector('.kb-restart-btn');
+    const updateBtn = section.querySelector('.kb-update-btn');
+    if (restartBtn) restartBtn.style.display = ready ? '' : 'none';
+    if (updateBtn) updateBtn.style.display = ready ? '' : 'none';
+    if (!ready) {
+      const panel = section.querySelector('.kb-update-panel');
+      if (panel) panel.style.display = 'none';
+    }
+
+    // Runtime (server) status.
+    const runtimeBadge = section.querySelector('.kb-runtime-badge');
+    const runtimeText = section.querySelector('.kb-runtime-text');
+    if (runtimeBadge && runtimeText) {
+      const rt = (report && report.runtime) || { state: 'unknown' };
+      const runtimeMap = {
+        running: { label: 'Running', color: 'green' },
+        starting: { label: 'Starting…', color: 'blue' },
+        restarting: { label: 'Restarting…', color: 'amber' },
+        failed: { label: 'Failed', color: 'red' },
+        shutdown: { label: 'Stopped', color: 'grey' },
+        disabled: { label: 'Disabled', color: 'grey' },
+      };
+      const r = runtimeMap[rt.state] || { label: 'Unknown', color: 'grey' };
+      let runtimeLabel = r.label;
+      if (rt.state === 'restarting' && typeof rt.restart_attempt === 'number') {
+        runtimeLabel = `Restarting… (attempt ${rt.restart_attempt})`;
+      } else if (rt.state === 'failed' && rt.failed_reason) {
+        runtimeLabel = `Failed: ${rt.failed_reason}`;
+      }
+      runtimeBadge.dataset.state = rt.state || 'unknown';
+      runtimeBadge.style.setProperty('--kb-badge-color', r.color);
+      runtimeText.textContent = runtimeLabel;
+    }
+
     this._setKbDetail(
       section,
       'bun-version',
@@ -3203,6 +3312,17 @@ const Settings = {
     }
     const browseBtn = section.querySelector('.kb-browse-btn');
     if (browseBtn) browseBtn.style.display = 'none';
+    const restartBtn = section.querySelector('.kb-restart-btn');
+    if (restartBtn) restartBtn.style.display = 'none';
+    const updateBtn = section.querySelector('.kb-update-btn');
+    if (updateBtn) updateBtn.style.display = 'none';
+    const runtimeText = section.querySelector('.kb-runtime-text');
+    const runtimeBadge = section.querySelector('.kb-runtime-badge');
+    if (runtimeText && runtimeBadge) {
+      runtimeBadge.dataset.state = 'unknown';
+      runtimeBadge.style.setProperty('--kb-badge-color', 'grey');
+      runtimeText.textContent = '—';
+    }
   },
 
   _onKbEnableClick() {
@@ -3235,6 +3355,21 @@ const Settings = {
       return;
     }
     const modal = this._buildKbWizardModal();
+    // Install flow: drive the install step machine, fall back to status
+    // polling if the EventBus subscription can't be established.
+    this._kbWizardBootstrap(
+      modal,
+      () => this._kbWizardStart(),
+      () => this._kbWizardStartPolling()
+    );
+  },
+
+  // Shared modal setup: mount it, init wizard state, subscribe to the
+  // progress EventBus, then run `runner()` (the install step machine or
+  // a one-off op). `onSubscribeFail` runs if the subscription can't be
+  // opened (install uses status polling; ops just rely on the step
+  // timeout + the post-close status refresh).
+  _kbWizardBootstrap(modal, runner, onSubscribeFail) {
     document.body.appendChild(modal);
     // Use the .show class to flip display:none -> flex.
     requestAnimationFrame(() => modal.classList.add('show'));
@@ -3254,22 +3389,75 @@ const Settings = {
       logLines: [],
     };
 
-    // Kick off subscribe + step machine in parallel; both are async
-    // and the step machine waits for resolver invocations triggered
-    // by the subscription's progress frames.
     this._kbWizardSubscribe()
       .catch((e) => {
-        console.warn('[kb-wizard] subscribe failed, falling back to polling:', e);
-        this._kbWizardStartPolling();
+        console.warn('[kb-wizard] subscribe failed:', e);
+        if (typeof onSubscribeFail === 'function') onSubscribeFail();
       })
       .finally(() => {
-        // _kbWizardStart is safe to call even before subscribe completes —
-        // the daemon buffers initial progress lines internally.
-        this._kbWizardStart();
+        // Runner is safe to call even before subscribe completes — the
+        // daemon buffers initial progress lines internally.
+        runner();
       });
   },
 
-  _buildKbWizardModal() {
+  // Open the wizard modal to run a single operational step (restart or
+  // update gbrain) and stream its progress. Reuses the wizard subscribe +
+  // progress machinery. Status auto-refreshes when the modal is closed
+  // (see _kbWizardClose).
+  _openKbOpModal({ title, subtitle, step, label, params }) {
+    if (this._kbWizardState) return; // a wizard/op is already open
+    const modal = this._buildKbWizardModal({
+      title,
+      subtitle,
+      steps: [[step, label]],
+    });
+    this._kbWizardBootstrap(modal, () =>
+      this._kbWizardRunOp(step, params || {})
+    );
+  },
+
+  async _kbWizardRunOp(step, params) {
+    try {
+      await this._kbWizardRunStep(step, params);
+      if (this._kbWizardState?.cancelled) return;
+      this._kbWizardComplete();
+    } catch (e) {
+      if (this._kbWizardState?.cancelled) return;
+      this._kbWizardFail(e?.message ? e.message : String(e));
+    }
+  },
+
+  _onKbRestartClick() {
+    this._openKbOpModal({
+      title: 'Restart gbrain server',
+      subtitle: 'Restarting the gbrain server…',
+      step: 'restart',
+      label: 'Restart gbrain server',
+    });
+  },
+
+  _onKbUpdateToggle(section) {
+    const panel = section.querySelector('.kb-update-panel');
+    if (!panel) return;
+    panel.style.display = panel.style.display === 'none' ? '' : 'none';
+  },
+
+  _onKbUpdateConfirm(section, ref) {
+    const panel = section.querySelector('.kb-update-panel');
+    if (panel) panel.style.display = 'none';
+    const params = ref ? { ref } : {};
+    this._openKbOpModal({
+      title: 'Update gbrain package',
+      subtitle: ref ? `Updating gbrain to ${ref}…` : 'Reinstalling gbrain…',
+      step: 'update_gbrain',
+      label: 'Update gbrain package',
+      params,
+    });
+  },
+
+  _buildKbWizardModal(opts) {
+    const o = opts || {};
     const modal = document.createElement('div');
     modal.className = 'kb-wizard-modal';
     modal.id = 'kb-wizard-modal';
@@ -3294,12 +3482,13 @@ const Settings = {
     header.className = 'kb-wizard-header';
     const title = document.createElement('h2');
     title.id = 'kb-wizard-title';
-    title.textContent = 'Set up Knowledge Base';
+    title.textContent = o.title || 'Set up Knowledge Base';
     const subtitle = document.createElement('p');
     subtitle.className = 'kb-wizard-subtitle';
     subtitle.textContent =
+      o.subtitle ||
       'Installing bun runtime + gbrain CLI, then initializing your brain. ' +
-      'You can cancel at any time.';
+        'You can cancel at any time.';
     header.appendChild(title);
     header.appendChild(subtitle);
     content.appendChild(header);
@@ -3307,11 +3496,12 @@ const Settings = {
     // Step list
     const steps = document.createElement('ul');
     steps.className = 'kb-wizard-steps';
-    for (const [key, label] of [
+    const stepDefs = o.steps || [
       ['install_bun', 'Install bun runtime'],
       ['install_gbrain', 'Install gbrain'],
       ['init_brain', 'Initialize your brain'],
-    ]) {
+    ];
+    for (const [key, label] of stepDefs) {
       const li = document.createElement('li');
       li.className = 'kb-wizard-step';
       li.dataset.step = key;
@@ -3531,7 +3721,7 @@ const Settings = {
     }
   },
 
-  _kbWizardRunStep(step) {
+  _kbWizardRunStep(step, params = {}) {
     return new Promise((resolve, reject) => {
       if (!this._kbWizardState) {
         reject(new Error('wizard state gone'));
@@ -3547,9 +3737,11 @@ const Settings = {
       this._kbWizardSetStatus(`Running: ${step}`);
 
       // install_bun + init_brain can be slow on cold disks / slow networks.
-      // install_gbrain is dominated by bun's network fetch; cap at 5min.
+      // install_gbrain + update_gbrain are dominated by bun's network fetch.
       const TIMEOUT =
-        step === 'install_gbrain' ? 5 * 60 * 1000 : 10 * 60 * 1000;
+        step === 'install_gbrain' || step === 'update_gbrain'
+          ? 6 * 60 * 1000
+          : 10 * 60 * 1000;
       this._kbWizardState.stepTimeout = setTimeout(() => {
         if (this._kbWizardState?.stepResolver) {
           this._kbWizardState.stepResolver.reject(
@@ -3561,7 +3753,7 @@ const Settings = {
 
       // Fire the RPC. The response is `{ started: true }`; the actual work
       // streams progress via the EventBus subscription set up earlier.
-      this._sendMcpCommand(`kb.wizard.${step}`, {}).catch((e) => {
+      this._sendMcpCommand(`kb.wizard.${step}`, params).catch((e) => {
         if (this._kbWizardState?.stepResolver) {
           clearTimeout(this._kbWizardState.stepTimeout);
           this._kbWizardState.stepResolver.reject(e);
