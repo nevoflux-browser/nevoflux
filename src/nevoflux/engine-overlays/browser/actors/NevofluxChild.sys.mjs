@@ -4095,7 +4095,7 @@ export class NevofluxChild extends JSWindowActorChild {
     const isEditable = (el) => {
       if (!el || typeof el.getAttribute !== 'function') return false;
       const v = el.getAttribute('contenteditable');
-      return v === 'true' || v === '';
+      return v === 'true' || v === '' || v === 'plaintext-only';
     };
 
     const rootIsEditable = isEditable(root);
@@ -5748,7 +5748,7 @@ export class NevofluxChild extends JSWindowActorChild {
     for (let cur = el; cur && cur !== doc; cur = cur.parentElement) {
       if (typeof cur.getAttribute === 'function') {
         const v = cur.getAttribute('contenteditable');
-        if (v === 'true' || v === '') {
+        if (v === 'true' || v === '' || v === 'plaintext-only') {
           isCE = true;
           cEHost = cur;
           break;

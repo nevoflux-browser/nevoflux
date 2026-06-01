@@ -972,7 +972,7 @@ class MockNevofluxChild {
     const isEditable = (el) => {
       if (!el || typeof el.getAttribute !== 'function') return false;
       const v = el.getAttribute('contenteditable');
-      return v === 'true' || v === '';
+      return v === 'true' || v === '' || v === 'plaintext-only';
     };
 
     const rootIsEditable = isEditable(root);
@@ -1197,13 +1197,31 @@ class MockNevofluxChild {
     if (!el) {
       return { success: false, error: { code: 1001, message: `Element not found: ${selector}`, recoverable: true } };
     }
+
+    // contentEditable detection — mirrors NevofluxChild.sys.mjs probe fingerprint.
+    // Walk ancestors for any editable contenteditable value (true / "" / plaintext-only).
+    let isCE = false;
+    let cEHost = null;
+    for (let cur = el; cur && cur !== doc; cur = cur.parentElement) {
+      if (typeof cur.getAttribute === 'function') {
+        const v = cur.getAttribute('contenteditable');
+        if (v === 'true' || v === '' || v === 'plaintext-only') {
+          isCE = true;
+          cEHost = cur;
+          break;
+        }
+      }
+    }
+    const innermostEl = isCE ? this._findInnermostEditable(cEHost) : null;
+    const innermostSelector = innermostEl ? this._generatePathSelector(innermostEl) : null;
+
     return {
       success: true,
       result: {
         tag: (el.tagName || '').toLowerCase(),
         input_type: null,
         has_value_property: false,
-        is_content_editable: false,
+        is_content_editable: isCE,
         disabled: false,
         readonly: false,
         is_visible: true,
@@ -1212,8 +1230,8 @@ class MockNevofluxChild {
         react_fiber_present: false,
         inside_iframe: false,
         shadow_root_depth: 0,
-        innermost_editable_selector: null,
-        computed_role: null,
+        innermost_editable_selector: innermostSelector,
+        computed_role: typeof el.getAttribute === 'function' ? el.getAttribute('role') : null,
       },
     };
   }
@@ -2223,6 +2241,24 @@ describe('NevofluxChild — _findInnermostEditable helper', () => {
 
     expect(child._findInnermostEditable(div)).toBe(div);
   });
+
+  it('accepts contenteditable="plaintext-only" as editable (Gmail compose)', () => {
+    const doc = child.doc;
+    const div = doc.createElement('div');
+    div.attributes.set('contenteditable', 'plaintext-only');
+    div.getAttribute = k => div.attributes.get(k) ?? null;
+
+    expect(child._findInnermostEditable(div)).toBe(div);
+  });
+
+  it('rejects contenteditable="false"', () => {
+    const doc = child.doc;
+    const div = doc.createElement('div');
+    div.attributes.set('contenteditable', 'false');
+    div.getAttribute = k => div.attributes.get(k) ?? null;
+
+    expect(child._findInnermostEditable(div)).toBe(null);
+  });
 });
 
 describe('NevofluxChild — queryAll method', () => {
@@ -2261,6 +2297,63 @@ describe('NevofluxChild — probe method', () => {
     const r = child.probe({ selector: '#definitely-not-there' });
     expect(r.success).toBe(false);
     expect(r.error.code).toBe(1001);
+  });
+
+  // Fix B: probe must recognise every editable contenteditable value, including
+  // plaintext-only (Gmail compose). Before the fix, plaintext-only reported
+  // is_content_editable:false and the daemon strategy engine aborted.
+  const makeEditable = (id, ceValue) => {
+    const el = child.doc.createElement('div');
+    el.setAttribute('id', id);
+    if (ceValue !== null) el.setAttribute('contenteditable', ceValue);
+    child.doc.body.appendChild(el);
+    return el;
+  };
+
+  it('reports is_content_editable=true for contenteditable="true"', () => {
+    makeEditable('ce-true', 'true');
+    const r = child.probe({ selector: '#ce-true' });
+    expect(r.success).toBe(true);
+    expect(r.result.is_content_editable).toBe(true);
+  });
+
+  it('reports is_content_editable=true for contenteditable=""', () => {
+    makeEditable('ce-empty', '');
+    const r = child.probe({ selector: '#ce-empty' });
+    expect(r.result.is_content_editable).toBe(true);
+  });
+
+  it('reports is_content_editable=true for contenteditable="plaintext-only" (Gmail compose)', () => {
+    makeEditable('ce-plain', 'plaintext-only');
+    const r = child.probe({ selector: '#ce-plain' });
+    expect(r.result.is_content_editable).toBe(true);
+    // innermost must resolve to the host itself, not null
+    expect(r.result.innermost_editable_selector).not.toBe(null);
+  });
+
+  it('reports is_content_editable=false for contenteditable="false"', () => {
+    makeEditable('ce-false', 'false');
+    const r = child.probe({ selector: '#ce-false' });
+    expect(r.result.is_content_editable).toBe(false);
+  });
+
+  it('reports is_content_editable=false for a plain div', () => {
+    makeEditable('ce-plain-div', null);
+    const r = child.probe({ selector: '#ce-plain-div' });
+    expect(r.result.is_content_editable).toBe(false);
+  });
+
+  it('reports is_content_editable=true for a child inside a plaintext-only host', () => {
+    const host = child.doc.createElement('div');
+    host.setAttribute('id', 'pt-host');
+    host.setAttribute('contenteditable', 'plaintext-only');
+    const inner = child.doc.createElement('span');
+    inner.setAttribute('id', 'pt-inner');
+    host.appendChild(inner);
+    child.doc.body.appendChild(host);
+
+    const r = child.probe({ selector: '#pt-inner' });
+    expect(r.result.is_content_editable).toBe(true);
   });
 });
 
