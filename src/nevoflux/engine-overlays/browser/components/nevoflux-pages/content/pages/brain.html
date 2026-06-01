@@ -915,6 +915,31 @@
       margin-left: auto;
       color: var(--vault-text-mute);
     }
+    .nevoflux-modal-search {
+      width: 100%;
+      box-sizing: border-box;
+      margin: 0 0 8px;
+      background: var(--vault-ink);
+      border: 1px solid var(--vault-hairline);
+      color: var(--vault-text);
+      padding: 8px 10px;
+      border-radius: 2px;
+      font-family: var(--vault-mono);
+      font-size: 12px;
+      outline: none;
+    }
+    .brain-pageselect-pager {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 8px 0 0;
+      font-family: var(--vault-mono);
+      font-size: 11px;
+      color: var(--vault-text-mute);
+    }
+    .brain-pageselect-pager[hidden] { display: none; }
+    .brain-pageselect-pager span { flex: 1; text-align: center; }
+    .brain-pageselect-pager .nevoflux-btn-secondary { padding: 6px 12px; }
 
     .vault-checks {
       display: flex;
@@ -1072,12 +1097,18 @@
 
         <label>Pages to share</label>
         <div class="brain-pageselect-toolbar">
-          <a id="brainshare-select-all">Select all</a>
-          <a id="brainshare-select-none">Clear</a>
+          <a id="brainshare-select-all">Select all on page</a>
+          <a id="brainshare-select-none">Clear page</a>
           <span class="brain-pageselect-count" id="brainshare-count">0 selected</span>
         </div>
+        <input type="search" id="brainshare-q" class="nevoflux-modal-search" placeholder="Filter pages…" autocomplete="off" spellcheck="false">
         <div class="brain-pageselect" id="brainshare-pages">
           <div class="brain-pageselect-empty">Loading pages…</div>
+        </div>
+        <div class="brain-pageselect-pager" id="brainshare-pager" hidden>
+          <button type="button" class="nevoflux-btn-secondary" id="brainshare-prev" disabled>Prev</button>
+          <span id="brainshare-pageinfo">Page 1 of 1</span>
+          <button type="button" class="nevoflux-btn-secondary" id="brainshare-next" disabled>Next</button>
         </div>
         <p class="share-info"><strong>Tip</strong> Leave all unchecked to share the entire brain.</p>
 

@@ -638,11 +638,26 @@ function _brainCloseDialog(which) {
 
 // ── Share-create dialog ─────────────────────────────────────────────
 const BrainShareDialog = {
+  // Cross-page selection state. `selected` persists across page flips; the
+  // visible checkboxes only reflect the current page's membership. The picker
+  // drives its OWN paginated brain.list (independent of Brain.state.pages).
+  selected: new Set(),
+  offset: 0,
+  limit: 50,
+  total: 0,
+  q: '',
+
   open() {
     _brainShowDialog('brainshare');
     _brainShowStep('brainshare', 'confirm');
     this._resetForm();
-    this._renderPages();
+    this.selected = new Set();
+    this.offset = 0;
+    this.total = 0;
+    this.q = '';
+    const qEl = document.getElementById('brainshare-q');
+    if (qEl) qEl.value = '';
+    this._loadPages();
   },
 
   _resetForm() {
@@ -654,41 +669,76 @@ const BrainShareDialog = {
     if (title) title.value = '';
   },
 
-  _renderPages() {
+  async _loadPages() {
+    const box = document.getElementById('brainshare-pages');
+    if (!box) return;
+    box.replaceChildren();
+    const loading = document.createElement('div');
+    loading.className = 'brain-pageselect-empty';
+    loading.textContent = 'Loading pages…';
+    box.appendChild(loading);
+
+    let pages = [];
+    try {
+      const list = await Brain._call('brain.list', {
+        q: this.q,
+        sort: 'updated_desc',
+        offset: this.offset,
+        limit: this.limit,
+      });
+      pages = (list && list.pages) || [];
+      this.total =
+        list && typeof list.total === 'number' ? list.total : pages.length;
+    } catch (_e) {
+      this.total = 0;
+      pages = [];
+    }
+    this._renderPages(pages);
+  },
+
+  _renderPages(pages) {
     const box = document.getElementById('brainshare-pages');
     if (!box) return;
     box.replaceChildren();
 
-    const pages = (Brain.state && Brain.state.pages) || [];
     if (!pages.length) {
       const empty = document.createElement('div');
       empty.className = 'brain-pageselect-empty';
       empty.textContent =
         Brain._isDisabled && Brain._isDisabled()
           ? 'Knowledge Base is not enabled.'
-          : 'No pages — the whole brain will be shared.';
+          : (this.q
+            ? 'No pages match the filter.'
+            : 'No pages — the whole brain will be shared.');
       box.appendChild(empty);
+      this._renderPager();
       this._updateCount();
       return;
     }
 
     for (const p of pages) {
+      const slug = p.slug || '';
       const label = document.createElement('label');
       label.className = 'brain-pageselect-item';
 
       const cb = document.createElement('input');
       cb.type = 'checkbox';
       cb.className = 'brainshare-page-cb';
-      cb.value = p.slug || '';
-      cb.addEventListener('change', () => this._updateCount());
+      cb.value = slug;
+      cb.checked = this.selected.has(slug); // reflect cross-page selection
+      cb.addEventListener('change', () => {
+        if (cb.checked) this.selected.add(slug);
+        else this.selected.delete(slug);
+        this._updateCount();
+      });
       label.appendChild(cb);
 
-      const slug = document.createElement('span');
-      slug.className = 'ps-slug';
-      slug.textContent = p.slug || '(no slug)';
-      label.appendChild(slug);
+      const slugEl = document.createElement('span');
+      slugEl.className = 'ps-slug';
+      slugEl.textContent = slug || '(no slug)';
+      label.appendChild(slugEl);
 
-      if (p.title && p.title !== p.slug) {
+      if (p.title && p.title !== slug) {
         const t = document.createElement('span');
         t.className = 'ps-title';
         t.textContent = `· ${p.title}`;
@@ -696,27 +746,47 @@ const BrainShareDialog = {
       }
       box.appendChild(label);
     }
+    this._renderPager();
     this._updateCount();
   },
 
+  _renderPager() {
+    const pager = document.getElementById('brainshare-pager');
+    const info = document.getElementById('brainshare-pageinfo');
+    const prev = document.getElementById('brainshare-prev');
+    const next = document.getElementById('brainshare-next');
+    if (!pager || !info || !prev || !next) return;
+    if (this.total <= this.limit) {
+      pager.hidden = true;
+      return;
+    }
+    pager.hidden = false;
+    const pageCount = Math.max(1, Math.ceil(this.total / this.limit));
+    const currentPage = Math.floor(this.offset / this.limit) + 1;
+    info.textContent = `Page ${currentPage} of ${pageCount}`;
+    prev.disabled = this.offset <= 0;
+    next.disabled = this.offset + this.limit >= this.total;
+  },
+
   _selectedSlugs() {
-    return Array.from(document.querySelectorAll('.brainshare-page-cb'))
-      .filter((cb) => cb.checked)
-      .map((cb) => cb.value)
-      .filter(Boolean);
+    return Array.from(this.selected).filter(Boolean);
   },
 
   _updateCount() {
     const count = document.getElementById('brainshare-count');
     if (!count) return;
-    const n = this._selectedSlugs().length;
+    const n = this.selected.size;
     count.textContent = n === 0 ? 'all pages' : `${n} selected`;
   },
 
+  // "Select all on this page" toggles only the visible rows (adds/removes
+  // them from the cross-page Set); it does NOT touch other pages' selections.
   selectAll(on) {
-    document
-      .querySelectorAll('.brainshare-page-cb')
-      .forEach((cb) => { cb.checked = on; });
+    document.querySelectorAll('.brainshare-page-cb').forEach((cb) => {
+      cb.checked = on;
+      if (on) this.selected.add(cb.value);
+      else this.selected.delete(cb.value);
+    });
     this._updateCount();
   },
 
@@ -1068,6 +1138,33 @@ const BrainShareUI = {
     this._bind('brainshare-copy-link-btn', () => BrainShareDialog.copyLink());
     this._bind('brainshare-select-all', () => BrainShareDialog.selectAll(true));
     this._bind('brainshare-select-none', () => BrainShareDialog.selectAll(false));
+    this._bind('brainshare-prev', () => {
+      if (BrainShareDialog.offset > 0) {
+        BrainShareDialog.offset -= BrainShareDialog.limit;
+        BrainShareDialog._loadPages();
+      }
+    });
+    this._bind('brainshare-next', () => {
+      if (
+        BrainShareDialog.offset + BrainShareDialog.limit <
+        BrainShareDialog.total
+      ) {
+        BrainShareDialog.offset += BrainShareDialog.limit;
+        BrainShareDialog._loadPages();
+      }
+    });
+    const shareQ = document.getElementById('brainshare-q');
+    if (shareQ) {
+      shareQ.addEventListener('input', () => {
+        BrainShareDialog.q = shareQ.value;
+        BrainShareDialog.offset = 0; // reset to page 1 on new filter
+        clearTimeout(BrainShareDialog._qTimer);
+        BrainShareDialog._qTimer = setTimeout(
+          () => BrainShareDialog._loadPages(),
+          200
+        );
+      });
+    }
 
     // Manage-shares dialog.
     this._bind('brainshares-refresh-btn', () => BrainSharesList.load());
