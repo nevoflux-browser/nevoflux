@@ -122,10 +122,11 @@ pub enum ToolStatus {
 }
 
 /// Error level
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorLevel {
     Warning,
+    #[default]
     Error,
     Fatal,
 }

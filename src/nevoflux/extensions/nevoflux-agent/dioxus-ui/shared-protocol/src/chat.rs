@@ -274,8 +274,18 @@ pub struct ToolInfo {
 /// Error notification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorPayload {
+    // session_id/error_id/level are optional on the wire: the daemon's
+    // generic error sites (e.g. SKILL_TOOLS_UNAVAILABLE in server.rs) emit a
+    // minimal `{code, message, recoverable}` payload. Without defaults the
+    // untagged IncomingMessage deserialization failed and the message was
+    // silently dropped — leaving the sidebar spinner stuck forever. Defaults
+    // let handle_error() run (it only needs code/message/recoverable) so the
+    // error renders and the spinner clears.
+    #[serde(default)]
     pub session_id: String,
+    #[serde(default)]
     pub error_id: String,
+    #[serde(default)]
     pub level: ErrorLevel,
     pub code: String,
     pub message: String,
