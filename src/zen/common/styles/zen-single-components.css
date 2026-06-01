@@ -540,6 +540,10 @@
 
   & toolbarbutton {
     margin: 0;
+
+    &[disabled] {
+      visibility: hidden;
+    }
   }
 }
 
