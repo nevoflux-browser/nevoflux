@@ -3387,6 +3387,9 @@ const Settings = {
       stepResolver: null,
       stepTimeout: null,
       logLines: [],
+      // The work to (re-)run: install step machine or a one-off op. Retry
+      // re-invokes this so a failed op retries the op, not the installer.
+      retryFn: runner,
     };
 
     this._kbWizardSubscribe()
@@ -3908,7 +3911,13 @@ const Settings = {
     state.modal.querySelector('.kb-wizard-retry-btn').style.display = 'none';
     state.modal.querySelector('.kb-wizard-done-btn').style.display = 'none';
     state.modal.querySelector('.kb-wizard-cancel-btn').style.display = '';
-    this._kbWizardStart();
+    // Re-run whatever this modal was driving (install machine or a
+    // one-off op), not always the installer.
+    if (typeof state.retryFn === 'function') {
+      state.retryFn();
+    } else {
+      this._kbWizardStart();
+    }
   },
 
   _kbWizardComplete() {
@@ -3925,7 +3934,7 @@ const Settings = {
     const state = this._kbWizardState;
     if (!state) return;
     state.finished = true;
-    this._kbWizardSetStatus(`Install failed: ${msg}`);
+    this._kbWizardSetStatus(`Failed: ${msg}`);
     this._kbWizardAppendLog(`[wizard] FAILED: ${msg}`);
     // Show Retry + Close (re-labelled Done).
     state.modal.querySelector('.kb-wizard-retry-btn').style.display = '';
