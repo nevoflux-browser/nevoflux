@@ -2048,6 +2048,46 @@ export class NevofluxChild extends JSWindowActorChild {
     return active;
   }
 
+  // ── Ensure a Selection range exists inside an editable target ──
+  //
+  // document.execCommand('insertText'/'selectAll'/'delete') operates on the
+  // current document Selection. element.focus() alone does NOT always place a
+  // caret inside a contenteditable host — notably one inside an open shadow
+  // root that was never clicked. With no range in the editor, execCommand
+  // silently no-ops yet returns true, so insertion looks like it succeeded
+  // while nothing changed. Establishing an explicit Range fixes this (verified:
+  // Selection-API range + insertText inserts into LinkedIn's shadow Quill where
+  // bare focus()+insertText and synthetic paste both did nothing).
+  //
+  // selectAll=false → collapse to END (caret for append/insert semantics).
+  // selectAll=true  → select the whole content (so insertText REPLACES it).
+  _ensureSelectionInside(target, win, doc, { selectAll = false } = {}) {
+    try {
+      const sel = win.getSelection();
+      if (!sel) {
+        return false;
+      }
+      // Keep an existing selection that's already inside the target (unless we
+      // explicitly want to select-all to replace).
+      if (!selectAll && sel.rangeCount > 0) {
+        const node = sel.getRangeAt(0).commonAncestorContainer;
+        if (target === node || target.contains?.(node)) {
+          return true;
+        }
+      }
+      const range = doc.createRange();
+      range.selectNodeContents(target);
+      if (!selectAll) {
+        range.collapse(false); // caret at end
+      }
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // ── Resolve element by snapshot ID (used by act operations) ──
 
   resolveSnapshotElement(id, doc) {
@@ -2501,12 +2541,15 @@ export class NevofluxChild extends JSWindowActorChild {
       return { success: true };
     }
 
-    // contentEditable branch — per-character paste preserving "append" semantics
-    for (const ch of String(text)) {
-      const r = this.paste({ selector, text: ch });
-      if (!r.success) return r;
-    }
-    return { success: true };
+    // contentEditable branch — single insertText preserving "append" semantics.
+    //
+    // This was a per-character loop, but each iteration re-ran paste(), which
+    // re-resolves the selector (a shadow-DOM BFS over querySelectorAll('*')) and
+    // re-focuses. For long text on a large page (e.g. a multi-paragraph post into
+    // LinkedIn's shadow Quill) that is O(chars × DOM) and can stall. A single
+    // execCommand('insertText') inserts the whole string at the caret in one op,
+    // appending identically.
+    return this.paste({ selector, text: String(text) });
   }
 
   fill({ selector, text }) {
@@ -2600,20 +2643,32 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
+    // Ensure a caret exists INSIDE the target before execCommand. focus() alone
+    // does not place a selection for an unclicked contenteditable (especially in
+    // a shadow root), and document.execCommand('insertText') then silently
+    // no-ops while returning true.
+    this._ensureSelectionInside(target, win, doc, { selectAll: false });
+
     // Primary path: document.execCommand('insertText', ...)
     //
     // This is the universal insertion method for contentEditable. It works for:
     // - Plain contentEditable (native browser inserts the text)
-    // - Draft.js / Lexical / ProseMirror / Slate (they listen to beforeinput/input
-    //   events which execCommand generates, and update their internal state)
+    // - Draft.js / Lexical / ProseMirror / Slate / Quill (they listen to
+    //   beforeinput/input events which execCommand generates, and update their
+    //   internal state)
     //
     // Why NOT synthetic ClipboardEvent as primary: dispatchEvent produces untrusted
     // events (isTrusted === false). Firefox refuses to execute default actions for
     // untrusted events, so plain contentEditable silently drops the paste. Only
     // frameworks with explicit paste handlers see the synthetic event.
+    //
+    // Verify the DOM actually changed: execCommand returns true even when it
+    // inserted nothing (the shadow/no-caret case), so a bare `if (ok)` would
+    // report false success and skip the fallback below.
     try {
+      const before = target.textContent;
       const ok = doc.execCommand('insertText', false, String(text));
-      if (ok) {
+      if (ok && target.textContent !== before) {
         return { success: true };
       }
     } catch (e) {
@@ -2688,11 +2743,11 @@ export class NevofluxChild extends JSWindowActorChild {
 
     // Select all existing content via execCommand('selectAll').
     //
-    // IMPORTANT: do NOT use the Selection API (win.getSelection + range.selectNodeContents)
-    // for this step. Framework editors like Draft.js maintain their own internal selection
-    // state and only sync it from execCommand calls, not from raw DOM Selection API
-    // manipulation. Using the Selection API causes Draft.js to think the cursor is collapsed,
-    // so the subsequent insertText appends instead of replacing.
+    // IMPORTANT: prefer execCommand('selectAll') here. Framework editors like
+    // Draft.js maintain their own internal selection state and only sync it from
+    // execCommand calls, not from raw DOM Selection API manipulation. Using the
+    // Selection API for Draft.js causes it to think the cursor is collapsed, so
+    // the subsequent insertText appends instead of replacing.
     try {
       doc.execCommand('selectAll', false, null);
     } catch (e) {
@@ -2702,11 +2757,30 @@ export class NevofluxChild extends JSWindowActorChild {
 
     // Primary path: execCommand('insertText', ...) with full selection = replace content.
     // Draft.js, Lexical, ProseMirror, and plain contentEditable all handle this correctly
-    // when selectAll was issued via execCommand above.
+    // when selectAll was issued via execCommand above. Verify the DOM actually
+    // changed — execCommand returns true even on a no-op.
     try {
+      const before = target.textContent;
       const ok = doc.execCommand('insertText', false, String(text));
-      if (ok) {
+      if (ok && target.textContent !== before) {
         return { success: true };
+      }
+    } catch (e) {
+      // Fall through to the Selection-API retry / paste() fallback
+    }
+
+    // Shadow / never-clicked retry: document-scoped execCommand('selectAll')
+    // does NOT reach a contenteditable inside an open shadow root, so the
+    // insertText above no-ops. Establish a full-content Selection range
+    // explicitly (verified to work on LinkedIn's shadow Quill), then insert to
+    // replace.
+    try {
+      const before = target.textContent;
+      if (this._ensureSelectionInside(target, win, doc, { selectAll: true })) {
+        const ok = doc.execCommand('insertText', false, String(text));
+        if (ok && target.textContent !== before) {
+          return { success: true };
+        }
       }
     } catch (e) {
       // Fall through to the paste() fallback
@@ -2973,7 +3047,7 @@ export class NevofluxChild extends JSWindowActorChild {
       }
     });
 
-    observer.observe(doc.body || doc.documentElement, {
+    const observeOpts = {
       childList: true,
       subtree: true,
       attributes: true,
@@ -2989,7 +3063,41 @@ export class NevofluxChild extends JSWindowActorChild {
         'data-state',
         'data-active',
       ],
-    });
+    };
+
+    observer.observe(doc.body || doc.documentElement, observeOpts);
+
+    // Also observe inside OPEN shadow roots. A MutationObserver with
+    // subtree:true does NOT cross shadow boundaries, so a click that mounts or
+    // reveals content inside an existing shadow root (e.g. LinkedIn's
+    // post-composer modal, which lives in shadow DOM) would otherwise leave
+    // domChanged=false — the click gets misjudged "ineffective" and the agent
+    // retries pointlessly. (A brand-new shadow HOST added to the light DOM is
+    // already caught above as a childList mutation; this covers changes WITHIN
+    // pre-existing shadow roots.) The same noise filtering in the callback
+    // applies, bounding false positives from background shadow components.
+    try {
+      const roots = [doc];
+      while (roots.length) {
+        const root = roots.shift();
+        let all;
+        try {
+          all = root.querySelectorAll('*');
+        } catch {
+          continue;
+        }
+        for (const elx of all) {
+          const sr = elx.shadowRoot;
+          if (!sr) {
+            continue;
+          }
+          try {
+            observer.observe(sr, observeOpts);
+          } catch {}
+          roots.push(sr);
+        }
+      }
+    } catch {}
 
     // PerformanceObserver for network requests triggered by click
     let perfObserver = null;

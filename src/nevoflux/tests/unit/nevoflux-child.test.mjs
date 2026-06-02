@@ -200,6 +200,34 @@ class MockNevofluxChild {
     return active;
   }
 
+  // Ensure a Selection range exists inside an editable target (mirror of the
+  // real NevofluxChild). focus() alone doesn't place a caret inside an unclicked
+  // contenteditable (esp. in shadow DOM), so execCommand silently no-ops.
+  _ensureSelectionInside(target, win, doc, { selectAll = false } = {}) {
+    try {
+      const sel = win.getSelection();
+      if (!sel) {
+        return false;
+      }
+      if (!selectAll && sel.rangeCount > 0) {
+        const node = sel.getRangeAt(0).commonAncestorContainer;
+        if (target === node || target.contains?.(node)) {
+          return true;
+        }
+      }
+      const range = doc.createRange();
+      range.selectNodeContents(target);
+      if (!selectAll) {
+        range.collapse(false);
+      }
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // ========== Data Extraction ==========
   getText({ selector }) {
     const el = this.currentDoc?.querySelector(selector);
@@ -2736,6 +2764,75 @@ describe('NevofluxChild - Shadow-aware active element', () => {
   it('returns null when nothing is focused or doc is missing', () => {
     expect(child._deepActiveElement({ activeElement: null })).toBe(null);
     expect(child._deepActiveElement(null)).toBe(null);
+  });
+});
+
+// ===========================================================================
+//  Selection establishment before execCommand (_ensureSelectionInside)
+//
+//  Regression coverage for "type/fill reports success but text never lands" on
+//  LinkedIn's shadow Quill. focus() alone does not place a caret inside an
+//  unclicked contenteditable, so document.execCommand('insertText') no-ops while
+//  returning true. _ensureSelectionInside establishes an explicit Range
+//  (verified to make insertText work where bare focus did not).
+// ===========================================================================
+describe('NevofluxChild - Selection establishment', () => {
+  let child;
+  // Minimal Selection / doc fakes recording what the helper does.
+  function makeFakes(existingRangeNode = null) {
+    const added = [];
+    const sel = {
+      rangeCount: existingRangeNode ? 1 : 0,
+      getRangeAt: () => ({ commonAncestorContainer: existingRangeNode }),
+      removeAllRanges() { this.rangeCount = 0; },
+      addRange(r) { added.push(r); this.rangeCount = 1; },
+    };
+    const win = { getSelection: () => sel };
+    const doc = {
+      createRange: () => ({
+        _collapsed: null,
+        _selected: null,
+        selectNodeContents(n) { this._selected = n; },
+        collapse(toStart) { this._collapsed = toStart; },
+      }),
+    };
+    return { win, doc, sel, added };
+  }
+  beforeEach(() => {
+    child = new MockNevofluxChild();
+  });
+
+  it('creates a collapsed end-caret range when no selection exists', () => {
+    const target = { contains: () => false };
+    const { win, doc, added } = makeFakes(null);
+    expect(child._ensureSelectionInside(target, win, doc, { selectAll: false })).toBe(true);
+    expect(added.length).toBe(1);
+    expect(added[0]._selected).toBe(target); // selected the target's contents
+    expect(added[0]._collapsed).toBe(false); // collapsed to END
+  });
+
+  it('keeps an existing selection already inside the target (append mode)', () => {
+    const inner = {};
+    const target = { contains: (n) => n === inner };
+    const { win, doc, added } = makeFakes(inner);
+    expect(child._ensureSelectionInside(target, win, doc, { selectAll: false })).toBe(true);
+    expect(added.length).toBe(0); // did NOT replace the caret
+  });
+
+  it('selectAll forces a full-content range even if a selection exists', () => {
+    const inner = {};
+    const target = { contains: (n) => n === inner };
+    const { win, doc, added } = makeFakes(inner);
+    expect(child._ensureSelectionInside(target, win, doc, { selectAll: true })).toBe(true);
+    expect(added.length).toBe(1);
+    expect(added[0]._selected).toBe(target);
+    expect(added[0]._collapsed).toBe(null); // NOT collapsed — whole content selected
+  });
+
+  it('returns false when there is no Selection available', () => {
+    const target = {};
+    const win = { getSelection: () => null };
+    expect(child._ensureSelectionInside(target, win, {}, {})).toBe(false);
   });
 });
 
