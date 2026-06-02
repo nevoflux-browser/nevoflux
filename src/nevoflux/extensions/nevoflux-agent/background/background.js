@@ -3837,31 +3837,14 @@ async function executeNavigateViaApi(tabId, params) {
   try {
     let targetTabId = tabId;
 
-    // Smart tab reuse: before navigating, check if the target URL is
-    // already open in another tab. If so, activate that tab instead of
-    // navigating (which would lose the current page's state).
-    if (!newTab) {
-      try {
-        const hostname = new URL(url).hostname;
-        const existingTabs = await browser.tabs.query({ currentWindow: true });
-        const match = existingTabs.find((t) => {
-          try {
-            return t.url && new URL(t.url).hostname === hostname;
-          } catch {
-            return false;
-          }
-        });
-        if (match) {
-          await browser.tabs.update(match.id, { active: true });
-          return {
-            success: true,
-            result: { url: match.url, tab_id: match.id, activated_existing: true },
-          };
-        }
-      } catch {
-        // URL parse or query failed — fall through to normal navigate
-      }
-    }
+    // NOTE: We deliberately do NOT do "smart tab reuse" here (activating a
+    // pre-existing tab that already has the same hostname). Doing so silently
+    // switched focus to a DIFFERENT tab and returned a different tab_id, while
+    // leaving the requested tab un-navigated (often blank). The agent keeps
+    // driving the original tab_id, so every subsequent get_elements/probe/input
+    // hit the blank tab and returned an empty snapshot — the agent went blind
+    // and gave up. navigate must navigate the tab it was asked to navigate.
+    // Use activate_tab explicitly if a deliberate tab switch is wanted.
 
     if (newTab) {
       // Open in a new tab instead of navigating the current one.
