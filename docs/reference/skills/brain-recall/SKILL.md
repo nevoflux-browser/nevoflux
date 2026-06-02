@@ -60,6 +60,20 @@ Recall answers are grounded in the brain, never invented:
 - **Flag staleness.** If a fact looks outdated (old timeline date, superseded by a later entry), say
   so and note the date.
 
+## Output format
+
+Structure a recall answer as:
+
+1. **Direct answer** to the question, in prose — lead with this, not the search play-by-play.
+2. **Inline citations** next to each claim, tracing to the page and zone, e.g.
+   `According to [people/jane-doe · compiled_truth], she joined Acme in 2025.` **Propagate** any
+   `[Source: …]` markers the page already carries.
+3. **Gap flags** for anything the brain doesn't cover: "Your brain has nothing on X."
+4. **Conflict notes** when sources disagree: state both, each with its citation, and which one wins
+   by precedence — don't silently merge.
+
+Keep it tight and scannable.
+
 ## Retrieve efficiently
 
 - **Decompose** the question into the strategies it needs and run them — keyword (`search`),
@@ -68,8 +82,9 @@ Recall answers are grounded in the brain, never invented:
 - **Chunks vs full page (token-aware).** A factual / yes-no lookup is usually answered from
   `search`/`query` chunks (or `get_chunks`) — don't full-load. Reserve `get_page` (full page) for
   "tell me about X", where the user wants the complete picture.
-- If results look broken or empty in a way that smells like an index problem (not just "nothing
-  saved"), hand off to `brain-care` (`run_doctor` / `get_health`).
+- **Cross-check search quality.** If `query` (hybrid) results look off or thin, re-run with `search`
+  (keyword) and compare — the two paths surface different hits. Persistently broken results (not just
+  empty) → hand off to `brain-care` (`run_doctor` / `get_health`).
 
 ## Core habits
 
@@ -81,6 +96,16 @@ Recall answers are grounded in the brain, never invented:
   presets (conservative/balanced/tokenmax) and knobs (`recency`, `salience`, `since/until`,
   `limit/offset`, `detail`). See `references/query-patterns.md` for worked patterns.
 - Personal-state vs recency vs salience is subtle — `skill_read('brain', 'conventions/salience-and-recency.md')`.
+
+## Anti-patterns
+
+Don't:
+- **Answer from general knowledge** when the brain has relevant content — consult it first.
+- **Fabricate** facts the brain doesn't contain — flag the gap instead.
+- **Silently pick one side** of a conflict — present both with citations.
+- **Full-load pages when chunks suffice** — reserve `get_page` for "tell me about X".
+- **Ignore source precedence** — a casual external note doesn't override the user's own statement.
+- **Run a semantic `query` for personal-state** ("what's notable / 最近") — use salience / anomalies.
 
 ## Stay read-only
 
