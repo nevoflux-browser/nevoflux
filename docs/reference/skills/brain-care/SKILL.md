@@ -16,6 +16,8 @@ triggers:
   - "知识库健康"
   - "同步"
   - "恢复"
+dependencies:
+  - "brain:conventions/brain-first.md"
 allowed_tools:
   - tool_search
   - tool_call_dynamic

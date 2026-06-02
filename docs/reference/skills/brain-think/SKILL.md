@@ -16,6 +16,10 @@ triggers:
   - "谁懂"
   - "趋势"
   - "帮我梳理"
+dependencies:
+  - "brain:conventions/brain-first.md"
+  - "brain:conventions/calibration.md"
+  - "brain:conventions/quality.md"
 allowed_tools:
   - tool_search
   - tool_call_dynamic

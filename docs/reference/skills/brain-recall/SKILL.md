@@ -21,6 +21,10 @@ triggers:
   - "我之前记过"
   - "最近"
   - "日报"
+dependencies:
+  - "brain:conventions/brain-first.md"
+  - "brain:conventions/search-modes.md"
+  - "brain:conventions/salience-and-recency.md"
 allowed_tools:
   - tool_search
   - tool_call_dynamic

@@ -16,6 +16,9 @@ triggers:
   - "存到"
   - "帮我记录"
   - "保存到知识库"
+dependencies:
+  - "brain:conventions/brain-first.md"
+  - "brain:conventions/quality.md"
 allowed_tools:
   - tool_search
   - tool_call_dynamic
