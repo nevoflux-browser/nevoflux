@@ -21,16 +21,18 @@ Pricing: usage-based, ~$0.01/req. [Source: meeting · 2026-05-30]
 ---
 
 ## Timeline
-- **2026-05-30** | Kickoff call — agreed on pilot scope. [Source: meeting]
-- **2026-06-02** | Saw their pricing page; usage-based confirmed. [Source: web https://acme.example/pricing]
+- **2026-06-02** | Saw their pricing page; usage-based confirmed. [Source: Acme, https://acme.example/pricing, 2026-06-02]
+- **2026-05-30** | Kickoff call — agreed on pilot scope. [Source: Meeting "Acme kickoff", 2026-05-30]
 ```
+
+Timeline is **newest first** (reverse-chronological) — the 2026-06-02 entry sits above 2026-05-30.
 
 - **Frontmatter** — `type`, `tags`, dates, optional `source_uri`. Keep keys minimal and consistent
   with existing pages.
 - **`compiled_truth`** (above `---`) — the authoritative, deduplicated summary. Rewrite this for
   clarity as understanding improves. Facts carry inline `[Source: …]` markers.
-- **`---` divider** then **`## Timeline`** (below) — append-only dated bullets. Never edit or remove
-  prior entries.
+- **`---` divider** then **`## Timeline`** (below) — dated bullets, **newest first**. Add new entries
+  at the top; never edit or remove prior ones.
 
 ## Writing it
 
@@ -52,6 +54,7 @@ summary, detail?, source?)`.
 
 ## Rules
 
-- Durable facts → `compiled_truth`; new observation → an **appended** `timeline` bullet.
+- Durable facts → `compiled_truth` (rewrite, don't append); new observation → a `timeline` bullet at
+  the top (newest first).
 - Every fact cites a source (`conventions/quality.md`).
 - Slug follows hybrid filing (`conventions/brain-first.md`); report it back to the user.

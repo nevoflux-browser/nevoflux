@@ -7,7 +7,16 @@ convention for the NevoFlux client.
 ## 1. Citations (every fact)
 
 Every fact written to a page carries an inline source marker so its provenance and freshness are
-verifiable. Format: `[Source: <where> · <YYYY-MM-DD>]`.
+verifiable. Use the format that matches the source type:
+
+| Source | Citation format |
+| --- | --- |
+| User's statement | `[Source: User, {context}, YYYY-MM-DD]` |
+| Meeting | `[Source: Meeting "{title}", YYYY-MM-DD]` |
+| Email / message | `[Source: email from {name} re: {subject}, YYYY-MM-DD]` |
+| Web | `[Source: {publication}, {URL}, YYYY-MM-DD]` |
+| Social | `[Source: X/@{handle}, YYYY-MM-DD]({URL})` |
+| Synthesis | `[Source: compiled from {sources}]` |
 
 Authority hierarchy (highest first) — when sources conflict, prefer the higher:
 1. The user's direct statements (highest authority)

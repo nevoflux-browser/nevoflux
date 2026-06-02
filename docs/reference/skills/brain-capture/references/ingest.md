@@ -14,10 +14,23 @@ Capture external content or a fleeting idea into the brain. Read+write. Enforce
    - A **quick idea** with no clear subject → `inbox/<slug>.md` for later triage. Don't over-file.
 4. **Write the page** (`put_page`): a genuine summary in `compiled_truth` (analysis, not a raw dump),
    each fact cited; append a dated `timeline` entry.
-5. **Cross-reference.** Link mentioned entities both ways (`add_link` + reciprocal back-link). If an
-   author/source is worth tracking, create/curate their page too — but apply the **notability gate**;
-   don't mint thin pages for one-off mentions.
+5. **Cross-reference + timeline merge.** Link mentioned entities both ways (`add_link` + reciprocal
+   back-link). **Merge the event across timelines**: the same event belongs on *every* mentioned
+   entity's timeline — a note that "Alice met Bob at Acme" adds a dated entry to Alice, Bob, *and*
+   Acme. If an author/source is worth tracking, create/curate their page too — but apply the
+   **notability gate**; don't mint thin pages for one-off mentions.
 6. **Confirm** the slug(s) written.
+
+## Capture original thinking verbatim
+
+When the content is the user's **own** thesis, framework, or observation, preserve their **exact
+phrasing** — the user's language *is* the insight. Quote it verbatim in `compiled_truth` rather than
+paraphrasing it away (file under `concepts/` or `writing/`).
+
+## Test before bulk
+
+Ingesting many items at once? **Sample 3–5 first**, show the user the resulting pages, and confirm
+quality before processing the rest — a bad template multiplied across 50 pages is expensive to undo.
 
 ## Quick-idea fast path
 

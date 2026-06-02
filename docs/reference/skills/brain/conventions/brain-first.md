@@ -10,12 +10,12 @@ page has two zones split by a `---` divider:
 
 - **`compiled_truth`** (above `---`) — the curated, deduplicated summary; the current best
   understanding. Treat this as **authoritative**. Answer from here first.
-- **`timeline`** (below `---`) — an **append-only** log of dated observations. Never rewrite history
-  here; only append. Use it for detail and provenance.
+- **`timeline`** (below `---`) — a log of dated observations, **newest first** (reverse-chronological).
+  Add new entries at the top; **never rewrite or delete** prior ones. Use it for detail and provenance.
 
 When reading, prefer `compiled_truth`; fall back to `timeline` for detail. When writing, fold durable
-facts into `compiled_truth` (rewrite for clarity, dedupe) and **append** a dated bullet to
-`timeline` — never delete prior timeline entries.
+facts into `compiled_truth` (rewrite for clarity, dedupe — discard stale contradictions) and add a
+dated bullet to the top of `timeline` (newest first) — never delete prior timeline entries.
 
 ## Filing — hybrid taxonomy
 

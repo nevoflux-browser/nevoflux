@@ -15,6 +15,15 @@ don't hardcode POSIX-only paths.
 | YouTube / Bilibili / video URL | **yt-dlp** → subtitles | download captions, then process the text |
 | standalone audio | **markitdown** (built-in transcription) | else tell the user it's unsupported |
 
+## Screenshots & social posts
+
+- **Screenshot** → OCR/vision to extract, then route by what it *contains*: a tweet → social (below);
+  an article → treat as a web article (`ingest.md`); a chart/data → extract the data points and
+  describe the finding.
+- **Social post (X, etc.)** → fetch the full thread + quoted posts, OCR any images, and **always**
+  keep the direct link to the original (mandatory for the citation). File under `media/x/` or the
+  relevant entity page. Cite `[Source: X/@{handle}, YYYY-MM-DD]({URL})`.
+
 ### PDF heuristic
 Default to **markitdown**. Escalate to **docling** when the PDF is a research paper, financial
 report, or is table/multi-column-heavy. Self-correction: if markitdown's tables come out garbled,

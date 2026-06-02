@@ -56,6 +56,27 @@ Detect what the user handed you and route:
    per `conventions/quality.md`. Cite sources inline.
 6. **Confirm the slug** back to the user.
 
+## Output format
+
+After capturing, report concisely:
+- **Page** — the slug written (and created or updated)
+- **Type** — person / company / concept / meeting / media / inbox
+- **Entities linked** — which pages got reciprocal back-links
+- **Timeline** — dated entries added, and on which pages
+- **Raw source** — where the original was preserved (if any)
+
+## Anti-patterns
+
+Don't:
+- **Append to `compiled_truth`** — rewrite it to the current best understanding, discarding stale
+  contradictions. (The newest-first `timeline` is the append-only log.)
+- **Leave a mention unlinked** — every mentioned entity with a page gets a reciprocal back-link.
+- **Skip raw-source preservation** — a page without provenance is unverifiable.
+- **Bulk-ingest without a sample test** — verify 3–5 first (`references/ingest.md`).
+- **Paraphrase the user's original thinking** — quote their exact words.
+- **Write ambiently on every message** — capture is intent-triggered here; don't silently mutate the
+  brain on turns where the user didn't ask to save.
+
 ## Boundaries
 
 - **Enrichment is on request only** — save what's provided by default; do autonomous web research
