@@ -187,6 +187,25 @@ class MockNevofluxChild {
     return out;
   }
 
+  // Shadow-including containment (mirror of the real NevofluxChild). Walks the
+  // composed (flattened) tree across open shadow boundaries, which
+  // Node.contains() does not.
+  _composedContains(ancestor, node) {
+    let cur = node;
+    while (cur) {
+      if (cur === ancestor) {
+        return true;
+      }
+      if (cur.parentElement) {
+        cur = cur.parentElement;
+      } else {
+        const root = cur.getRootNode ? cur.getRootNode() : null;
+        cur = root && root.host ? root.host : null;
+      }
+    }
+    return false;
+  }
+
   // Shadow-aware active element (mirror of the real NevofluxChild). Descends
   // each focused host's shadowRoot.activeElement so a node focused inside a
   // shadow root is correctly recognized despite doc.activeElement retargeting.
@@ -2833,6 +2852,58 @@ describe('NevofluxChild - Selection establishment', () => {
     const target = {};
     const win = { getSelection: () => null };
     expect(child._ensureSelectionInside(target, win, {}, {})).toBe(false);
+  });
+});
+
+// ===========================================================================
+//  Shadow-including containment (_composedContains)
+//
+//  Regression coverage for the occlusion filter dropping a shadow-DOM modal's
+//  editor: the dialog lives in an open shadow root and Node.contains() can't see
+//  across the boundary, so the modal-membership test failed and the whole modal
+//  was filtered as "occluded" (empty snapshot → agent escalated to computer use).
+//  _composedContains walks the flattened tree across shadow hosts.
+// ===========================================================================
+describe('NevofluxChild - Shadow-including containment', () => {
+  let child;
+  beforeEach(() => {
+    child = new MockNevofluxChild();
+  });
+
+  it('true for a same-tree descendant', () => {
+    const modal = {};
+    const editor = { parentElement: modal };
+    expect(child._composedContains(modal, editor)).toBe(true);
+  });
+
+  it('true ACROSS a shadow boundary (modal host → shadow editor)', () => {
+    // editor is in the modal's shadowRoot: editor.parentElement is null at the
+    // shadow boundary, getRootNode().host hops up to the modal host.
+    const modal = { parentElement: null };
+    const shadowRoot = { host: modal };
+    const editor = { parentElement: null, getRootNode: () => shadowRoot };
+    expect(child._composedContains(modal, editor)).toBe(true);
+  });
+
+  it('true across NESTED shadow boundaries', () => {
+    const modal = { parentElement: null };
+    const outerRoot = { host: modal };
+    const innerHost = { parentElement: null, getRootNode: () => outerRoot };
+    const innerRoot = { host: innerHost };
+    const editor = { parentElement: null, getRootNode: () => innerRoot };
+    expect(child._composedContains(modal, editor)).toBe(true);
+  });
+
+  it('false for a node outside the modal (light-DOM feed element)', () => {
+    const modal = { parentElement: null };
+    const body = { parentElement: null, getRootNode: () => ({ host: null }) };
+    const feedEl = { parentElement: body };
+    expect(child._composedContains(modal, feedEl)).toBe(false);
+  });
+
+  it('true when node === ancestor', () => {
+    const modal = {};
+    expect(child._composedContains(modal, modal)).toBe(true);
   });
 });
 

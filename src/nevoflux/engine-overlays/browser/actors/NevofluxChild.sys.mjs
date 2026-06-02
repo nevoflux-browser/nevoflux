@@ -572,8 +572,9 @@ export class NevofluxChild extends JSWindowActorChild {
     // Detect modal scroll state for viewportInfo and compact output
     let modalScrollInfo = null;
     try {
-      const modalNodes = doc.querySelectorAll(
-        '[role="dialog"], [role="alertdialog"], [aria-modal="true"]'
+      const modalNodes = this._deepQuerySelectorAll(
+        '[role="dialog"], [role="alertdialog"], [aria-modal="true"]',
+        doc
       );
       for (const modal of modalNodes) {
         const rect = modal.getBoundingClientRect();
@@ -1304,10 +1305,19 @@ export class NevofluxChild extends JSWindowActorChild {
     // When a modal dialog is open, its backdrop causes elementFromPoint to
     // return the overlay for ALL page elements, resulting in 0 hits.
     // Fix: skip elementFromPoint for modal children; filter out non-modal elements.
+    //
+    // Detect modals SHADOW-AWARE: web-component UIs (e.g. LinkedIn's post
+    // composer) mount the dialog inside an OPEN shadow root, so a light-DOM
+    // doc.querySelectorAll misses it — the shortcut never fires and the standard
+    // elementFromPoint sampling (which can't hit shadow nodes: it returns the
+    // host or null) filters the entire modal out as "occluded". Confirmed on
+    // LinkedIn: dialog only visible via shadow-pierced query, editor center
+    // elementFromPoint → null.
     const activeModals = [];
     try {
-      const modalNodes = doc.querySelectorAll(
-        '[role="dialog"], [role="alertdialog"], [aria-modal="true"]'
+      const modalNodes = this._deepQuerySelectorAll(
+        '[role="dialog"], [role="alertdialog"], [aria-modal="true"]',
+        doc
       );
       for (const modal of modalNodes) {
         try {
@@ -1328,7 +1338,9 @@ export class NevofluxChild extends JSWindowActorChild {
 
       // ── Modal shortcut ──
       if (hasActiveModal) {
-        const isInModal = activeModals.some((m) => m.contains(el.node));
+        // Shadow-including membership: the editor lives inside the dialog's
+        // shadow tree, which plain Node.contains() can't see across.
+        const isInModal = activeModals.some((m) => this._composedContains(m, el.node));
         if (isInModal) {
           // Modal children: skip elementFromPoint (backdrop interferes),
           // just verify the element is within the viewport and has size.
@@ -2028,6 +2040,27 @@ export class NevofluxChild extends JSWindowActorChild {
       }
     }
     return out;
+  }
+
+  // Shadow-including containment: true if `node` is `ancestor`, or a descendant
+  // of it in the FLATTENED (composed) tree — i.e. crossing open shadow
+  // boundaries, which Node.contains() does NOT do. Used by occlusion's
+  // modal-membership test so a shadow-encapsulated editor counts as "inside the
+  // modal".
+  _composedContains(ancestor, node) {
+    let cur = node;
+    while (cur) {
+      if (cur === ancestor) {
+        return true;
+      }
+      if (cur.parentElement) {
+        cur = cur.parentElement;
+      } else {
+        const root = cur.getRootNode ? cur.getRootNode() : null;
+        cur = root && root.host ? root.host : null;
+      }
+    }
+    return false;
   }
 
   // ── Shadow-aware active element ──
