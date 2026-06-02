@@ -33,11 +33,16 @@ Read from the user's knowledge base and answer from it. This is the most common 
 ## Brain basics (always apply)
 
 Non-negotiable — these hold for every recall, no extra reading required:
+- **Re-query every time.** Each invocation pulls fresh from the brain (`query`/`search` → `get_page`).
+  Never recite from conversation history — even for a repeated question, run the retrieval again.
 - **Pages** have `compiled_truth` (the authoritative summary) above a `---` divider and an
   append-only, **newest-first** `timeline` below. Answer from `compiled_truth` first.
 - **Reach gbrain tools dynamically**: `tool_search` (query `brain` / `知识库` / `gbrain` / the topic)
   → `tool_call_dynamic(name, args)`; retry once with `知识库`/`gbrain` if empty.
-- **Always cite the page slug** you read from, and propagate any `[Source: …]` markers.
+- **Cite the slug *with its zone*** for every claim — `[slug · compiled_truth]` or `[slug · timeline]`
+  — and **propagate** any `[Source: …]` markers the page carries so facts trace to origin.
+- **Flag gaps and additions.** Say "your brain has nothing on X" rather than filling from general
+  knowledge; if you add anything not on the page, mark it as supplemental, not recalled.
 - The brain is **personal memory** — don't use it for world knowledge, live web, or the current page.
 
 Full conventions when you need depth: `skill_read('brain', 'conventions/brain-first.md')` and the
