@@ -36,7 +36,7 @@ Reach gbrain via `tool_search` + `tool_call_dynamic`.
 | "connect the dots / what's the pattern / 帮我梳理" (multi-hop, conflict, gap) | `think` | `references/think-usage.md` |
 | "who knows about X / who should I talk to / 谁懂 X" | `find_experts` | — |
 | "how has X trended / is X consistent / X 的趋势" | `find_trajectory` | — |
-| "how are these related" (multi-hop relationships) | `traverse_graph` (depth, link_type, direction) | — |
+| "how are these related" (open / deep multi-hop) | `traverse_graph` (deep; shallow typed lookups like "who works at X" are `brain-recall`) | — |
 | "what's my track record / am I well-calibrated" | `takes_scorecard` / `takes_calibration` / `get_calibration_profile` | `references/takes-and-calibration.md` |
 
 Use `think` for genuinely *analytical* questions — synthesis, conflicts, gaps. A simple lookup

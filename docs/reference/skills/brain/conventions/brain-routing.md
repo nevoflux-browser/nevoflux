@@ -13,7 +13,7 @@ than one could apply, use the disambiguation rules at the bottom.
 | "what's going on with me / what's notable" / "最近有什么" | `get_recent_salience` / `find_anomalies` |
 | "what did I touch this week" / "我这周改了什么" | `list_pages sort=updated_desc` |
 | "catch me up / daily briefing" / "日报" | briefing workflow (recall) |
-| "what links to this / what's related" / "和这个相关的" | `get_backlinks` / `get_links` |
+| "what links to / who works at / connected to" / "和这个相关的" | `get_links` / `get_backlinks`; shallow `traverse_graph` (link_type, depth<=2) |
 
 ### brain-capture (WRITE / INGEST)
 | Intent | Primary tool |
@@ -31,7 +31,7 @@ than one could apply, use the disambiguation rules at the bottom.
 | "connect the dots / synthesize" / "帮我梳理" | `think` |
 | "who knows about X / who should I talk to" / "谁懂 X" | `find_experts` |
 | "how has X trended / is X consistent" / "X 的趋势" | `find_trajectory` |
-| "how are these related" (multi-hop) / "关系图" | `traverse_graph` |
+| "how are these related" (open / deep multi-hop) / "关系图" | `traverse_graph` (deep) |
 | "what's my track record / am I calibrated" | `takes_scorecard` / `takes_calibration` |
 | "build my concept map" / "整理我的概念" | concept-map workflow → `put_page` |
 | "read X through the lens of my problem Y" | strategic-reading workflow → `put_page` |

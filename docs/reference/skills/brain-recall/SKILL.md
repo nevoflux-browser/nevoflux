@@ -7,11 +7,16 @@ tags: [brain, knowledge-base, gbrain, recall, search, briefing]
 enabled: true
 triggers:
   - "what do I know about"
+  - "tell me about"
+  - "what happened with"
+  - "background on"
   - "what's going on with me"
   - "what did I touch"
   - "daily briefing"
   - "catch me up"
   - "what links to"
+  - "who works at"
+  - "connected to"
   - "我的知识库里有"
   - "我之前记过"
   - "最近"
@@ -36,8 +41,35 @@ tools via `tool_search` + `tool_call_dynamic` (see that file).
 | **"What did I touch this week / recently"** | `list_pages` with `sort=updated_desc` (optionally `updated_after`). Pure recency, not search. |
 | A **quick fact / preference** ("what's my…") | `recall` (hot-memory facts), optionally filtered by `entity`/`since`. |
 | **History of an entity** ("timeline of X") | `get_timeline` on the entity's slug. |
-| **"What's related / what links here"** | `get_links` (outgoing) / `get_backlinks` (incoming). For multi-hop relationship reasoning, that's `brain-think` (`traverse_graph`). |
+| **"What's related / who works at / connected to"** | Direct edges: `get_links` (outgoing) / `get_backlinks` (incoming). Typed relationship lookup: `traverse_graph` with a `link_type` + `depth ≤ 2` (e.g. "who works at Acme" → `works_at`, direction `in`). See `references/query-patterns.md`. Open / deep multi-hop reasoning → `brain-think`. |
 | **"Catch me up / daily briefing / 日报"** | Read `references/briefing.md` and run the read-only digest. |
+
+## Answering — the contract
+
+Recall answers are grounded in the brain, never invented:
+
+- **No hallucination.** Answer only from brain content. When the brain has nothing relevant, say so
+  plainly ("your brain doesn't have anything on X") and offer to research + save — don't quietly fill
+  the gap from general knowledge.
+- **Cite the slug for every claim**, and **propagate** a page's own inline `[Source: …]` markers so
+  the user can trace each fact to its origin.
+- **Source precedence** when synthesizing or resolving disagreement: the user's direct statements >
+  `compiled_truth` > `timeline` > external sources. Lead with the higher.
+- **Surface conflicts, don't hide them.** If sources disagree, present both with their citations
+  rather than silently picking one.
+- **Flag staleness.** If a fact looks outdated (old timeline date, superseded by a later entry), say
+  so and note the date.
+
+## Retrieve efficiently
+
+- **Decompose** the question into the strategies it needs and run them — keyword (`search`),
+  semantic (`query`), relational (`get_links`/`get_backlinks`) — then read the **top 3–5** hits
+  before answering. Don't stop at the first hit for a "tell me about" question.
+- **Chunks vs full page (token-aware).** A factual / yes-no lookup is usually answered from
+  `search`/`query` chunks (or `get_chunks`) — don't full-load. Reserve `get_page` (full page) for
+  "tell me about X", where the user wants the complete picture.
+- If results look broken or empty in a way that smells like an index problem (not just "nothing
+  saved"), hand off to `brain-care` (`run_doctor` / `get_health`).
 
 ## Core habits
 

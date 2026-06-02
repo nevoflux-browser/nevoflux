@@ -30,7 +30,7 @@ Owner legend: **R**=brain-recall · **C**=brain-capture · **T**=brain-think · 
 ## Graph / links
 - `get_links` / `get_backlinks` — outgoing / incoming links for a page. — R
 - `add_link` / `remove_link` — create / remove an edge (typed). — C
-- `traverse_graph` — multi-hop graph walk (depth, direction, link_type). — T
+- `traverse_graph` — graph walk (depth, direction, link_type). — R (shallow typed, depth<=2) · T (deep / open multi-hop)
 - `find_orphans` — pages with no inbound links. — Ca
 
 ## Timeline
