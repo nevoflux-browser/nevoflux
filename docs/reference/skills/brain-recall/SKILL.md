@@ -1,6 +1,6 @@
 ---
 name: brain-recall
-description: Read and recall from the user's knowledge base (gbrain) — search and query pages, recall facts, surface what is notable or recent, browse links and timelines, and produce read-only briefings. Use whenever the user asks what they know about a person, company, or concept, asks what is going on with them, what they touched recently, wants a catch-up digest, or says 我的知识库里有没有 / 我之前记过 / 最近有什么. Personal-state questions use salience and anomalies, not semantic search.
+description: Read and recall from the user's knowledge base (gbrain) — search and query saved pages, recall facts, see what is notable or recent, browse a page's links and backlinks (what references it), read timelines, and give a read-only catch-up digest of their brain. Use whenever the user asks what they know about a person, company, or concept, what is going on with them, what they touched recently, what links to or mentions a page in their notes, or says 我的知识库里有没有 / 我之前记过 / 最近有什么. Personal-state questions (what is notable) use salience and anomalies, not semantic search. Not for the current web page or live web facts — use browser tools for those.
 version: "1.0.0"
 author: "NevoFlux"
 tags: [brain, knowledge-base, gbrain, recall, search, briefing]
@@ -11,6 +11,7 @@ triggers:
   - "what did I touch"
   - "daily briefing"
   - "catch me up"
+  - "what links to"
   - "我的知识库里有"
   - "我之前记过"
   - "最近"

@@ -1,6 +1,6 @@
 ---
 name: brain-think
-description: Synthesize and analyze across the user's brain (gbrain) — multi-hop cited answers (think), expertise routing (who knows about a topic), entity trajectories and trends, relationship-graph traversal, and prediction calibration (takes, bets, Brier scores). Persist syntheses on request (concept maps, strategic-reading playbooks). Use for connect the dots, who should I talk to about, how has X trended, what is my track record, build my concept map, read this through the lens of, 谁懂, 趋势, 帮我梳理.
+description: Synthesize and analyze across the user's brain (gbrain) — multi-hop cited answers (think), expertise routing (who is knowledgeable about a topic, who to talk to), entity trajectories and trends, relationship-graph traversal, and prediction calibration (takes, bets, Brier scores). Persist syntheses on request (concept maps, strategic-reading playbooks). Use for connect the dots, who knows about, who should I talk to about, how has X trended, what is my track record, build my concept map, read this through the lens of, 谁懂, 趋势, 帮我梳理. For analysis and synthesis — not simple lookups (use brain-recall) and not saving provided content (use brain-capture).
 version: "1.0.0"
 author: "NevoFlux"
 tags: [brain, knowledge-base, gbrain, think, synthesis, calibration, experts]

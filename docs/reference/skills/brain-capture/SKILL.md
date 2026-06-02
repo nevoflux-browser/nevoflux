@@ -1,6 +1,6 @@
 ---
 name: brain-capture
-description: Save and ingest knowledge into the user's brain (gbrain). File new pages with a hybrid taxonomy, update compiled_truth and append dated timeline entries, tag and link pages, capture webpages, and ingest documents and media (PDF via markitdown or docling, office and ebook and zip via markitdown, YouTube and Bilibili subtitles via yt-dlp, images via vision). Enrich entity pages with web research on request. Use for save this, 记到知识库, 存到, remember that, ingest this, process this meeting or PDF or video, 帮我记录.
+description: Save and ingest knowledge into the user's brain (gbrain). File new pages with a hybrid taxonomy, update compiled_truth and append dated timeline entries, tag and link pages, jot a quick note or fact, capture webpages, and ingest documents and media (PDF via markitdown or docling, office and ebook and zip via markitdown, YouTube and Bilibili subtitles via yt-dlp, images via vision). Enrich entity pages with web research on request. Use for save this, 记一下, 记到知识库, 存到, remember that, ingest this, process this meeting or PDF or video, 帮我记录.
 version: "1.0.0"
 author: "NevoFlux"
 tags: [brain, knowledge-base, gbrain, capture, ingest, enrich, media]
@@ -11,6 +11,7 @@ triggers:
   - "ingest this"
   - "process this"
   - "enrich"
+  - "记一下"
   - "记到知识库"
   - "存到"
   - "帮我记录"
