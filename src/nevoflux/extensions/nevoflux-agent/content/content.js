@@ -860,7 +860,9 @@ function actionSnapshot(params = {}) {
     "input:not([type='hidden'])",
     'textarea',
     'select',
-    "[contenteditable='true']",
+    // Any editable contenteditable value (true / "" / plaintext-only); excludes the
+    // explicit opt-out. Covers Gmail compose ("plaintext-only") and bare <div contenteditable>.
+    '[contenteditable]:not([contenteditable="false"])',
     // Interactive widgets
     "[role='link']",
     "[role='menuitem']",
@@ -902,6 +904,68 @@ function actionSnapshot(params = {}) {
 
   const elements = [];
   const seen = new Set();
+
+  // Pass 4 — known editor framework selectors. Run FIRST so the snapshot's
+  // `selector` field uses the stable framework anchor (e.g. ".ProseMirror",
+  // '[data-slate-editor="true"]') instead of generateSelector's nth-of-type
+  // fallback for editors whose unique identity is a data-* attribute. Marking
+  // these in `seen` first also makes the broadened Pass 2 contenteditable
+  // selector skip the same element on its turn.
+  const editorSelectors = [
+    '.ProseMirror',
+    '[data-slate-editor="true"]',
+    '[data-lexical-editor="true"]',
+    '.ql-editor',
+    '.cm-content', // CodeMirror 6
+    '.CodeMirror-code', // CodeMirror 5 (legacy but still in production use)
+    '.public-DraftEditor-content', // Draft.js
+  ];
+  for (const sel of editorSelectors) {
+    try {
+      const matches = document.querySelectorAll(sel);
+      for (const el of matches) {
+        if (seen.has(el)) continue;
+        if (!include_hidden && !isInteractable(el)) continue;
+        seen.add(el);
+
+        const elementId = ++snapshotCounter;
+        snapshotElements.set(elementId, el);
+        el.setAttribute('data-nevoflux-id', elementId);
+
+        const rect = el.getBoundingClientRect();
+        const tagName = el.tagName.toLowerCase();
+        // Use the framework anchor directly when unique on the page;
+        // fall back to generateSelector only if there are multiple instances.
+        const stableSelector = matches.length === 1 ? sel : generateSelector(el);
+
+        elements.push({
+          id: elementId,
+          tag: tagName,
+          type: `${tagName}[editor]`,
+          text: getAccessibleText(el),
+          selector: stableSelector,
+          rect: {
+            x: Math.round(rect.x),
+            y: Math.round(rect.y),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          },
+          attributes: {
+            id: el.id || null,
+            name: el.name || null,
+            href: null,
+            value: null,
+            placeholder:
+              el.getAttribute('placeholder') || el.getAttribute('aria-placeholder') || null,
+            disabled: false,
+            readonly: false,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn(`[NevoFlux] Snapshot editor selector error: ${sel}`, e);
+    }
+  }
 
   // First add cursor:pointer elements (they're often the actual clickable targets)
   for (const el of cursorPointerElements) {

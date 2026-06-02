@@ -459,17 +459,17 @@ export class NevofluxChild extends JSWindowActorChild {
   // ========== Data Extraction ==========
 
   getText({ selector }) {
-    const el = this.currentDoc?.querySelector(selector);
+    const el = this._deepQuerySelector(selector, this.currentDoc);
     return el?.textContent || '';
   }
 
   getHtml({ selector }) {
-    const el = this.currentDoc?.querySelector(selector);
+    const el = this._deepQuerySelector(selector, this.currentDoc);
     return el?.innerHTML || '';
   }
 
   getValue({ selector }) {
-    const el = this.currentDoc?.querySelector(selector);
+    const el = this._deepQuerySelector(selector, this.currentDoc);
     return el?.value || '';
   }
 
@@ -572,8 +572,9 @@ export class NevofluxChild extends JSWindowActorChild {
     // Detect modal scroll state for viewportInfo and compact output
     let modalScrollInfo = null;
     try {
-      const modalNodes = doc.querySelectorAll(
-        '[role="dialog"], [role="alertdialog"], [aria-modal="true"]'
+      const modalNodes = this._deepQuerySelectorAll(
+        '[role="dialog"], [role="alertdialog"], [aria-modal="true"]',
+        doc
       );
       for (const modal of modalNodes) {
         const rect = modal.getBoundingClientRect();
@@ -895,8 +896,26 @@ export class NevofluxChild extends JSWindowActorChild {
       if (ti >= 0) return 'tabindex';
     }
 
-    // Standard: contenteditable
-    if (el.isContentEditable && el.getAttribute('contenteditable') === 'true') return 'editable';
+    // Standard: contenteditable HOST — match every editable value the HTML
+    // spec allows (true / "" / plaintext-only), but only on elements that
+    // explicitly declare the attribute (the editor host), not inherited
+    // descendants (which would flood the snapshot with one entry per child).
+    const ceAttr = el.getAttribute('contenteditable');
+    if (ceAttr === 'true' || ceAttr === '' || ceAttr === 'plaintext-only') return 'editable';
+
+    // Framework rich-text editors. Slate/Lexical anchor on data-* attributes
+    // and frequently expose NO role=textbox, so the a11y pass misses them;
+    // ProseMirror/Quill/CodeMirror/Draft.js anchor on stable classes. Surface
+    // the editor host so the LLM gets a usable selector for browser_input.
+    try {
+      if (
+        el.matches(
+          '.ProseMirror, [data-slate-editor="true"], [data-lexical-editor="true"], .ql-editor, .cm-content, .CodeMirror-code, .public-DraftEditor-content'
+        )
+      ) {
+        return 'editable';
+      }
+    } catch {}
 
     // Heuristic: cursor:pointer with text and no child interactive elements
     try {
@@ -1286,10 +1305,19 @@ export class NevofluxChild extends JSWindowActorChild {
     // When a modal dialog is open, its backdrop causes elementFromPoint to
     // return the overlay for ALL page elements, resulting in 0 hits.
     // Fix: skip elementFromPoint for modal children; filter out non-modal elements.
+    //
+    // Detect modals SHADOW-AWARE: web-component UIs (e.g. LinkedIn's post
+    // composer) mount the dialog inside an OPEN shadow root, so a light-DOM
+    // doc.querySelectorAll misses it — the shortcut never fires and the standard
+    // elementFromPoint sampling (which can't hit shadow nodes: it returns the
+    // host or null) filters the entire modal out as "occluded". Confirmed on
+    // LinkedIn: dialog only visible via shadow-pierced query, editor center
+    // elementFromPoint → null.
     const activeModals = [];
     try {
-      const modalNodes = doc.querySelectorAll(
-        '[role="dialog"], [role="alertdialog"], [aria-modal="true"]'
+      const modalNodes = this._deepQuerySelectorAll(
+        '[role="dialog"], [role="alertdialog"], [aria-modal="true"]',
+        doc
       );
       for (const modal of modalNodes) {
         try {
@@ -1310,7 +1338,9 @@ export class NevofluxChild extends JSWindowActorChild {
 
       // ── Modal shortcut ──
       if (hasActiveModal) {
-        const isInModal = activeModals.some((m) => m.contains(el.node));
+        // Shadow-including membership: the editor lives inside the dialog's
+        // shadow tree, which plain Node.contains() can't see across.
+        const isInModal = activeModals.some((m) => this._composedContains(m, el.node));
         if (isInModal) {
           // Modal children: skip elementFromPoint (backdrop interferes),
           // just verify the element is within the viewport and has size.
@@ -1925,11 +1955,178 @@ export class NevofluxChild extends JSWindowActorChild {
     return null;
   }
 
+  // ── Shadow-piercing query helpers ──
+  //
+  // A flat doc.querySelector() stops at every OPEN shadow boundary. Sites that
+  // render editors inside web components (e.g. LinkedIn's post composer — a
+  // contenteditable/.ql-editor living in an open shadowRoot) are therefore
+  // invisible to every selector-resolution path: probe, click, input, type,
+  // waitForSelector and the data-ai-id snapshot lookup all silently return
+  // "not found". These helpers try the fast light-DOM query first, then
+  // breadth-first descend every open shadowRoot and retry the selector inside
+  // each one.
+  //
+  // NOTE: a selector is matched WITHIN each shadow root, so a descendant
+  // combinator can't span a host boundary (per the CSS scoping spec). Pass the
+  // editor's own compound selector (".ql-editor"), not a light-DOM-rooted path.
+
+  _deepQuerySelector(selector, doc = this.currentDoc) {
+    if (!doc || !selector) {
+      return null;
+    }
+    let flat;
+    try {
+      flat = doc.querySelector(selector);
+    } catch {
+      return null; // invalid selector — fail the same way querySelector would
+    }
+    if (flat) {
+      return flat;
+    }
+    const roots = [doc];
+    while (roots.length) {
+      const root = roots.shift();
+      let all;
+      try {
+        all = root.querySelectorAll('*');
+      } catch {
+        continue;
+      }
+      for (const el of all) {
+        const sr = el.shadowRoot;
+        if (!sr) {
+          continue;
+        }
+        try {
+          const hit = sr.querySelector(selector);
+          if (hit) {
+            return hit;
+          }
+        } catch {} // selector already validated above; stay defensive
+        roots.push(sr);
+      }
+    }
+    return null;
+  }
+
+  _deepQuerySelectorAll(selector, doc = this.currentDoc) {
+    const out = [];
+    if (!doc || !selector) {
+      return out;
+    }
+    try {
+      out.push(...doc.querySelectorAll(selector));
+    } catch {
+      return out; // invalid selector
+    }
+    const roots = [doc];
+    while (roots.length) {
+      const root = roots.shift();
+      let all;
+      try {
+        all = root.querySelectorAll('*');
+      } catch {
+        continue;
+      }
+      for (const el of all) {
+        const sr = el.shadowRoot;
+        if (!sr) {
+          continue;
+        }
+        try {
+          out.push(...sr.querySelectorAll(selector));
+        } catch {}
+        roots.push(sr);
+      }
+    }
+    return out;
+  }
+
+  // Shadow-including containment: true if `node` is `ancestor`, or a descendant
+  // of it in the FLATTENED (composed) tree — i.e. crossing open shadow
+  // boundaries, which Node.contains() does NOT do. Used by occlusion's
+  // modal-membership test so a shadow-encapsulated editor counts as "inside the
+  // modal".
+  _composedContains(ancestor, node) {
+    let cur = node;
+    while (cur) {
+      if (cur === ancestor) {
+        return true;
+      }
+      if (cur.parentElement) {
+        cur = cur.parentElement;
+      } else {
+        const root = cur.getRootNode ? cur.getRootNode() : null;
+        cur = root && root.host ? root.host : null;
+      }
+    }
+    return false;
+  }
+
+  // ── Shadow-aware active element ──
+  //
+  // `document.activeElement` is RETARGETED at every shadow boundary: when a
+  // node inside an open shadow root is focused, doc.activeElement reports the
+  // shadow HOST, not the focused node. So `target.focus()` succeeds yet
+  // `doc.activeElement === target` is false — a false "Could not focus target".
+  // This descends each focused host's shadowRoot.activeElement to return the
+  // TRUE innermost focused element (works for nested shadow too).
+  _deepActiveElement(doc = this.currentDoc) {
+    let active = doc?.activeElement || null;
+    try {
+      while (active?.shadowRoot?.activeElement) {
+        active = active.shadowRoot.activeElement;
+      }
+    } catch {}
+    return active;
+  }
+
+  // ── Ensure a Selection range exists inside an editable target ──
+  //
+  // document.execCommand('insertText'/'selectAll'/'delete') operates on the
+  // current document Selection. element.focus() alone does NOT always place a
+  // caret inside a contenteditable host — notably one inside an open shadow
+  // root that was never clicked. With no range in the editor, execCommand
+  // silently no-ops yet returns true, so insertion looks like it succeeded
+  // while nothing changed. Establishing an explicit Range fixes this (verified:
+  // Selection-API range + insertText inserts into LinkedIn's shadow Quill where
+  // bare focus()+insertText and synthetic paste both did nothing).
+  //
+  // selectAll=false → collapse to END (caret for append/insert semantics).
+  // selectAll=true  → select the whole content (so insertText REPLACES it).
+  _ensureSelectionInside(target, win, doc, { selectAll = false } = {}) {
+    try {
+      const sel = win.getSelection();
+      if (!sel) {
+        return false;
+      }
+      // Keep an existing selection that's already inside the target (unless we
+      // explicitly want to select-all to replace).
+      if (!selectAll && sel.rangeCount > 0) {
+        const node = sel.getRangeAt(0).commonAncestorContainer;
+        if (target === node || target.contains?.(node)) {
+          return true;
+        }
+      }
+      const range = doc.createRange();
+      range.selectNodeContents(target);
+      if (!selectAll) {
+        range.collapse(false); // caret at end
+      }
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // ── Resolve element by snapshot ID (used by act operations) ──
 
   resolveSnapshotElement(id, doc) {
-    // 1. Direct data-ai-id lookup (O(1))
-    const direct = doc.querySelector(`[data-ai-id="${id}"]`);
+    // 1. Direct data-ai-id lookup (O(1)) — shadow-piercing so snapshot refs
+    //    captured inside open shadow roots remain resolvable by clickById/input.
+    const direct = this._deepQuerySelector(`[data-ai-id="${id}"]`, doc);
     if (direct) return direct;
     return null;
   }
@@ -2010,7 +2207,7 @@ export class NevofluxChild extends JSWindowActorChild {
     const win = this.currentWin;
     if (!doc || !win) return false;
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) return false;
 
     const rect = el.getBoundingClientRect();
@@ -2026,7 +2223,7 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   exists({ selector }) {
-    return this.currentDoc?.querySelector(selector) !== null;
+    return this._deepQuerySelector(selector, this.currentDoc) !== null;
   }
 
   // ========== Interaction ==========
@@ -2042,7 +2239,7 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     // 1. Get the element from selector
-    let el = doc.querySelector(selector);
+    let el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,
@@ -2344,7 +2541,7 @@ export class NevofluxChild extends JSWindowActorChild {
       return { success: false, error: { code: 5001, message: 'No document or window available', recoverable: false } };
     }
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return { success: false, error: { code: 1001, message: 'Element not found', recoverable: true } };
     }
@@ -2377,12 +2574,15 @@ export class NevofluxChild extends JSWindowActorChild {
       return { success: true };
     }
 
-    // contentEditable branch — per-character paste preserving "append" semantics
-    for (const ch of String(text)) {
-      const r = this.paste({ selector, text: ch });
-      if (!r.success) return r;
-    }
-    return { success: true };
+    // contentEditable branch — single insertText preserving "append" semantics.
+    //
+    // This was a per-character loop, but each iteration re-ran paste(), which
+    // re-resolves the selector (a shadow-DOM BFS over querySelectorAll('*')) and
+    // re-focuses. For long text on a large page (e.g. a multi-paragraph post into
+    // LinkedIn's shadow Quill) that is O(chars × DOM) and can stall. A single
+    // execCommand('insertText') inserts the whole string at the caret in one op,
+    // appending identically.
+    return this.paste({ selector, text: String(text) });
   }
 
   fill({ selector, text }) {
@@ -2394,7 +2594,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,
@@ -2446,7 +2646,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,
@@ -2466,27 +2666,42 @@ export class NevofluxChild extends JSWindowActorChild {
         error: { code: 1002, message: `Focus threw: ${e.message}`, recoverable: true },
       };
     }
-    if (doc.activeElement !== target) {
+    // Shadow-aware focus check: doc.activeElement is retargeted to the shadow
+    // host for nodes inside a shadow root, so compare against the true focused
+    // element resolved through shadow boundaries.
+    if (this._deepActiveElement(doc) !== target) {
       return {
         success: false,
         error: { code: 1002, message: 'Could not focus target', recoverable: true },
       };
     }
 
+    // Ensure a caret exists INSIDE the target before execCommand. focus() alone
+    // does not place a selection for an unclicked contenteditable (especially in
+    // a shadow root), and document.execCommand('insertText') then silently
+    // no-ops while returning true.
+    this._ensureSelectionInside(target, win, doc, { selectAll: false });
+
     // Primary path: document.execCommand('insertText', ...)
     //
     // This is the universal insertion method for contentEditable. It works for:
     // - Plain contentEditable (native browser inserts the text)
-    // - Draft.js / Lexical / ProseMirror / Slate (they listen to beforeinput/input
-    //   events which execCommand generates, and update their internal state)
+    // - Draft.js / Lexical / ProseMirror / Slate / Quill (they listen to
+    //   beforeinput/input events which execCommand generates, and update their
+    //   internal state)
     //
     // Why NOT synthetic ClipboardEvent as primary: dispatchEvent produces untrusted
     // events (isTrusted === false). Firefox refuses to execute default actions for
     // untrusted events, so plain contentEditable silently drops the paste. Only
     // frameworks with explicit paste handlers see the synthetic event.
+    //
+    // Verify the DOM actually changed: execCommand returns true even when it
+    // inserted nothing (the shadow/no-caret case), so a bare `if (ok)` would
+    // report false success and skip the fallback below.
     try {
+      const before = target.textContent;
       const ok = doc.execCommand('insertText', false, String(text));
-      if (ok) {
+      if (ok && target.textContent !== before) {
         return { success: true };
       }
     } catch (e) {
@@ -2543,7 +2758,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,
@@ -2561,11 +2776,11 @@ export class NevofluxChild extends JSWindowActorChild {
 
     // Select all existing content via execCommand('selectAll').
     //
-    // IMPORTANT: do NOT use the Selection API (win.getSelection + range.selectNodeContents)
-    // for this step. Framework editors like Draft.js maintain their own internal selection
-    // state and only sync it from execCommand calls, not from raw DOM Selection API
-    // manipulation. Using the Selection API causes Draft.js to think the cursor is collapsed,
-    // so the subsequent insertText appends instead of replacing.
+    // IMPORTANT: prefer execCommand('selectAll') here. Framework editors like
+    // Draft.js maintain their own internal selection state and only sync it from
+    // execCommand calls, not from raw DOM Selection API manipulation. Using the
+    // Selection API for Draft.js causes it to think the cursor is collapsed, so
+    // the subsequent insertText appends instead of replacing.
     try {
       doc.execCommand('selectAll', false, null);
     } catch (e) {
@@ -2575,11 +2790,30 @@ export class NevofluxChild extends JSWindowActorChild {
 
     // Primary path: execCommand('insertText', ...) with full selection = replace content.
     // Draft.js, Lexical, ProseMirror, and plain contentEditable all handle this correctly
-    // when selectAll was issued via execCommand above.
+    // when selectAll was issued via execCommand above. Verify the DOM actually
+    // changed — execCommand returns true even on a no-op.
     try {
+      const before = target.textContent;
       const ok = doc.execCommand('insertText', false, String(text));
-      if (ok) {
+      if (ok && target.textContent !== before) {
         return { success: true };
+      }
+    } catch (e) {
+      // Fall through to the Selection-API retry / paste() fallback
+    }
+
+    // Shadow / never-clicked retry: document-scoped execCommand('selectAll')
+    // does NOT reach a contenteditable inside an open shadow root, so the
+    // insertText above no-ops. Establish a full-content Selection range
+    // explicitly (verified to work on LinkedIn's shadow Quill), then insert to
+    // replace.
+    try {
+      const before = target.textContent;
+      if (this._ensureSelectionInside(target, win, doc, { selectAll: true })) {
+        const ok = doc.execCommand('insertText', false, String(text));
+        if (ok && target.textContent !== before) {
+          return { success: true };
+        }
       }
     } catch (e) {
       // Fall through to the paste() fallback
@@ -2605,7 +2839,7 @@ export class NevofluxChild extends JSWindowActorChild {
    * Constructs File in content realm so the page's JS sees it.
    */
   async uploadFile({ selector, fileUrl, fileName, mimeType }) {
-    const el = this.doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, this.doc);
     if (!el) {
       return {
         success: false,
@@ -2694,7 +2928,7 @@ export class NevofluxChild extends JSWindowActorChild {
     const startTime = Date.now();
 
     while (Date.now() - startTime < timeout) {
-      const el = this.currentDoc.querySelector(selector);
+      const el = this._deepQuerySelector(selector, this.currentDoc);
 
       const stateChecks = {
         attached: () => el !== null,
@@ -2846,7 +3080,7 @@ export class NevofluxChild extends JSWindowActorChild {
       }
     });
 
-    observer.observe(doc.body || doc.documentElement, {
+    const observeOpts = {
       childList: true,
       subtree: true,
       attributes: true,
@@ -2862,7 +3096,41 @@ export class NevofluxChild extends JSWindowActorChild {
         'data-state',
         'data-active',
       ],
-    });
+    };
+
+    observer.observe(doc.body || doc.documentElement, observeOpts);
+
+    // Also observe inside OPEN shadow roots. A MutationObserver with
+    // subtree:true does NOT cross shadow boundaries, so a click that mounts or
+    // reveals content inside an existing shadow root (e.g. LinkedIn's
+    // post-composer modal, which lives in shadow DOM) would otherwise leave
+    // domChanged=false — the click gets misjudged "ineffective" and the agent
+    // retries pointlessly. (A brand-new shadow HOST added to the light DOM is
+    // already caught above as a childList mutation; this covers changes WITHIN
+    // pre-existing shadow roots.) The same noise filtering in the callback
+    // applies, bounding false positives from background shadow components.
+    try {
+      const roots = [doc];
+      while (roots.length) {
+        const root = roots.shift();
+        let all;
+        try {
+          all = root.querySelectorAll('*');
+        } catch {
+          continue;
+        }
+        for (const elx of all) {
+          const sr = elx.shadowRoot;
+          if (!sr) {
+            continue;
+          }
+          try {
+            observer.observe(sr, observeOpts);
+          } catch {}
+          roots.push(sr);
+        }
+      }
+    } catch {}
 
     // PerformanceObserver for network requests triggered by click
     let perfObserver = null;
@@ -3337,7 +3605,7 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     try {
-      const target = doc.activeElement || doc.body;
+      const target = this._deepActiveElement(doc) || doc.body;
       const keyCode = this._getKeyCode(key);
 
       const eventInit = {
@@ -3458,7 +3726,7 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     try {
-      const target = doc.activeElement || doc.body;
+      const target = this._deepActiveElement(doc) || doc.body;
       const keyCode = this._getKeyCode(key);
 
       const eventInit = {
@@ -3498,7 +3766,7 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     try {
-      const target = doc.activeElement || doc.body;
+      const target = this._deepActiveElement(doc) || doc.body;
       const keyCode = this._getKeyCode(key);
 
       target.dispatchEvent(
@@ -3534,7 +3802,7 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     try {
-      const target = doc.activeElement || doc.body;
+      const target = this._deepActiveElement(doc) || doc.body;
       const keyCode = this._getKeyCode(key);
 
       target.dispatchEvent(
@@ -3895,8 +4163,8 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const fromEl = doc.querySelector(fromSelector);
-    const toEl = doc.querySelector(toSelector);
+    const fromEl = this._deepQuerySelector(fromSelector, doc);
+    const toEl = this._deepQuerySelector(toSelector, doc);
 
     if (!fromEl) {
       return {
@@ -3976,7 +4244,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,
@@ -4001,7 +4269,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,
@@ -4095,7 +4363,7 @@ export class NevofluxChild extends JSWindowActorChild {
     const isEditable = (el) => {
       if (!el || typeof el.getAttribute !== 'function') return false;
       const v = el.getAttribute('contenteditable');
-      return v === 'true' || v === '';
+      return v === 'true' || v === '' || v === 'plaintext-only';
     };
 
     const rootIsEditable = isEditable(root);
@@ -4614,7 +4882,30 @@ export class NevofluxChild extends JSWindowActorChild {
         sandboxPrototype: win,
         wantXrays: false,
       });
-      const result = Cu.evalInSandbox(script, sandbox);
+
+      // REPL-style evaluation. Agents write eval scripts in several shapes:
+      //   (a) a bare expression:               document.title + foo
+      //   (b) statements ending in a value:    const n = ...; n
+      //   (c) an IIFE:                         (() => { ... })()
+      //   (d) explicit TOP-LEVEL return:       const n = ...; return n;
+      // Raw evalInSandbox returns the completion value for (a)/(b)/(c), but
+      // `return` outside a function is a SyntaxError at program top level, so
+      // (d) — the shape LLMs most often emit — throws and the agent gets
+      // "(no output)". Evaluate as-is first (preserves (a)/(b)/(c) and their
+      // completion values); only on a return-related SyntaxError, retry wrapped
+      // in a function so (d) works too.
+      let result;
+      try {
+        result = Cu.evalInSandbox(script, sandbox);
+      } catch (inner) {
+        const isTopLevelReturn =
+          (inner?.name === 'SyntaxError' || inner instanceof SyntaxError) &&
+          /\breturn\b/.test(inner?.message || '');
+        if (!isTopLevelReturn) {
+          throw inner;
+        }
+        result = Cu.evalInSandbox(`(function(){\n${script}\n})();`, sandbox);
+      }
 
       if (!returnValue) {
         return { success: true };
@@ -5683,7 +5974,10 @@ export class NevofluxChild extends JSWindowActorChild {
 
     let matches;
     try {
-      matches = doc.querySelectorAll(selector);
+      // Validate the selector against the light DOM (throws on bad syntax),
+      // then collect matches across open shadow roots too.
+      doc.querySelector(selector);
+      matches = this._deepQuerySelectorAll(selector, doc);
     } catch (e) {
       return {
         success: false,
@@ -5730,7 +6024,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,
@@ -5748,7 +6042,7 @@ export class NevofluxChild extends JSWindowActorChild {
     for (let cur = el; cur && cur !== doc; cur = cur.parentElement) {
       if (typeof cur.getAttribute === 'function') {
         const v = cur.getAttribute('contenteditable');
-        if (v === 'true' || v === '') {
+        if (v === 'true' || v === '' || v === 'plaintext-only') {
           isCE = true;
           cEHost = cur;
           break;

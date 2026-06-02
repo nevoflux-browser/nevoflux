@@ -110,6 +110,143 @@ class MockNevofluxChild {
     }
   }
 
+  // ========== Shadow-piercing query helpers ==========
+  // Mirror of the real NevofluxChild implementation. A flat querySelector()
+  // stops at every open shadow boundary; these descend open shadow roots so
+  // selector resolution (probe/click/input/data-ai-id) can reach editors that
+  // sites render inside web components (e.g. LinkedIn's Quill composer).
+  _deepQuerySelector(selector, doc = this.currentDoc) {
+    if (!doc || !selector) {
+      return null;
+    }
+    let flat;
+    try {
+      flat = doc.querySelector(selector);
+    } catch {
+      return null;
+    }
+    if (flat) {
+      return flat;
+    }
+    const roots = [doc];
+    while (roots.length) {
+      const root = roots.shift();
+      let all;
+      try {
+        all = root.querySelectorAll('*');
+      } catch {
+        continue;
+      }
+      for (const el of all) {
+        const sr = el.shadowRoot;
+        if (!sr) {
+          continue;
+        }
+        try {
+          const hit = sr.querySelector(selector);
+          if (hit) {
+            return hit;
+          }
+        } catch {}
+        roots.push(sr);
+      }
+    }
+    return null;
+  }
+
+  _deepQuerySelectorAll(selector, doc = this.currentDoc) {
+    const out = [];
+    if (!doc || !selector) {
+      return out;
+    }
+    try {
+      out.push(...doc.querySelectorAll(selector));
+    } catch {
+      return out;
+    }
+    const roots = [doc];
+    while (roots.length) {
+      const root = roots.shift();
+      let all;
+      try {
+        all = root.querySelectorAll('*');
+      } catch {
+        continue;
+      }
+      for (const el of all) {
+        const sr = el.shadowRoot;
+        if (!sr) {
+          continue;
+        }
+        try {
+          out.push(...sr.querySelectorAll(selector));
+        } catch {}
+        roots.push(sr);
+      }
+    }
+    return out;
+  }
+
+  // Shadow-including containment (mirror of the real NevofluxChild). Walks the
+  // composed (flattened) tree across open shadow boundaries, which
+  // Node.contains() does not.
+  _composedContains(ancestor, node) {
+    let cur = node;
+    while (cur) {
+      if (cur === ancestor) {
+        return true;
+      }
+      if (cur.parentElement) {
+        cur = cur.parentElement;
+      } else {
+        const root = cur.getRootNode ? cur.getRootNode() : null;
+        cur = root && root.host ? root.host : null;
+      }
+    }
+    return false;
+  }
+
+  // Shadow-aware active element (mirror of the real NevofluxChild). Descends
+  // each focused host's shadowRoot.activeElement so a node focused inside a
+  // shadow root is correctly recognized despite doc.activeElement retargeting.
+  _deepActiveElement(doc = this.currentDoc) {
+    let active = doc?.activeElement || null;
+    try {
+      while (active?.shadowRoot?.activeElement) {
+        active = active.shadowRoot.activeElement;
+      }
+    } catch {}
+    return active;
+  }
+
+  // Ensure a Selection range exists inside an editable target (mirror of the
+  // real NevofluxChild). focus() alone doesn't place a caret inside an unclicked
+  // contenteditable (esp. in shadow DOM), so execCommand silently no-ops.
+  _ensureSelectionInside(target, win, doc, { selectAll = false } = {}) {
+    try {
+      const sel = win.getSelection();
+      if (!sel) {
+        return false;
+      }
+      if (!selectAll && sel.rangeCount > 0) {
+        const node = sel.getRangeAt(0).commonAncestorContainer;
+        if (target === node || target.contains?.(node)) {
+          return true;
+        }
+      }
+      const range = doc.createRange();
+      range.selectNodeContents(target);
+      if (!selectAll) {
+        range.collapse(false);
+      }
+      sel.removeAllRanges();
+      sel.addRange(range);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // ========== Data Extraction ==========
   getText({ selector }) {
     const el = this.currentDoc?.querySelector(selector);
@@ -801,7 +938,22 @@ class MockNevofluxChild {
     }
 
     try {
-      const result = win.eval(script);
+      // REPL-style evaluation (mirror of the real NevofluxChild). Evaluate
+      // as-is first (preserves bare expressions / IIFEs and their completion
+      // values); on a top-level-`return` SyntaxError, retry wrapped in a
+      // function so explicit-return scripts work too.
+      let result;
+      try {
+        result = win.eval(script);
+      } catch (inner) {
+        const isTopLevelReturn =
+          (inner?.name === 'SyntaxError' || inner instanceof SyntaxError) &&
+          /\breturn\b/.test(inner?.message || '');
+        if (!isTopLevelReturn) {
+          throw inner;
+        }
+        result = win.eval(`(function(){\n${script}\n})();`);
+      }
 
       if (!returnValue) {
         return { success: true };
@@ -972,7 +1124,7 @@ class MockNevofluxChild {
     const isEditable = (el) => {
       if (!el || typeof el.getAttribute !== 'function') return false;
       const v = el.getAttribute('contenteditable');
-      return v === 'true' || v === '';
+      return v === 'true' || v === '' || v === 'plaintext-only';
     };
 
     const rootIsEditable = isEditable(root);
@@ -1197,13 +1349,31 @@ class MockNevofluxChild {
     if (!el) {
       return { success: false, error: { code: 1001, message: `Element not found: ${selector}`, recoverable: true } };
     }
+
+    // contentEditable detection — mirrors NevofluxChild.sys.mjs probe fingerprint.
+    // Walk ancestors for any editable contenteditable value (true / "" / plaintext-only).
+    let isCE = false;
+    let cEHost = null;
+    for (let cur = el; cur && cur !== doc; cur = cur.parentElement) {
+      if (typeof cur.getAttribute === 'function') {
+        const v = cur.getAttribute('contenteditable');
+        if (v === 'true' || v === '' || v === 'plaintext-only') {
+          isCE = true;
+          cEHost = cur;
+          break;
+        }
+      }
+    }
+    const innermostEl = isCE ? this._findInnermostEditable(cEHost) : null;
+    const innermostSelector = innermostEl ? this._generatePathSelector(innermostEl) : null;
+
     return {
       success: true,
       result: {
         tag: (el.tagName || '').toLowerCase(),
         input_type: null,
         has_value_property: false,
-        is_content_editable: false,
+        is_content_editable: isCE,
         disabled: false,
         readonly: false,
         is_visible: true,
@@ -1212,8 +1382,8 @@ class MockNevofluxChild {
         react_fiber_present: false,
         inside_iframe: false,
         shadow_root_depth: 0,
-        innermost_editable_selector: null,
-        computed_role: null,
+        innermost_editable_selector: innermostSelector,
+        computed_role: typeof el.getAttribute === 'function' ? el.getAttribute('role') : null,
       },
     };
   }
@@ -1576,6 +1746,46 @@ describe('NevofluxChild - JavaScript Execution', () => {
     const result = child.evalScript({ script: '1 + 1', returnValue: false });
     expect(result.success).toBe(true);
     expect(result.value).toBeUndefined();
+  });
+
+  // REPL-style return support — agents frequently write top-level `return ...`,
+  // which is a SyntaxError at program top level and used to be swallowed as
+  // "(no output)". The function-wrap fallback makes these work without
+  // regressing bare-expression / IIFE completion values.
+  it('evalScript supports explicit top-level return (single line)', () => {
+    const result = child.evalScript({ script: 'return 41 + 1;' });
+    expect(result.success).toBe(true);
+    expect(result.value).toBe(42);
+    expect(result.type).toBe('number');
+  });
+
+  it('evalScript supports top-level return after statements', () => {
+    const result = child.evalScript({
+      script: 'const a = 6;\nconst b = 7;\nreturn a * b;',
+    });
+    expect(result.success).toBe(true);
+    expect(result.value).toBe(42);
+  });
+
+  it('evalScript supports top-level return of an object', () => {
+    const result = child.evalScript({
+      script: 'const o = { ok: true, n: 2 };\nreturn o;',
+    });
+    expect(result.success).toBe(true);
+    expect(result.value).toEqual({ ok: true, n: 2 });
+    expect(result.type).toBe('object');
+  });
+
+  it('evalScript still returns completion value for bare expressions (no regression)', () => {
+    const result = child.evalScript({ script: '"a" + "|" + (1 + 2)' });
+    expect(result.success).toBe(true);
+    expect(result.value).toBe('a|3');
+  });
+
+  it('evalScript still evaluates an IIFE with return (no regression)', () => {
+    const result = child.evalScript({ script: '(function(){ return 5 * 5; })()' });
+    expect(result.success).toBe(true);
+    expect(result.value).toBe(25);
   });
 
   it('addScript should inject script element', () => {
@@ -2223,6 +2433,24 @@ describe('NevofluxChild — _findInnermostEditable helper', () => {
 
     expect(child._findInnermostEditable(div)).toBe(div);
   });
+
+  it('accepts contenteditable="plaintext-only" as editable (Gmail compose)', () => {
+    const doc = child.doc;
+    const div = doc.createElement('div');
+    div.attributes.set('contenteditable', 'plaintext-only');
+    div.getAttribute = k => div.attributes.get(k) ?? null;
+
+    expect(child._findInnermostEditable(div)).toBe(div);
+  });
+
+  it('rejects contenteditable="false"', () => {
+    const doc = child.doc;
+    const div = doc.createElement('div');
+    div.attributes.set('contenteditable', 'false');
+    div.getAttribute = k => div.attributes.get(k) ?? null;
+
+    expect(child._findInnermostEditable(div)).toBe(null);
+  });
 });
 
 describe('NevofluxChild — queryAll method', () => {
@@ -2261,6 +2489,63 @@ describe('NevofluxChild — probe method', () => {
     const r = child.probe({ selector: '#definitely-not-there' });
     expect(r.success).toBe(false);
     expect(r.error.code).toBe(1001);
+  });
+
+  // Fix B: probe must recognise every editable contenteditable value, including
+  // plaintext-only (Gmail compose). Before the fix, plaintext-only reported
+  // is_content_editable:false and the daemon strategy engine aborted.
+  const makeEditable = (id, ceValue) => {
+    const el = child.doc.createElement('div');
+    el.setAttribute('id', id);
+    if (ceValue !== null) el.setAttribute('contenteditable', ceValue);
+    child.doc.body.appendChild(el);
+    return el;
+  };
+
+  it('reports is_content_editable=true for contenteditable="true"', () => {
+    makeEditable('ce-true', 'true');
+    const r = child.probe({ selector: '#ce-true' });
+    expect(r.success).toBe(true);
+    expect(r.result.is_content_editable).toBe(true);
+  });
+
+  it('reports is_content_editable=true for contenteditable=""', () => {
+    makeEditable('ce-empty', '');
+    const r = child.probe({ selector: '#ce-empty' });
+    expect(r.result.is_content_editable).toBe(true);
+  });
+
+  it('reports is_content_editable=true for contenteditable="plaintext-only" (Gmail compose)', () => {
+    makeEditable('ce-plain', 'plaintext-only');
+    const r = child.probe({ selector: '#ce-plain' });
+    expect(r.result.is_content_editable).toBe(true);
+    // innermost must resolve to the host itself, not null
+    expect(r.result.innermost_editable_selector).not.toBe(null);
+  });
+
+  it('reports is_content_editable=false for contenteditable="false"', () => {
+    makeEditable('ce-false', 'false');
+    const r = child.probe({ selector: '#ce-false' });
+    expect(r.result.is_content_editable).toBe(false);
+  });
+
+  it('reports is_content_editable=false for a plain div', () => {
+    makeEditable('ce-plain-div', null);
+    const r = child.probe({ selector: '#ce-plain-div' });
+    expect(r.result.is_content_editable).toBe(false);
+  });
+
+  it('reports is_content_editable=true for a child inside a plaintext-only host', () => {
+    const host = child.doc.createElement('div');
+    host.setAttribute('id', 'pt-host');
+    host.setAttribute('contenteditable', 'plaintext-only');
+    const inner = child.doc.createElement('span');
+    inner.setAttribute('id', 'pt-inner');
+    host.appendChild(inner);
+    child.doc.body.appendChild(host);
+
+    const r = child.probe({ selector: '#pt-inner' });
+    expect(r.result.is_content_editable).toBe(true);
   });
 });
 
@@ -2331,6 +2616,294 @@ describe('NevofluxChild — type() undefined-prefix regression', () => {
 
     child.type({ selector: '#tgt2', text: 'X' });
     expect(input.value).toBe('X');
+  });
+});
+
+// ===========================================================================
+//  Shadow-piercing query helpers (_deepQuerySelector / _deepQuerySelectorAll)
+//
+//  Regression coverage for the LinkedIn post-composer failure: the editor is a
+//  contenteditable/.ql-editor inside an OPEN shadowRoot, so a flat
+//  doc.querySelector() returns null and probe/click/input all reported
+//  "Element not found". These tests drive the traversal against a minimal fake
+//  DOM that implements only the three primitives the algorithm depends on:
+//  querySelector(sel), querySelectorAll('*'), and el.shadowRoot. The fake root
+//  models real scoping: querySelectorAll('*') enumerates LIGHT descendants only
+//  and never crosses into a nested shadow root (each shadow root is its own
+//  query scope).
+// ===========================================================================
+
+const BAD_SELECTOR = '###throws';
+
+function fakeNode(selectors, { shadowRoot = null, children = [] } = {}) {
+  return { _sel: selectors, _children: children, shadowRoot };
+}
+
+function fakeRoot(children) {
+  const lightDescendants = (nodes, acc) => {
+    for (const n of nodes) {
+      acc.push(n);
+      // Light DOM only — do NOT descend into n.shadowRoot here.
+      if (n._children?.length) {
+        lightDescendants(n._children, acc);
+      }
+    }
+    return acc;
+  };
+  return {
+    querySelector(sel) {
+      if (sel === BAD_SELECTOR) {
+        throw new SyntaxError('invalid selector');
+      }
+      return lightDescendants(children, []).find((n) => n._sel.includes(sel)) || null;
+    },
+    querySelectorAll(sel) {
+      if (sel === BAD_SELECTOR) {
+        throw new SyntaxError('invalid selector');
+      }
+      const all = lightDescendants(children, []);
+      return sel === '*' ? all : all.filter((n) => n._sel.includes(sel));
+    },
+  };
+}
+
+describe('NevofluxChild - Shadow-piercing resolution', () => {
+  let child;
+  beforeEach(() => {
+    child = new MockNevofluxChild();
+  });
+
+  it('_deepQuerySelector finds a light-DOM element via the fast path', () => {
+    const editor = fakeNode(['.ql-editor', '[contenteditable]']);
+    const doc = fakeRoot([editor]);
+    expect(child._deepQuerySelector('.ql-editor', doc)).toBe(editor);
+  });
+
+  it('_deepQuerySelector pierces an open shadow root (the LinkedIn case)', () => {
+    // .ql-editor lives ONLY inside the host's shadowRoot — flat query misses it.
+    const editor = fakeNode(['.ql-editor', "[contenteditable='true']"]);
+    const host = fakeNode(['div.editor-host'], { shadowRoot: fakeRoot([editor]) });
+    const doc = fakeRoot([host]);
+
+    expect(doc.querySelector('.ql-editor')).toBe(null); // flat is blind
+    expect(child._deepQuerySelector('.ql-editor', doc)).toBe(editor); // deep sees it
+    expect(child._deepQuerySelector("[contenteditable='true']", doc)).toBe(editor);
+  });
+
+  it('_deepQuerySelector descends NESTED shadow roots', () => {
+    const editor = fakeNode(['.ql-editor']);
+    const innerHost = fakeNode(['div.inner'], { shadowRoot: fakeRoot([editor]) });
+    const outerHost = fakeNode(['div.outer'], { shadowRoot: fakeRoot([innerHost]) });
+    const doc = fakeRoot([outerHost]);
+    expect(child._deepQuerySelector('.ql-editor', doc)).toBe(editor);
+  });
+
+  it('_deepQuerySelector returns null when nothing matches anywhere', () => {
+    const host = fakeNode(['div.host'], { shadowRoot: fakeRoot([fakeNode(['.something-else'])]) });
+    const doc = fakeRoot([host]);
+    expect(child._deepQuerySelector('.ql-editor', doc)).toBe(null);
+  });
+
+  it('_deepQuerySelector swallows invalid selectors and returns null', () => {
+    const doc = fakeRoot([fakeNode(['.x'])]);
+    expect(child._deepQuerySelector(BAD_SELECTOR, doc)).toBe(null);
+  });
+
+  it('_deepQuerySelector returns null for missing doc / empty selector', () => {
+    expect(child._deepQuerySelector('.ql-editor', null)).toBe(null);
+    expect(child._deepQuerySelector('', fakeRoot([]))).toBe(null);
+  });
+
+  it('_deepQuerySelectorAll collects matches across light DOM and shadow roots', () => {
+    const lightHit = fakeNode(['.item']);
+    const shadowHit1 = fakeNode(['.item']);
+    const shadowHit2 = fakeNode(['.item']);
+    const host = fakeNode(['div.host'], { shadowRoot: fakeRoot([shadowHit1, shadowHit2]) });
+    const doc = fakeRoot([lightHit, host]);
+
+    const all = child._deepQuerySelectorAll('.item', doc);
+    expect(all.length).toBe(3);
+    expect(all.includes(lightHit)).toBe(true);
+    expect(all.includes(shadowHit1)).toBe(true);
+    expect(all.includes(shadowHit2)).toBe(true);
+  });
+
+  it('_deepQuerySelectorAll returns [] for invalid selector or missing doc', () => {
+    expect(child._deepQuerySelectorAll(BAD_SELECTOR, fakeRoot([]))).toEqual([]);
+    expect(child._deepQuerySelectorAll('.item', null)).toEqual([]);
+  });
+});
+
+// ===========================================================================
+//  Shadow-aware active element (_deepActiveElement)
+//
+//  Regression coverage for the `type`/`paste` "1002: Could not focus target"
+//  false negative on LinkedIn. document.activeElement is RETARGETED to the
+//  shadow host when a node inside an open shadow root is focused, so
+//  `doc.activeElement === target` is false even though focus() succeeded.
+//  _deepActiveElement descends shadowRoot.activeElement to the true focused
+//  node so the focus check passes.
+// ===========================================================================
+describe('NevofluxChild - Shadow-aware active element', () => {
+  let child;
+  beforeEach(() => {
+    child = new MockNevofluxChild();
+  });
+
+  it('returns doc.activeElement for a focused light-DOM element', () => {
+    const editor = { tag: 'INPUT' };
+    const doc = { activeElement: editor };
+    expect(child._deepActiveElement(doc)).toBe(editor);
+  });
+
+  it('descends into a shadow root (the LinkedIn case)', () => {
+    // The focused node lives in a host's shadowRoot; doc.activeElement is the
+    // RETARGETED host, not the editor. _deepActiveElement must return the editor.
+    const editor = { tag: 'DIV' };
+    const host = { tag: 'DIV', shadowRoot: { activeElement: editor } };
+    const doc = { activeElement: host };
+    expect(doc.activeElement).toBe(host); // retargeted — host, not editor
+    expect(child._deepActiveElement(doc)).toBe(editor); // descends to editor
+  });
+
+  it('descends through NESTED shadow roots', () => {
+    const editor = { tag: 'DIV' };
+    const innerHost = { tag: 'DIV', shadowRoot: { activeElement: editor } };
+    const outerHost = { tag: 'DIV', shadowRoot: { activeElement: innerHost } };
+    const doc = { activeElement: outerHost };
+    expect(child._deepActiveElement(doc)).toBe(editor);
+  });
+
+  it('stops at a host whose shadowRoot has no activeElement', () => {
+    const host = { tag: 'DIV', shadowRoot: { activeElement: null } };
+    const doc = { activeElement: host };
+    expect(child._deepActiveElement(doc)).toBe(host);
+  });
+
+  it('returns null when nothing is focused or doc is missing', () => {
+    expect(child._deepActiveElement({ activeElement: null })).toBe(null);
+    expect(child._deepActiveElement(null)).toBe(null);
+  });
+});
+
+// ===========================================================================
+//  Selection establishment before execCommand (_ensureSelectionInside)
+//
+//  Regression coverage for "type/fill reports success but text never lands" on
+//  LinkedIn's shadow Quill. focus() alone does not place a caret inside an
+//  unclicked contenteditable, so document.execCommand('insertText') no-ops while
+//  returning true. _ensureSelectionInside establishes an explicit Range
+//  (verified to make insertText work where bare focus did not).
+// ===========================================================================
+describe('NevofluxChild - Selection establishment', () => {
+  let child;
+  // Minimal Selection / doc fakes recording what the helper does.
+  function makeFakes(existingRangeNode = null) {
+    const added = [];
+    const sel = {
+      rangeCount: existingRangeNode ? 1 : 0,
+      getRangeAt: () => ({ commonAncestorContainer: existingRangeNode }),
+      removeAllRanges() { this.rangeCount = 0; },
+      addRange(r) { added.push(r); this.rangeCount = 1; },
+    };
+    const win = { getSelection: () => sel };
+    const doc = {
+      createRange: () => ({
+        _collapsed: null,
+        _selected: null,
+        selectNodeContents(n) { this._selected = n; },
+        collapse(toStart) { this._collapsed = toStart; },
+      }),
+    };
+    return { win, doc, sel, added };
+  }
+  beforeEach(() => {
+    child = new MockNevofluxChild();
+  });
+
+  it('creates a collapsed end-caret range when no selection exists', () => {
+    const target = { contains: () => false };
+    const { win, doc, added } = makeFakes(null);
+    expect(child._ensureSelectionInside(target, win, doc, { selectAll: false })).toBe(true);
+    expect(added.length).toBe(1);
+    expect(added[0]._selected).toBe(target); // selected the target's contents
+    expect(added[0]._collapsed).toBe(false); // collapsed to END
+  });
+
+  it('keeps an existing selection already inside the target (append mode)', () => {
+    const inner = {};
+    const target = { contains: (n) => n === inner };
+    const { win, doc, added } = makeFakes(inner);
+    expect(child._ensureSelectionInside(target, win, doc, { selectAll: false })).toBe(true);
+    expect(added.length).toBe(0); // did NOT replace the caret
+  });
+
+  it('selectAll forces a full-content range even if a selection exists', () => {
+    const inner = {};
+    const target = { contains: (n) => n === inner };
+    const { win, doc, added } = makeFakes(inner);
+    expect(child._ensureSelectionInside(target, win, doc, { selectAll: true })).toBe(true);
+    expect(added.length).toBe(1);
+    expect(added[0]._selected).toBe(target);
+    expect(added[0]._collapsed).toBe(null); // NOT collapsed — whole content selected
+  });
+
+  it('returns false when there is no Selection available', () => {
+    const target = {};
+    const win = { getSelection: () => null };
+    expect(child._ensureSelectionInside(target, win, {}, {})).toBe(false);
+  });
+});
+
+// ===========================================================================
+//  Shadow-including containment (_composedContains)
+//
+//  Regression coverage for the occlusion filter dropping a shadow-DOM modal's
+//  editor: the dialog lives in an open shadow root and Node.contains() can't see
+//  across the boundary, so the modal-membership test failed and the whole modal
+//  was filtered as "occluded" (empty snapshot → agent escalated to computer use).
+//  _composedContains walks the flattened tree across shadow hosts.
+// ===========================================================================
+describe('NevofluxChild - Shadow-including containment', () => {
+  let child;
+  beforeEach(() => {
+    child = new MockNevofluxChild();
+  });
+
+  it('true for a same-tree descendant', () => {
+    const modal = {};
+    const editor = { parentElement: modal };
+    expect(child._composedContains(modal, editor)).toBe(true);
+  });
+
+  it('true ACROSS a shadow boundary (modal host → shadow editor)', () => {
+    // editor is in the modal's shadowRoot: editor.parentElement is null at the
+    // shadow boundary, getRootNode().host hops up to the modal host.
+    const modal = { parentElement: null };
+    const shadowRoot = { host: modal };
+    const editor = { parentElement: null, getRootNode: () => shadowRoot };
+    expect(child._composedContains(modal, editor)).toBe(true);
+  });
+
+  it('true across NESTED shadow boundaries', () => {
+    const modal = { parentElement: null };
+    const outerRoot = { host: modal };
+    const innerHost = { parentElement: null, getRootNode: () => outerRoot };
+    const innerRoot = { host: innerHost };
+    const editor = { parentElement: null, getRootNode: () => innerRoot };
+    expect(child._composedContains(modal, editor)).toBe(true);
+  });
+
+  it('false for a node outside the modal (light-DOM feed element)', () => {
+    const modal = { parentElement: null };
+    const body = { parentElement: null, getRootNode: () => ({ host: null }) };
+    const feedEl = { parentElement: body };
+    expect(child._composedContains(modal, feedEl)).toBe(false);
+  });
+
+  it('true when node === ancestor', () => {
+    const modal = {};
+    expect(child._composedContains(modal, modal)).toBe(true);
   });
 });
 
