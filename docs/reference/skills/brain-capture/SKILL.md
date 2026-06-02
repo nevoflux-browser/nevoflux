@@ -25,11 +25,22 @@ allowed_tools:
 
 # brain-capture — save & ingest
 
-Write knowledge into the user's brain. Before writing, load the page model and filing rules
-(`skill_read('brain', 'conventions/brain-first.md')`) and the writing standards
-(`skill_read('brain', 'conventions/quality.md')` — citations, reciprocal back-links, notability).
-Reach gbrain via `tool_search` + `tool_call_dynamic`. Page anatomy + a worked example:
-`references/page-format.md`.
+Write knowledge into the user's brain.
+
+## Brain basics (always apply)
+
+Non-negotiable for every write — no extra reading required:
+- **Pages** have `compiled_truth` (authoritative — **rewrite** it, don't append) above a `---`
+  divider and an append-only, **newest-first** `timeline` below (never rewrite/delete history).
+- **File by hybrid taxonomy**: match existing structure (`resolve_slugs`/`list_pages`) → else the
+  default `people/ companies/ concepts/ writing/ inbox/`.
+- **Reach gbrain tools dynamically**: `tool_search` → `tool_call_dynamic`.
+- **Cite every fact** inline (`[Source: …]`), create **reciprocal back-links** for mentioned
+  entities, and **always confirm the slug** you wrote.
+
+Full detail when you need it: `skill_read('brain', 'conventions/brain-first.md')` (page model +
+filing), `skill_read('brain', 'conventions/quality.md')` (citation formats, back-links, notability),
+`references/page-format.md` (worked example).
 
 ## Input-type router
 

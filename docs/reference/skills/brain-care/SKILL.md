@@ -23,10 +23,17 @@ allowed_tools:
 
 # brain-care — diagnose, sync, recover
 
-Tend the brain: report on its health, sync the index, and recover from mistakes. **Read-only plus
-recovery** — it never rewrites pages to "fix" issues, and never deletes or purges. Load
-`skill_read('brain', 'conventions/brain-first.md')` (light). Reach gbrain via `tool_search` +
-`tool_call_dynamic`.
+Tend the brain: report on its health, sync the index, and recover from mistakes.
+
+## Brain basics (always apply)
+
+Non-negotiable — no extra reading required:
+- **Read-only plus recovery.** Never `put_page` to "fix" issues; never `delete_page`/`purge`. Report
+  findings and hand fixes to the user / `brain-capture`.
+- **Reach gbrain tools dynamically**: `tool_search` → `tool_call_dynamic`.
+- **Cite the slug** for everything you surface.
+
+Page model + full conventions when needed: `skill_read('brain', 'conventions/brain-first.md')`.
 
 ## Diagnose (read-only)
 

@@ -24,10 +24,20 @@ allowed_tools:
 # brain-think — synthesize & analyze
 
 Reason *across* the brain: multi-hop synthesis, expertise routing, trends, relationships, and
-prediction calibration. Answers by default; **persists a synthesis only when the user asks**. Load
-`skill_read('brain', 'conventions/brain-first.md')` for the page model; for calibration work also
-`skill_read('brain', 'conventions/calibration.md')`; when persisting, `conventions/quality.md`.
-Reach gbrain via `tool_search` + `tool_call_dynamic`.
+prediction calibration. Answers by default; **persists a synthesis only when the user asks**.
+
+## Brain basics (always apply)
+
+Non-negotiable — no extra reading required:
+- **Pages** have `compiled_truth` (authoritative) above a `---` divider and an append-only,
+  newest-first `timeline` below.
+- **Reach gbrain tools dynamically**: `tool_search` → `tool_call_dynamic`.
+- **Cite the slug** for every claim and propagate `[Source: …]` markers. When you **persist** a
+  synthesis, that's a write — cite sources, reciprocal-link, confirm the slug.
+
+Depth when needed: `skill_read('brain', 'conventions/calibration.md')` (takes/bets),
+`skill_read('brain', 'conventions/quality.md')` (persisting),
+`skill_read('brain', 'conventions/brain-first.md')` (page model).
 
 ## Answer (default — read-only)
 

@@ -29,8 +29,19 @@ allowed_tools:
 # brain-recall — read & recall
 
 Read from the user's knowledge base and answer from it. This is the most common brain operation.
-First load the shared page model: `skill_read('brain', 'conventions/brain-first.md')`. Reach gbrain
-tools via `tool_search` + `tool_call_dynamic` (see that file).
+
+## Brain basics (always apply)
+
+Non-negotiable — these hold for every recall, no extra reading required:
+- **Pages** have `compiled_truth` (the authoritative summary) above a `---` divider and an
+  append-only, **newest-first** `timeline` below. Answer from `compiled_truth` first.
+- **Reach gbrain tools dynamically**: `tool_search` (query `brain` / `知识库` / `gbrain` / the topic)
+  → `tool_call_dynamic(name, args)`; retry once with `知识库`/`gbrain` if empty.
+- **Always cite the page slug** you read from, and propagate any `[Source: …]` markers.
+- The brain is **personal memory** — don't use it for world knowledge, live web, or the current page.
+
+Full conventions when you need depth: `skill_read('brain', 'conventions/brain-first.md')` and the
+other `brain/conventions/*.md`.
 
 ## Route the question
 
