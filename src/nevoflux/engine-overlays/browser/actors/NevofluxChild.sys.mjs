@@ -459,17 +459,17 @@ export class NevofluxChild extends JSWindowActorChild {
   // ========== Data Extraction ==========
 
   getText({ selector }) {
-    const el = this.currentDoc?.querySelector(selector);
+    const el = this._deepQuerySelector(selector, this.currentDoc);
     return el?.textContent || '';
   }
 
   getHtml({ selector }) {
-    const el = this.currentDoc?.querySelector(selector);
+    const el = this._deepQuerySelector(selector, this.currentDoc);
     return el?.innerHTML || '';
   }
 
   getValue({ selector }) {
-    const el = this.currentDoc?.querySelector(selector);
+    const el = this._deepQuerySelector(selector, this.currentDoc);
     return el?.value || '';
   }
 
@@ -895,8 +895,26 @@ export class NevofluxChild extends JSWindowActorChild {
       if (ti >= 0) return 'tabindex';
     }
 
-    // Standard: contenteditable
-    if (el.isContentEditable && el.getAttribute('contenteditable') === 'true') return 'editable';
+    // Standard: contenteditable HOST — match every editable value the HTML
+    // spec allows (true / "" / plaintext-only), but only on elements that
+    // explicitly declare the attribute (the editor host), not inherited
+    // descendants (which would flood the snapshot with one entry per child).
+    const ceAttr = el.getAttribute('contenteditable');
+    if (ceAttr === 'true' || ceAttr === '' || ceAttr === 'plaintext-only') return 'editable';
+
+    // Framework rich-text editors. Slate/Lexical anchor on data-* attributes
+    // and frequently expose NO role=textbox, so the a11y pass misses them;
+    // ProseMirror/Quill/CodeMirror/Draft.js anchor on stable classes. Surface
+    // the editor host so the LLM gets a usable selector for browser_input.
+    try {
+      if (
+        el.matches(
+          '.ProseMirror, [data-slate-editor="true"], [data-lexical-editor="true"], .ql-editor, .cm-content, .CodeMirror-code, .public-DraftEditor-content'
+        )
+      ) {
+        return 'editable';
+      }
+    } catch {}
 
     // Heuristic: cursor:pointer with text and no child interactive elements
     try {
@@ -1925,11 +1943,117 @@ export class NevofluxChild extends JSWindowActorChild {
     return null;
   }
 
+  // ── Shadow-piercing query helpers ──
+  //
+  // A flat doc.querySelector() stops at every OPEN shadow boundary. Sites that
+  // render editors inside web components (e.g. LinkedIn's post composer — a
+  // contenteditable/.ql-editor living in an open shadowRoot) are therefore
+  // invisible to every selector-resolution path: probe, click, input, type,
+  // waitForSelector and the data-ai-id snapshot lookup all silently return
+  // "not found". These helpers try the fast light-DOM query first, then
+  // breadth-first descend every open shadowRoot and retry the selector inside
+  // each one.
+  //
+  // NOTE: a selector is matched WITHIN each shadow root, so a descendant
+  // combinator can't span a host boundary (per the CSS scoping spec). Pass the
+  // editor's own compound selector (".ql-editor"), not a light-DOM-rooted path.
+
+  _deepQuerySelector(selector, doc = this.currentDoc) {
+    if (!doc || !selector) {
+      return null;
+    }
+    let flat;
+    try {
+      flat = doc.querySelector(selector);
+    } catch {
+      return null; // invalid selector — fail the same way querySelector would
+    }
+    if (flat) {
+      return flat;
+    }
+    const roots = [doc];
+    while (roots.length) {
+      const root = roots.shift();
+      let all;
+      try {
+        all = root.querySelectorAll('*');
+      } catch {
+        continue;
+      }
+      for (const el of all) {
+        const sr = el.shadowRoot;
+        if (!sr) {
+          continue;
+        }
+        try {
+          const hit = sr.querySelector(selector);
+          if (hit) {
+            return hit;
+          }
+        } catch {} // selector already validated above; stay defensive
+        roots.push(sr);
+      }
+    }
+    return null;
+  }
+
+  _deepQuerySelectorAll(selector, doc = this.currentDoc) {
+    const out = [];
+    if (!doc || !selector) {
+      return out;
+    }
+    try {
+      out.push(...doc.querySelectorAll(selector));
+    } catch {
+      return out; // invalid selector
+    }
+    const roots = [doc];
+    while (roots.length) {
+      const root = roots.shift();
+      let all;
+      try {
+        all = root.querySelectorAll('*');
+      } catch {
+        continue;
+      }
+      for (const el of all) {
+        const sr = el.shadowRoot;
+        if (!sr) {
+          continue;
+        }
+        try {
+          out.push(...sr.querySelectorAll(selector));
+        } catch {}
+        roots.push(sr);
+      }
+    }
+    return out;
+  }
+
+  // ── Shadow-aware active element ──
+  //
+  // `document.activeElement` is RETARGETED at every shadow boundary: when a
+  // node inside an open shadow root is focused, doc.activeElement reports the
+  // shadow HOST, not the focused node. So `target.focus()` succeeds yet
+  // `doc.activeElement === target` is false — a false "Could not focus target".
+  // This descends each focused host's shadowRoot.activeElement to return the
+  // TRUE innermost focused element (works for nested shadow too).
+  _deepActiveElement(doc = this.currentDoc) {
+    let active = doc?.activeElement || null;
+    try {
+      while (active?.shadowRoot?.activeElement) {
+        active = active.shadowRoot.activeElement;
+      }
+    } catch {}
+    return active;
+  }
+
   // ── Resolve element by snapshot ID (used by act operations) ──
 
   resolveSnapshotElement(id, doc) {
-    // 1. Direct data-ai-id lookup (O(1))
-    const direct = doc.querySelector(`[data-ai-id="${id}"]`);
+    // 1. Direct data-ai-id lookup (O(1)) — shadow-piercing so snapshot refs
+    //    captured inside open shadow roots remain resolvable by clickById/input.
+    const direct = this._deepQuerySelector(`[data-ai-id="${id}"]`, doc);
     if (direct) return direct;
     return null;
   }
@@ -2010,7 +2134,7 @@ export class NevofluxChild extends JSWindowActorChild {
     const win = this.currentWin;
     if (!doc || !win) return false;
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) return false;
 
     const rect = el.getBoundingClientRect();
@@ -2026,7 +2150,7 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   exists({ selector }) {
-    return this.currentDoc?.querySelector(selector) !== null;
+    return this._deepQuerySelector(selector, this.currentDoc) !== null;
   }
 
   // ========== Interaction ==========
@@ -2042,7 +2166,7 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     // 1. Get the element from selector
-    let el = doc.querySelector(selector);
+    let el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,
@@ -2344,7 +2468,7 @@ export class NevofluxChild extends JSWindowActorChild {
       return { success: false, error: { code: 5001, message: 'No document or window available', recoverable: false } };
     }
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return { success: false, error: { code: 1001, message: 'Element not found', recoverable: true } };
     }
@@ -2394,7 +2518,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,
@@ -2446,7 +2570,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,
@@ -2466,7 +2590,10 @@ export class NevofluxChild extends JSWindowActorChild {
         error: { code: 1002, message: `Focus threw: ${e.message}`, recoverable: true },
       };
     }
-    if (doc.activeElement !== target) {
+    // Shadow-aware focus check: doc.activeElement is retargeted to the shadow
+    // host for nodes inside a shadow root, so compare against the true focused
+    // element resolved through shadow boundaries.
+    if (this._deepActiveElement(doc) !== target) {
       return {
         success: false,
         error: { code: 1002, message: 'Could not focus target', recoverable: true },
@@ -2543,7 +2670,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,
@@ -2605,7 +2732,7 @@ export class NevofluxChild extends JSWindowActorChild {
    * Constructs File in content realm so the page's JS sees it.
    */
   async uploadFile({ selector, fileUrl, fileName, mimeType }) {
-    const el = this.doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, this.doc);
     if (!el) {
       return {
         success: false,
@@ -2694,7 +2821,7 @@ export class NevofluxChild extends JSWindowActorChild {
     const startTime = Date.now();
 
     while (Date.now() - startTime < timeout) {
-      const el = this.currentDoc.querySelector(selector);
+      const el = this._deepQuerySelector(selector, this.currentDoc);
 
       const stateChecks = {
         attached: () => el !== null,
@@ -3337,7 +3464,7 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     try {
-      const target = doc.activeElement || doc.body;
+      const target = this._deepActiveElement(doc) || doc.body;
       const keyCode = this._getKeyCode(key);
 
       const eventInit = {
@@ -3458,7 +3585,7 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     try {
-      const target = doc.activeElement || doc.body;
+      const target = this._deepActiveElement(doc) || doc.body;
       const keyCode = this._getKeyCode(key);
 
       const eventInit = {
@@ -3498,7 +3625,7 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     try {
-      const target = doc.activeElement || doc.body;
+      const target = this._deepActiveElement(doc) || doc.body;
       const keyCode = this._getKeyCode(key);
 
       target.dispatchEvent(
@@ -3534,7 +3661,7 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     try {
-      const target = doc.activeElement || doc.body;
+      const target = this._deepActiveElement(doc) || doc.body;
       const keyCode = this._getKeyCode(key);
 
       target.dispatchEvent(
@@ -3895,8 +4022,8 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const fromEl = doc.querySelector(fromSelector);
-    const toEl = doc.querySelector(toSelector);
+    const fromEl = this._deepQuerySelector(fromSelector, doc);
+    const toEl = this._deepQuerySelector(toSelector, doc);
 
     if (!fromEl) {
       return {
@@ -3976,7 +4103,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,
@@ -4001,7 +4128,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,
@@ -4614,7 +4741,30 @@ export class NevofluxChild extends JSWindowActorChild {
         sandboxPrototype: win,
         wantXrays: false,
       });
-      const result = Cu.evalInSandbox(script, sandbox);
+
+      // REPL-style evaluation. Agents write eval scripts in several shapes:
+      //   (a) a bare expression:               document.title + foo
+      //   (b) statements ending in a value:    const n = ...; n
+      //   (c) an IIFE:                         (() => { ... })()
+      //   (d) explicit TOP-LEVEL return:       const n = ...; return n;
+      // Raw evalInSandbox returns the completion value for (a)/(b)/(c), but
+      // `return` outside a function is a SyntaxError at program top level, so
+      // (d) — the shape LLMs most often emit — throws and the agent gets
+      // "(no output)". Evaluate as-is first (preserves (a)/(b)/(c) and their
+      // completion values); only on a return-related SyntaxError, retry wrapped
+      // in a function so (d) works too.
+      let result;
+      try {
+        result = Cu.evalInSandbox(script, sandbox);
+      } catch (inner) {
+        const isTopLevelReturn =
+          (inner?.name === 'SyntaxError' || inner instanceof SyntaxError) &&
+          /\breturn\b/.test(inner?.message || '');
+        if (!isTopLevelReturn) {
+          throw inner;
+        }
+        result = Cu.evalInSandbox(`(function(){\n${script}\n})();`, sandbox);
+      }
 
       if (!returnValue) {
         return { success: true };
@@ -5683,7 +5833,10 @@ export class NevofluxChild extends JSWindowActorChild {
 
     let matches;
     try {
-      matches = doc.querySelectorAll(selector);
+      // Validate the selector against the light DOM (throws on bad syntax),
+      // then collect matches across open shadow roots too.
+      doc.querySelector(selector);
+      matches = this._deepQuerySelectorAll(selector, doc);
     } catch (e) {
       return {
         success: false,
@@ -5730,7 +5883,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const el = doc.querySelector(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,

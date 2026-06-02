@@ -110,6 +110,96 @@ class MockNevofluxChild {
     }
   }
 
+  // ========== Shadow-piercing query helpers ==========
+  // Mirror of the real NevofluxChild implementation. A flat querySelector()
+  // stops at every open shadow boundary; these descend open shadow roots so
+  // selector resolution (probe/click/input/data-ai-id) can reach editors that
+  // sites render inside web components (e.g. LinkedIn's Quill composer).
+  _deepQuerySelector(selector, doc = this.currentDoc) {
+    if (!doc || !selector) {
+      return null;
+    }
+    let flat;
+    try {
+      flat = doc.querySelector(selector);
+    } catch {
+      return null;
+    }
+    if (flat) {
+      return flat;
+    }
+    const roots = [doc];
+    while (roots.length) {
+      const root = roots.shift();
+      let all;
+      try {
+        all = root.querySelectorAll('*');
+      } catch {
+        continue;
+      }
+      for (const el of all) {
+        const sr = el.shadowRoot;
+        if (!sr) {
+          continue;
+        }
+        try {
+          const hit = sr.querySelector(selector);
+          if (hit) {
+            return hit;
+          }
+        } catch {}
+        roots.push(sr);
+      }
+    }
+    return null;
+  }
+
+  _deepQuerySelectorAll(selector, doc = this.currentDoc) {
+    const out = [];
+    if (!doc || !selector) {
+      return out;
+    }
+    try {
+      out.push(...doc.querySelectorAll(selector));
+    } catch {
+      return out;
+    }
+    const roots = [doc];
+    while (roots.length) {
+      const root = roots.shift();
+      let all;
+      try {
+        all = root.querySelectorAll('*');
+      } catch {
+        continue;
+      }
+      for (const el of all) {
+        const sr = el.shadowRoot;
+        if (!sr) {
+          continue;
+        }
+        try {
+          out.push(...sr.querySelectorAll(selector));
+        } catch {}
+        roots.push(sr);
+      }
+    }
+    return out;
+  }
+
+  // Shadow-aware active element (mirror of the real NevofluxChild). Descends
+  // each focused host's shadowRoot.activeElement so a node focused inside a
+  // shadow root is correctly recognized despite doc.activeElement retargeting.
+  _deepActiveElement(doc = this.currentDoc) {
+    let active = doc?.activeElement || null;
+    try {
+      while (active?.shadowRoot?.activeElement) {
+        active = active.shadowRoot.activeElement;
+      }
+    } catch {}
+    return active;
+  }
+
   // ========== Data Extraction ==========
   getText({ selector }) {
     const el = this.currentDoc?.querySelector(selector);
@@ -801,7 +891,22 @@ class MockNevofluxChild {
     }
 
     try {
-      const result = win.eval(script);
+      // REPL-style evaluation (mirror of the real NevofluxChild). Evaluate
+      // as-is first (preserves bare expressions / IIFEs and their completion
+      // values); on a top-level-`return` SyntaxError, retry wrapped in a
+      // function so explicit-return scripts work too.
+      let result;
+      try {
+        result = win.eval(script);
+      } catch (inner) {
+        const isTopLevelReturn =
+          (inner?.name === 'SyntaxError' || inner instanceof SyntaxError) &&
+          /\breturn\b/.test(inner?.message || '');
+        if (!isTopLevelReturn) {
+          throw inner;
+        }
+        result = win.eval(`(function(){\n${script}\n})();`);
+      }
 
       if (!returnValue) {
         return { success: true };
@@ -1594,6 +1699,46 @@ describe('NevofluxChild - JavaScript Execution', () => {
     const result = child.evalScript({ script: '1 + 1', returnValue: false });
     expect(result.success).toBe(true);
     expect(result.value).toBeUndefined();
+  });
+
+  // REPL-style return support — agents frequently write top-level `return ...`,
+  // which is a SyntaxError at program top level and used to be swallowed as
+  // "(no output)". The function-wrap fallback makes these work without
+  // regressing bare-expression / IIFE completion values.
+  it('evalScript supports explicit top-level return (single line)', () => {
+    const result = child.evalScript({ script: 'return 41 + 1;' });
+    expect(result.success).toBe(true);
+    expect(result.value).toBe(42);
+    expect(result.type).toBe('number');
+  });
+
+  it('evalScript supports top-level return after statements', () => {
+    const result = child.evalScript({
+      script: 'const a = 6;\nconst b = 7;\nreturn a * b;',
+    });
+    expect(result.success).toBe(true);
+    expect(result.value).toBe(42);
+  });
+
+  it('evalScript supports top-level return of an object', () => {
+    const result = child.evalScript({
+      script: 'const o = { ok: true, n: 2 };\nreturn o;',
+    });
+    expect(result.success).toBe(true);
+    expect(result.value).toEqual({ ok: true, n: 2 });
+    expect(result.type).toBe('object');
+  });
+
+  it('evalScript still returns completion value for bare expressions (no regression)', () => {
+    const result = child.evalScript({ script: '"a" + "|" + (1 + 2)' });
+    expect(result.success).toBe(true);
+    expect(result.value).toBe('a|3');
+  });
+
+  it('evalScript still evaluates an IIFE with return (no regression)', () => {
+    const result = child.evalScript({ script: '(function(){ return 5 * 5; })()' });
+    expect(result.success).toBe(true);
+    expect(result.value).toBe(25);
   });
 
   it('addScript should inject script element', () => {
@@ -2424,6 +2569,173 @@ describe('NevofluxChild — type() undefined-prefix regression', () => {
 
     child.type({ selector: '#tgt2', text: 'X' });
     expect(input.value).toBe('X');
+  });
+});
+
+// ===========================================================================
+//  Shadow-piercing query helpers (_deepQuerySelector / _deepQuerySelectorAll)
+//
+//  Regression coverage for the LinkedIn post-composer failure: the editor is a
+//  contenteditable/.ql-editor inside an OPEN shadowRoot, so a flat
+//  doc.querySelector() returns null and probe/click/input all reported
+//  "Element not found". These tests drive the traversal against a minimal fake
+//  DOM that implements only the three primitives the algorithm depends on:
+//  querySelector(sel), querySelectorAll('*'), and el.shadowRoot. The fake root
+//  models real scoping: querySelectorAll('*') enumerates LIGHT descendants only
+//  and never crosses into a nested shadow root (each shadow root is its own
+//  query scope).
+// ===========================================================================
+
+const BAD_SELECTOR = '###throws';
+
+function fakeNode(selectors, { shadowRoot = null, children = [] } = {}) {
+  return { _sel: selectors, _children: children, shadowRoot };
+}
+
+function fakeRoot(children) {
+  const lightDescendants = (nodes, acc) => {
+    for (const n of nodes) {
+      acc.push(n);
+      // Light DOM only — do NOT descend into n.shadowRoot here.
+      if (n._children?.length) {
+        lightDescendants(n._children, acc);
+      }
+    }
+    return acc;
+  };
+  return {
+    querySelector(sel) {
+      if (sel === BAD_SELECTOR) {
+        throw new SyntaxError('invalid selector');
+      }
+      return lightDescendants(children, []).find((n) => n._sel.includes(sel)) || null;
+    },
+    querySelectorAll(sel) {
+      if (sel === BAD_SELECTOR) {
+        throw new SyntaxError('invalid selector');
+      }
+      const all = lightDescendants(children, []);
+      return sel === '*' ? all : all.filter((n) => n._sel.includes(sel));
+    },
+  };
+}
+
+describe('NevofluxChild - Shadow-piercing resolution', () => {
+  let child;
+  beforeEach(() => {
+    child = new MockNevofluxChild();
+  });
+
+  it('_deepQuerySelector finds a light-DOM element via the fast path', () => {
+    const editor = fakeNode(['.ql-editor', '[contenteditable]']);
+    const doc = fakeRoot([editor]);
+    expect(child._deepQuerySelector('.ql-editor', doc)).toBe(editor);
+  });
+
+  it('_deepQuerySelector pierces an open shadow root (the LinkedIn case)', () => {
+    // .ql-editor lives ONLY inside the host's shadowRoot — flat query misses it.
+    const editor = fakeNode(['.ql-editor', "[contenteditable='true']"]);
+    const host = fakeNode(['div.editor-host'], { shadowRoot: fakeRoot([editor]) });
+    const doc = fakeRoot([host]);
+
+    expect(doc.querySelector('.ql-editor')).toBe(null); // flat is blind
+    expect(child._deepQuerySelector('.ql-editor', doc)).toBe(editor); // deep sees it
+    expect(child._deepQuerySelector("[contenteditable='true']", doc)).toBe(editor);
+  });
+
+  it('_deepQuerySelector descends NESTED shadow roots', () => {
+    const editor = fakeNode(['.ql-editor']);
+    const innerHost = fakeNode(['div.inner'], { shadowRoot: fakeRoot([editor]) });
+    const outerHost = fakeNode(['div.outer'], { shadowRoot: fakeRoot([innerHost]) });
+    const doc = fakeRoot([outerHost]);
+    expect(child._deepQuerySelector('.ql-editor', doc)).toBe(editor);
+  });
+
+  it('_deepQuerySelector returns null when nothing matches anywhere', () => {
+    const host = fakeNode(['div.host'], { shadowRoot: fakeRoot([fakeNode(['.something-else'])]) });
+    const doc = fakeRoot([host]);
+    expect(child._deepQuerySelector('.ql-editor', doc)).toBe(null);
+  });
+
+  it('_deepQuerySelector swallows invalid selectors and returns null', () => {
+    const doc = fakeRoot([fakeNode(['.x'])]);
+    expect(child._deepQuerySelector(BAD_SELECTOR, doc)).toBe(null);
+  });
+
+  it('_deepQuerySelector returns null for missing doc / empty selector', () => {
+    expect(child._deepQuerySelector('.ql-editor', null)).toBe(null);
+    expect(child._deepQuerySelector('', fakeRoot([]))).toBe(null);
+  });
+
+  it('_deepQuerySelectorAll collects matches across light DOM and shadow roots', () => {
+    const lightHit = fakeNode(['.item']);
+    const shadowHit1 = fakeNode(['.item']);
+    const shadowHit2 = fakeNode(['.item']);
+    const host = fakeNode(['div.host'], { shadowRoot: fakeRoot([shadowHit1, shadowHit2]) });
+    const doc = fakeRoot([lightHit, host]);
+
+    const all = child._deepQuerySelectorAll('.item', doc);
+    expect(all.length).toBe(3);
+    expect(all.includes(lightHit)).toBe(true);
+    expect(all.includes(shadowHit1)).toBe(true);
+    expect(all.includes(shadowHit2)).toBe(true);
+  });
+
+  it('_deepQuerySelectorAll returns [] for invalid selector or missing doc', () => {
+    expect(child._deepQuerySelectorAll(BAD_SELECTOR, fakeRoot([]))).toEqual([]);
+    expect(child._deepQuerySelectorAll('.item', null)).toEqual([]);
+  });
+});
+
+// ===========================================================================
+//  Shadow-aware active element (_deepActiveElement)
+//
+//  Regression coverage for the `type`/`paste` "1002: Could not focus target"
+//  false negative on LinkedIn. document.activeElement is RETARGETED to the
+//  shadow host when a node inside an open shadow root is focused, so
+//  `doc.activeElement === target` is false even though focus() succeeded.
+//  _deepActiveElement descends shadowRoot.activeElement to the true focused
+//  node so the focus check passes.
+// ===========================================================================
+describe('NevofluxChild - Shadow-aware active element', () => {
+  let child;
+  beforeEach(() => {
+    child = new MockNevofluxChild();
+  });
+
+  it('returns doc.activeElement for a focused light-DOM element', () => {
+    const editor = { tag: 'INPUT' };
+    const doc = { activeElement: editor };
+    expect(child._deepActiveElement(doc)).toBe(editor);
+  });
+
+  it('descends into a shadow root (the LinkedIn case)', () => {
+    // The focused node lives in a host's shadowRoot; doc.activeElement is the
+    // RETARGETED host, not the editor. _deepActiveElement must return the editor.
+    const editor = { tag: 'DIV' };
+    const host = { tag: 'DIV', shadowRoot: { activeElement: editor } };
+    const doc = { activeElement: host };
+    expect(doc.activeElement).toBe(host); // retargeted — host, not editor
+    expect(child._deepActiveElement(doc)).toBe(editor); // descends to editor
+  });
+
+  it('descends through NESTED shadow roots', () => {
+    const editor = { tag: 'DIV' };
+    const innerHost = { tag: 'DIV', shadowRoot: { activeElement: editor } };
+    const outerHost = { tag: 'DIV', shadowRoot: { activeElement: innerHost } };
+    const doc = { activeElement: outerHost };
+    expect(child._deepActiveElement(doc)).toBe(editor);
+  });
+
+  it('stops at a host whose shadowRoot has no activeElement', () => {
+    const host = { tag: 'DIV', shadowRoot: { activeElement: null } };
+    const doc = { activeElement: host };
+    expect(child._deepActiveElement(doc)).toBe(host);
+  });
+
+  it('returns null when nothing is focused or doc is missing', () => {
+    expect(child._deepActiveElement({ activeElement: null })).toBe(null);
+    expect(child._deepActiveElement(null)).toBe(null);
   });
 });
 
