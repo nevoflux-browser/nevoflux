@@ -37,9 +37,9 @@ recovery** — it never rewrites pages to "fix" issues, and never deletes or pur
 | "what's inconsistent / contradictions / 有没有矛盾" | `find_contradictions` — **report only** |
 | "what's orphaned / unlinked / 孤立页面" | `find_orphans` |
 
-How to read these reports and present findings: `references/diagnostics.md`. For contradictions,
-surface each finding with its severity and the suggested `resolution_command`, then **let the user
-decide** — do not apply fixes.
+How to read these reports, the full read-only dimension checklist, and the **Brain Health Report**
+output format: `references/diagnostics.md`. For contradictions, surface each finding with its
+severity and the suggested `resolution_command`, then **let the user decide** — do not apply fixes.
 
 ## Sync
 
@@ -56,8 +56,9 @@ Undo mistakes — see `references/recovery.md`:
 
 ## Boundaries (by design)
 
-- **No auto-fix.** Never `put_page` to resolve a contradiction, fix frontmatter, or repair
-  citations — report and hand off to the user / `brain-capture`.
+- **No auto-fix / no autonomous remediation.** Never `put_page` to resolve a contradiction, fix
+  frontmatter, or repair citations, and never run an autonomous `doctor --remediate` loop — report
+  and hand off to the user / `brain-capture`.
 - **No destructive ops.** Never `delete_page` or `purge_deleted_pages`.
 - **No background jobs** (Minion queue) and **no dream-cycle** — those are deferred / operator scope.
 - **Runtime restart is the daemon's job.** If the brain is down/unhealthy, report it and point the

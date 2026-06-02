@@ -14,19 +14,45 @@ How to read gbrain's health surfaces and present findings. Everything here is re
 
 ## Quality dimensions to surface (read-only audit)
 
-When the user wants a health pass, walk these and **report** (don't fix):
-- **Stale pages** — not updated in a long time (from `get_health`).
-- **Orphans** — `find_orphans` (pages with no inbound links). Suggest the user link or retire them.
-- **Contradictions** — `find_contradictions(slug?, severity?)`: present each as
-  "A vs B — <axis>, severity <low|medium|high>" with its `resolution_command`, and note it's
-  **unresolved**. Let the user choose whether to act.
-- **Missing cross-references / citations / filing** — note pages that violate `conventions/quality.md`
-  (unlinked mentions, uncited facts, mis-filed slugs) so the user can decide on cleanup.
+Walk these and **report** — brain-care never fixes. Most come from `get_health`/`run_doctor`; a few
+need a quick manual look.
 
-## Presenting
+| Dimension | Source | What to report |
+| --- | --- | --- |
+| Stale pages | `get_health` / `list_pages` | `compiled_truth` older than the latest timeline entry (esp. >30d + recent activity) |
+| Orphans | `find_orphans` | zero inbound links — suggest linking, not deleting |
+| Dead links | inspection | links pointing to nonexistent pages |
+| Missing cross-refs | inspection | entity mentions without a formal link |
+| Back-link violations | `get_backlinks` | a mention without its reciprocal back-link |
+| Citation gaps | spot-check 5–10 pages | facts without a `[Source: …]` marker |
+| Filing violations | `search` | content misfiled in `sources/` instead of its primary dir |
+| Tag inconsistencies | `get_tags` / `list_pages` | variant spellings ("vc" vs "venture-capital") |
+| Contradictions | `find_contradictions` | A vs B + axis + severity + `resolution_command` (unresolved) |
+| Search quality | compare `search` vs `query` | hybrid vs keyword diverge badly on known items → index issue |
+| Infra | `run_doctor` | embedding staleness, schema behind, RLS off, orphan `.redirect.yaml`, large binaries in git |
+| Open threads | inspection | timeline action items >30d still unresolved |
 
-- Group by severity; lead with what actually needs attention. Cite slugs.
-- For each issue, state the **suggested action** (e.g. the `resolution_command`, or "link these two
-  pages") but make clear `brain-care` won't perform rewrites — offer to hand off to `brain-capture`
-  if the user wants a fix made.
-- Don't alarm: a few orphans/stale pages are normal. Frame numbers against `get_stats` totals.
+For each issue, give the **suggested action** but make clear brain-care reports only — fixes go to
+the user or `brain-capture`.
+
+## Output: Brain Health Report
+
+Present a scannable report; lead with what needs attention, don't alarm (a few orphans/stale pages
+are normal — frame counts against `get_stats` totals):
+
+```
+## Brain Health Report — <date>
+
+| Dimension       | Issues | Suggested fix owner       |
+|-----------------|--------|---------------------------|
+| Stale pages     | N      | brain-capture (rewrite)   |
+| Orphans         | N      | user (link or retire)     |
+| Contradictions  | N      | user (resolution_command) |
+| …               | …      | …                         |
+
+### Details
+<per-dimension: specific slugs + suggested action>
+
+### Needs your call
+<contradictions / deletions / anything brain-care won't do automatically>
+```
