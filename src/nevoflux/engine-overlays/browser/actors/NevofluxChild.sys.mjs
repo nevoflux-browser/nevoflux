@@ -5036,6 +5036,43 @@ export class NevofluxChild extends JSWindowActorChild {
    * @param {boolean} options.includeLinks - Whether to preserve links (default: true)
    * @param {boolean} options.removeNavigation - Whether to remove nav/header/footer (default: true)
    */
+  // Build a detached clone of `node` flattening the COMPOSED tree: open shadow
+  // roots are inlined and <slot>s are replaced by their assigned light nodes, so
+  // content rendered inside web components (a shadow-DOM modal/editor) is
+  // captured. Node.cloneNode(true) does NOT copy shadowRoots, leaving markdown
+  // extraction blind to all shadow content.
+  _cloneForMarkdown(node) {
+    // Non-element nodes (text, comments, etc.): plain deep clone.
+    if (node.nodeType !== 1) {
+      return node.cloneNode(true);
+    }
+
+    // <slot>: replace with its flattened assigned light nodes (or, if nothing is
+    // assigned, the slot's own fallback content).
+    if (node.localName === 'slot' && typeof node.assignedNodes === 'function') {
+      const frag = node.ownerDocument.createDocumentFragment();
+      let assigned = [];
+      try {
+        assigned = node.assignedNodes({ flatten: true });
+      } catch {}
+      const source = assigned.length ? assigned : node.childNodes;
+      for (const child of source) {
+        frag.appendChild(this._cloneForMarkdown(child));
+      }
+      return frag;
+    }
+
+    const clone = node.cloneNode(false);
+
+    // Element with an OPEN shadow root: render the shadow tree in place of the
+    // host's own light children (the shadow tree's <slot>s pull those back in).
+    const kids = node.shadowRoot ? node.shadowRoot.childNodes : node.childNodes;
+    for (const child of kids) {
+      clone.appendChild(this._cloneForMarkdown(child));
+    }
+    return clone;
+  }
+
   getMarkdown({
     selector = null,
     includeImages = false,
@@ -5051,8 +5088,17 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     try {
-      // Clone the document to avoid modifying the original
-      const docClone = doc.cloneNode(true);
+      // Clone the document to avoid modifying the original.
+      //
+      // Use a FLATTENED composed-tree clone (not doc.cloneNode(true)): cloneNode
+      // does not copy shadowRoots, so the previous clone was blind to everything
+      // rendered inside web components — a modal/editor living in an open shadow
+      // root (e.g. LinkedIn's Quill composer) produced empty markdown, leaving
+      // the agent unable to verify content it had typed. _cloneForMarkdown inlines
+      // open shadow roots and resolves <slot>s so that content is captured.
+      // (Returns a detached <html> element; querySelector/All work on it, and the
+      // body is reached via querySelector('body') below.)
+      const docClone = this._cloneForMarkdown(doc.documentElement);
 
       // Remove script/style/meta tags
       const junkTags = ['script', 'noscript', 'style', 'link', 'meta', 'template', 'svg'];
@@ -5113,8 +5159,9 @@ export class NevofluxChild extends JSWindowActorChild {
           };
         }
       } else {
-        // Use body directly for complete page content
-        contentEl = docClone.body;
+        // Use body directly for complete page content. docClone is the flattened
+        // <html> element (not a Document), so reach the body via querySelector.
+        contentEl = docClone.querySelector('body') || docClone;
       }
 
       // Create Turndown service with GFM support

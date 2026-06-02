@@ -206,6 +206,32 @@ class MockNevofluxChild {
     return false;
   }
 
+  // Composed-tree flatten clone (mirror of the real NevofluxChild). Inlines open
+  // shadow roots and resolves <slot>s so markdown extraction sees shadow content.
+  _cloneForMarkdown(node) {
+    if (node.nodeType !== 1) {
+      return node.cloneNode(true);
+    }
+    if (node.localName === 'slot' && typeof node.assignedNodes === 'function') {
+      const frag = node.ownerDocument.createDocumentFragment();
+      let assigned = [];
+      try {
+        assigned = node.assignedNodes({ flatten: true });
+      } catch {}
+      const source = assigned.length ? assigned : node.childNodes;
+      for (const child of source) {
+        frag.appendChild(this._cloneForMarkdown(child));
+      }
+      return frag;
+    }
+    const clone = node.cloneNode(false);
+    const kids = node.shadowRoot ? node.shadowRoot.childNodes : node.childNodes;
+    for (const child of kids) {
+      clone.appendChild(this._cloneForMarkdown(child));
+    }
+    return clone;
+  }
+
   // Shadow-aware active element (mirror of the real NevofluxChild). Descends
   // each focused host's shadowRoot.activeElement so a node focused inside a
   // shadow root is correctly recognized despite doc.activeElement retargeting.
@@ -2904,6 +2930,110 @@ describe('NevofluxChild - Shadow-including containment', () => {
   it('true when node === ancestor', () => {
     const modal = {};
     expect(child._composedContains(modal, modal)).toBe(true);
+  });
+});
+
+// ===========================================================================
+//  Composed-tree flatten clone for markdown (_cloneForMarkdown)
+//
+//  Regression coverage for getMarkdown reading shadow-DOM content. doc.cloneNode
+//  (true) drops shadowRoots, so markdown was blind to a shadow-DOM modal/editor.
+//  _cloneForMarkdown inlines open shadow roots and resolves <slot>s.
+// ===========================================================================
+describe('NevofluxChild - Flatten clone for markdown', () => {
+  let child;
+  // Minimal fake DOM: nodes carry a `label`, support cloneNode(false) (shallow,
+  // empty children), appendChild (spreads DocumentFragments), and the shadow/slot
+  // surface the flatten algorithm reads.
+  function mkFragment() {
+    return {
+      _isFragment: true,
+      childNodes: [],
+      appendChild(c) {
+        if (c && c._isFragment) {
+          for (const cc of c.childNodes) this.childNodes.push(cc);
+        } else {
+          this.childNodes.push(c);
+        }
+        return c;
+      },
+    };
+  }
+  function mk({ label, nodeType = 1, localName = 'div', children = [], shadow = null, assigned = null } = {}) {
+    const node = {
+      label,
+      nodeType,
+      localName,
+      childNodes: children,
+      shadowRoot: shadow ? { childNodes: shadow } : null,
+      ownerDocument: { createDocumentFragment: mkFragment },
+      appendChild(c) {
+        if (c && c._isFragment) {
+          for (const cc of c.childNodes) node.childNodes.push(cc);
+        } else {
+          node.childNodes.push(c);
+        }
+        return c;
+      },
+      cloneNode() {
+        // shallow clone: same identity label, empty children
+        return mk({ label, nodeType, localName });
+      },
+    };
+    if (localName === 'slot') {
+      node.assignedNodes = () => assigned || [];
+    }
+    return node;
+  }
+  // Collect labels of the cloned tree, depth-first.
+  function labels(node, acc = []) {
+    acc.push(node.label);
+    for (const c of node.childNodes || []) {
+      labels(c, acc);
+    }
+    return acc;
+  }
+  beforeEach(() => {
+    child = new MockNevofluxChild();
+  });
+
+  it('clones light DOM children (text + elements)', () => {
+    const root = mk({ label: 'root', children: [mk({ label: 'A', nodeType: 3 }), mk({ label: 'B' })] });
+    expect(labels(child._cloneForMarkdown(root))).toEqual(['root', 'A', 'B']);
+  });
+
+  it('inlines an open shadow root in place of light children', () => {
+    const host = mk({
+      label: 'host',
+      children: [mk({ label: 'lightChild' })], // should NOT appear
+      shadow: [mk({ label: 'shadowEditor' })], // SHOULD appear
+    });
+    expect(labels(child._cloneForMarkdown(host))).toEqual(['host', 'shadowEditor']);
+  });
+
+  it('resolves a <slot> to its assigned light nodes', () => {
+    const assignedA = mk({ label: 'assignedA' });
+    const slot = mk({
+      label: 'slot',
+      localName: 'slot',
+      assigned: [assignedA],
+      children: [mk({ label: 'fallback' })],
+    });
+    const host = mk({ label: 'host', shadow: [slot] });
+    // slot itself disappears, replaced by its assigned node
+    expect(labels(child._cloneForMarkdown(host))).toEqual(['host', 'assignedA']);
+  });
+
+  it('uses <slot> fallback content when nothing is assigned', () => {
+    const slot = mk({ label: 'slot', localName: 'slot', assigned: [], children: [mk({ label: 'fb' })] });
+    const host = mk({ label: 'host', shadow: [slot] });
+    expect(labels(child._cloneForMarkdown(host))).toEqual(['host', 'fb']);
+  });
+
+  it('recurses through nested shadow roots', () => {
+    const inner = mk({ label: 'inner', shadow: [mk({ label: 'deepEditor' })] });
+    const host = mk({ label: 'host', shadow: [inner] });
+    expect(labels(child._cloneForMarkdown(host))).toEqual(['host', 'inner', 'deepEditor']);
   });
 });
 
