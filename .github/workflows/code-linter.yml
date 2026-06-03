@@ -39,7 +39,9 @@ jobs:
         run: npm ci
 
       - name: Lint
-        run: npx eslint src/zen/ src/nevoflux/ scripts/ --no-error-on-unmatched-pattern --no-inline-config --max-warnings 50
+        # Only lint NevoFlux's own code. src/zen/ is upstream Zen Browser source
+        # carried as-is and is not held to NevoFlux's lint gate.
+        run: npx eslint src/nevoflux/ scripts/ --no-error-on-unmatched-pattern --no-inline-config --max-warnings 50
 
       - name: Check for Rust changes
         id: rust-changes

@@ -4769,7 +4769,7 @@ async function waitForTabComplete(tabId, budgetMs) {
     try {
       tab = await browser.tabs.get(tabId);
     } catch (e) {
-      throw new Error('tab disappeared during load: ' + e.message);
+      throw new Error('tab disappeared during load: ' + e.message, { cause: e });
     }
     if (tab.status === 'complete') return;
     await sleepMs(200);

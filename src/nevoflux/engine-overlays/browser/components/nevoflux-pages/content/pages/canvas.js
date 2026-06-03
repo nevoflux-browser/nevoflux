@@ -926,9 +926,11 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
       case 'canvas.share.delete':
       case 'canvas.share.list':
       // ── Canvas Tool Whitelist ────────────────────────────
+      // falls through
       case 'canvas.tool.invoke':
       case 'canvas.tool.list':
       // ── EventBus ─────────────────────────────────────────
+      // falls through
       case 'events.subscribe': {
         // Open a persistent push channel BEFORE subscribing — bridge:request's
         // 5s push grace is too short for long-lived event subscriptions.
