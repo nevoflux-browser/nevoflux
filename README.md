@@ -57,7 +57,7 @@
 
 Built on [Zen Browser](https://zen-browser.app/) (Firefox/Gecko), Nevoflux bridges the gap between you, AI, and the internet. It browses with you, thinks with you, and acts for you — from simple conversations to autonomous web navigation and full computer control.
 
-Under the hood: a Rust-native agent daemon with 16+ LLM providers, 80+ browser automation APIs, cross-platform computer control, MCP integration, an encrypted cross-session memory system, and integration with external coding agents and personal AI assistants.
+Under the hood: a Rust-native agent daemon with 16+ LLM providers, 80+ browser automation APIs, cross-platform computer control, MCP integration, an encrypted cross-session memory system, a GBrain-powered knowledge base (your second brain), and integration with external coding agents and personal AI assistants.
 
 ---
 
@@ -67,7 +67,7 @@ Under the hood: a Rust-native agent daemon with 16+ LLM providers, 80+ browser a
 - 🧠 **Memory & Learning** — Remembers across sessions, learns your preferences, adapts to how you work — with encrypted storage
 - 🎛️ **Progressive Autonomy** — Three modes (Chat, Browser, Agent) — you decide how much control to hand over
 - ⚡ **Build: Micro Apps (Canvas)** — Generate fully functional mini-apps on the fly — not just rendered artifacts, but living apps with full agent capabilities. Exportable to 10+ formats (HTML, PNG, PDF, DOCX, PPTX, XLSX, SVG, ZIP). Every other AI just shows you text — Nevoflux creates tools you can actually use.
-- 🐙 **Manage: OpenClaw Integration** — Your personal AI assistant that manages your life beyond coding — schedules, tasks, knowledge, and workflows. Nevoflux is the unified interface: Canvas Micro Apps help you **build** tools, OpenClaw helps you **manage** everything else.
+- 📚 **Remember: Second Brain (GBrain)** — A personal knowledge base you grow on purpose — capture pages, notes, and research, then recall and synthesize across everything you've saved. Distinct from the agent's automatic memory: this is *your* curated brain, stored as local markdown pages and shareable via encrypted, zero-knowledge links. Canvas Micro Apps help you **build** tools; GBrain helps you **remember** what matters.
 - 🧩 **WASM Skills** — Extensible skill system powered by WebAssembly — sandboxed, pluggable, and progressively loaded
 - 🖥️ **Browser + Computer Control** — 80+ browser APIs and cross-platform desktop control (screenshot, mouse, keyboard)
 - 🤖 **Multi-LLM Freedom** — 16+ providers: Anthropic, OpenAI, Qwen, DeepSeek, Gemini, Ollama, and more — your choice
@@ -212,12 +212,12 @@ Then register the native messaging host:
 │  └──────────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────────┘
 
-         Build ▼                              Manage ▼
+         Build ▼                            Remember ▼
   ┌─────────────────────┐          ┌──────────────────────────┐
-  │  Canvas Micro Apps   │          │  OpenClaw                 │
-  │  Create tools,       │          │  Personal AI assistant    │
-  │  export to 10+       │          │  — schedules, tasks,      │
-  │  formats             │          │    knowledge, workflows   │
+  │  Canvas Micro Apps   │          │  GBrain                   │
+  │  Create tools,       │          │  Second brain —           │
+  │  export to 10+       │          │  capture, recall,         │
+  │  formats             │          │  synthesize               │
   └─────────────────────┘          └──────────────────────────┘
 
          Code ▼
@@ -285,6 +285,23 @@ Canvas artifacts are living applications with access to the NevofluxSDK, enablin
 | PPTX       | Slides artifacts                |
 | XLSX       | Artifacts containing tables     |
 | ZIP        | Project (multi-file) artifacts  |
+
+---
+
+## Knowledge Base (GBrain)
+
+Beyond the agent's automatic, behind-the-scenes memory, Nevoflux gives you a **second brain** — a personal knowledge base you curate on purpose, persisted by the **GBrain** backend. Open it at `nevoflux://brain` (enable it first under `nevoflux://settings/knowledge-base`).
+
+Each entry is a markdown page with a stable slug, a `compiled_truth` body (what you currently believe), and a `timeline` of how that understanding evolved. Four operations cover the lifecycle:
+
+| Operation      | What it does                                                                          |
+| -------------- | ------------------------------------------------------------------------------------- |
+| **Recall**     | Look something up — "what do I know about X", "catch me up", "what's notable lately"   |
+| **Capture**    | Save or ingest — a note, a page, a PDF, a meeting — into a filed, back-linked page     |
+| **Synthesize** | Connect the dots — concept maps, "who knows about X", how a topic has trended          |
+| **Maintain**   | Health checks, sync, and recovery — undo a delete, surface inconsistencies             |
+
+Pages live locally and are bilingual-friendly (English / 中文). Share a single page or your whole brain via **encrypted, zero-knowledge links** — the decryption key stays in the URL fragment and never reaches a server — and import knowledge others share with you.
 
 ---
 
