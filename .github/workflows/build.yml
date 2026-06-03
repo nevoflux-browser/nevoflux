@@ -315,6 +315,7 @@ jobs:
     uses: ./.github/workflows/windows-native-build.yml
     permissions:
       contents: write
+      actions: read
     secrets: inherit
     needs: [build-data, buildid]
     with:
