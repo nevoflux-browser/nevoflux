@@ -30,16 +30,6 @@ on:
         required: true
         type: 'boolean'
         default: false
-      auto_finalize:
-        description: 'After build completes, automatically chain into finalize-release.yml (publishes the draft release)'
-        required: false
-        type: 'boolean'
-        default: false
-      create_release:
-        description: 'On release branch: have build.yml create a v-tag DRAFT GitHub Release with GHA artifacts. Required when GHA self-host is the build source. Leave false when GCB created the release elsewhere.'
-        required: false
-        type: 'boolean'
-        default: false
   workflow_call:
     inputs:
       update_version:
@@ -65,16 +55,6 @@ on:
       use-sccache:
         description: 'Use sccache'
         required: true
-        type: 'boolean'
-        default: false
-      auto_finalize:
-        description: 'After build completes, automatically chain into finalize-release.yml (publishes the draft release)'
-        required: false
-        type: 'boolean'
-        default: false
-      create_release:
-        description: 'On release branch: have build.yml create a v-tag DRAFT GitHub Release with GHA artifacts. Required when GHA self-host is the build source. Leave false when GCB created the release elsewhere.'
-        required: false
         type: 'boolean'
         default: false
 
@@ -330,17 +310,19 @@ jobs:
             --repo "$REPO" --clobber
           echo "Source tarball uploaded to draft release $VERSION"
 
-  windows-step-2:
-    name: Windows build step 2 (Generate profile data)
-    uses: ./.github/workflows/windows-profile-build.yml
+  windows-native:
+    name: Windows build (native, x64 + arm64)
+    uses: ./.github/workflows/windows-native-build.yml
     permissions:
       contents: write
     secrets: inherit
-    needs: [build-data]
+    needs: [build-data, buildid]
     with:
-      build-version: ${{ inputs.display_version || needs.build-data.outputs.version }}
-      profile-data-path-archive: nevoflux.win64-pgo-stage-1.zip
-      release-branch: ${{ inputs.update_branch }}
+      display_version: ${{ inputs.display_version || needs.build-data.outputs.version }}
+      release_branch: ${{ inputs.update_branch }}
+      build_id: ${{ needs.buildid.outputs.buildids }}
+      skip_arm64: false
+      skip_pgo: false
 
   linux-x86_64:
     name: Linux build (x86_64)
@@ -488,20 +470,35 @@ jobs:
           name: zen-${{ matrix.arch }}.AppImage.zsync
           path: ./dist/zen-${{ matrix.arch }}.AppImage.zsync
 
+      - name: Upload AppImage to draft release
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          set -ex
+          VERSION="${{ needs.build-data.outputs.version }}"
+          REPO="${{ github.repository }}"
+          if ! gh release view "$VERSION" --repo "$REPO" >/dev/null 2>&1; then
+            gh release create "$VERSION" --repo "$REPO" \
+              --title "Release build - $VERSION" --draft --notes "Build in progress"
+          fi
+          gh release upload "$VERSION" ./dist/zen-${{ matrix.arch }}.AppImage --repo "$REPO" --clobber
+          gh release upload "$VERSION" ./dist/zen-${{ matrix.arch }}.AppImage.zsync --repo "$REPO" --clobber
+          echo "AppImage (${{ matrix.arch }}) uploaded to draft release $VERSION"
+
   stop-self-hosted:
     runs-on: blacksmith-2vcpu-ubuntu-2404
     needs: [linux-x86_64, linux-aarch64]
     if: always()
     steps:
       - name: Download aws-cli
-        if: ${{ inputs.create_release && inputs.update_branch == 'release' }}
+        if: ${{ inputs.update_branch == 'release' }}
         run: |
           curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
           unzip awscliv2.zip
           sudo ./aws/install --update
 
       - name: Stop self-hosted runner
-        if: ${{ inputs.create_release && inputs.update_branch == 'release' }}
+        if: ${{ inputs.update_branch == 'release' }}
         run: |
           echo "Stopping self-hosted runner"
           echo "${{ secrets.SELF_HOSTED_RUNNER_STOP_SCRIPT }}" | base64 -d > stop.sh
@@ -509,301 +506,8 @@ jobs:
           bash ./stop.sh > /dev/null
 
       - name: Remove self-hosted runner script
-        if: always() && ${{ inputs.create_release && inputs.update_branch == 'release' }}
+        if: ${{ always() && inputs.update_branch == 'release' }}
         run: |
           echo "Removing self-hosted runner script"
           rm stop.sh || true
 
-  release:
-    if: ${{ inputs.create_release || inputs.update_branch == 'twilight' }}
-    permissions: write-all
-    name: Release
-    needs:
-      [
-        build-data,
-        linux-x86_64,
-        linux-aarch64,
-        check-release,
-        mac-uni,
-        appimage,
-        source,
-        stop-self-hosted,
-      ]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    environment:
-      name: ${{ inputs.update_branch == 'release' && 'Deploy-Release' || 'Deploy-Twilight' }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          token: ${{ secrets.DEPLOY_KEY }}
-
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-
-      - name: Checkout updates repository
-        uses: actions/checkout@v4
-        with:
-          repository: zen-browser/updates-server
-          path: updates-server
-          token: ${{ secrets.DEPLOY_KEY }}
-
-      - name: Download object files
-        if: ${{ inputs.update_branch == 'release' }}
-        run: |
-          git clone https://github.com/zen-browser/windows-binaries.git .github/workflows/object --depth 1
-
-      - name: Copy update manifests
-        env:
-          RELEASE_BRANCH: ${{ inputs.update_branch }}
-        run: |
-          cd updates-server
-          mkdir -p updates
-          cp -a ../linux_update_manifest_x86_64/.  updates/
-          cp -a ../linux_update_manifest_aarch64/.  updates/
-
-          if [[ $RELEASE_BRANCH == 'release' ]]; then
-            cp -a ../.github/workflows/object/windows-x64-signed-x86_64/update_manifest/.  updates/
-            cp -a ../.github/workflows/object/windows-x64-signed-arm64/update_manifest/.  updates/
-          else
-            cp -a ../windows_update_manifest_x86_64/.  updates/
-            cp -a ../windows_update_manifest_arm64/.  updates/
-          fi
-
-          cp -a ../macos_update_manifest/.  updates/
-
-      - name: Commit
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: 🚀 Update update manifests
-          commit_user_name: Zen Browser Robot
-          commit_user_email: zen-browser-auto@users.noreply.github.com
-          repository: ./updates-server
-
-      - name: Generate Release Notes
-        env:
-          RELEASE_BRANCH: ${{ inputs.update_branch }}
-        run: bash .github/workflows/src/generate_release_notes.sh
-
-        # If we are on Twilight, we want to just update the Twilight tag's release
-      - name: Update Twilight tag
-        if: ${{ inputs.update_branch == 'twilight' }}
-        uses: softprops/action-gh-release@v2.2.2
-        with:
-          body_path: release_notes.md
-          files: |
-            ./nevoflux.source.tar.zst/*
-            ./nevoflux.linux-x86_64.tar.xz/*
-            ./nevoflux.linux-aarch64.tar.xz/*
-            ./zen-x86_64.AppImage/*
-            ./zen-x86_64.AppImage.zsync/*
-            ./zen-aarch64.AppImage/*
-            ./zen-aarch64.AppImage.zsync/*
-            ./zen.win-x86_64.zip/*
-            ./zen.win-arm64.zip/*
-            ./linux.mar/*
-            ./linux-aarch64.mar/*
-            ./windows.mar/*
-            ./windows-arm64.mar/*
-            ./macos.mar/*
-            ./zen.installer.exe/*
-            ./zen.installer-arm64.exe/*
-            ./nevoflux.macos-universal.dmg/*
-          tag_name: "twilight-1"
-          name: "Twilight build - ${{ needs.build-data.outputs.version }} (${{ needs.build-data.outputs.build_date }} at ${{ needs.build-data.outputs.build_time }})"
-          draft: false
-          generate_release_notes: false
-          prerelease: true
-          token: ${{ secrets.DEPLOY_KEY }}
-          fail_on_unmatched_files: false
-        env:
-          GITHUB_REPOSITORY: ${{ github.repository }}
-
-      - name: Release
-        uses: softprops/action-gh-release@v2.2.2
-        if: ${{ inputs.update_branch == 'release' }}
-        with:
-          token: ${{ secrets.DEPLOY_KEY }}
-          tag_name: v${{ needs.build-data.outputs.version }}
-          draft: true
-          prerelease: false
-          fail_on_unmatched_files: false
-          generate_release_notes: false
-          name: "Release build - v${{ needs.build-data.outputs.version }} (${{ needs.build-data.outputs.build_date }})"
-          body_path: release_notes.md
-          files: |
-            ./nevoflux.source.tar.zst/*
-            ./nevoflux.linux-x86_64.tar.xz/*
-            ./nevoflux.linux-aarch64.tar.xz/*
-            ./zen-x86_64.AppImage/*
-            ./zen-x86_64.AppImage.zsync/*
-            ./zen-aarch64.AppImage/*
-            ./zen-aarch64.AppImage.zsync/*
-            ./.github/workflows/object/windows-x64-signed-x86_64/zen.win-x86_64.zip
-            ./.github/workflows/object/windows-x64-signed-arm64/zen.win-arm64.zip
-            ./linux.mar/*
-            ./linux-aarch64.mar/*
-            ./.github/workflows/object/windows-x64-signed-x86_64/windows.mar
-            ./.github/workflows/object/windows-x64-signed-arm64/windows-arm64.mar
-            ./macos.mar/*
-            ./.github/workflows/object/windows-x64-signed-x86_64/zen.installer.exe
-            ./.github/workflows/object/windows-x64-signed-arm64/zen.installer-arm64.exe
-            ./nevoflux.macos-universal.dmg/*
-
-  prepare-flatpak:
-    if: ${{ inputs.create_release && inputs.update_branch == 'release' }}
-    permissions: write-all
-    name: Prepare Flatpak
-    needs: [release, linux-x86_64, linux-aarch64, build-data]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-
-    steps:
-      - name: Checkout Flatpak repository
-        uses: actions/checkout@v4
-        with:
-          repository: zen-browser/release-utils
-          token: ${{ secrets.DEPLOY_KEY }}
-
-      - name: Install dependencies
-        run: |
-          git pull
-          sudo apt-get update
-          npm ci
-
-      - name: Generate new Flatpak release
-        run: |
-          npm run build-flatpak -- \
-            --version ${{ needs.build-data.outputs.version }}
-
-      - name: Commit
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: 🚀 Update releases for Flatpak
-          commit_user_name: Zen Browser Robot
-          commit_user_email: zen-browser-auto@users.noreply.github.com
-
-      - name: Checkout Flatpak repository
-        uses: actions/checkout@v4
-        with:
-          repository: zen-browser/flatpak
-          token: ${{ secrets.DEPLOY_KEY }}
-          path: flatpak
-
-      - name: Move releases.xml
-        run: |
-          pwd
-          ls .
-          ls ..
-          mv releases.xml ./flatpak/app.zen_browser.zen.metainfo.xml
-          # output the version to the file
-          echo -n ${{ needs.build-data.outputs.version }} > ./flatpak/version
-
-      - name: Commit
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "[release]: Update Flatpak manifest"
-          commit_user_name: Zen Browser Robot
-          commit_user_email: zen-browser-auto@users.noreply.github.com
-          repository: ./flatpak
-
-      - name: Wait 2 minutes for the Flatpak repo to update
-        run: sleep 120
-
-  release-flatpak:
-    if: ${{ inputs.create_release && inputs.update_branch == 'release' }}
-    permissions: write-all
-    name: Release Flatpak
-    needs: [prepare-flatpak, build-data]
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-
-    steps:
-      - name: Checkout Flatpak repository
-        uses: actions/checkout@v4
-        with:
-          repository: flathub/app.zen_browser.zen
-          token: ${{ secrets.DEPLOY_KEY }}
-
-      - name: Download Linux x86_64 build
-        uses: actions/download-artifact@v4
-        with:
-          name: zen.linux-x86_64.tar.xz
-
-      - name: Download Linux aarch64 build
-        uses: actions/download-artifact@v4
-        with:
-          name: zen.linux-aarch64.tar.xz
-
-      - name: Update repository
-        uses: actions/checkout@v4
-        with:
-          path: zen-browser
-          token: ${{ secrets.DEPLOY_KEY }}
-
-      - name: Download Flatpak archive
-        run: |
-          wget https://github.com/zen-browser/flatpak/releases/latest/download/archive.tar -O archive.tar
-
-      - name: Setup Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Prepare Flatpak manifest
-        run: |
-          python3 ./zen-browser/scripts/prepare-flatpak-release.py \
-            --flatpak-archive archive.tar \
-            --version ${{ needs.build-data.outputs.version }} \
-            --linux-archive zen.linux-x86_64.tar.xz \
-            --linux-aarch64-archive zen.linux-aarch64.tar.xz \
-            --output app.zen_browser.zen.yml \
-            --template-root ./zen-browser/build/flatpak
-
-      - name: Commit changes
-        run: |
-          git add app.zen_browser.zen.yml
-          git commit -m "Update to version ${{ needs.build-data.outputs.version }}"
-
-      - name: Clean up
-        run: |
-          rm -rf zen-browser
-          rm -rf archive.tar
-          rm -rf zen.linux-x86_64.tar.xz
-          rm -rf zen.linux-aarch64.tar.xz
-
-      - name: Upload Flatpak manifest
-        uses: actions/upload-artifact@v4
-        with:
-          retention-days: 5
-          name: app.zen_browser.zen.yml
-          path: ./app.zen_browser.zen.yml
-
-      - name: Create pull request
-        uses: peter-evans/create-pull-request@v7
-        env:
-          GIT_TRACE: 1
-          GIT_CURL_VERBOSE: 1
-        with:
-          token: ${{ secrets.DEPLOY_KEY }}
-          commit-message: Update to version `${{ needs.build-data.outputs.version }}`
-          title: Update to version `${{ needs.build-data.outputs.version }}`
-          body: |
-            This PR updates the Zen Browser Flatpak package to version ${{ needs.build-data.outputs.version }}.
-
-            @${{ github.actor }} please review and merge this PR.
-          branch: update-to-${{ needs.build-data.outputs.version }}
-          base: master
-          git-token: ${{ secrets.DEPLOY_KEY }}
-          delete-branch: true
-
-  finalize:
-    name: Finalize Release
-    if: ${{ inputs.auto_finalize && inputs.update_branch == 'release' }}
-    needs: [build-data, release]
-    uses: ./.github/workflows/finalize-release.yml
-    permissions: write-all
-    secrets: inherit
-    with:
-      version: ${{ needs.build-data.outputs.version }}
-      release_branch: ${{ inputs.update_branch }}

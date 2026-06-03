@@ -1,21 +1,24 @@
 name: Finalize Release
 
-# Manual workflow to finalize a release after all builds complete.
+# Manual workflow to publish a release after build.yml has produced the draft
+# and the Windows binaries in it have been manually signed.
 #
 # Prerequisites:
-#   - build.yml has completed (macOS assets uploaded to draft release WITHOUT v prefix)
-#   - GCB builds have completed (Linux, Windows assets uploaded to draft release WITH v prefix)
+#   - build.yml completed: Linux / macOS / Windows artifacts uploaded to the
+#     draft release "Release build - <version>" (tag = bare version, no v prefix)
+#   - The unsigned Windows artifacts in that draft have been replaced with
+#     manually-signed versions, e.g.
+#       gh release upload "<version>" nevoflux.installer-gha.exe --clobber
 #
 # This workflow:
-#   1. Merges macOS assets from non-v release into v-prefixed release, deletes non-v release
-#   2. Generates release notes
-#   3. Marks the draft release as published
+#   1. Generates release notes
+#   2. Flips the draft release to published (single release, no v/non-v merge)
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version without v prefix (e.g. 0.1.2)'
+        description: 'Release version without v prefix (e.g. 0.3.5)'
         required: true
         type: string
       release_branch:
@@ -28,7 +31,7 @@ on:
   workflow_call:
     inputs:
       version:
-        description: 'Release version without v prefix (e.g. 0.1.2)'
+        description: 'Release version without v prefix (e.g. 0.3.5)'
         required: true
         type: string
       release_branch:
@@ -38,9 +41,9 @@ on:
         default: 'release'
 
 jobs:
-  finalize:
+  publish:
     permissions: write-all
-    name: Finalize Release
+    name: Publish Release
     runs-on: ubuntu-latest
     environment:
       name: Deploy-Release
@@ -52,60 +55,44 @@ jobs:
           submodules: recursive
           token: ${{ secrets.DEPLOY_KEY }}
 
-      # =================================================================
-      # 1. Merge macOS assets from non-v release into v-prefixed release
-      # =================================================================
-      - name: Merge macOS assets into v-prefixed release
+      - name: Guard against placeholder version
+        run: |
+          set -e
+          V="${{ inputs.version }}"
+          case "$V" in
+            ""|0.0.1|0.0.1-dev)
+              echo "::error::refusing to publish placeholder version '$V'"
+              exit 1 ;;
+          esac
+          echo "Publishing version: $V"
+
+      - name: Verify draft release exists
         env:
           GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
         run: |
+          set -e
           VERSION="${{ inputs.version }}"
-          V_TAG="v${VERSION}"
-
-          echo "Checking for non-v release '${VERSION}'..."
-          if gh release view "${VERSION}" --json assets --jq '.assets[].name' 2>/dev/null; then
-            echo "Found release '${VERSION}', downloading assets..."
-            mkdir -p /tmp/macos-assets
-
-            # Download all assets from the non-v release
-            gh release download "${VERSION}" --dir /tmp/macos-assets --clobber
-
-            # Upload each asset to the v-prefixed release
-            echo "Uploading assets to '${V_TAG}'..."
-            for f in /tmp/macos-assets/*; do
-              if [ -f "$f" ]; then
-                echo "  Uploading $(basename "$f")..."
-                gh release upload "${V_TAG}" "$f" --clobber
-              fi
-            done
-
-            # Delete the non-v release
-            echo "Deleting release '${VERSION}'..."
-            gh release delete "${VERSION}" --yes
-            echo "Release '${VERSION}' deleted."
-          else
-            echo "No non-v release '${VERSION}' found, skipping merge."
+          REPO="${{ github.repository }}"
+          if ! gh release view "$VERSION" --repo "$REPO" >/dev/null 2>&1; then
+            echo "::error::draft release '$VERSION' not found — run build.yml first"
+            exit 1
           fi
 
-      # =================================================================
-      # 2. Generate release notes
-      # =================================================================
       - name: Generate Release Notes
         env:
           RELEASE_BRANCH: ${{ inputs.release_branch }}
         run: bash .github/workflows/src/generate_release_notes.sh
 
-      # =================================================================
-      # 3. Publish the release
-      # =================================================================
-      - name: Finalize release
+      - name: Publish the draft release
         env:
           GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
         run: |
+          set -ex
           VERSION="${{ inputs.version }}"
-          V_TAG="v${VERSION}"
+          REPO="${{ github.repository }}"
           BUILD_DATE=$(date +"%Y-%m-%d")
-          gh release edit "${V_TAG}" \
+          gh release edit "$VERSION" \
+            --repo "$REPO" \
             --draft=false \
-            --title "Release build - ${V_TAG} ($BUILD_DATE)" \
+            --title "Release build - $VERSION ($BUILD_DATE)" \
             --notes-file release_notes.md
