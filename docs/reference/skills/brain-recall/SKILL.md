@@ -47,7 +47,11 @@ Non-negotiable — these hold for every recall, no extra reading required:
   — and **propagate** any `[Source: …]` markers the page carries so facts trace to origin.
 - **Flag gaps and additions.** Say "your brain has nothing on X" rather than filling from general
   knowledge; if you add anything not on the page, mark it as supplemental, not recalled.
-- The brain is **personal memory** — don't use it for world knowledge, live web, or the current page.
+- **Explicit `/brain-recall` = search the brain first, always.** When the user invokes this skill,
+  run a brain query (`query`/`search`) before anything else — *even if the topic looks like general
+  knowledge* (e.g. "感冒刮哪里") — because they're asking about their own saved notes, which may well
+  cover it. **Never skip straight to `web_search`.** Only after the brain genuinely returns nothing do
+  you say "your brain has nothing on X", and *then* may offer to look it up on the web.
 
 Full conventions when you need depth: `skill_read('brain', 'conventions/brain-first.md')` and the
 other `brain/conventions/*.md`.
@@ -126,9 +130,12 @@ Don't:
 - **Full-load pages when chunks suffice** — reserve `get_page` for "tell me about X".
 - **Ignore source precedence** — a casual external note doesn't override the user's own statement.
 - **Run a semantic `query` for personal-state** ("what's notable / 最近") — use salience / anomalies.
+- **Skip the brain and `web_search` on an explicit `/brain-recall`** — always query the brain first,
+  even if the topic looks general; web is only a fallback after the brain returns nothing.
 
 ## Stay read-only
 
 `brain-recall` does not write. If the user wants to save, update, or enrich what you surfaced, hand
-off to `brain-capture`. Don't consult the brain for world knowledge, live web facts, or the current
-page — use web/browser tools.
+off to `brain-capture`. (When *not* explicitly invoked, world-knowledge / live-web / current-page
+questions belong to web/browser tools — but an explicit `/brain-recall` always searches the brain
+first, per "Brain basics" above.)
