@@ -34,7 +34,10 @@ while IFS= read -r link; do
   [ -n "$link" ] || continue
   target=$(readlink "$link" 2>/dev/null || true)
   if [ -n "$target" ] && [ -e "$target" ]; then
-    cp --remove-destination "$target" "$link"
+    # Portable replacement for GNU `cp --remove-destination` (absent in macOS
+    # BSD cp, which errors `illegal option -- -`): unlink the symlink first,
+    # then copy the real target over the now-free path. Same result on GNU/BSD.
+    rm -f "$link" && cp "$target" "$link"
     count=$((count + 1))
   else
     echo "  WARN: broken symlink left as-is: $link -> $target" >&2
