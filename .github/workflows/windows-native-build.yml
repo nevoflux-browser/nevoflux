@@ -1,7 +1,7 @@
 name: Windows Native Build (self-hosted)
 
 permissions:
-  contents: read
+  contents: write
   actions: read
 
 on:
@@ -29,9 +29,31 @@ on:
         description: 'Override MOZ_BUILD_DATE (timestamp). Empty = auto.'
         type: string
         default: ''
+  workflow_call:
+    inputs:
+      display_version:
+        description: 'Display version (e.g. 0.1.0)'
+        required: true
+        type: string
+      release_branch:
+        description: 'Release branch'
+        required: true
+        type: string
+      skip_arm64:
+        description: 'Skip arm64 build'
+        type: boolean
+        default: false
+      skip_pgo:
+        description: 'Skip PGO stages 1+2+3 (x64 single-shot, no PGO)'
+        type: boolean
+        default: false
+      build_id:
+        description: 'Override MOZ_BUILD_DATE (timestamp). Empty = auto.'
+        type: string
+        default: ''
 
 concurrency:
-  group: windows-native-${{ github.workflow }}
+  group: windows-native-build
   cancel-in-progress: false
 
 env:
@@ -271,6 +293,18 @@ jobs:
       - name: Apply patches
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: npm run import -- --verbose
+
+      - name: Assert version propagated (guard against 0.0.1 placeholder)
+        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        run: |
+          raw=$(npm run --silent surfer -- get version)
+          ver="${raw//[[:space:]]/}"
+          echo "Resolved surfer version: $ver"
+          case "$ver" in
+            ""|0.0.1|0.0.1-dev)
+              echo "::error::version is placeholder '$ver' after import — display-version did not propagate"
+              exit 1 ;;
+          esac
 
       - name: Diagnostic — sample patches actually applied
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
@@ -1679,6 +1713,28 @@ jobs:
           path: out/*
           retention-days: 14
           if-no-files-found: error
+
+      - name: Upload Windows artifacts to draft release
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
+        shell: bash
+        run: |
+          set -ex
+          VERSION="${{ inputs.display_version }}"
+          REPO="${{ github.repository }}"
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "::error::gh CLI not found on self-hosted runner — install it to publish Windows artifacts to the draft release"
+            exit 1
+          fi
+          if ! gh release view "$VERSION" --repo "$REPO" >/dev/null 2>&1; then
+            gh release create "$VERSION" --repo "$REPO" \
+              --title "Release build - $VERSION" --draft --notes "Build in progress"
+          fi
+          for f in out/*; do
+            [ -f "$f" ] || continue
+            gh release upload "$VERSION" "$f" --repo "$REPO" --clobber
+          done
+          echo "Windows artifacts uploaded to draft release $VERSION"
 
   cleanup:
     needs: collect

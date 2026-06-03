@@ -9,7 +9,6 @@ on:
         description: 'The version to build'
         required: true
         type: string
-        default: '0.0.1'
       release-branch:
         description: 'The branch to build'
         required: true
@@ -172,6 +171,17 @@ jobs:
         env:
           SURFER_COMPAT: aarch64
         run: npm run import -- --verbose
+
+      - name: Assert version propagated (guard against 0.0.1 placeholder)
+        run: |
+          set -e
+          V="$(npm run --silent surfer -- get version | tr -d '[:space:]')"
+          echo "Resolved surfer version: $V"
+          case "$V" in
+            ""|0.0.1|0.0.1-dev)
+              echo "::error::version is placeholder '$V' after import — display-version did not propagate"
+              exit 1 ;;
+          esac
 
       - name: Download NevoFlux Agent binary
         run: |

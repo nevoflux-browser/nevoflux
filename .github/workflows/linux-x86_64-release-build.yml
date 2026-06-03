@@ -7,7 +7,6 @@ on:
         description: "The version to build"
         required: true
         type: string
-        default: "0.0.1"
       release-branch:
         description: "The branch to build"
         required: true
@@ -119,6 +118,17 @@ jobs:
         run: |
           . "$HOME/.cargo/env"
           npm run import
+
+      - name: Assert version propagated (guard against 0.0.1 placeholder)
+        run: |
+          set -e
+          V="$(npm run --silent surfer -- get version | tr -d '[:space:]')"
+          echo "Resolved surfer version: $V"
+          case "$V" in
+            ""|0.0.1|0.0.1-dev)
+              echo "::error::version is placeholder '$V' after import — display-version did not propagate"
+              exit 1 ;;
+          esac
 
       - name: Download NevoFlux Agent binary
         run: |
@@ -297,3 +307,18 @@ jobs:
           retention-days: 5
           name: linux_update_manifest_x86_64
           path: ./dist/update
+
+      - name: Upload Linux x86_64 to draft release
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          set -ex
+          VERSION="${{ inputs.build-version }}"
+          REPO="${{ github.repository }}"
+          if ! gh release view "$VERSION" --repo "$REPO" >/dev/null 2>&1; then
+            gh release create "$VERSION" --repo "$REPO" \
+              --title "Release build - $VERSION" --draft --notes "Build in progress"
+          fi
+          gh release upload "$VERSION" ./nevoflux.linux-x86_64.tar.xz --repo "$REPO" --clobber
+          gh release upload "$VERSION" ./linux.mar --repo "$REPO" --clobber
+          echo "Linux x86_64 uploaded to draft release $VERSION"
