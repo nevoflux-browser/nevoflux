@@ -294,6 +294,21 @@ jobs:
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: npm run import -- --verbose
 
+      - name: Restore display version after import (Windows guard fixup)
+        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        # `npm run import` copies root-overlays/surfer.json (displayVersion
+        # placeholder 0.0.1) over the value set by `surfer ci`. apply-patches.sh
+        # has a restore guard, but on Windows it reads surfer.json through `node`
+        # with an ABSOLUTE msys path (/c/Users/...), which node-for-Windows cannot
+        # open, so SAVED_RELEASE_DV is empty and nothing is restored. Re-apply the
+        # displayVersion here with a RELATIVE path (node resolves it correctly),
+        # mirroring what the guard already does on Linux/macOS. Windows-only — no
+        # other platform's workflow is touched. The build stages reuse this same
+        # workspace (no re-checkout), so this value carries into mach build.
+        run: |
+          node -e "const fs=require('fs');const b='${{ inputs.release_branch }}';const c=JSON.parse(fs.readFileSync('surfer.json','utf8'));c.brands[b].release.displayVersion='${{ inputs.display_version }}';fs.writeFileSync('surfer.json',JSON.stringify(c,null,2));"
+          echo "Restored ${{ inputs.release_branch }} displayVersion -> ${{ inputs.display_version }}"
+
       - name: Assert version propagated (guard against 0.0.1 placeholder)
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
