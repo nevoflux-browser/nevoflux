@@ -1436,12 +1436,12 @@ jobs:
         shell: pwsh
         run: |
           if (-not $env:X64_ZIP) { throw "X64_ZIP env not set by Package step" }
-          Move-Item -Force $env:X64_ZIP                         "out\nevoflux.win-x86_64-gha.zip"
-          Move-Item -Force "dist\nevoflux.installer.exe"        "out\nevoflux.installer-gha.exe"
+          Move-Item -Force $env:X64_ZIP                         "out\nevoflux.win-x86_64.zip"
+          Move-Item -Force "dist\nevoflux.installer.exe"        "out\nevoflux.installer.exe"
           # MAR may be missing if surfer's post-make MAR step hit the
           # path-conversion bug; stage if present, otherwise skip.
           if (Test-Path "dist\output.mar") {
-            Move-Item -Force "dist\output.mar"                  "out\windows-gha.mar"
+            Move-Item -Force "dist\output.mar"                  "out\windows.mar"
           } else {
             Write-Host "::warning::dist\output.mar missing - partial update MAR not produced"
           }
@@ -1708,10 +1708,10 @@ jobs:
         shell: pwsh
         run: |
           if (-not $env:ARM64_ZIP) { throw "ARM64_ZIP env not set by Package step" }
-          Move-Item -Force $env:ARM64_ZIP                       "out\nevoflux.win-arm64-gha.zip"
-          Move-Item -Force "dist\nevoflux.installer.exe"        "out\nevoflux.installer-arm64-gha.exe"
+          Move-Item -Force $env:ARM64_ZIP                       "out\nevoflux.win-arm64.zip"
+          Move-Item -Force "dist\nevoflux.installer.exe"        "out\nevoflux.installer-arm64.exe"
           if (Test-Path "dist\output.mar") {
-            Move-Item -Force "dist\output.mar"                  "out\windows-arm64-gha.mar"
+            Move-Item -Force "dist\output.mar"                  "out\windows-arm64.mar"
           } else {
             Write-Host "::warning::dist\output.mar missing - partial update MAR not produced (arm64)"
           }
