@@ -1732,7 +1732,9 @@ jobs:
       - name: Upload Windows artifacts to draft release
         env:
           GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
-        shell: bash
+        # Explicit msys2 bash: `shell: bash` resolves to C:\Windows\System32\bash.EXE
+        # (the WSL launcher stub, no distro installed) on this runner and fails.
+        shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         run: |
           set -ex
           VERSION="${{ inputs.display_version }}"
