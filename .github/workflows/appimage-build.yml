@@ -1,0 +1,146 @@
+name: AppImage Build
+
+# Builds the Linux AppImage(s) for a given version and uploads them to the
+# draft release. It pulls the already-built Linux tarball from the draft
+# release (nevoflux.linux-<arch>.tar.xz), so it can run:
+#   - standalone (workflow_dispatch) to backfill AppImages for an existing
+#     draft, without rebuilding Linux, or
+#   - as a step of build.yml (workflow_call) after the Linux builds have
+#     uploaded their tarballs to the draft.
+#
+# Runs on the self-hosted Linux runner (labels: self-hosted, linux) — the same
+# one the Linux builds use. (Upstream Zen ran this on Blacksmith cloud runners,
+# which NevoFlux does not have.)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build-version:
+        description: 'Version to build the AppImage for (its nevoflux.linux-<arch>.tar.xz must already be in the draft release)'
+        required: true
+        type: string
+      release-branch:
+        description: 'Release branch (branding selection)'
+        required: true
+        type: string
+        default: 'release'
+  workflow_call:
+    inputs:
+      build-version:
+        required: true
+        type: string
+      release-branch:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  appimage:
+    name: AppImage build - Linux ${{ matrix.arch }}
+    permissions:
+      contents: write
+    runs-on: [self-hosted, linux]
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.DEPLOY_KEY }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          sudo apt-get update
+          sudo apt-get -y install libfuse2 desktop-file-utils appstream
+
+      - name: Download Linux build from draft release
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          set -ex
+          VERSION="${{ inputs.build-version }}"
+          gh release download "$VERSION" --repo "${{ github.repository }}" \
+            -p "nevoflux.linux-${{ matrix.arch }}.tar.xz" --clobber
+
+      - name: Execute AppImage build
+        run: |
+          set -eux
+          export ARCH=${{ matrix.arch }}
+          UPINFO="gh-releases-zsync|$GITHUB_REPOSITORY_OWNER|desktop|latest|nevoflux-$ARCH.AppImage.zsync"
+          APPDIR=build/AppDir
+
+          rm build/AppDir/.DirIcon || true
+          cp configs/branding/${{ inputs.release-branch }}/logo128.png build/AppDir/usr/share/icons/hicolor/128x128/apps/zen.png
+          cp configs/branding/${{ inputs.release-branch }}/logo128.png build/AppDir/zen.png && ln -s zen.png build/AppDir/.DirIcon
+
+          if [ "${{ inputs.release-branch }}" = "twilight" ]; then
+            sed -i -e 's/Name=Zen Browser/Name=Zen Twilight/g' build/AppDir/zen.desktop
+            sed -i -e 's/StartupWMClass=zen/StartupWMClass=zen-twilight/g' build/AppDir/zen.desktop
+          fi
+
+          sed -i -e 's/\$VERSION/${{ inputs.build-version }}/g' build/AppDir/zen.desktop
+
+          # Extract the Linux tarball into a clean temp dir, then move its single
+          # top-level dir (zen/ or nevoflux/ depending on packaging) into AppDir.
+          rm -rf _appimg_extract && mkdir -p _appimg_extract
+          tar -xf nevoflux.linux-"$ARCH".tar.xz -C _appimg_extract
+          SRCDIR=$(find _appimg_extract -maxdepth 1 -mindepth 1 -type d | head -1)
+          if [ -z "$SRCDIR" ]; then
+            echo "::error::no top-level dir found in nevoflux.linux-$ARCH.tar.xz"; ls -la _appimg_extract; exit 1
+          fi
+          mv "$SRCDIR"/* "$APPDIR"/
+          rm -rf _appimg_extract nevoflux.linux-"$ARCH".tar.xz
+
+          wget "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+          wget "https://github.com/VHSgunzo/uruntime/releases/latest/download/uruntime-appimage-squashfs-lite-$ARCH"
+          chmod +x *.AppImage
+          chmod +x ./uruntime-appimage-squashfs-lite-"$ARCH"
+          chmod +x ./build/AppDir/AppRun
+
+          # keep the uruntime mountpoint (massively speeds up launch time)
+          sed -i 's|URUNTIME_MOUNT=[0-9]|URUNTIME_MOUNT=0|' ./uruntime-appimage-squashfs-lite-"$ARCH"
+
+          ./appimagetool-x86_64.AppImage -u "$UPINFO" "$APPDIR" nevoflux-"$ARCH".AppImage --runtime-file ./uruntime-appimage-squashfs-lite-"$ARCH"
+          mkdir -p dist
+          mv nevoflux*AppImage* dist/.
+          unset ARCH
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 5
+          name: nevoflux-${{ matrix.arch }}.AppImage
+          path: ./dist/nevoflux-${{ matrix.arch }}.AppImage
+
+      - name: Upload artifact (ZSync)
+        uses: actions/upload-artifact@v4
+        with:
+          retention-days: 5
+          name: nevoflux-${{ matrix.arch }}.AppImage.zsync
+          path: ./dist/nevoflux-${{ matrix.arch }}.AppImage.zsync
+
+      - name: Upload AppImage to draft release
+        env:
+          GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
+        run: |
+          set -ex
+          VERSION="${{ inputs.build-version }}"
+          REPO="${{ github.repository }}"
+          if ! gh release view "$VERSION" --repo "$REPO" >/dev/null 2>&1; then
+            gh release create "$VERSION" --repo "$REPO" \
+              --title "Release build - $VERSION" --draft --notes "Build in progress"
+          fi
+          gh release upload "$VERSION" ./dist/nevoflux-${{ matrix.arch }}.AppImage --repo "$REPO" --clobber
+          gh release upload "$VERSION" ./dist/nevoflux-${{ matrix.arch }}.AppImage.zsync --repo "$REPO" --clobber
+          echo "AppImage (${{ matrix.arch }}) uploaded to draft release $VERSION"

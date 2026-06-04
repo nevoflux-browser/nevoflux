@@ -388,127 +388,14 @@ jobs:
       build-version: ${{ inputs.display_version || needs.build-data.outputs.version }}
       release-branch: ${{ inputs.update_branch }}
       sign_macos: ${{ inputs.sign_macos || false }}
+
   appimage:
-    name: AppImage build - Linux ${{ matrix.arch }}
+    name: AppImage build
+    uses: ./.github/workflows/appimage-build.yml
     permissions:
       contents: write
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    strategy:
-      matrix:
-        arch: [x86_64, aarch64]
+    secrets: inherit
     needs: [linux-x86_64, linux-aarch64, build-data]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          token: ${{ secrets.DEPLOY_KEY }}
-
-      - name: Setup Node.js
-        uses: useblacksmith/setup-node@v5
-        with:
-          node-version-file: ".nvmrc"
-
-      - name: Install dependencies
-        run: |
-          npm ci
-          sudo apt-get update
-          sudo apt-get -y install libfuse2 desktop-file-utils appstream
-
-      - name: Download Linux build
-        uses: actions/download-artifact@v4
-        with:
-          name: zen.linux-${{ matrix.arch }}.tar.xz
-
-      - name: Execute AppImage build
-        run: |
-          set -eux
-          export ARCH=${{ matrix.arch }}
-          UPINFO="gh-releases-zsync|$GITHUB_REPOSITORY_OWNER|desktop|latest|zen-$ARCH.AppImage.zsync"
-          rm build/AppDir/.DirIcon || true
-          cp configs/branding/${{ inputs.update_branch }}/logo128.png build/AppDir/usr/share/icons/hicolor/128x128/apps/zen.png
-          cp configs/branding/${{ inputs.update_branch }}/logo128.png build/AppDir/zen.png && ln -s zen.png build/AppDir/.DirIcon
-
-          if [ "${{ inputs.update_branch }}" = "twilight" ]; then
-            sed -i -e 's/Name=Zen Browser/Name=Zen Twilight/g' build/AppDir/zen.desktop
-            sed -i -e 's/StartupWMClass=zen/StartupWMClass=zen-twilight/g' build/AppDir/zen.desktop
-          fi
-
-          sed -i -e 's/\$VERSION/${{ needs.build-data.outputs.version }}/g' build/AppDir/zen.desktop
-
-          APPDIR=build/AppDir
-          tar -xvf *.tar.* && rm -rf *.tar.*
-          mv zen/* $APPDIR/
-          wget "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
-          wget "https://github.com/VHSgunzo/uruntime/releases/latest/download/uruntime-appimage-squashfs-lite-$ARCH"
-          chmod +x *.AppImage
-          chmod +x ./uruntime-appimage-squashfs-lite-"$ARCH"
-          chmod +x ./build/AppDir/AppRun
-
-          # keep the uruntime mountpoint (massively speeds up launch time)
-          sed -i 's|URUNTIME_MOUNT=[0-9]|URUNTIME_MOUNT=0|' ./uruntime-appimage-squashfs-lite-"$ARCH"
-
-          echo "AppDir: $APPDIR"
-          ls -al
-          find .
-          ls -al "$APPDIR"
-          ./appimagetool-x86_64.AppImage -u "$UPINFO" "$APPDIR" zen-"$ARCH".AppImage --runtime-file ./uruntime-appimage-squashfs-lite-"$ARCH"
-          mkdir dist
-          mv zen*AppImage* dist/.
-          unset ARCH
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          retention-days: 5
-          name: zen-${{ matrix.arch }}.AppImage
-          path: ./dist/zen-${{ matrix.arch }}.AppImage
-
-      - name: Upload artifact (ZSync)
-        uses: actions/upload-artifact@v4
-        with:
-          retention-days: 5
-          name: zen-${{ matrix.arch }}.AppImage.zsync
-          path: ./dist/zen-${{ matrix.arch }}.AppImage.zsync
-
-      - name: Upload AppImage to draft release
-        env:
-          GH_TOKEN: ${{ secrets.DEPLOY_KEY }}
-        run: |
-          set -ex
-          VERSION="${{ needs.build-data.outputs.version }}"
-          REPO="${{ github.repository }}"
-          if ! gh release view "$VERSION" --repo "$REPO" >/dev/null 2>&1; then
-            gh release create "$VERSION" --repo "$REPO" \
-              --title "Release build - $VERSION" --draft --notes "Build in progress"
-          fi
-          gh release upload "$VERSION" ./dist/zen-${{ matrix.arch }}.AppImage --repo "$REPO" --clobber
-          gh release upload "$VERSION" ./dist/zen-${{ matrix.arch }}.AppImage.zsync --repo "$REPO" --clobber
-          echo "AppImage (${{ matrix.arch }}) uploaded to draft release $VERSION"
-
-  stop-self-hosted:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
-    needs: [linux-x86_64, linux-aarch64]
-    if: always()
-    steps:
-      - name: Download aws-cli
-        if: ${{ inputs.update_branch == 'release' }}
-        run: |
-          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-          unzip awscliv2.zip
-          sudo ./aws/install --update
-
-      - name: Stop self-hosted runner
-        if: ${{ inputs.update_branch == 'release' }}
-        run: |
-          echo "Stopping self-hosted runner"
-          echo "${{ secrets.SELF_HOSTED_RUNNER_STOP_SCRIPT }}" | base64 -d > stop.sh
-          sudo chmod +x stop.sh
-          bash ./stop.sh > /dev/null
-
-      - name: Remove self-hosted runner script
-        if: ${{ always() && inputs.update_branch == 'release' }}
-        run: |
-          echo "Removing self-hosted runner script"
-          rm stop.sh || true
-
+    with:
+      build-version: ${{ needs.build-data.outputs.version }}
+      release-branch: ${{ inputs.update_branch }}
