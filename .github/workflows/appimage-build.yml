@@ -99,7 +99,11 @@ jobs:
           if [ -z "$SRCDIR" ]; then
             echo "::error::no top-level dir found in nevoflux.linux-$ARCH.tar.xz"; ls -la _appimg_extract; exit 1
           fi
-          mv "$SRCDIR"/* "$APPDIR"/
+          # cp -a (merge) rather than mv: the AppDir template already has a
+          # distribution/ dir (policies.json) and the tarball also ships
+          # distribution/, so `mv` fails with "directory not empty". cp -a
+          # merges recursively, build files taking precedence on conflicts.
+          cp -a "$SRCDIR"/. "$APPDIR"/
           rm -rf _appimg_extract nevoflux.linux-"$ARCH".tar.xz
 
           wget "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
