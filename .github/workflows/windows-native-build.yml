@@ -115,24 +115,51 @@ jobs:
             'C:\mozilla-build\msys2\usr\bin'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      - name: Install GNU make (configure prerequisite)
+      - name: Set up mozmake (path-aware make; required for libwebrtc/WebRTC)
         shell: pwsh
-        # This MozillaBuild 4.2.1 install ships without mozmake.exe / make.exe
-        # under C:\mozilla-build. configure errors with "Cannot find gmake".
-        # Install GNU make via Chocolatey - the shim lands in
-        # C:\ProgramData\chocolatey\bin (already on system PATH for every
-        # job on this self-hosted runner).
+        # libwebrtc's deeply-nested unified-source paths MUST be built with
+        # mozmake (Mozilla's path-aware make). Generic GNU make (the old
+        # `choco install make`) mangles backslashes in those paths, so the
+        # xul.dll link dies with "No rule to make target
+        # Unified_cpp_e_levels_adjuster_gn0.obj" - which is why WebRTC had
+        # been disabled. configure searches "mozmake" before "make" on
+        # Windows (engine/moz.configure possible_makes), so putting mozmake
+        # first on PATH makes the build use it and WebRTC links cleanly.
+        #
+        # Preferred runner setup: install a FULL MozillaBuild once (it bundles
+        # C:\mozilla-build\mozmake\mozmake.exe). The stripped 4.2.1 lacks it,
+        # so we fetch a full MozillaBuild on demand (cached on this self-hosted
+        # runner after the first run). choco `make` is kept only as a fallback
+        # for any step that invokes a bare `make` (mozmake is mozmake.exe).
         run: |
-          $make = Get-Command make -ErrorAction SilentlyContinue
-          if (-not $make) {
-            choco install make -y --no-progress
-            $make = Get-Command make -ErrorAction SilentlyContinue
-            if (-not $make) {
-              Write-Error "choco install make finished but 'make' still not on PATH"
-              exit 1
-            }
+          $mozmake = @(
+            'C:\mozilla-build\mozmake\mozmake.exe',
+            "$env:MOZILLABUILD\mozmake\mozmake.exe"
+          ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $mozmake) {
+            $cmd = Get-Command mozmake.exe -ErrorAction SilentlyContinue
+            if ($cmd) { $mozmake = $cmd.Source }
           }
-          Write-Host "make on PATH: $($make.Source)"
+          if (-not $mozmake) {
+            $inst = "$env:TEMP\MozillaBuildSetup-Latest.exe"
+            Invoke-WebRequest -UseBasicParsing `
+              -Uri 'https://ftp.mozilla.org/pub/mozilla.org/mozilla/libraries/win32/MozillaBuildSetup-Latest.exe' `
+              -OutFile $inst
+            Start-Process -FilePath $inst -ArgumentList '/S' -Wait
+            $mozmake = 'C:\mozilla-build\mozmake\mozmake.exe'
+          }
+          if (-not (Test-Path $mozmake)) {
+            Write-Error "mozmake.exe not found/obtained - libwebrtc/WebRTC cannot link without it. Install full MozillaBuild on the runner."
+            exit 1
+          }
+          # Prepend mozmake's dir so configure (prefers 'mozmake') uses it.
+          Split-Path $mozmake | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          Write-Host "mozmake: $mozmake (prepended to PATH)"
+
+          # Fallback for any bare `make` callers (configure still prefers mozmake).
+          if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+            choco install make -y --no-progress
+          }
 
       - name: Cleanup stale state
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'

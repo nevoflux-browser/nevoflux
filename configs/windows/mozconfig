@@ -48,14 +48,14 @@ if test ! "$WINSYSROOT"; then
   # Disable on native builds; GCB cross-compile keeps it enabled.
   ac_add_options --disable-gecko-profiler
 
-  # libwebrtc moz.build at third_party/libwebrtc/modules/audio_processing/
-  # capture_levels_adjuster/capture_levels_adjuster_gn declares an obj
-  # (Unified_cpp_e_levels_adjuster_gn0.obj) that no rule actually
-  # produces; the link phase for xul.dll dies with "No rule to make
-  # target" after 3+ hours of compile. The native build doesn't need
-  # WebRTC support to be functional, so disable it here. GCB keeps
-  # WebRTC.
-  ac_add_options --disable-webrtc
+  # WebRTC stays ENABLED on native builds. The earlier --disable-webrtc
+  # was a workaround for a libwebrtc link failure ("No rule to make target
+  # Unified_cpp_e_levels_adjuster_gn0.obj") whose real cause was generic
+  # GNU make (choco) mangling backslashes in libwebrtc's deeply-nested
+  # paths. The native build now uses mozmake (Mozilla's path-aware make;
+  # see .github/workflows/windows-native-build.yml), which links libwebrtc
+  # correctly. Disabling WebRTC had stripped navigator.mediaDevices, which
+  # broke sites that fingerprint it (e.g. x.com login).
 fi
 
 if test "$SURFER_COMPAT" = "x86_64"; then
