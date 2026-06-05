@@ -72,6 +72,13 @@ env:
   # sccache isn't installed on the runner -> configure fails with
   # "Cannot find ccache". (We're not using sccache for these builds.)
   SCCACHE_GHA_ENABLED: 'false'
+  # configure reads MAKE first (engine/moz.configure possible_makes); point it
+  # at mozmake (Mozilla's path-aware make, bootstrapped at ~/.mozbuild/mozmake)
+  # so libwebrtc's deep unified-source paths link in EVERY job. Generic GNU make
+  # mangles those backslashes -> "No rule to make target ...gn0.obj" at the
+  # xul.dll link. Dedicated self-hosted runner -> fixed user path; forward
+  # slashes avoid MSYS2 backslash mangling.
+  MAKE: 'C:/Users/Docker/.mozbuild/mozmake/mozmake.exe'
 
 jobs:
   prepare:
@@ -115,48 +122,25 @@ jobs:
             'C:\mozilla-build\msys2\usr\bin'
           ) | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      - name: Set up mozmake (path-aware make; required for libwebrtc/WebRTC)
+      - name: Set up make (mozmake on PATH for configure; GNU make for bare callers)
         shell: pwsh
-        # libwebrtc's deeply-nested unified-source paths MUST be built with
-        # mozmake (Mozilla's path-aware make). Generic GNU make (the old
-        # `choco install make`) mangles backslashes in those paths, so the
-        # xul.dll link dies with "No rule to make target
-        # Unified_cpp_e_levels_adjuster_gn0.obj" - which is why WebRTC had
-        # been disabled. configure searches "mozmake" before "make" on
-        # Windows (engine/moz.configure possible_makes), so putting mozmake
-        # first on PATH makes the build use it and WebRTC links cleanly.
-        #
-        # Preferred runner setup: install a FULL MozillaBuild once (it bundles
-        # C:\mozilla-build\mozmake\mozmake.exe). The stripped 4.2.1 lacks it,
-        # so we fetch a full MozillaBuild on demand (cached on this self-hosted
-        # runner after the first run). choco `make` is kept only as a fallback
-        # for any step that invokes a bare `make` (mozmake is mozmake.exe).
+        # configure must use mozmake (Mozilla's path-aware make) so libwebrtc's
+        # deeply-nested unified-source paths link -- generic GNU make mangles the
+        # backslashes ("No rule to make target Unified_cpp_e_levels_adjuster_gn0.obj").
+        # mozmake is bootstrapped at ~/.mozbuild/mozmake; the top-level MAKE env
+        # already points configure at it. Here we also put its dir on PATH
+        # (configure prefers "mozmake" by name) as belt-and-suspenders, and keep
+        # choco `make` for steps that invoke a bare `make` (mozmake is mozmake.exe).
+        # NOTE: do NOT download/silent-install MozillaBuild here -- its NSIS
+        # installer blocks `Start-Process -Wait` and hangs the job.
         run: |
-          $mozmake = @(
-            'C:\mozilla-build\mozmake\mozmake.exe',
-            "$env:MOZILLABUILD\mozmake\mozmake.exe"
-          ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-          if (-not $mozmake) {
-            $cmd = Get-Command mozmake.exe -ErrorAction SilentlyContinue
-            if ($cmd) { $mozmake = $cmd.Source }
+          $mozmakeDir = Join-Path $env:USERPROFILE '.mozbuild\mozmake'
+          if (Test-Path (Join-Path $mozmakeDir 'mozmake.exe')) {
+            $mozmakeDir | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+            Write-Host "mozmake on PATH: $mozmakeDir"
+          } else {
+            Write-Warning "mozmake not found at $mozmakeDir (mach bootstrap should provide it; MAKE env still points at it)."
           }
-          if (-not $mozmake) {
-            $inst = "$env:TEMP\MozillaBuildSetup-Latest.exe"
-            Invoke-WebRequest -UseBasicParsing `
-              -Uri 'https://ftp.mozilla.org/pub/mozilla.org/mozilla/libraries/win32/MozillaBuildSetup-Latest.exe' `
-              -OutFile $inst
-            Start-Process -FilePath $inst -ArgumentList '/S' -Wait
-            $mozmake = 'C:\mozilla-build\mozmake\mozmake.exe'
-          }
-          if (-not (Test-Path $mozmake)) {
-            Write-Error "mozmake.exe not found/obtained - libwebrtc/WebRTC cannot link without it. Install full MozillaBuild on the runner."
-            exit 1
-          }
-          # Prepend mozmake's dir so configure (prefers 'mozmake') uses it.
-          Split-Path $mozmake | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          Write-Host "mozmake: $mozmake (prepended to PATH)"
-
-          # Fallback for any bare `make` callers (configure still prefers mozmake).
           if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
             choco install make -y --no-progress
           }
@@ -959,6 +943,7 @@ jobs:
           # entries end up higher in PATH, so leaving it there would
           # supersede llvm-20 and pull clang 22 headers into bindgen.
           @(
+            "$env:USERPROFILE\.mozbuild\mozmake",
             'C:\nevoflux-cache\llvm-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
@@ -1146,6 +1131,7 @@ jobs:
           # entries end up higher in PATH, so leaving it there would
           # supersede llvm-20 and pull clang 22 headers into bindgen.
           @(
+            "$env:USERPROFILE\.mozbuild\mozmake",
             'C:\nevoflux-cache\llvm-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
@@ -1210,6 +1196,7 @@ jobs:
           # entries end up higher in PATH, so leaving it there would
           # supersede llvm-20 and pull clang 22 headers into bindgen.
           @(
+            "$env:USERPROFILE\.mozbuild\mozmake",
             'C:\nevoflux-cache\llvm-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
@@ -1498,6 +1485,7 @@ jobs:
           # entries end up higher in PATH, so leaving it there would
           # supersede llvm-20 and pull clang 22 headers into bindgen.
           @(
+            "$env:USERPROFILE\.mozbuild\mozmake",
             'C:\nevoflux-cache\llvm-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
