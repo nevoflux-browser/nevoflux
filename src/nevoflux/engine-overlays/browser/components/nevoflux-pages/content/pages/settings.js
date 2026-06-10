@@ -4495,9 +4495,11 @@ const Settings = {
       // Refresh the section list behind the modal.
       const section = this._packsSection();
       if (section) this._refreshPacksStatus(section);
-      // Auto-close shortly after success.
-      setTimeout(() => {
-        if (this._packModalState && !this._packModalState.busy) {
+      // Auto-close shortly after success. Capture the current modal state so a
+      // stale timer can't close a different modal the user reopened meanwhile.
+      const st = this._packModalState;
+      this._packCloseTimer = setTimeout(() => {
+        if (this._packModalState === st && !st.busy) {
           this._closePackModal();
         }
       }, 900);
@@ -4513,6 +4515,10 @@ const Settings = {
   _closePackModal() {
     const state = this._packModalState;
     if (!state) return;
+    if (this._packCloseTimer) {
+      clearTimeout(this._packCloseTimer);
+      this._packCloseTimer = null;
+    }
     state.modal.classList.remove('show');
     state.modal.remove();
     this._packModalState = null;
