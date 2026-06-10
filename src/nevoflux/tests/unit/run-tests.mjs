@@ -13,6 +13,7 @@ import { runner } from './test-runner.mjs';
 // Import all test files to register their test suites
 import './nevoflux-child.test.mjs';
 import './ext-nevoflux.test.mjs';
+import './pack-ui-logic.test.mjs';
 
 // Run all tests
 const results = await runner.run();
