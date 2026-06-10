@@ -1,0 +1,10 @@
+diff --git a/src/zen/split-view/jar.inc.mn b/src/zen/split-view/jar.inc.mn
+index fba272057..2ac9dc1ea 100644
+--- a/src/zen/split-view/jar.inc.mn
++++ b/src/zen/split-view/jar.inc.mn
+@@ -3,4 +3,5 @@
+ # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ 
+ *       content/browser/zen-styles/zen-split-view.css                           (../../zen/split-view/zen-split-view.css)
++*       content/browser/zen-styles/zen-decks.css                                (../../zen/split-view/zen-decks.css)
+         content/browser/zen-components/ZenViewSplitter.mjs                      (../../zen/split-view/ZenViewSplitter.mjs)
