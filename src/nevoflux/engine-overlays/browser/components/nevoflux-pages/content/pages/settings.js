@@ -130,6 +130,7 @@ const Settings = {
     container.appendChild(this._renderCanvasToolsSection());
     container.appendChild(this._renderMyCanvasSection());
     container.appendChild(this._renderKnowledgeBaseSection());
+    container.appendChild(this._renderPacksSection());
     container.appendChild(this._renderShortcutsSection());
   },
 
@@ -4000,6 +4001,588 @@ const Settings = {
     const section = this._kbSection();
     if (section) {
       this._refreshKbStatus(section);
+    }
+  },
+
+  // ── Packs Section ───────────────────────────────────────
+  //
+  // Lists installed packs and installs / uninstalls / updates / validates
+  // them via the daemon RPCs:
+  //   pack.list / pack.status / pack.validate / pack.install /
+  //   pack.uninstall / pack.update
+  //
+  // The UX deliberately mirrors the Knowledge Base section above and
+  // reuses its CSS classes (kb-status-*, kb-actions, kb-enable-btn,
+  // kb-refresh-btn, kb-wizard-modal, mcp-btn-*) so styling stays
+  // consistent without adding new CSS.
+  //
+  // IMPORTANT (ESM-in-chrome): settings.js is loaded as a classic <script>
+  // (see settings.html) and cannot `import` an ES module at runtime. The
+  // pure helpers below live in `pack-ui-logic.mjs` as the *tested source
+  // of truth* (tests/unit/pack-ui-logic.test.mjs) and are inline-duplicated
+  // here under `_PackLogic`. Keep the two in sync.
+
+  _PackLogic: {
+    // Mirror of pack-ui-logic.mjs `packListToRows`.
+    packListToRows(report) {
+      let packs;
+      if (Array.isArray(report)) {
+        packs = report;
+      } else if (report && Array.isArray(report.packs)) {
+        packs = report.packs;
+      } else {
+        packs = [];
+      }
+      return packs
+        .filter((p) => p && typeof p === 'object')
+        .map((p) => ({
+          name: typeof p.name === 'string' ? p.name : '',
+          version: p.version != null ? String(p.version) : '',
+          installedAt:
+            p.installed_at != null
+              ? String(p.installed_at)
+              : p.installedAt != null
+                ? String(p.installedAt)
+                : '',
+        }));
+    },
+
+    // Mirror of pack-ui-logic.mjs `validateResultMessage`.
+    validateResultMessage(result) {
+      if (result && result.ok) {
+        return 'Validation passed — no policy violations.';
+      }
+      const raw = (result && result.violations) || [];
+      const violations = Array.isArray(raw) ? raw : [];
+      const messages = violations
+        .map((v) => {
+          if (v == null) return '';
+          if (typeof v === 'string') return v;
+          if (typeof v === 'object') {
+            return String(v.message || v.rule || v.detail || JSON.stringify(v));
+          }
+          return String(v);
+        })
+        .filter((m) => m.length > 0);
+      if (messages.length === 0) {
+        return 'Validation failed.';
+      }
+      const count = messages.length;
+      const noun = count === 1 ? 'violation' : 'violations';
+      return (
+        `Validation failed (${count} ${noun}):\n` +
+        messages.map((m) => `• ${m}`).join('\n')
+      );
+    },
+
+    // Mirror of pack-ui-logic.mjs `installParams`.
+    installParams(manifestPath, opts = {}) {
+      const params = {
+        manifest_path:
+          typeof manifestPath === 'string' ? manifestPath.trim() : '',
+        wait: opts.wait === false ? false : true,
+      };
+      if (opts.force) params.force = true;
+      return params;
+    },
+
+    // Mirror of pack-ui-logic.mjs `uninstallParams`.
+    uninstallParams(name, opts = {}) {
+      const params = {
+        name: typeof name === 'string' ? name : '',
+        purge_data: opts.purgeData === true,
+      };
+      if (opts.force) params.force = true;
+      return params;
+    },
+
+    // Mirror of pack-ui-logic.mjs `updateParams`.
+    updateParams(manifestPath) {
+      return {
+        manifest_path:
+          typeof manifestPath === 'string' ? manifestPath.trim() : '',
+      };
+    },
+
+    // Mirror of pack-ui-logic.mjs `packErrorMessage`.
+    packErrorMessage(error) {
+      if (error == null) return 'Unknown error.';
+      if (typeof error === 'string') return error;
+      const code = error.code || (error.error && error.error.code);
+      const message =
+        error.message || (error.error && error.error.message) || '';
+      switch (code) {
+        case 'KNOWLEDGE_UNSUPPORTED':
+          return (
+            'Packs are not supported in this build or configuration. ' +
+            (message
+              ? `(${message})`
+              : 'Knowledge-base support is unavailable.')
+          );
+        case 'INSTALL_FAILED':
+          return `Install failed${message ? `: ${message}` : '.'}`;
+        case 'UPDATE_FAILED':
+          return `Update failed${message ? `: ${message}` : '.'}`;
+        case 'UNINSTALL_FAILED':
+          return `Uninstall failed${message ? `: ${message}` : '.'}`;
+        case 'VALIDATION_FAILED':
+          return `Validation failed${message ? `: ${message}` : '.'}`;
+        default:
+          break;
+      }
+      if (message) return message;
+      if (code) return String(code);
+      return 'Unknown error.';
+    },
+  },
+
+  _packsSection() {
+    return document.getElementById('section-packs');
+  },
+
+  _renderPacksSection() {
+    const section = this._createSection('packs', 'Packs');
+    const group = this._createGroup('Packs');
+
+    // Description
+    const desc = document.createElement('p');
+    desc.className = 'section-desc';
+    desc.textContent =
+      'Install, update, and remove knowledge packs. Packs bundle tools, ' +
+      'skills, and data that extend what NevoFlux can do. Manifests are ' +
+      'read from disk by the daemon.';
+    group.appendChild(desc);
+
+    // Status row (mirrors the KB status badge).
+    const statusRow = document.createElement('div');
+    statusRow.className = 'kb-status-row';
+    const statusLabel = document.createElement('span');
+    statusLabel.className = 'kb-status-label';
+    statusLabel.textContent = 'Status:';
+    statusRow.appendChild(statusLabel);
+
+    const badge = document.createElement('span');
+    badge.className = 'kb-status-badge pack-status-badge';
+    badge.dataset.state = 'unknown';
+    const dot = document.createElement('span');
+    dot.className = 'kb-status-dot';
+    badge.appendChild(dot);
+    const text = document.createElement('span');
+    text.className = 'kb-status-text pack-status-text';
+    text.textContent = 'Checking…';
+    badge.appendChild(text);
+    statusRow.appendChild(badge);
+    group.appendChild(statusRow);
+
+    // Installed-packs list container (rows injected by _renderPacksList).
+    const list = document.createElement('div');
+    list.className = 'kb-details pack-list';
+    group.appendChild(list);
+
+    // Action row.
+    const actions = document.createElement('div');
+    actions.className = 'kb-actions';
+
+    const installBtn = document.createElement('button');
+    installBtn.type = 'button';
+    installBtn.className = 'kb-enable-btn pack-install-btn';
+    installBtn.textContent = 'Install Pack…';
+    installBtn.addEventListener('click', () => this._onPackInstallClick());
+    actions.appendChild(installBtn);
+
+    const refreshBtn = document.createElement('button');
+    refreshBtn.type = 'button';
+    refreshBtn.className = 'kb-refresh-btn pack-refresh-btn';
+    refreshBtn.textContent = 'Refresh';
+    refreshBtn.addEventListener('click', () => this._refreshPacksStatus(section));
+    actions.appendChild(refreshBtn);
+
+    group.appendChild(actions);
+    section.appendChild(group);
+
+    // Kick off initial fetch (fire-and-forget; errors handled inside).
+    this._refreshPacksStatus(section);
+
+    return section;
+  },
+
+  async _refreshPacksStatus(section) {
+    try {
+      const report = await this._sendMcpCommand('pack.list', {});
+      this._renderPacksList(section, report);
+    } catch (e) {
+      this._renderPacksError(section, e);
+    }
+  },
+
+  _renderPacksList(section, report) {
+    const badge = section.querySelector('.pack-status-badge');
+    const text = section.querySelector('.pack-status-text');
+    const list = section.querySelector('.pack-list');
+    if (!badge || !text || !list) return;
+
+    const rows = this._PackLogic.packListToRows(report);
+    list.innerHTML = '';
+
+    if (rows.length === 0) {
+      badge.dataset.state = 'needs_install';
+      badge.style.setProperty('--kb-badge-color', 'grey');
+      text.textContent = 'No packs installed';
+
+      const empty = document.createElement('div');
+      empty.className = 'kb-detail-line pack-empty';
+      empty.textContent = 'No packs installed yet. Use “Install Pack…”.';
+      list.appendChild(empty);
+      return;
+    }
+
+    badge.dataset.state = 'ready';
+    badge.style.setProperty('--kb-badge-color', 'green');
+    const noun = rows.length === 1 ? 'pack' : 'packs';
+    text.textContent = `${rows.length} ${noun} installed`;
+
+    for (const row of rows) {
+      list.appendChild(this._buildPackRow(section, row));
+    }
+  },
+
+  _buildPackRow(section, row) {
+    const line = document.createElement('div');
+    line.className = 'kb-detail-line pack-row';
+    line.dataset.pack = row.name;
+
+    const info = document.createElement('span');
+    info.className = 'kb-detail-key pack-row-info';
+    let label = row.name;
+    if (row.version) label += `  v${row.version}`;
+    if (row.installedAt) label += `  (installed ${row.installedAt})`;
+    info.textContent = label;
+    line.appendChild(info);
+
+    const rowActions = document.createElement('span');
+    rowActions.className = 'pack-row-actions';
+
+    const updateBtn = document.createElement('button');
+    updateBtn.type = 'button';
+    updateBtn.className = 'kb-refresh-btn pack-row-update-btn';
+    updateBtn.textContent = 'Update';
+    updateBtn.addEventListener('click', () =>
+      this._onPackUpdateClick(section, row.name)
+    );
+    rowActions.appendChild(updateBtn);
+
+    const uninstallBtn = document.createElement('button');
+    uninstallBtn.type = 'button';
+    uninstallBtn.className = 'kb-refresh-btn pack-row-uninstall-btn';
+    uninstallBtn.textContent = 'Uninstall';
+    uninstallBtn.addEventListener('click', () =>
+      this._onPackUninstallClick(section, row.name)
+    );
+    rowActions.appendChild(uninstallBtn);
+
+    line.appendChild(rowActions);
+    return line;
+  },
+
+  _renderPacksError(section, error) {
+    const badge = section.querySelector('.pack-status-badge');
+    const text = section.querySelector('.pack-status-text');
+    const list = section.querySelector('.pack-list');
+    if (!badge || !text) return;
+    const msg = this._PackLogic.packErrorMessage(error);
+    badge.dataset.state = 'error';
+    badge.style.setProperty('--kb-badge-color', 'red');
+    text.textContent = `Status error: ${msg}`;
+    if (list) {
+      list.innerHTML = '';
+      const errLine = document.createElement('div');
+      errLine.className = 'kb-detail-line pack-error';
+      errLine.textContent = msg;
+      list.appendChild(errLine);
+    }
+  },
+
+  // ── Pack install flow (modal, mirrors the KB wizard chrome) ─────────
+
+  _onPackInstallClick() {
+    if (this._packModalState) return; // a pack modal is already open
+    this._openPackInstallModal();
+  },
+
+  _openPackInstallModal() {
+    const modal = this._buildPackInstallModal();
+    document.body.appendChild(modal);
+    requestAnimationFrame(() => modal.classList.add('show'));
+    this._packModalState = { modal, busy: false };
+
+    const input = modal.querySelector('.pack-manifest-input');
+    if (input) input.focus();
+  },
+
+  _buildPackInstallModal() {
+    const modal = document.createElement('div');
+    modal.className = 'kb-wizard-modal pack-install-modal';
+    modal.id = 'pack-install-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'pack-install-title');
+
+    modal.addEventListener('click', (e) => {
+      if (e.target !== modal) return;
+      if (!this._packModalState?.busy) this._closePackModal();
+    });
+
+    const content = document.createElement('div');
+    content.className = 'kb-wizard-modal-content';
+
+    const header = document.createElement('div');
+    header.className = 'kb-wizard-header';
+    const title = document.createElement('h2');
+    title.id = 'pack-install-title';
+    title.textContent = 'Install Pack';
+    const subtitle = document.createElement('p');
+    subtitle.className = 'kb-wizard-subtitle';
+    subtitle.textContent =
+      'Enter the path to the pack manifest on disk. You can validate it ' +
+      'first, then install.';
+    header.appendChild(title);
+    header.appendChild(subtitle);
+    content.appendChild(header);
+
+    // Manifest path input.
+    const field = document.createElement('div');
+    field.className = 'kb-update-field pack-manifest-field';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'kb-update-input pack-manifest-input';
+    input.placeholder = '/path/to/pack/manifest.toml';
+    field.appendChild(input);
+    content.appendChild(field);
+
+    // Result / log box (reuses wizard log styling).
+    const log = document.createElement('pre');
+    log.className = 'kb-wizard-log pack-install-log';
+    log.textContent = '';
+    content.appendChild(log);
+
+    const statusMsg = document.createElement('div');
+    statusMsg.className = 'kb-wizard-status pack-install-status';
+    statusMsg.textContent = 'Enter a manifest path to begin.';
+    content.appendChild(statusMsg);
+
+    // Actions.
+    const actions = document.createElement('div');
+    actions.className = 'kb-wizard-actions';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'mcp-btn-secondary pack-install-cancel-btn';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => this._closePackModal());
+    actions.appendChild(cancelBtn);
+
+    const validateBtn = document.createElement('button');
+    validateBtn.type = 'button';
+    validateBtn.className = 'mcp-btn-secondary pack-validate-btn';
+    validateBtn.textContent = 'Validate';
+    validateBtn.addEventListener('click', () => this._onPackValidate());
+    actions.appendChild(validateBtn);
+
+    const installBtn = document.createElement('button');
+    installBtn.type = 'button';
+    installBtn.className = 'mcp-btn-primary pack-install-confirm-btn';
+    installBtn.textContent = 'Install';
+    installBtn.addEventListener('click', () => this._onPackInstall());
+    actions.appendChild(installBtn);
+
+    content.appendChild(actions);
+    modal.appendChild(content);
+    return modal;
+  },
+
+  _packModalEl(selector) {
+    return this._packModalState?.modal?.querySelector(selector) || null;
+  },
+
+  _packModalLog(line) {
+    const el = this._packModalEl('.pack-install-log');
+    if (!el || !line) return;
+    el.textContent += (el.textContent ? '\n' : '') + String(line);
+    el.scrollTop = el.scrollHeight;
+  },
+
+  _packModalStatus(text) {
+    const el = this._packModalEl('.pack-install-status');
+    if (el) el.textContent = text;
+  },
+
+  _packModalSetBusy(busy) {
+    if (!this._packModalState) return;
+    this._packModalState.busy = busy;
+    for (const sel of [
+      '.pack-validate-btn',
+      '.pack-install-confirm-btn',
+      '.pack-manifest-input',
+    ]) {
+      const el = this._packModalEl(sel);
+      if (el) el.disabled = busy;
+    }
+  },
+
+  _packManifestPath() {
+    const input = this._packModalEl('.pack-manifest-input');
+    return input ? input.value.trim() : '';
+  },
+
+  async _onPackValidate() {
+    if (!this._packModalState || this._packModalState.busy) return;
+    const manifestPath = this._packManifestPath();
+    if (!manifestPath) {
+      this._packModalStatus('Please enter a manifest path first.');
+      return;
+    }
+    this._packModalSetBusy(true);
+    this._packModalStatus('Validating…');
+    try {
+      const result = await this._sendMcpCommand('pack.validate', {
+        manifest_path: manifestPath,
+      });
+      const msg = this._PackLogic.validateResultMessage(result);
+      this._packModalLog(msg);
+      this._packModalStatus(result && result.ok ? 'Validation passed.' : 'Validation failed.');
+    } catch (e) {
+      const msg = this._PackLogic.packErrorMessage(e);
+      this._packModalLog(`Validation error: ${msg}`);
+      this._packModalStatus(`Error: ${msg}`);
+    } finally {
+      this._packModalSetBusy(false);
+    }
+  },
+
+  async _onPackInstall() {
+    if (!this._packModalState || this._packModalState.busy) return;
+    const manifestPath = this._packManifestPath();
+    if (!manifestPath) {
+      this._packModalStatus('Please enter a manifest path first.');
+      return;
+    }
+    this._packModalSetBusy(true);
+    this._packModalStatus('Installing…');
+    this._packModalLog(`Installing from ${manifestPath}…`);
+    try {
+      // Optional pre-flight validation: warn but don't block on failure
+      // (the daemon validates again during install).
+      try {
+        const vr = await this._sendMcpCommand('pack.validate', {
+          manifest_path: manifestPath,
+        });
+        if (vr && vr.ok === false) {
+          this._packModalLog(this._PackLogic.validateResultMessage(vr));
+        }
+      } catch (_ve) {
+        // Non-fatal — proceed to install and let it surface real errors.
+      }
+
+      const params = this._PackLogic.installParams(manifestPath, {});
+      const result = await this._sendMcpCommand('pack.install', params);
+      const ver = result && result.version ? ` (v${result.version})` : '';
+      const files =
+        result && Array.isArray(result.files)
+          ? ` — ${result.files.length} file(s)`
+          : '';
+      this._packModalLog(`Installed${ver}${files}.`);
+      this._packModalStatus('Pack installed.');
+      // Refresh the section list behind the modal.
+      const section = this._packsSection();
+      if (section) this._refreshPacksStatus(section);
+      // Auto-close shortly after success.
+      setTimeout(() => {
+        if (this._packModalState && !this._packModalState.busy) {
+          this._closePackModal();
+        }
+      }, 900);
+    } catch (e) {
+      const msg = this._PackLogic.packErrorMessage(e);
+      this._packModalLog(`Install failed: ${msg}`);
+      this._packModalStatus(`Error: ${msg}`);
+    } finally {
+      this._packModalSetBusy(false);
+    }
+  },
+
+  _closePackModal() {
+    const state = this._packModalState;
+    if (!state) return;
+    state.modal.classList.remove('show');
+    state.modal.remove();
+    this._packModalState = null;
+  },
+
+  // ── Per-row update / uninstall ──────────────────────────────────────
+
+  async _onPackUpdateClick(section, name) {
+    // Update reads a fresh manifest from disk; prompt for its path.
+    const manifestPath = this._promptText(
+      `Update “${name}” — path to the new manifest on disk:`,
+      ''
+    );
+    if (manifestPath == null) return; // cancelled
+    const trimmed = manifestPath.trim();
+    if (!trimmed) return;
+    try {
+      const params = this._PackLogic.updateParams(trimmed);
+      await this._sendMcpCommand('pack.update', params);
+      this._refreshPacksStatus(section);
+    } catch (e) {
+      this._renderPacksError(section, e);
+    }
+  },
+
+  async _onPackUninstallClick(section, name) {
+    const choice = this._confirmPackUninstall(name);
+    if (!choice.confirmed) return;
+    try {
+      const params = this._PackLogic.uninstallParams(name, {
+        purgeData: choice.purgeData,
+      });
+      await this._sendMcpCommand('pack.uninstall', params);
+      this._refreshPacksStatus(section);
+    } catch (e) {
+      this._renderPacksError(section, e);
+    }
+  },
+
+  // Confirmation with an optional "also delete this pack's data" choice.
+  // Uses a two-step native prompt so we don't need to hand-roll a modal
+  // for a destructive-but-rare action; defaults purge OFF.
+  _confirmPackUninstall(name) {
+    const ok = this._confirm(
+      `Uninstall pack “${name}”?\n\n` +
+        'Click OK to continue, or Cancel to keep it.'
+    );
+    if (!ok) return { confirmed: false, purgeData: false };
+    const purge = this._confirm(
+      `Also delete “${name}”'s data from disk (purge_data)?\n\n` +
+        'OK = delete data too (irreversible). Cancel = keep data.'
+    );
+    return { confirmed: true, purgeData: purge };
+  },
+
+  // Thin wrappers around window globals so tests / non-browser callers
+  // could stub them; in the chrome page these resolve to the real dialogs.
+  _confirm(message) {
+    try {
+      return window.confirm(message);
+    } catch (_e) {
+      return false;
+    }
+  },
+
+  _promptText(message, def) {
+    try {
+      return window.prompt(message, def);
+    } catch (_e) {
+      return null;
     }
   },
 };

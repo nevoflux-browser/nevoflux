@@ -1397,6 +1397,35 @@
       color: var(--nevoflux-text);
     }
 
+    /* Packs section — per-row layout, reuses kb-* visuals above. */
+    .pack-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--nevoflux-space-md);
+      padding: var(--nevoflux-space-xs) 0;
+    }
+
+    .pack-row-info {
+      color: var(--nevoflux-text);
+      word-break: break-all;
+    }
+
+    .pack-row-actions {
+      display: flex;
+      gap: var(--nevoflux-space-sm);
+      flex-shrink: 0;
+    }
+
+    .pack-empty,
+    .pack-error {
+      color: var(--nevoflux-text-secondary);
+    }
+
+    .pack-manifest-field {
+      margin-bottom: var(--nevoflux-space-md);
+    }
+
     .kb-actions {
       display: flex;
       gap: var(--nevoflux-space-md);
@@ -1644,6 +1673,7 @@
     <a href="#" data-section="canvas-tools">Canvas Tools</a>
     <a href="#" data-section="my-canvas">My Canvas</a>
     <a href="#" data-section="knowledge-base">Knowledge Base</a>
+    <a href="#" data-section="packs">Packs</a>
     <a href="#" data-section="shortcuts">Shortcuts</a>
   </nav>
   <main class="settings-content">
