@@ -16,7 +16,59 @@ import {
   uninstallParams,
   updateParams,
   packErrorMessage,
+  isRemoteSource,
+  inspectParams,
+  summarizeInspect,
 } from '../../engine-overlays/browser/components/nevoflux-pages/content/pages/pack-ui-logic.mjs';
+
+describe('pack-ui-logic: isRemoteSource', () => {
+  it('treats github: shorthand as remote', () => {
+    expect(isRemoteSource('github:user/repo')).toBe(true);
+    expect(isRemoteSource('github:user/repo/sub@v1')).toBe(true);
+  });
+
+  it('treats https github URLs as remote', () => {
+    expect(isRemoteSource('https://github.com/user/repo')).toBe(true);
+  });
+
+  it('tolerates surrounding whitespace', () => {
+    expect(isRemoteSource('  github:user/repo  ')).toBe(true);
+    expect(isRemoteSource('  https://github.com/u/r ')).toBe(true);
+  });
+
+  it('treats local paths as not remote', () => {
+    expect(isRemoteSource('/tmp/pack.toml')).toBe(false);
+    expect(isRemoteSource('./relative/manifest.toml')).toBe(false);
+    expect(isRemoteSource('C:\\packs\\manifest.toml')).toBe(false);
+  });
+
+  it('treats non-github URLs as not remote', () => {
+    expect(isRemoteSource('https://gitlab.com/u/r')).toBe(false);
+    expect(isRemoteSource('https://example.com/github.com/u/r')).toBe(false);
+  });
+
+  it('treats empty / nullish / non-string as not remote', () => {
+    expect(isRemoteSource('')).toBe(false);
+    expect(isRemoteSource('   ')).toBe(false);
+    expect(isRemoteSource(null)).toBe(false);
+    expect(isRemoteSource(undefined)).toBe(false);
+    expect(isRemoteSource(42)).toBe(false);
+  });
+});
+
+describe('pack-ui-logic: inspectParams', () => {
+  it('wraps the source in { source }', () => {
+    expect(inspectParams('github:u/r@v1')).toEqual({ source: 'github:u/r@v1' });
+  });
+
+  it('trims the source', () => {
+    expect(inspectParams('  github:u/r  ')).toEqual({ source: 'github:u/r' });
+  });
+
+  it('coerces a non-string source to empty string', () => {
+    expect(inspectParams(null)).toEqual({ source: '' });
+  });
+});
 
 describe('pack-ui-logic: packListToRows', () => {
   it('returns [] for an empty pack list', () => {
@@ -160,6 +212,34 @@ describe('pack-ui-logic: installParams', () => {
   it('coerces a non-string path to empty string', () => {
     expect(installParams(null).manifest_path).toBe('');
   });
+
+  it('sends { source } for a github: remote source', () => {
+    expect(installParams('github:u/r@v1')).toEqual({
+      source: 'github:u/r@v1',
+      wait: true,
+    });
+  });
+
+  it('sends { source } for an https github URL', () => {
+    expect(installParams('https://github.com/u/r')).toEqual({
+      source: 'https://github.com/u/r',
+      wait: true,
+    });
+  });
+
+  it('does not include manifest_path for a remote source', () => {
+    const params = installParams('github:u/r');
+    expect(params.manifest_path).toBeUndefined();
+    expect(params.source).toBe('github:u/r');
+  });
+
+  it('trims a remote source and honours force', () => {
+    expect(installParams('  github:u/r  ', { force: true })).toEqual({
+      source: 'github:u/r',
+      wait: true,
+      force: true,
+    });
+  });
 });
 
 describe('pack-ui-logic: uninstallParams', () => {
@@ -191,12 +271,126 @@ describe('pack-ui-logic: uninstallParams', () => {
 });
 
 describe('pack-ui-logic: updateParams', () => {
-  it('builds trimmed manifest_path', () => {
+  it('builds trimmed manifest_path for a local path', () => {
     expect(updateParams('  /u.toml ')).toEqual({ manifest_path: '/u.toml' });
   });
 
-  it('coerces non-string to empty string', () => {
+  it('coerces non-string to empty manifest_path', () => {
     expect(updateParams(undefined)).toEqual({ manifest_path: '' });
+  });
+
+  it('sends { source } for a github: remote source', () => {
+    expect(updateParams('github:u/r@v2')).toEqual({ source: 'github:u/r@v2' });
+  });
+
+  it('sends { source } for an https github URL (trimmed)', () => {
+    expect(updateParams('  https://github.com/u/r ')).toEqual({
+      source: 'https://github.com/u/r',
+    });
+  });
+});
+
+describe('pack-ui-logic: summarizeInspect', () => {
+  const fullData = {
+    source: 'github:u/r@v1',
+    tarball_sha256: 'abc',
+    pack: {
+      name: 'demo',
+      version: '0.1.0',
+      description: 'A demo pack',
+      authors: ['Sam'],
+    },
+    components: {
+      skills: ['a', 'b'],
+      canvas_tools: [{ name: 'pdf.render', binary: 'weasyprint' }],
+      seed: ['ns/cv'],
+      dashboard: 'ns-dashboard',
+      knowledge: false,
+    },
+    violations: [],
+  };
+
+  it('renders the identity line with name, version, description', () => {
+    const { text } = summarizeInspect(fullData);
+    expect(text).toContain('demo 0.1.0 — A demo pack');
+  });
+
+  it('lists skills', () => {
+    expect(summarizeInspect(fullData).text).toContain('Skills: a, b');
+  });
+
+  it('surfaces canvas-tool name and the binary it runs', () => {
+    const { text } = summarizeInspect(fullData);
+    expect(text).toContain('Canvas tools: pdf.render (runs: weasyprint)');
+    expect(text).toContain('run the binaries');
+  });
+
+  it('lists seed pages and dashboard', () => {
+    const { text } = summarizeInspect(fullData);
+    expect(text).toContain('Seed pages: ns/cv');
+    expect(text).toContain('Dashboard: ns-dashboard');
+  });
+
+  it('shows "<none>" when there are no violations', () => {
+    const result = summarizeInspect(fullData);
+    expect(result.text).toContain('Violations: <none>');
+    expect(result.hasViolations).toBe(false);
+    expect(result.violations).toEqual([]);
+  });
+
+  it('surfaces violations prominently and flags hasViolations', () => {
+    const result = summarizeInspect({
+      ...fullData,
+      violations: ['SeedNotProtected { ns/cv }'],
+    });
+    expect(result.hasViolations).toBe(true);
+    expect(result.violations).toEqual(['SeedNotProtected { ns/cv }']);
+    expect(result.text).toContain('⚠ Violations (1 violation)');
+    expect(result.text).toContain('SeedNotProtected { ns/cv }');
+  });
+
+  it('uses plural noun for multiple violations', () => {
+    const result = summarizeInspect({
+      ...fullData,
+      violations: ['one', { message: 'two' }],
+    });
+    expect(result.text).toContain('⚠ Violations (2 violations)');
+    expect(result.text).toContain('two');
+  });
+
+  it('shows knowledge when present', () => {
+    const result = summarizeInspect({
+      ...fullData,
+      components: { ...fullData.components, knowledge: true },
+    });
+    expect(result.text).toContain('Knowledge: yes');
+  });
+
+  it('omits empty component sections gracefully', () => {
+    const result = summarizeInspect({
+      pack: { name: 'bare', version: '1.0.0' },
+      components: {},
+      violations: [],
+    });
+    expect(result.text).toContain('bare 1.0.0');
+    expect(result.text).not.toContain('Skills:');
+    expect(result.text).not.toContain('Canvas tools:');
+    expect(result.text).toContain('Violations: <none>');
+  });
+
+  it('tolerates nullish / garbage input', () => {
+    const result = summarizeInspect(null);
+    expect(result.text).toContain('(unnamed pack)');
+    expect(result.hasViolations).toBe(false);
+  });
+
+  it('renders a plain-string canvas tool without a binary', () => {
+    const result = summarizeInspect({
+      pack: { name: 'p', version: '1' },
+      components: { canvas_tools: ['plain.tool'] },
+      violations: [],
+    });
+    expect(result.text).toContain('Canvas tools: plain.tool');
   });
 });
 

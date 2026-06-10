@@ -4023,6 +4023,13 @@ const Settings = {
   // here under `_PackLogic`. Keep the two in sync.
 
   _PackLogic: {
+    // Mirror of pack-ui-logic.mjs `isRemoteSource`.
+    isRemoteSource(source) {
+      if (typeof source !== 'string') return false;
+      const s = source.trim();
+      return s.startsWith('github:') || s.startsWith('https://github.com/');
+    },
+
     // Mirror of pack-ui-logic.mjs `packListToRows`.
     packListToRows(report) {
       let packs;
@@ -4076,14 +4083,21 @@ const Settings = {
     },
 
     // Mirror of pack-ui-logic.mjs `installParams`.
-    installParams(manifestPath, opts = {}) {
+    installParams(source, opts = {}) {
+      const src = typeof source === 'string' ? source.trim() : '';
       const params = {
-        manifest_path:
-          typeof manifestPath === 'string' ? manifestPath.trim() : '',
+        ...(this.isRemoteSource(src)
+          ? { source: src }
+          : { manifest_path: src }),
         wait: opts.wait === false ? false : true,
       };
       if (opts.force) params.force = true;
       return params;
+    },
+
+    // Mirror of pack-ui-logic.mjs `inspectParams`.
+    inspectParams(source) {
+      return { source: typeof source === 'string' ? source.trim() : '' };
     },
 
     // Mirror of pack-ui-logic.mjs `uninstallParams`.
@@ -4097,10 +4111,109 @@ const Settings = {
     },
 
     // Mirror of pack-ui-logic.mjs `updateParams`.
-    updateParams(manifestPath) {
+    updateParams(source) {
+      const src = typeof source === 'string' ? source.trim() : '';
+      return this.isRemoteSource(src)
+        ? { source: src }
+        : { manifest_path: src };
+    },
+
+    // Mirror of pack-ui-logic.mjs `summarizeInspect`.
+    summarizeInspect(data) {
+      const d = data && typeof data === 'object' ? data : {};
+      const pack = d.pack && typeof d.pack === 'object' ? d.pack : {};
+      const comps =
+        d.components && typeof d.components === 'object' ? d.components : {};
+
+      const lines = [];
+
+      const name =
+        typeof pack.name === 'string' && pack.name ? pack.name : '(unnamed pack)';
+      const version =
+        pack.version != null && String(pack.version) ? String(pack.version) : '';
+      const description =
+        typeof pack.description === 'string' && pack.description
+          ? pack.description
+          : '';
+      let header = name;
+      if (version) header += ` ${version}`;
+      if (description) header += ` — ${description}`;
+      lines.push(header);
+
+      const asArray = (v) => (Array.isArray(v) ? v : []);
+
+      const skills = asArray(comps.skills).filter(
+        (s) => typeof s === 'string' && s
+      );
+      if (skills.length) {
+        lines.push(`Skills: ${skills.join(', ')}`);
+      }
+
+      const canvasTools = asArray(comps.canvas_tools);
+      if (canvasTools.length) {
+        const rendered = canvasTools
+          .map((t) => {
+            if (t && typeof t === 'object') {
+              const tn = typeof t.name === 'string' ? t.name : '';
+              const bin = typeof t.binary === 'string' ? t.binary : '';
+              if (tn && bin) return `${tn} (runs: ${bin})`;
+              if (tn) return tn;
+              if (bin) return `(runs: ${bin})`;
+              return '';
+            }
+            return typeof t === 'string' ? t : '';
+          })
+          .filter((s) => s.length > 0);
+        if (rendered.length) {
+          lines.push(`Canvas tools: ${rendered.join(', ')}`);
+          lines.push(
+            '  ⚠ Canvas tools run the binaries listed above on your machine.'
+          );
+        }
+      }
+
+      const seed = asArray(comps.seed).filter(
+        (s) => typeof s === 'string' && s
+      );
+      if (seed.length) {
+        lines.push(`Seed pages: ${seed.join(', ')}`);
+      }
+
+      if (typeof comps.dashboard === 'string' && comps.dashboard) {
+        lines.push(`Dashboard: ${comps.dashboard}`);
+      }
+
+      if (comps.knowledge) {
+        lines.push('Knowledge: yes');
+      }
+
+      const rawViolations = Array.isArray(d.violations) ? d.violations : [];
+      const violations = rawViolations
+        .map((v) => {
+          if (v == null) return '';
+          if (typeof v === 'string') return v;
+          if (typeof v === 'object') {
+            return String(v.message || v.rule || v.detail || JSON.stringify(v));
+          }
+          return String(v);
+        })
+        .filter((m) => m.length > 0);
+
+      if (violations.length === 0) {
+        lines.push('Violations: <none>');
+      } else {
+        const count = violations.length;
+        const noun = count === 1 ? 'violation' : 'violations';
+        lines.push(`⚠ Violations (${count} ${noun}):`);
+        for (const v of violations) {
+          lines.push(`  • ${v}`);
+        }
+      }
+
       return {
-        manifest_path:
-          typeof manifestPath === 'string' ? manifestPath.trim() : '',
+        text: lines.join('\n'),
+        violations,
+        hasViolations: violations.length > 0,
       };
     },
 
@@ -4313,7 +4426,8 @@ const Settings = {
     const modal = this._buildPackInstallModal();
     document.body.appendChild(modal);
     requestAnimationFrame(() => modal.classList.add('show'));
-    this._packModalState = { modal, busy: false };
+    this._packModalState = { modal, busy: false, pendingRemoteSource: null };
+    this._packResetConfirm();
 
     const input = modal.querySelector('.pack-manifest-input');
     if (input) input.focus();
@@ -4343,19 +4457,25 @@ const Settings = {
     const subtitle = document.createElement('p');
     subtitle.className = 'kb-wizard-subtitle';
     subtitle.textContent =
-      'Enter the path to the pack manifest on disk. You can validate it ' +
-      'first, then install.';
+      'Enter a local manifest path or a GitHub source ' +
+      '(github:user/repo[/sub][@ref]). Local manifests can be validated ' +
+      'first; GitHub sources are inspected, previewed, and confirmed before ' +
+      'install.';
     header.appendChild(title);
     header.appendChild(subtitle);
     content.appendChild(header);
 
-    // Manifest path input.
+    // Source input: local manifest path or a GitHub source.
     const field = document.createElement('div');
     field.className = 'kb-update-field pack-manifest-field';
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'kb-update-input pack-manifest-input';
-    input.placeholder = '/path/to/pack/manifest.toml';
+    input.placeholder =
+      '/path/to/pack/manifest.toml  or  github:user/repo[/sub][@ref]';
+    // Re-evaluate the action buttons whenever the source changes so a
+    // pending remote-install confirmation doesn't apply to a new source.
+    input.addEventListener('input', () => this._onPackSourceInput());
     field.appendChild(input);
     content.appendChild(field);
 
@@ -4365,9 +4485,18 @@ const Settings = {
     log.textContent = '';
     content.appendChild(log);
 
+    // Unreviewed-source warning (hidden until a remote source is inspected).
+    const warning = document.createElement('div');
+    warning.className = 'kb-wizard-status pack-install-warning';
+    warning.style.display = 'none';
+    warning.textContent =
+      '⚠ Unreviewed source — installing trusts the author; canvas-tools ' +
+      'can run commands on your machine.';
+    content.appendChild(warning);
+
     const statusMsg = document.createElement('div');
     statusMsg.className = 'kb-wizard-status pack-install-status';
-    statusMsg.textContent = 'Enter a manifest path to begin.';
+    statusMsg.textContent = 'Enter a manifest path or GitHub source to begin.';
     content.appendChild(statusMsg);
 
     // Actions.
@@ -4434,19 +4563,51 @@ const Settings = {
     return input ? input.value.trim() : '';
   },
 
+  // Show/hide the "unreviewed source" warning banner.
+  _packModalShowWarning(show) {
+    const el = this._packModalEl('.pack-install-warning');
+    if (el) el.style.display = show ? '' : 'none';
+  },
+
+  // Reset the remote-install confirmation handshake (used when the source
+  // changes, the modal opens, or an install finishes).
+  _packResetConfirm() {
+    if (this._packModalState) {
+      this._packModalState.pendingRemoteSource = null;
+    }
+    const installBtn = this._packModalEl('.pack-install-confirm-btn');
+    if (installBtn) installBtn.textContent = 'Install';
+    this._packModalShowWarning(false);
+  },
+
+  // Called on every keystroke in the source input. If the user edits the
+  // source after a remote inspect, any pending confirmation is voided so a
+  // second click can't install a source the preview no longer matches.
+  _onPackSourceInput() {
+    if (!this._packModalState) return;
+    if (this._packModalState.busy) return;
+    const source = this._packManifestPath();
+    const pending = this._packModalState.pendingRemoteSource;
+    if (pending != null && pending !== source) {
+      this._packResetConfirm();
+    }
+  },
+
   async _onPackValidate() {
     if (!this._packModalState || this._packModalState.busy) return;
-    const manifestPath = this._packManifestPath();
-    if (!manifestPath) {
-      this._packModalStatus('Please enter a manifest path first.');
+    const source = this._packManifestPath();
+    if (!source) {
+      this._packModalStatus('Please enter a manifest path or GitHub source first.');
       return;
     }
     this._packModalSetBusy(true);
     this._packModalStatus('Validating…');
     try {
-      const result = await this._sendMcpCommand('pack.validate', {
-        manifest_path: manifestPath,
-      });
+      // Remote sources validate by `source`; local paths by `manifest_path`.
+      const params = this._PackLogic.isRemoteSource(source)
+        ? { source }
+        : { manifest_path: source };
+      const result = await this._sendMcpCommand('pack.validate', params);
       const msg = this._PackLogic.validateResultMessage(result);
       this._packModalLog(msg);
       this._packModalStatus(result && result.ok ? 'Validation passed.' : 'Validation failed.');
@@ -4461,29 +4622,93 @@ const Settings = {
 
   async _onPackInstall() {
     if (!this._packModalState || this._packModalState.busy) return;
-    const manifestPath = this._packManifestPath();
-    if (!manifestPath) {
-      this._packModalStatus('Please enter a manifest path first.');
+    const source = this._packManifestPath();
+    if (!source) {
+      this._packModalStatus('Please enter a manifest path or GitHub source first.');
       return;
     }
+
+    // Remote (GitHub) sources go through inspect → preview → confirm.
+    if (this._PackLogic.isRemoteSource(source)) {
+      const pending = this._packModalState.pendingRemoteSource;
+      if (pending === source) {
+        // Second click: the user has reviewed the preview — install.
+        await this._doPackInstall(source, { remote: true });
+      } else {
+        // First click: inspect and render the preview, then arm confirm.
+        await this._onPackInspect(source);
+      }
+      return;
+    }
+
+    // Local manifest path: keep the existing validate → install behaviour.
+    await this._doPackInstall(source, { remote: false });
+  },
+
+  // Inspect a remote source and render a preview + unreviewed-source
+  // warning, then arm the explicit confirm step (unless violations block).
+  async _onPackInspect(source) {
     this._packModalSetBusy(true);
-    this._packModalStatus('Installing…');
-    this._packModalLog(`Installing from ${manifestPath}…`);
+    this._packModalStatus('Inspecting source…');
+    this._packModalLog(`Inspecting ${source}…`);
     try {
-      // Optional pre-flight validation: warn but don't block on failure
-      // (the daemon validates again during install).
-      try {
-        const vr = await this._sendMcpCommand('pack.validate', {
-          manifest_path: manifestPath,
-        });
-        if (vr && vr.ok === false) {
-          this._packModalLog(this._PackLogic.validateResultMessage(vr));
-        }
-      } catch (_ve) {
-        // Non-fatal — proceed to install and let it surface real errors.
+      const result = await this._sendMcpCommand(
+        'pack.inspect',
+        this._PackLogic.inspectParams(source)
+      );
+      const summary = this._PackLogic.summarizeInspect(result);
+      this._packModalLog(summary.text);
+
+      if (summary.hasViolations) {
+        // Block install when the daemon reports policy violations.
+        this._packResetConfirm();
+        this._packModalStatus(
+          'Install blocked — this source has policy violations.'
+        );
+        return;
       }
 
-      const params = this._PackLogic.installParams(manifestPath, {});
+      // Arm the explicit confirm handshake.
+      this._packModalState.pendingRemoteSource = source;
+      this._packModalShowWarning(true);
+      const installBtn = this._packModalEl('.pack-install-confirm-btn');
+      if (installBtn) installBtn.textContent = 'Confirm install (unreviewed)';
+      this._packModalStatus(
+        'Review the preview above, then confirm to install.'
+      );
+    } catch (e) {
+      const msg = this._PackLogic.packErrorMessage(e);
+      this._packModalLog(`Inspect failed: ${msg}`);
+      this._packModalStatus(`Error: ${msg}`);
+      this._packResetConfirm();
+    } finally {
+      this._packModalSetBusy(false);
+    }
+  },
+
+  // Perform the actual install. For local sources runs a non-blocking
+  // pre-flight validate; remote sources were already inspected/confirmed.
+  async _doPackInstall(source, opts = {}) {
+    this._packModalSetBusy(true);
+    this._packModalStatus('Installing…');
+    this._packModalLog(`Installing from ${source}…`);
+    try {
+      if (!opts.remote) {
+        // Optional pre-flight validation for local manifests: warn but
+        // don't block (the daemon validates again during install).
+        try {
+          const vr = await this._sendMcpCommand('pack.validate', {
+            manifest_path: source,
+          });
+          if (vr && vr.ok === false) {
+            this._packModalLog(this._PackLogic.validateResultMessage(vr));
+          }
+        } catch (_ve) {
+          // Non-fatal — proceed to install and let it surface real errors.
+        }
+      }
+
+      const params = this._PackLogic.installParams(source, {});
       const result = await this._sendMcpCommand('pack.install', params);
       const ver = result && result.version ? ` (v${result.version})` : '';
       const files =
@@ -4492,6 +4717,7 @@ const Settings = {
           : '';
       this._packModalLog(`Installed${ver}${files}.`);
       this._packModalStatus('Pack installed.');
+      this._packResetConfirm();
       // Refresh the section list behind the modal.
       const section = this._packsSection();
       if (section) this._refreshPacksStatus(section);
@@ -4527,9 +4753,11 @@ const Settings = {
   // ── Per-row update / uninstall ──────────────────────────────────────
 
   async _onPackUpdateClick(section, name) {
-    // Update reads a fresh manifest from disk; prompt for its path.
+    // Update reads a fresh manifest: prompt for a local path or a GitHub
+    // source (github:user/repo[/sub][@ref]).
     const manifestPath = this._promptText(
-      `Update “${name}” — path to the new manifest on disk:`,
+      `Update “${name}” — local manifest path or GitHub source ` +
+        `(github:user/repo[/sub][@ref]):`,
       ''
     );
     if (manifestPath == null) return; // cancelled

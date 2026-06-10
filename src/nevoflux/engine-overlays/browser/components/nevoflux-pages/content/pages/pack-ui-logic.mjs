@@ -31,6 +31,24 @@
 'use strict';
 
 /**
+ * Classify a pack source string as remote (GitHub) vs. a local path.
+ *
+ * Mirrors the daemon/CLI classification: a source is "remote" when the
+ * trimmed string starts with `github:` (shorthand,
+ * `github:user/repo[/sub][@ref]`) or `https://github.com/` (full URL).
+ * Everything else (including empty / nullish / a filesystem path) is a
+ * local manifest path.
+ *
+ * @param {string|null|undefined} source
+ * @returns {boolean}
+ */
+export function isRemoteSource(source) {
+  if (typeof source !== 'string') return false;
+  const s = source.trim();
+  return s.startsWith('github:') || s.startsWith('https://github.com/');
+}
+
+/**
  * Normalise a `pack.list` report into an array of row descriptors.
  *
  * Accepts the daemon report shape `{ packs: [...] }`, a bare array, or a
@@ -107,17 +125,20 @@ export function validateResultMessage(result) {
 /**
  * Build the params object for `pack.install`.
  *
- * `wait:true` keeps the first cut synchronous (the daemon returns
- * `{ success, version, files }`). Pass `wait:false` to opt into the
- * streaming/`op_id` flow.
+ * A REMOTE source (`github:…` / `https://github.com/…`) is sent as
+ * `{ source }`; a LOCAL path is sent as `{ manifest_path }` so local
+ * installs keep working against any daemon. `wait:true` keeps the first
+ * cut synchronous (the daemon returns `{ success, version, files }`).
+ * Pass `wait:false` to opt into the streaming/`op_id` flow.
  *
- * @param {string} manifestPath  path the daemon reads the manifest from
+ * @param {string} source  remote `github:`/URL source or a local manifest path
  * @param {{force?: boolean, wait?: boolean}} [opts]
- * @returns {{manifest_path: string, wait: boolean, force?: boolean}}
+ * @returns {{source?: string, manifest_path?: string, wait: boolean, force?: boolean}}
  */
-export function installParams(manifestPath, opts = {}) {
+export function installParams(source, opts = {}) {
+  const src = typeof source === 'string' ? source.trim() : '';
   const params = {
-    manifest_path: typeof manifestPath === 'string' ? manifestPath.trim() : '',
+    ...(isRemoteSource(src) ? { source: src } : { manifest_path: src }),
     // Default to synchronous install for the first-cut UX.
     wait: opts.wait === false ? false : true,
   };
@@ -125,6 +146,19 @@ export function installParams(manifestPath, opts = {}) {
     params.force = true;
   }
   return params;
+}
+
+/**
+ * Build the params object for `pack.inspect`.
+ *
+ * Inspect only ever runs against a remote source (the preview step before
+ * a remote install), but the param shape is `{ source }` regardless.
+ *
+ * @param {string} source
+ * @returns {{source: string}}
+ */
+export function inspectParams(source) {
+  return { source: typeof source === 'string' ? source.trim() : '' };
 }
 
 /**
@@ -151,12 +185,123 @@ export function uninstallParams(name, opts = {}) {
 /**
  * Build the params object for `pack.update`.
  *
- * @param {string} manifestPath
- * @returns {{manifest_path: string}}
+ * Like `installParams`, a REMOTE source is sent as `{ source }` and a
+ * LOCAL path as `{ manifest_path }`.
+ *
+ * @param {string} source  remote `github:`/URL source or a local manifest path
+ * @returns {{source: string}|{manifest_path: string}}
  */
-export function updateParams(manifestPath) {
+export function updateParams(source) {
+  const src = typeof source === 'string' ? source.trim() : '';
+  return isRemoteSource(src) ? { source: src } : { manifest_path: src };
+}
+
+/**
+ * Turn a `pack.inspect` response into a plain-text preview string.
+ *
+ * Pure / DOM-free so it is unit-testable. Surfaces the pack identity, the
+ * bundled components (skills, canvas tools, seed pages, dashboard,
+ * knowledge), and any policy violations. Canvas tools are flagged with the
+ * binary they run because installing the pack trusts that binary to run on
+ * the user's machine. When `violations` is non-empty the preview makes the
+ * count prominent so the caller can block the install.
+ *
+ * @param {object|null|undefined} data  the `pack.inspect` response
+ * @returns {{text: string, violations: string[], hasViolations: boolean}}
+ */
+export function summarizeInspect(data) {
+  const d = data && typeof data === 'object' ? data : {};
+  const pack = d.pack && typeof d.pack === 'object' ? d.pack : {};
+  const comps =
+    d.components && typeof d.components === 'object' ? d.components : {};
+
+  const lines = [];
+
+  // Identity line: "name version — description".
+  const name = typeof pack.name === 'string' && pack.name ? pack.name : '(unnamed pack)';
+  const version =
+    pack.version != null && String(pack.version) ? String(pack.version) : '';
+  const description =
+    typeof pack.description === 'string' && pack.description
+      ? pack.description
+      : '';
+  let header = name;
+  if (version) header += ` ${version}`;
+  if (description) header += ` — ${description}`;
+  lines.push(header);
+
+  const asArray = (v) => (Array.isArray(v) ? v : []);
+
+  const skills = asArray(comps.skills).filter(
+    (s) => typeof s === 'string' && s
+  );
+  if (skills.length) {
+    lines.push(`Skills: ${skills.join(', ')}`);
+  }
+
+  const canvasTools = asArray(comps.canvas_tools);
+  if (canvasTools.length) {
+    const rendered = canvasTools
+      .map((t) => {
+        if (t && typeof t === 'object') {
+          const tn = typeof t.name === 'string' ? t.name : '';
+          const bin = typeof t.binary === 'string' ? t.binary : '';
+          if (tn && bin) return `${tn} (runs: ${bin})`;
+          if (tn) return tn;
+          if (bin) return `(runs: ${bin})`;
+          return '';
+        }
+        return typeof t === 'string' ? t : '';
+      })
+      .filter((s) => s.length > 0);
+    if (rendered.length) {
+      lines.push(`Canvas tools: ${rendered.join(', ')}`);
+      // Make the binary-execution trust boundary explicit.
+      lines.push('  ⚠ Canvas tools run the binaries listed above on your machine.');
+    }
+  }
+
+  const seed = asArray(comps.seed).filter((s) => typeof s === 'string' && s);
+  if (seed.length) {
+    lines.push(`Seed pages: ${seed.join(', ')}`);
+  }
+
+  if (typeof comps.dashboard === 'string' && comps.dashboard) {
+    lines.push(`Dashboard: ${comps.dashboard}`);
+  }
+
+  if (comps.knowledge) {
+    lines.push('Knowledge: yes');
+  }
+
+  // Normalise violations to plain strings (bare string or { message }).
+  const rawViolations = Array.isArray(d.violations) ? d.violations : [];
+  const violations = rawViolations
+    .map((v) => {
+      if (v == null) return '';
+      if (typeof v === 'string') return v;
+      if (typeof v === 'object') {
+        return String(v.message || v.rule || v.detail || JSON.stringify(v));
+      }
+      return String(v);
+    })
+    .filter((m) => m.length > 0);
+
+  if (violations.length === 0) {
+    lines.push('Violations: <none>');
+  } else {
+    const count = violations.length;
+    const noun = count === 1 ? 'violation' : 'violations';
+    lines.push(`⚠ Violations (${count} ${noun}):`);
+    for (const v of violations) {
+      lines.push(`  • ${v}`);
+    }
+  }
+
   return {
-    manifest_path: typeof manifestPath === 'string' ? manifestPath.trim() : '',
+    text: lines.join('\n'),
+    violations,
+    hasViolations: violations.length > 0,
   };
 }
 
