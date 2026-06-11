@@ -20,6 +20,17 @@ ac_add_options --with-distribution-id=com.nevoflux
 # mk_add_options MOZ_MAKE_FLAGS="-j4"
 # ac_add_options --enable-linker=gold
 
+# Cap build parallelism when NEVOFLUX_MAKE_JOBS is exported. Inert by default —
+# only jobs that set this env var get the cap, so other platforms/builds (GCB
+# cross-compile, macOS, Linux) are unaffected. The Windows-native self-hosted
+# runner has 36 cores but only ~38 GB RAM / ~43.5 GB commit limit; mach's default
+# -j36 overcommits during the heavy DOM-bindings + glslopt compile and clang-cl
+# dies with "cannot open file ...: not enough memory" (a MapViewOfFile
+# commit-exhaustion failure when mapping intrinsic headers).
+if test -n "$NEVOFLUX_MAKE_JOBS"; then
+  mk_add_options MOZ_MAKE_FLAGS="-j$NEVOFLUX_MAKE_JOBS"
+fi
+
 # Misc
 export MOZ_SOURCE_REPO=https://github.com/dorisgyl/nevoflux
 export MOZ_SOURCE_CHANGESET=${changeset}
