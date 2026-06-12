@@ -278,6 +278,7 @@ jobs:
         run: |
           tar \
             --exclude='./.git' \
+            --exclude='*.nevoflux-skip' \
             --use-compress-program=zstd \
             -hcf nevoflux.source.tar.zst \
             -C engine .
