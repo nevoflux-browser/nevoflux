@@ -79,8 +79,9 @@ class nsZenPinnedTabManager extends nsZenDOMOperatedFeature {
     this._zenClickEventListener = this._onTabClick.bind(this);
 
     gZenWorkspaces._resolvePinnedInitialized();
-    if (lazy.zenPinnedTabRestorePinnedTabsToPinnedUrl) {
-      gZenWorkspaces.promiseInitialized.then(() => {
+    gZenWorkspaces.promiseInitialized.then(() => {
+      gBrowser.addTabsProgressListener(this);
+      if (lazy.zenPinnedTabRestorePinnedTabsToPinnedUrl) {
         for (const tab of gZenWorkspaces.allStoredTabs) {
           try {
             this.resetPinnedTab(tab);
@@ -88,8 +89,8 @@ class nsZenPinnedTabManager extends nsZenDOMOperatedFeature {
             console.error("Error restoring pinned tab:", ex);
           }
         }
-      });
-    }
+      }
+    });
   }
 
   log(message) {
@@ -284,8 +285,6 @@ class nsZenPinnedTabManager extends nsZenDOMOperatedFeature {
         return;
       }
 
-      const selectedTabs = pinnedTabs.filter(tab => tab.selected);
-
       event.stopPropagation();
       event.preventDefault();
 
@@ -365,13 +364,19 @@ class nsZenPinnedTabManager extends nsZenDOMOperatedFeature {
                 return;
               }
             }
-            await gBrowser.explicitUnloadTabs(pinnedTabs);
+            let successful = await gBrowser.explicitUnloadTabs(pinnedTabs);
+            if (!successful) {
+              return;
+            }
             for (const tab of pinnedTabs) {
               tab.removeAttribute("discarded");
             }
-          }
-          if (selectedTabs.length) {
-            this._handleTabSwitch(selectedTabs[0]);
+          } else if (pinnedTabs.some(tab => tab.selected)) {
+            const selectedTabs = pinnedTabs.filter(tab => tab.selected);
+            gBrowser.selectedTab = gBrowser._findTabToBlurTo(
+              selectedTabs[0],
+              selectedTabs
+            );
           }
           if (behavior.includes("reset")) {
             for (const tab of pinnedTabs) {
@@ -391,28 +396,6 @@ class nsZenPinnedTabManager extends nsZenDOMOperatedFeature {
     }
   }
 
-  _handleTabSwitch(selectedTab) {
-    if (selectedTab !== gBrowser.selectedTab) {
-      return;
-    }
-    const findNextTab = direction =>
-      gBrowser.tabContainer.findNextTab(selectedTab, {
-        direction,
-        filter: tab => !tab.hidden && !tab.pinned,
-      });
-
-    let nextTab = findNextTab(1) || findNextTab(-1);
-
-    if (!nextTab) {
-      gZenWorkspaces.selectEmptyTab();
-      return;
-    }
-
-    if (nextTab) {
-      gBrowser.selectedTab = nextTab;
-    }
-  }
-
   #resetTabToStoredState(tab) {
     const state = this.#getTabState(tab);
 
@@ -422,7 +405,17 @@ class nsZenPinnedTabManager extends nsZenDOMOperatedFeature {
     }
 
     // Remove everything except the entry we want to keep
-    state.entries = [initialState.entry];
+    state.entries = [
+      {
+        ...initialState.entry,
+        triggeringPrincipal_base64: E10SUtils.serializePrincipal(
+          Services.scriptSecurityManager.createContentPrincipal(
+            Services.io.newURI(initialState.entry.url),
+            {}
+          )
+        ),
+      },
+    ];
 
     state.image = tab.zenStaticIcon || initialState.image;
     state.index = 0;
@@ -554,10 +547,12 @@ class nsZenPinnedTabManager extends nsZenDOMOperatedFeature {
             <menuseparator id="context_zen-pinned-tab-separator" hidden="true"/>
             <menuitem id="context_zen-replace-pinned-url-with-current"
                       data-lazy-l10n-id="tab-context-zen-replace-pinned-url-with-current"
+                      data-l10n-args="{&quot;isEssential&quot;:&quot;&quot;}"
                       hidden="true"
                       command="cmd_zenReplacePinnedUrlWithCurrent"/>
             <menuitem id="context_zen-reset-pinned-tab"
                       data-lazy-l10n-id="tab-context-zen-reset-pinned-tab"
+                      data-l10n-args="{&quot;isEssential&quot;:&quot;&quot;}"
                       hidden="true"
                       command="cmd_zenPinnedTabResetNoTab"/>
         `);
@@ -671,7 +666,7 @@ class nsZenPinnedTabManager extends nsZenDOMOperatedFeature {
   ) {
     let newIndex = dropIndex;
     let fromDifferentWindow = false;
-    movingTabs = Array.from(movingTabs || draggedTab)
+    let ownedTabs = Array.from(movingTabs || draggedTab)
       .reverse()
       .map(tab => {
         if (!gBrowser.isTab(tab)) {
@@ -707,6 +702,11 @@ class nsZenPinnedTabManager extends nsZenDOMOperatedFeature {
         }
         return tab;
       });
+    if (!fromDifferentWindow) {
+      // See gh-13796 and gh-12156
+      ownedTabs = ownedTabs.reverse();
+    }
+    movingTabs = [...ownedTabs];
     if (fromDifferentWindow) {
       gBrowser.addRangeToMultiSelectedTabs(
         gBrowser.tabContainer.dragAndDropElements[dropIndex],
@@ -826,18 +826,22 @@ class nsZenPinnedTabManager extends nsZenDOMOperatedFeature {
           }
         }
       }
-      return moved;
     } catch (ex) {
       console.error("Error moving tabs:", ex);
-      return false;
     }
+    return [draggedTab, ownedTabs];
   }
 
-  onLocationChange(aBrowser, aLocation) {
+  onLocationChange(aBrowser, aWebProgress, aRequest, aLocationURI) {
+    if (!aWebProgress.isTopLevel) {
+      return;
+    }
+    // eslint-disable-next-line no-shadow
+    let location = aLocationURI ? aLocationURI.spec : "";
     if (
-      (aLocation == "about:blank" &&
+      (location == "about:blank" &&
         BrowserUIUtils.checkEmptyPageOrigin(aBrowser)) ||
-      aLocation == ""
+      location == ""
     ) {
       return;
     }
@@ -852,9 +856,11 @@ class nsZenPinnedTabManager extends nsZenDOMOperatedFeature {
     }
     // Remove # and ? from the URL
     const pinUrl = tab._zenPinnedInitialState.entry.url.split("#")[0];
-    const currentUrl = aLocation.split("#")[0];
+    const currentUrl = location.split("#")[0];
     // Add an indicator that the pin has been changed
-    if (pinUrl === currentUrl) {
+    if (
+      Services.io.newURI(currentUrl).spec === Services.io.newURI(pinUrl).spec
+    ) {
       this.resetPinChangedUrl(tab);
       return;
     }

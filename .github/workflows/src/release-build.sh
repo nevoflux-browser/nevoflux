@@ -17,7 +17,14 @@ if command -v apt-get &> /dev/null; then
   fi
 fi
 
+mkdir -p ~/.zen-keys
+echo "$ZEN_SAFEBROWSING_API_KEY" > ~/.zen-keys/safebrowsing.dat
+echo "$ZEN_MOZILLA_API_KEY" > ~/.zen-keys/mozilla.dat
+echo "$ZEN_GOOGLE_LOCATION_SERVICE_API_KEY" > ~/.zen-keys/google_location_service.dat
+
 . $HOME/.cargo/env
+
+bash ./scripts/mar_sign.sh -i
 
 ulimit -n 4096
 
@@ -37,3 +44,6 @@ else
   export ZEN_RELEASE=1
   npm run build
 fi
+
+echo "Build complete, removing API keys"
+rm -rf ~/.zen-keys

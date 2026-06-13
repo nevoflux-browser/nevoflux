@@ -17,7 +17,6 @@ class ZenStartup {
 
   init() {
     this.openWatermark();
-    this.#changeSidebarLocation();
     this.#zenInitBrowserLayout();
   }
 
@@ -57,6 +56,7 @@ class ZenStartup {
       gZenWorkspaces.init();
       setTimeout(() => {
         gZenUIManager.init();
+        this.#initUIComponents();
         this.#checkForWelcomePage();
       }, 0);
     } catch (e) {
@@ -98,6 +98,19 @@ class ZenStartup {
       this.isReady = true;
       this.promiseInitializedResolve();
       delete this.promiseInitializedResolve;
+
+      setTimeout(() => {
+        // Wait for the natural PlacesToolbar rebuild before invalidating, so
+        // the two async rebuilds don't interleave and duplicate bookmarks.
+        // promiseRebuilt() returns undefined when no rebuild is in flight.
+        const rebuilt =
+          document
+            .getElementById("PlacesToolbar")
+            ?._placesView?.promiseRebuilt() ?? Promise.resolve();
+        rebuilt
+          .catch(console.error)
+          .then(() => gZenWorkspaces._invalidateBookmarkContainers());
+      });
     });
   }
 
@@ -142,18 +155,13 @@ class ZenStartup {
     });
   }
 
-  #changeSidebarLocation() {
-    const kElementsToAppend = ["sidebar-splitter", "sidebar-box"];
-
-    const browser = document.getElementById("browser");
-    browser.prepend(gNavToolbox);
-
-    const sidebarPanelWrapper = document.getElementById("tabbrowser-tabbox");
-    for (let id of kElementsToAppend) {
-      const elem = document.getElementById(id);
-      if (elem) {
-        sidebarPanelWrapper.prepend(elem);
-      }
+  #initUIComponents() {
+    const kUIComponents = ["ZenProgressBar", "ZenSpaceRoutingNavigation"];
+    for (let component of kUIComponents) {
+      const module = ChromeUtils.importESModule(
+        "resource:///modules/zen/ui/" + component + ".sys.mjs"
+      );
+      new module[component](window);
     }
   }
 

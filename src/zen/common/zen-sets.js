@@ -133,6 +133,10 @@ document.addEventListener(
             gZenWorkspaces.unloadAllOtherWorkspaces();
             break;
           }
+          case "cmd_zenOpenSpaceRoutingSettings": {
+            gZenSpaceRoutingManager.openSpaceRoutingDialog(window);
+            break;
+          }
           case "cmd_zenNewNavigatorUnsynced":
             OpenBrowserWindow({ zenSyncedWindow: false });
             break;
@@ -141,6 +145,14 @@ document.addEventListener(
               "resource:///modules/zen/ZenLiveFoldersManager.sys.mjs"
             );
             ZenLiveFoldersManager.handleEvent(event);
+            break;
+          }
+          case "cmd_zenDuplicateTab": {
+            const selectedTabs = gBrowser.selectedTabs;
+            let insertAt = selectedTabs.at(-1)._tPos + 1;
+            for (const tab of selectedTabs) {
+              gBrowser.duplicateTab(tab, true, { tabIndex: insertAt++ });
+            }
             break;
           }
           default:
