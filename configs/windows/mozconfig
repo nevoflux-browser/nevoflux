@@ -40,13 +40,17 @@ ac_add_options --disable-bits-download
 if test ! "$WINSYSROOT"; then
   ac_add_options --without-wasm-sandboxed-libraries
 
-  # The Gecko Profiler rust-api crate uses bindgen against MSVC STL
-  # headers; the resulting bindings.rs fails to compile on the
-  # native-GHA runner's MSVC 14.44 toolset (build script exits 101
-  # without surfacing a usable error to cargo's persisted output
-  # files). Profiler is a developer-only tool, not user-facing.
-  # Disable on native builds; GCB cross-compile keeps it enabled.
-  ac_add_options --disable-gecko-profiler
+  # STL hardening (Firefox 151+) defaults ON for Windows, but die()s unless the
+  # MSVC STL is 202503 or newer. The native-build toolset (MSVC 14.44-era,
+  # bootstrapped clang STL) predates that, so configure aborts with
+  # "C++ STL does not support hardening". Disable on native builds; the GCB
+  # cross-compile toolchain (WINSYSROOT) ships a newer STL and keeps it on.
+  ac_add_options --disable-stl-hardening
+
+  # NOTE: Firefox 151 removed the --disable-gecko-profiler option entirely
+  # (the Gecko Profiler is no longer a configure-time toggle). The previous
+  # FF149 workaround for the profiler rust-api bindgen failure on MSVC 14.44
+  # no longer applies and was dropped during the 1.20.2b sync.
 
   # WebRTC stays ENABLED on native builds. The earlier --disable-webrtc
   # was a workaround for a libwebrtc link failure ("No rule to make target
