@@ -88,7 +88,7 @@ function getBrowser(panel) {
   stack.appendChild(browser);
 
   browser.addEventListener(
-    'DoZoomEnlargeBy10',
+    'DoZoomEnlarge',
     () => {
       let { ZoomManager } = browser.ownerGlobal;
       let zoom = browser.fullZoom;
@@ -101,7 +101,7 @@ function getBrowser(panel) {
     true
   );
   browser.addEventListener(
-    'DoZoomReduceBy10',
+    'DoZoomReduce',
     () => {
       let { ZoomManager } = browser.ownerGlobal;
       let zoom = browser.fullZoom;
