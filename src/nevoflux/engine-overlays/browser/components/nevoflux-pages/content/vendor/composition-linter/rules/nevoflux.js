@@ -151,6 +151,117 @@ function ruleSingleAudio(ctx, report) {
   }
 }
 
+// ── nf/harsh-flash-transition ──────────────────────────────────────────────
+//
+// A full-screen overlay (position:absolute/fixed covering the stage via inset:0
+// or all four offsets) with a FLAT, bright, near-opaque background and NO
+// additive blend mode, whose opacity is GSAP-animated to a high value, renders
+// as a harsh white-out "flash" at scene transitions. Real light-leaks use a
+// soft gradient + `mix-blend-mode: screen` at low opacity and are exempt
+// (gradient backgrounds and screen/lighten blends are both excluded below).
+
+const ADDITIVE_BLEND_RE =
+  /mix-blend-mode\s*:\s*(screen|lighten|color-dodge|plus-lighter|hard-light)/i;
+const FLASH_OPACITY_THRESHOLD = 0.5;
+
+/** Parse a flat CSS color → { alpha, light } or null if not a flat fill (e.g. a gradient). */
+function parseFlatBackground(value) {
+  if (!value) return null;
+  const v = value.trim();
+  if (/gradient\s*\(/i.test(v)) return null; // gradients are soft, not a flat flash
+  let m = v.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/i);
+  if (m) {
+    const a = m[4] !== undefined ? parseFloat(m[4]) : 1;
+    return { alpha: a, light: (+m[1] + +m[2] + +m[3]) / 3 >= 150 };
+  }
+  m = v.match(/#([0-9a-fA-F]{6})\b/);
+  if (m) {
+    const r = parseInt(m[1].slice(0, 2), 16), g = parseInt(m[1].slice(2, 4), 16), b = parseInt(m[1].slice(4, 6), 16);
+    return { alpha: 1, light: (r + g + b) / 3 >= 150 };
+  }
+  if (/\b(white|ivory|snow|whitesmoke|floralwhite|cornsilk)\b/i.test(v)) return { alpha: 1, light: true };
+  return null;
+}
+
+/** Merge CSS declarations that apply to `el` (matching id/class rules + inline style). */
+function collectAppliedDeclarations(el, styles) {
+  const selectors = new Set();
+  const id = el.getAttribute('id');
+  if (id) selectors.add(`#${id}`);
+  for (const c of (el.getAttribute('class') || '').split(/\s+/).filter(Boolean)) selectors.add(`.${c}`);
+  let body = '';
+  for (const styleEl of styles) {
+    const css = styleEl.textContent || '';
+    for (const [, sel, decl] of css.matchAll(/([#.][A-Za-z0-9_-]+)\s*\{([^}]+)\}/g)) {
+      if (selectors.has((sel || '').trim())) body += ';' + (decl || '');
+    }
+  }
+  return body + ';' + (el.getAttribute('style') || '');
+}
+
+/** True if the merged declarations make the element cover the whole stage. */
+function isFullBleed(decl) {
+  if (!/position\s*:\s*(absolute|fixed)/i.test(decl)) return false;
+  if (/inset\s*:\s*0(\s+0)*\s*(;|$)/i.test(decl)) return true;
+  const zero = (p) => new RegExp(`\\b${p}\\s*:\\s*0\\b`, 'i').test(decl);
+  if (zero('top') && zero('right') && zero('bottom') && zero('left')) return true;
+  return /width\s*:\s*100%/.test(decl) && /height\s*:\s*100%/.test(decl);
+}
+
+/** Extract { selector, peak } for to/fromTo tweens that animate opacity (peak = the "to" value). */
+function extractOpacityPeaks(scriptText) {
+  const out = [];
+  const re = /\.(to|fromTo)\s*\(\s*["']([^"']+)["']\s*,\s*(\{[^}]*\})\s*(?:,\s*(\{[^}]*\}))?/g;
+  let m;
+  while ((m = re.exec(scriptText)) !== null) {
+    const toVars = m[1] === 'fromTo' ? (m[4] || '') : (m[3] || '');
+    const om = /opacity\s*:\s*([\d.]+)/.exec(toVars);
+    if (om) out.push({ selector: m[2], peak: parseFloat(om[1]) });
+  }
+  return out;
+}
+
+function ruleHarshFlashTransition(ctx, report) {
+  const peaks = [];
+  for (const s of ctx.scripts) {
+    if (s.getAttribute('src')) continue;
+    for (const p of extractOpacityPeaks(s.textContent || '')) peaks.push(p);
+  }
+  if (peaks.length === 0) return;
+
+  const flagged = new Set();
+  for (const { selector, peak } of peaks) {
+    if (peak < FLASH_OPACITY_THRESHOLD) continue;
+    let els;
+    try { els = ctx.doc.querySelectorAll(selector); } catch { continue; }
+    for (const el of els) {
+      const decl = collectAppliedDeclarations(el, ctx.styles);
+      if (!isFullBleed(decl)) continue;
+      if (ADDITIVE_BLEND_RE.test(decl)) continue; // soft additive overlay — fine
+      const bgMatch = decl.match(/background(?:-color)?\s*:\s*([^;]+)/i);
+      const bg = bgMatch ? parseFlatBackground(bgMatch[1]) : null;
+      if (!bg || !bg.light || bg.alpha < 0.5) continue; // not a flat bright opaque fill
+      const key = el.getAttribute('id') || el.getAttribute('class') || selector;
+      if (flagged.has(key)) continue;
+      flagged.add(key);
+      const { line, col } = findNodeLineCol(ctx.raw, el);
+      push(report, {
+        severity: 'warning',
+        rule_id: 'nf/harsh-flash-transition',
+        message:
+          `Full-screen overlay "${selector}" is animated to opacity ${peak} over a flat, ` +
+          `near-opaque bright background with no additive blend mode — this renders as a harsh ` +
+          `white-out flash at the scene transition.`,
+        line, col,
+        fix_hint:
+          'Cap the peak opacity at ≤ 0.35 and use a soft radial gradient with ' +
+          '`mix-blend-mode: screen`, or cross-fade the scenes (overlap fade-out/fade-in) ' +
+          'instead of flashing through a full-screen overlay.',
+      });
+    }
+  }
+}
+
 export default [
   ruleReadyPromises,
   ruleThreeRenderer,
@@ -159,4 +270,5 @@ export default [
   ruleForbiddenApis,
   ruleCdnWhitelist,
   ruleSingleAudio,
+  ruleHarshFlashTransition,
 ];

@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><style>
+  body { margin: 0; background: #000; }
+  #stage { position: relative; width: 640px; height: 360px; overflow: hidden; background: #0a0a0a; }
+  /* Full-screen, near-opaque bright overlay used as a "flash" transition,
+     with NO additive blend mode → white-out flash when ramped to opacity 1. */
+  .flash-layer {
+    position: absolute; inset: 0;
+    background: rgba(255, 220, 180, 0.95);
+    pointer-events: none; opacity: 0;
+  }
+  /* A legitimate soft light-leak (low alpha + screen blend) — must NOT trip the rule. */
+  .light-leak {
+    position: absolute; inset: 0;
+    background: radial-gradient(ellipse at 50% 45%, rgba(255,159,67,0.18), transparent 70%);
+    pointer-events: none; mix-blend-mode: screen;
+  }
+</style></head>
+<body>
+  <div id="stage" data-width="640" data-height="360" data-duration="5" data-fps="30">
+    <div class="light-leak" id="leak-1"></div>
+    <div class="flash-layer" id="flash-1"></div>
+  </div>
+  <script type="module">
+    import { gsap } from 'https://esm.sh/gsap@3.13';
+    window.__timelines = window.__timelines || [];
+    const tl = gsap.timeline({ paused: true });
+    // legit soft leak ramp — should not warn
+    tl.fromTo('#leak-1', { opacity: 0.2 }, { opacity: 0.9, duration: 4 }, 0);
+    // harsh full-screen flash — should warn
+    tl.to('#flash-1', { opacity: 1, duration: 0.25, ease: 'power2.in' }, 2);
+    tl.to('#flash-1', { opacity: 0, duration: 0.25, ease: 'power2.out', overwrite: 'auto' }, 2.25);
+    window.__timelines.push(tl);
+  </script>
+</body>
+</html>
