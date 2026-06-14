@@ -19,6 +19,7 @@ import {
   isRemoteSource,
   inspectParams,
   summarizeInspect,
+  summarizePackProgress,
 } from '../../engine-overlays/browser/components/nevoflux-pages/content/pages/pack-ui-logic.mjs';
 
 describe('pack-ui-logic: isRemoteSource', () => {
@@ -453,5 +454,61 @@ describe('pack-ui-logic: packErrorMessage', () => {
   it('handles null / empty', () => {
     expect(packErrorMessage(null)).toBe('Unknown error.');
     expect(packErrorMessage({})).toBe('Unknown error.');
+  });
+});
+
+describe('pack-ui-logic: summarizePackProgress', () => {
+  it('summarizes a Running frame for the op as in-progress', () => {
+    const v = summarizePackProgress(
+      { op_id: 'op1', phase: 'Seed', status: 'Running', progress_pct: 40, log: 'seeding pages' },
+      'op1'
+    );
+    expect(v.matched).toBe(true);
+    expect(v.pct).toBe(40);
+    expect(v.phase).toBe('Seed');
+    expect(v.terminal).toBe(false);
+  });
+
+  it('marks an Ok frame as terminal success', () => {
+    const v = summarizePackProgress(
+      { op_id: 'op1', phase: 'Commit', status: 'Ok', progress_pct: 100, log: 'installed' },
+      'op1'
+    );
+    expect(v.terminal).toBe(true);
+    expect(v.ok).toBe(true);
+    expect(v.failed).toBe(false);
+  });
+
+  it('builds a display line from phase, pct and log', () => {
+    const v = summarizePackProgress(
+      { op_id: 'op1', phase: 'Seed', status: 'Running', progress_pct: 65, log: 'seeding pages' },
+      'op1'
+    );
+    expect(v.line).toBe('[Seed 65%] seeding pages');
+  });
+
+  it('treats a frame with missing/unknown status as non-terminal (defensive)', () => {
+    const v = summarizePackProgress({ op_id: 'op1', phase: 'Seed', progress_pct: 10 }, 'op1');
+    expect(v.terminal).toBe(false);
+    expect(v.ok).toBe(false);
+    expect(v.failed).toBe(false);
+    expect(v.pct).toBe(10);
+  });
+
+  it('ignores a frame whose op_id does not match', () => {
+    const v = summarizePackProgress(
+      { op_id: 'other', phase: 'Seed', status: 'Running', progress_pct: 5, log: 'x' },
+      'op1'
+    );
+    expect(v.matched).toBe(false);
+  });
+
+  it('marks RolledBack and Cancelled as terminal failures', () => {
+    for (const status of ['Failed', 'RolledBack', 'Cancelled']) {
+      const v = summarizePackProgress({ op_id: 'op1', phase: 'Commit', status, progress_pct: 100, log: 'x' }, 'op1');
+      expect(v.terminal).toBe(true);
+      expect(v.failed).toBe(true);
+      expect(v.ok).toBe(false);
+    }
   });
 });

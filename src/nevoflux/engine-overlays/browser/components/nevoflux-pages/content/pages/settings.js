@@ -4095,6 +4095,28 @@ const Settings = {
       return params;
     },
 
+    // Mirror of pack-ui-logic.mjs `summarizePackProgress`.
+    summarizePackProgress(frame, opId) {
+      const f = frame || {};
+      const status = typeof f.status === 'string' ? f.status : '';
+      const pct = typeof f.progress_pct === 'number' ? f.progress_pct : 0;
+      const phase = typeof f.phase === 'string' ? f.phase : '';
+      const log = typeof f.log === 'string' ? f.log : '';
+      const ok = status === 'Ok';
+      const failed =
+        status === 'Failed' || status === 'RolledBack' || status === 'Cancelled';
+      return {
+        matched: f.op_id === opId,
+        pct,
+        phase,
+        status,
+        line: `[${phase} ${pct}%]${log ? ` ${log}` : ''}`,
+        terminal: ok || failed,
+        ok,
+        failed,
+      };
+    },
+
     // Mirror of pack-ui-logic.mjs `inspectParams`.
     inspectParams(source) {
       return { source: typeof source === 'string' ? source.trim() : '' };
@@ -4708,8 +4730,23 @@ const Settings = {
         }
       }
 
-      const params = this._PackLogic.installParams(source, {});
-      const result = await this._sendMcpCommand('pack.install', params);
+      // Prefer the streaming (wait:false) path so a large pack (hundreds of
+      // seed pages → hundreds of sequential gbrain round-trips) isn't killed by
+      // the 30s bridge request timeout. Falls back to a synchronous install if
+      // the progress channel can't be established.
+      let result = null;
+      try {
+        await this._packInstallStreaming(source);
+      } catch (streamErr) {
+        if (streamErr && streamErr.__packInstallFailed) {
+          throw streamErr; // a real install failure — surface it below
+        }
+        // Progress channel unavailable — degrade to the synchronous install
+        // (works for small packs; large ones may still time out, as before).
+        this._packModalLog('Live progress unavailable — installing synchronously…');
+        const params = this._PackLogic.installParams(source, {});
+        result = await this._sendMcpCommand('pack.install', params);
+      }
       const ver = result && result.version ? ` (v${result.version})` : '';
       const files =
         result && Array.isArray(result.files)
@@ -4735,6 +4772,109 @@ const Settings = {
       this._packModalStatus(`Error: ${msg}`);
     } finally {
       this._packModalSetBusy(false);
+    }
+  },
+
+  // Install a pack via the daemon's async `wait:false` path and stream
+  // `system:pack:progress` frames into the modal log. Resolves on the terminal
+  // Ok frame; rejects with `__packInstallFailed` on a terminal failure. Throws a
+  // plain Error (no `__packInstallFailed`) if the progress channel can't be set
+  // up or the daemon doesn't return an op_id, so the caller can fall back to a
+  // synchronous install. Mirrors the KB-wizard EventBus subscribe (see
+  // _kbWizardSubscribe).
+  async _packInstallStreaming(source) {
+    const channelId =
+      'packinst_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    let messageListener = null;
+    let subscriptionId = null;
+    let opId = null;
+
+    const teardown = async () => {
+      if (messageListener) {
+        window.removeEventListener('NevofluxMessage', messageListener);
+        messageListener = null;
+      }
+      if (subscriptionId) {
+        try {
+          await NevofluxPage.sendQuery('bridge:request', {
+            type: 'events.unsubscribe',
+            payload: { subscription_id: subscriptionId },
+          });
+        } catch (_e) {}
+      }
+      try {
+        await NevofluxPage.sendQuery('events:channel_close', { channelId });
+      } catch (_e) {}
+    };
+
+    // 1) Open a persistent push channel (survives bridge:request's 5s grace).
+    await NevofluxPage.sendQuery('events:channel_open', { channelId });
+
+    // 2) Wire terminal completion to incoming frames BEFORE subscribing so no
+    //    early frame is missed.
+    const completion = new Promise((resolve, reject) => {
+      messageListener = (event) => {
+        const detail = event.detail;
+        if (!detail || detail.type !== 'bridge:push') return;
+        const msg = detail.msg;
+        if (!msg || msg.type !== 'events:delivery') return;
+        const ev = msg.payload?.event;
+        if (!ev || ev.topic !== 'system:pack:progress') return;
+        // Installs are serialized (one modal at a time), so the first frame's
+        // op_id is ours — latch it to avoid dropping frames that arrive before
+        // the pack.install reply returns the op_id.
+        if (!opId && ev.payload && ev.payload.op_id) opId = ev.payload.op_id;
+        const view = this._PackLogic.summarizePackProgress(ev.payload, opId);
+        if (!view.matched) return;
+        if (view.line) this._packModalLog(view.line);
+        this._packModalStatus(`Installing… ${view.pct}%`);
+        if (view.terminal) {
+          if (view.ok) {
+            resolve();
+          } else {
+            const err = new Error(view.log || `Install ${view.status}`);
+            err.__packInstallFailed = true;
+            reject(err);
+          }
+        }
+      };
+      window.addEventListener('NevofluxMessage', messageListener);
+    });
+
+    // 3) Subscribe to the topic over our channel.
+    const sub = await NevofluxPage.sendQuery('bridge:request', {
+      type: 'events.subscribe',
+      payload: {
+        patterns: ['system:pack:progress'],
+        replay_sticky: false,
+        channel_id: channelId,
+      },
+    });
+    if (!sub || sub.success === false) {
+      await teardown();
+      throw new Error(sub?.error?.message || 'events.subscribe failed');
+    }
+    const subData = sub.data?.data !== undefined ? sub.data.data : sub.data;
+    subscriptionId = subData?.subscription_id || subData?.subscriptionId || null;
+
+    // 4) Fire the install (wait:false) and capture the op_id.
+    try {
+      const params = this._PackLogic.installParams(source, { wait: false });
+      const started = await this._sendMcpCommand('pack.install', params);
+      opId = started?.op_id || started?.opId || opId;
+      if (!opId) {
+        throw new Error('daemon did not return an op_id for wait:false install');
+      }
+    } catch (e) {
+      await teardown();
+      throw e; // setup-time failure → caller falls back to synchronous install
+    }
+
+    // 5) Await the terminal frame, then tear down.
+    try {
+      await completion;
+    } finally {
+      await teardown();
     }
   },
 

@@ -351,3 +351,38 @@ export function packErrorMessage(error) {
   if (code) return String(code);
   return 'Unknown error.';
 }
+
+/**
+ * Normalize a `system:pack:progress` frame for the install UI.
+ *
+ * The daemon streams `{ op_id, phase, status, progress_pct, log }` frames on
+ * the `system:pack:progress` EventBus topic during a `wait:false` install.
+ * `phase` is one of Resolve/Compat/Capability/Idempotency/Place/Seed/Knowledge/
+ * Artifact/Activate/Commit/Report; `status` is Running/Ok/Failed/RolledBack/
+ * Cancelled. A frame is terminal when status !== 'Running' (success === 'Ok').
+ *
+ * @param {{op_id?: string, phase?: string, status?: string, progress_pct?: number, log?: string}} frame
+ * @param {string} opId  the op_id returned by `pack.install` (wait:false)
+ * @returns {{matched: boolean, pct: number, phase: string, status: string, terminal: boolean}}
+ */
+export function summarizePackProgress(frame, opId) {
+  const f = frame || {};
+  const status = typeof f.status === 'string' ? f.status : '';
+  const pct = typeof f.progress_pct === 'number' ? f.progress_pct : 0;
+  const phase = typeof f.phase === 'string' ? f.phase : '';
+  const log = typeof f.log === 'string' ? f.log : '';
+  const ok = status === 'Ok';
+  const failed = status === 'Failed' || status === 'RolledBack' || status === 'Cancelled';
+  return {
+    matched: f.op_id === opId,
+    pct,
+    phase,
+    status,
+    line: `[${phase} ${pct}%]${log ? ` ${log}` : ''}`,
+    // Terminal only on a recognized terminal status — a missing/unknown status
+    // keeps the UI waiting rather than falsely "completing" the install.
+    terminal: ok || failed,
+    ok,
+    failed,
+  };
+}
