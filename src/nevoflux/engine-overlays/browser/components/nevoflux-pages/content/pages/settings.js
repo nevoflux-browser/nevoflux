@@ -4741,6 +4741,18 @@ const Settings = {
         if (streamErr && streamErr.__packInstallFailed) {
           throw streamErr; // a real install failure — surface it below
         }
+        if (streamErr && streamErr.__packInstallIndeterminate) {
+          // Stream lost but the install is likely still completing in the
+          // daemon — don't claim success/failure or hang the modal.
+          this._packModalLog(
+            'Progress stream lost — the install may still be completing in the ' +
+              'background. Check the Packs list in a moment.'
+          );
+          this._packModalStatus('Install running in background…');
+          const sec = this._packsSection();
+          if (sec) this._refreshPacksStatus(sec);
+          return; // leave the modal open; finally clears the busy spinner
+        }
         // Progress channel unavailable — degrade to the synchronous install
         // (works for small packs; large ones may still time out, as before).
         this._packModalLog('Live progress unavailable — installing synchronously…');
@@ -4788,8 +4800,24 @@ const Settings = {
     let messageListener = null;
     let subscriptionId = null;
     let opId = null;
+    let watchdogTimer = null;
+    let lastFrameAt = Date.now();
+    let settled = false;
+
+    // Baseline for the poll fallback: packs already installed before we start.
+    let baselineNames = null;
+    try {
+      const lst = await this._sendMcpCommand('pack.list', {});
+      baselineNames = new Set(
+        (lst?.packs || []).map((p) => p && p.name).filter(Boolean)
+      );
+    } catch (_e) {}
 
     const teardown = async () => {
+      if (watchdogTimer) {
+        clearInterval(watchdogTimer);
+        watchdogTimer = null;
+      }
       if (messageListener) {
         window.removeEventListener('NevofluxMessage', messageListener);
         messageListener = null;
@@ -4813,6 +4841,12 @@ const Settings = {
     // 2) Wire terminal completion to incoming frames BEFORE subscribing so no
     //    early frame is missed.
     const completion = new Promise((resolve, reject) => {
+      const settle = (kind, val) => {
+        if (settled) return;
+        settled = true;
+        if (kind === 'reject') reject(val);
+        else resolve(val);
+      };
       messageListener = (event) => {
         const detail = event.detail;
         if (!detail || detail.type !== 'bridge:push') return;
@@ -4820,6 +4854,7 @@ const Settings = {
         if (!msg || msg.type !== 'events:delivery') return;
         const ev = msg.payload?.event;
         if (!ev || ev.topic !== 'system:pack:progress') return;
+        lastFrameAt = Date.now();
         // Installs are serialized (one modal at a time), so the first frame's
         // op_id is ours — latch it to avoid dropping frames that arrive before
         // the pack.install reply returns the op_id.
@@ -4830,15 +4865,44 @@ const Settings = {
         this._packModalStatus(`Installing… ${view.pct}%`);
         if (view.terminal) {
           if (view.ok) {
-            resolve();
+            settle('resolve');
           } else {
             const err = new Error(view.log || `Install ${view.status}`);
             err.__packInstallFailed = true;
-            reject(err);
+            settle('reject', err);
           }
         }
       };
       window.addEventListener('NevofluxMessage', messageListener);
+
+      // Watchdog: if the progress stream goes silent (e.g. the event-bus
+      // subscription timed out during a long phase), poll pack.list so the modal
+      // can never hang. Resolve when a new pack appears; after a hard cap, reject
+      // as indeterminate so the caller closes the modal with a background note
+      // rather than spinning forever.
+      const SILENCE_MS = 90000; // begin polling after 90s with no frames
+      const GIVE_UP_MS = 600000; // stop waiting after 10 min of silence
+      watchdogTimer = setInterval(async () => {
+        if (settled) return;
+        const silent = Date.now() - lastFrameAt;
+        if (silent < SILENCE_MS) return;
+        try {
+          const lst = await this._sendMcpCommand('pack.list', {});
+          const names = new Set(
+            (lst?.packs || []).map((p) => p && p.name).filter(Boolean)
+          );
+          if (baselineNames && [...names].some((n) => !baselineNames.has(n))) {
+            this._packModalLog('Install completed (progress stream ended early).');
+            settle('resolve');
+            return;
+          }
+        } catch (_e) {}
+        if (silent > GIVE_UP_MS) {
+          const err = new Error('progress stream lost; install may still be running');
+          err.__packInstallIndeterminate = true;
+          settle('reject', err);
+        }
+      }, 5000);
     });
 
     // 3) Subscribe to the topic over our channel.
