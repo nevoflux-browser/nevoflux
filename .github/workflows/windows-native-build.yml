@@ -929,11 +929,11 @@ jobs:
       ZEN_RELEASE: '1'
       MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\x64
       MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs\windows-0.62.2
-      # Cap compile parallelism — see arm64-final. 36-core / ~38 GB / ~43.5 GB
-      # commit runner OOMs clang-cl at default -j36. PGO stage 1 is a full
-      # instrumented compile, so it carries the same memory pressure.
-      NEVOFLUX_MAKE_JOBS: '12'
-      CARGO_BUILD_JOBS: '12'
+      # Cap compile parallelism — see arm64-final. 36-core runner (~48 GB RAM /
+      # ~80 GB commit after pagefile bump) OOMs clang-cl at default -j36. PGO
+      # stage 1 is a full instrumented compile, so it carries the same pressure.
+      NEVOFLUX_MAKE_JOBS: '20'
+      CARGO_BUILD_JOBS: '20'
     steps:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
@@ -1193,9 +1193,9 @@ jobs:
       MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs\windows-0.62.2
       # Cap compile parallelism — see arm64-final. PGO stage 3 is the optimized
       # full compile, so it carries the same memory pressure that OOMs clang-cl
-      # at the runner's default -j36 (~38 GB RAM / ~43.5 GB commit).
-      NEVOFLUX_MAKE_JOBS: '12'
-      CARGO_BUILD_JOBS: '12'
+      # at the runner's default -j36 (~48 GB RAM / ~80 GB commit after pagefile bump).
+      NEVOFLUX_MAKE_JOBS: '20'
+      CARGO_BUILD_JOBS: '20'
     steps:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
@@ -1485,13 +1485,14 @@ jobs:
       ZEN_RELEASE: '1'
       MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\arm64
       MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs\windows-0.62.2
-      # Cap compile parallelism: 36-core runner has only ~38 GB RAM / ~43.5 GB
-      # commit. Default -j36 OOMs clang-cl ("not enough memory" mapping intrinsic
-      # headers) during the DOM-bindings + glslopt compile. -j12 keeps peak under
-      # the commit limit. NEVOFLUX_MAKE_JOBS gates mozconfig's MOZ_MAKE_FLAGS;
-      # CARGO_BUILD_JOBS caps the cargo/cc build-script fan-out (glslopt).
-      NEVOFLUX_MAKE_JOBS: '12'
-      CARGO_BUILD_JOBS: '12'
+      # Cap compile parallelism: 36-core runner has ~48 GB RAM / ~80 GB commit
+      # (pagefile raised). Default -j36 OOMs clang-cl ("not enough memory" mapping
+      # intrinsic headers) during the DOM-bindings + glslopt compile. -j20 keeps
+      # peak (~20x~3 GB) under the commit limit. NEVOFLUX_MAKE_JOBS gates
+      # mozconfig's MOZ_MAKE_FLAGS; CARGO_BUILD_JOBS caps the cargo/cc build-script
+      # fan-out (glslopt).
+      NEVOFLUX_MAKE_JOBS: '20'
+      CARGO_BUILD_JOBS: '20'
     steps:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
