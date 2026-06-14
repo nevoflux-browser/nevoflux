@@ -293,7 +293,7 @@
   // yoyo + repeat: 1 produces two cycles of 0.1s each = 0.2s total.
   tl1.fromTo('#flash-1',
     { opacity: 0 },
-    { opacity: 1, duration: 0.1, yoyo: true, repeat: 1, ease: 'power2.inOut' },
+    { opacity: 0.4, duration: 0.1, yoyo: true, repeat: 1, ease: 'power2.inOut' },
     1.4,
   );
 
@@ -315,7 +315,7 @@
   // Single yoyo fromTo — same pattern as flash-1.
   tl1.fromTo('#flash-2',
     { opacity: 0 },
-    { opacity: 1, duration: 0.1, yoyo: true, repeat: 1, ease: 'power2.inOut' },
+    { opacity: 0.4, duration: 0.1, yoyo: true, repeat: 1, ease: 'power2.inOut' },
     3.9,
   );
 

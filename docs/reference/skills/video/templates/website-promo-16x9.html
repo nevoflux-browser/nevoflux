@@ -180,8 +180,11 @@
       background: #fff; pointer-events: none; opacity: 0;
     }
     .crossfade-layer {
+      /* Dip through the BACKGROUND color (a dark cross-fade), not the light
+         foreground — a full-screen light fill ramped to opacity 1 reads as a
+         harsh flash (linter: nf/harsh-flash-transition). */
       position: absolute; inset: 0;
-      background: var(--color-foreground, #f3f6f8); pointer-events: none; opacity: 0;
+      background: var(--color-background, #0a0a0a); pointer-events: none; opacity: 0;
     }
 
     /*
@@ -302,8 +305,9 @@
   tl.from('#brand-tagline',
     { y: 20, opacity: 0, duration: 0.5, ease: 'expo.out' }, 1.3);
 
-  // === Transition 1 ===
-  tl.to('#flash-1', { opacity: 1, duration: 0.15, ease: 'power2.in' }, 4);
+  // === Transition 1 === (peak capped at 0.4 — a flat white full-screen layer
+  // ramped to opacity 1 white-outs the cut; see nf/harsh-flash-transition)
+  tl.to('#flash-1', { opacity: 0.4, duration: 0.15, ease: 'power2.in' }, 4);
   tl.to('#flash-1', { opacity: 0, duration: 0.15, ease: 'power2.out' }, 4.15);
 
   // === Scene 2: Product showcase entrances ===
@@ -330,8 +334,8 @@
   tl.from('#feature-3',
     { x: -40, opacity: 0, duration: 0.5, ease: 'back.out(1.6)' }, 11.5);
 
-  // === Transition 3 ===
-  tl.to('#flash-2', { opacity: 1, duration: 0.15, ease: 'power2.in' }, 16);
+  // === Transition 3 === (peak capped at 0.4 — see nf/harsh-flash-transition)
+  tl.to('#flash-2', { opacity: 0.4, duration: 0.15, ease: 'power2.in' }, 16);
   tl.to('#flash-2', { opacity: 0, duration: 0.15, ease: 'power2.out' }, 16.15);
 
   // === Scene 4 (final): CTA entrances + button pulse ===

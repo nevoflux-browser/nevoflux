@@ -457,7 +457,7 @@
   // clip swap happens, masking the transition properly.
   tl.fromTo('#flash-1',
     { opacity: 0 },
-    { opacity: 1, duration: 0.12, yoyo: true, repeat: 1, ease: 'power2.inOut' },
+    { opacity: 0.4, duration: 0.12, yoyo: true, repeat: 1, ease: 'power2.inOut' },
     1.88,
   );
 
@@ -521,7 +521,7 @@
   // Flash 2→3 — yoyo peak at t=18.0 (cut moment). See flash-1 comment.
   tl.fromTo('#flash-2',
     { opacity: 0 },
-    { opacity: 1, duration: 0.12, yoyo: true, repeat: 1, ease: 'power2.inOut' },
+    { opacity: 0.4, duration: 0.12, yoyo: true, repeat: 1, ease: 'power2.inOut' },
     17.88,
   );
 

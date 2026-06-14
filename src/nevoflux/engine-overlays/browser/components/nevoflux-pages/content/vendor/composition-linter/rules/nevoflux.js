@@ -179,6 +179,11 @@ function parseFlatBackground(value) {
     const r = parseInt(m[1].slice(0, 2), 16), g = parseInt(m[1].slice(2, 4), 16), b = parseInt(m[1].slice(4, 6), 16);
     return { alpha: 1, light: (r + g + b) / 3 >= 150 };
   }
+  m = v.match(/#([0-9a-fA-F]{3})\b/);
+  if (m) {
+    const r = parseInt(m[1][0] + m[1][0], 16), g = parseInt(m[1][1] + m[1][1], 16), b = parseInt(m[1][2] + m[1][2], 16);
+    return { alpha: 1, light: (r + g + b) / 3 >= 150 };
+  }
   if (/\b(white|ivory|snow|whitesmoke|floralwhite|cornsilk)\b/i.test(v)) return { alpha: 1, light: true };
   return null;
 }

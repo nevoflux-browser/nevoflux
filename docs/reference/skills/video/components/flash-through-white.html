@@ -9,16 +9,19 @@
   3. 颜色走 var(--color-foreground)；黑色底需切换 var(--color-background) 或自定义
 
   VISUAL:
-  - 全屏白色覆盖层
-  - opacity 0 → 1 over 0.15s (power2.in)
+  - 全屏白色覆盖层（峰值 opacity 0.4，避免白爆 white-out）
+  - opacity 0 → 0.4 over 0.15s (power2.in)
   - hold 0.05s
-  - 1 → 0 over 0.25s (power2.out)
+  - 0.4 → 0 over 0.25s (power2.out)
   - 总时长 0.45s
 
   CONSTRAINTS:
   - duration 固定 0.45s
   - 单件（不接受 duration 覆盖；时长写死）
   - 颜色可通过 --color-foreground 变量调整
+  - 峰值 opacity 上限 < 0.5：平铺亮色全屏层 ramp 到高 opacity 会被
+    linter 规则 nf/harsh-flash-transition 判为刺眼白爆（深色合成尤甚）。
+    需要更强的"闪"时改用 mix-blend-mode: screen 的柔和径向渐变,而非提高 opacity。
 -->
 
 <style>
@@ -53,7 +56,7 @@
   tl.fromTo(
     '.flash-through-white .flash-through-white-fill',
     { opacity: 0 },
-    { opacity: 1, duration: 0.15, ease: 'power2.in', overwrite: 'auto' },
+    { opacity: 0.4, duration: 0.15, ease: 'power2.in', overwrite: 'auto' },
     0
   );
 

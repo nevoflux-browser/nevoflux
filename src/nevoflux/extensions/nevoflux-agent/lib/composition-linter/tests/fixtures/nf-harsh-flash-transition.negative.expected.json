@@ -1,5 +1,5 @@
 {
   "errors": [],
-  "warnings": ["nf/harsh-flash-transition"],
+  "warnings": ["nf/harsh-flash-transition", "nf/harsh-flash-transition"],
   "infos": []
 }
