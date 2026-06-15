@@ -36,10 +36,22 @@ index ca71ac9..40dc841 100644
    })
    await (0, utils_1.configDispatch)('git', {
 diff --git a/node_modules/@zen-browser/surfer/dist/constants/index.js b/node_modules/@zen-browser/surfer/dist/constants/index.js
-index 4e3793a..3371c2d 100644
+index 4e3793a..93ed073 100644
 --- a/node_modules/@zen-browser/surfer/dist/constants/index.js
 +++ b/node_modules/@zen-browser/surfer/dist/constants/index.js
-@@ -92,30 +92,53 @@ exports.FTL_STRING_LINE_REGEX =
+@@ -83,39 +83,61 @@ if ((0, node_fs_1.existsSync)(exports.ENGINE_DIR)) {
+     CONFIG_GUESS = possibleFolders[0]
+   }
+ }
+-exports.OBJ_DIR = (0, node_path_1.resolve)(
+-  exports.ENGINE_DIR,
+-  `obj-${CONFIG_GUESS}`
+-)
++exports.OBJ_DIR = process.env.MOZ_OBJDIR
++  ? (0, node_path_1.resolve)(process.env.MOZ_OBJDIR)
++  : (0, node_path_1.resolve)(exports.ENGINE_DIR, `obj-${CONFIG_GUESS}`)
+ // TODO: Remove this, it is unused
+ exports.FTL_STRING_LINE_REGEX =
    /(([\dA-Za-z-]*|\.[a-z-]*) =(.*|\.)|\[[\dA-Za-z]*].*(\n\s?\s?})?|\*\[[\dA-Za-z]*] .*(\n\s?\s?})?)/gm
  // All windows specific code should be located inside of this if statement
  if (process.platform == 'win32') {

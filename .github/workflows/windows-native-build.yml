@@ -937,6 +937,9 @@ jobs:
     env:
       SURFER_COMPAT: x86_64
       SURFER_PLATFORM: win32
+      # Short absolute objdir keeps mozmake's non-canonical libwebrtc link
+      # path under Windows MAX_PATH (260). surfer is patched to honor MOZ_OBJDIR.
+      MOZ_OBJDIR: 'C:/x'
       ZEN_GA_GENERATE_PROFILE: '1'
       ZEN_RELEASE: '1'
       MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\x64
@@ -972,17 +975,14 @@ jobs:
 
       - name: Wipe stale arm64 obj + leftover dist artifacts
         shell: pwsh
-        # surfer derives OBJ_DIR by globbing engine/obj-* and taking the
-        # alphabetically-first entry (constants/index.js:62-89). After
-        # arm64-final succeeds, both obj-aarch64-pc-windows-msvc and the
-        # about-to-be-built obj-x86_64-pc-windows-msvc are present, so
-        # surfer picks aarch64. mach package's MAR creation then looks at
-        # the arm64 dist/nevoflux/ staging dir (which Stage final moved out),
-        # fails with ENOENT, and surfer aborts before producing the x64
-        # win64.zip. dist/ is also full of arm64 leftovers from arm64-final.
-        # Wipe both so x64 mach + surfer start clean.
+        # arm64-final and x64 stages share this runner. The x64 jobs build into
+        # MOZ_OBJDIR=C:/x and arm64 into C:/a (separate out-of-tree objdirs, and
+        # surfer is patched to honor MOZ_OBJDIR — no more obj-* globbing), so the
+        # old "surfer picks the alphabetically-first obj-*" hazard is gone. We
+        # still wipe the leftover arm64 objdir (C:/a) to reclaim disk, and clear
+        # dist/ of arm64 leftovers so x64 mach + surfer start clean.
         run: |
-          $staleArm64Obj = 'engine\obj-aarch64-pc-windows-msvc'
+          $staleArm64Obj = 'C:/a'
           if (Test-Path $staleArm64Obj) {
             Write-Host "Removing stale arm64 obj dir: $staleArm64Obj"
             Remove-Item -Recurse -Force $staleArm64Obj
@@ -1031,7 +1031,7 @@ jobs:
         # it. Without these two steps, the produced installer has no
         # distribution/ directory (no agent xpi, no policies, no skills).
         run: |
-          OBJ_DIR="engine/obj-x86_64-pc-windows-msvc"
+          OBJ_DIR="C:/x"
           if [ -d build/AppDir/distribution ] && [ -d "$OBJ_DIR/dist/bin" ]; then
             mkdir -p "$OBJ_DIR/dist/bin/distribution"
             cp -r build/AppDir/distribution/* "$OBJ_DIR/dist/bin/distribution/"
@@ -1064,8 +1064,8 @@ jobs:
         # release/build dir; walk both so we catch gecko-profiler.
         run: |
           $roots = @(
-            'engine\obj-x86_64-pc-windows-msvc\release\build',
-            'engine\obj-x86_64-pc-windows-msvc\x86_64-pc-windows-msvc\release\build'
+            'C:/x/release/build',
+            'C:/x/x86_64-pc-windows-msvc/release/build'
           )
           foreach ($root in $roots) {
             if (-not (Test-Path $root)) {
@@ -1089,7 +1089,7 @@ jobs:
           }
           # Also dump the bindings.rs that gecko-profiler emits, if any.
           $bindings = Get-ChildItem -Recurse -ErrorAction SilentlyContinue `
-            -Path 'engine\obj-x86_64-pc-windows-msvc' -Filter 'bindings.rs' |
+            -Path 'C:/x' -Filter 'bindings.rs' |
             Where-Object { $_.FullName -match 'gecko-profiler' }
           foreach ($b in $bindings) {
             Write-Host "##[group]bindings.rs: $($b.FullName)"
@@ -1139,6 +1139,10 @@ jobs:
     needs: x64-stage1
     if: ${{ !inputs.skip_pgo }}
     runs-on: [self-hosted, nevoflux-windows]
+    env:
+      # Match stage1/stage3 objdir so `mach python` (profileserver) resolves the
+      # same out-of-tree objdir/virtualenv. surfer honors MOZ_OBJDIR (patched).
+      MOZ_OBJDIR: 'C:/x'
     steps:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
@@ -1176,6 +1180,7 @@ jobs:
           set -ex
           cd $ws_msys/engine
           export PATH=/c/mozilla-build/msys2/usr/bin:`$PATH
+          export MOZ_OBJDIR=C:/x
           LLVM_PROFDATA=/c/nevoflux-cache/moz-clang-20/bin/llvm-profdata.exe \
             JARLOG_FILE=$ws_msys/pgo-cache/en-US.log \
             ./mach python build/pgo/profileserver.py \
@@ -1202,6 +1207,8 @@ jobs:
     env:
       SURFER_COMPAT: x86_64
       SURFER_PLATFORM: win32
+      # Short absolute objdir — see x64-stage1. surfer honors MOZ_OBJDIR (patched).
+      MOZ_OBJDIR: 'C:/x'
       ZEN_RELEASE: '1'
       MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\x64
       MOZ_WINDOWS_RS_DIR: ${{ github.workspace }}\win-rs\windows-0.62.2
@@ -1236,13 +1243,12 @@ jobs:
         # build/AppDir/distribution/{extensions,policies.json} (VCS) and
         # only swap the per-arch bin/ subdir. Previous rm -rf wiped the
         # agent xpi too.
-        # Also wipe obj-aarch64 + dist/ leftovers — defense in depth in
-        # case stage1's cleanup missed them. surfer's OBJ_DIR globs obj-*
-        # alphabetically and arm64 wins if present (see x64-stage1 step
-        # "Wipe stale arm64 obj + leftover dist artifacts").
+        # Wipe stage1's instrumented objdir (C:/x) so the PGO-use build is
+        # clean, plus the arm64 objdir (C:/a) + dist/ leftovers for disk.
+        # (surfer is patched to honor MOZ_OBJDIR, so no obj-* glob hazard.)
         run: |
-          rm -rf engine/obj-x86_64-pc-windows-msvc
-          rm -rf engine/obj-aarch64-pc-windows-msvc
+          rm -rf C:/x
+          rm -rf C:/a
           rm -rf dist/* 2>/dev/null || true
           if [ ! -d build/AppDir-x86_64/distribution/bin ]; then
             echo "::error::missing build/AppDir-x86_64/distribution/bin"
@@ -1272,7 +1278,7 @@ jobs:
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         # Mirror GCB pipeline - see stage1 step for rationale.
         run: |
-          OBJ_DIR="engine/obj-x86_64-pc-windows-msvc"
+          OBJ_DIR="C:/x"
           if [ -d build/AppDir/distribution ] && [ -d "$OBJ_DIR/dist/bin" ]; then
             mkdir -p "$OBJ_DIR/dist/bin/distribution"
             cp -r build/AppDir/distribution/* "$OBJ_DIR/dist/bin/distribution/"
@@ -1300,7 +1306,7 @@ jobs:
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         if: ${{ !inputs.skip_pgo }}
         run: |
-          grep -E 'MOZ_PROFILE_USE|profile-use' engine/obj-x86_64-pc-windows-msvc/config.status || \
+          grep -E 'MOZ_PROFILE_USE|profile-use' C:/x/config.status || \
             echo "WARN: PGO indicator not found in config.status (PGO may not be active)"
 
       - name: Package
@@ -1377,7 +1383,7 @@ jobs:
           } finally {
             $zipObj.Dispose()
           }
-          $staging = 'engine/obj-x86_64-pc-windows-msvc/dist/nevoflux'
+          $staging = 'C:/x/dist/nevoflux'
           if (Test-Path $staging) {
             $dst = Join-Path $staging 'distribution'
             if (-not (Test-Path $dst)) { New-Item -ItemType Directory -Force $dst | Out-Null }
@@ -1451,10 +1457,10 @@ jobs:
           Write-Host "::endgroup::"
 
           Write-Host "::group::source-of-truth on disk: engine/obj-*/dist/bin/distribution/"
-          $diskDist = 'engine/obj-x86_64-pc-windows-msvc/dist/bin/distribution'
+          $diskDist = 'C:/x/dist/bin/distribution'
           if (Test-Path $diskDist) {
             Get-ChildItem -Recurse -File $diskDist | Select-Object -First 20 | ForEach-Object {
-              Write-Host "  $($_.FullName.Substring((Resolve-Path '.').Path.Length).TrimStart('\','/'))"
+              Write-Host "  $($_.FullName.Substring((Resolve-Path $diskDist).Path.Length).TrimStart('\','/'))"
             }
           } else {
             Write-Host "MISSING — inject step apparently didn't run or got wiped"
@@ -1496,6 +1502,9 @@ jobs:
     env:
       SURFER_COMPAT: aarch64
       SURFER_PLATFORM: win32
+      # Short absolute objdir keeps mozmake's non-canonical libwebrtc link
+      # path under Windows MAX_PATH (260). surfer is patched to honor MOZ_OBJDIR.
+      MOZ_OBJDIR: 'C:/a'
       ZEN_GA_DISABLE_PGO: '1'
       ZEN_RELEASE: '1'
       MOZ_WINDOWS_APP_SDK_DIR: ${{ github.workspace }}\win-app-sdk\arm64
@@ -1551,7 +1560,7 @@ jobs:
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
         # Mirror GCB pipeline - see x64-stage1 step for rationale.
         run: |
-          OBJ_DIR="engine/obj-aarch64-pc-windows-msvc"
+          OBJ_DIR="C:/a"
           if [ -d build/AppDir/distribution ] && [ -d "$OBJ_DIR/dist/bin" ]; then
             mkdir -p "$OBJ_DIR/dist/bin/distribution"
             cp -r build/AppDir/distribution/* "$OBJ_DIR/dist/bin/distribution/"
@@ -1656,7 +1665,7 @@ jobs:
           }
           # Also inject into staging dir so a future installer-rebuild step has
           # current files. Non-fatal if staging dir missing.
-          $staging = 'engine/obj-aarch64-pc-windows-msvc/dist/nevoflux'
+          $staging = 'C:/a/dist/nevoflux'
           if (Test-Path $staging) {
             $dst = Join-Path $staging 'distribution'
             if (-not (Test-Path $dst)) { New-Item -ItemType Directory -Force $dst | Out-Null }
@@ -1732,11 +1741,11 @@ jobs:
           }
           Write-Host "::endgroup::"
 
-          Write-Host "::group::engine/obj-aarch64-pc-windows-msvc/dist/bin/distribution/"
-          $diskDist = 'engine/obj-aarch64-pc-windows-msvc/dist/bin/distribution'
+          Write-Host "::group::C:/a/dist/bin/distribution/"
+          $diskDist = 'C:/a/dist/bin/distribution'
           if (Test-Path $diskDist) {
             Get-ChildItem -Recurse -File $diskDist | Select-Object -First 20 | ForEach-Object {
-              Write-Host "  $($_.FullName.Substring((Resolve-Path '.').Path.Length).TrimStart('\','/'))"
+              Write-Host "  $($_.FullName.Substring((Resolve-Path $diskDist).Path.Length).TrimStart('\','/'))"
             }
           } else {
             Write-Host "MISSING — inject step apparently didn't run"
@@ -1810,8 +1819,8 @@ jobs:
       - name: Reclaim disk space
         shell: pwsh
         run: |
-          Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE\engine\obj-x86_64-pc-windows-msvc"  -EA SilentlyContinue
-          Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE\engine\obj-aarch64-pc-windows-msvc" -EA SilentlyContinue
+          Remove-Item -Recurse -Force "C:/x"  -EA SilentlyContinue
+          Remove-Item -Recurse -Force "C:/a" -EA SilentlyContinue
           Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE\pgo-cache"                          -EA SilentlyContinue
           Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE\build\AppDir*"                      -EA SilentlyContinue
           Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE\dist"                               -EA SilentlyContinue
