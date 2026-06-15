@@ -861,6 +861,31 @@ jobs:
             Write-Host "Mozilla clang 20 staged at $cacheRoot ($ver); clang.lib present"
           }
 
+      - name: Stage 7zz (configure looks for 7zz; runner only has 7z.exe)
+        shell: pwsh
+        # Firefox 151's moz.configure does check_prog("7Z", ("7zz",), bootstrap="7zz")
+        # — it looks for the modern standalone CLI name `7zz`, normally fetched
+        # via the 7zz toolchain. This self-hosted runner can't fetch toolchains
+        # (mach taskgraph is broken here, same as for clang/cbindgen), so 7zz is
+        # absent and `7Z` is omitted from substs -> mach repackage installer dies
+        # with KeyError: '7Z'. MozillaBuild ships a full 7-Zip (currently 25.01)
+        # as 7z.exe; the binary is name-agnostic (loads 7z.dll beside it), so we
+        # stage a copy named 7zz.exe. PATH prepend handled by build jobs.
+        run: |
+          $src = 'C:\mozilla-build\bin'
+          $dst = 'C:\nevoflux-cache\7zz'
+          $sevenZz = Join-Path $dst '7zz.exe'
+          if (Test-Path $sevenZz) {
+            Write-Host "7zz already staged: $sevenZz"
+          } else {
+            if (-not (Test-Path (Join-Path $src '7z.exe'))) { throw "MozillaBuild 7z.exe not found at $src" }
+            New-Item -ItemType Directory -Force $dst | Out-Null
+            Copy-Item (Join-Path $src '7z.exe') $sevenZz -Force
+            Copy-Item (Join-Path $src '7z.dll') (Join-Path $dst '7z.dll') -Force
+            $ver = & $sevenZz 2>&1 | Where-Object { $_ -match '7-Zip' } | Select-Object -First 1
+            Write-Host "Staged 7zz at $dst ($ver)"
+          }
+
       - name: Install LLVM/Clang (clang-cl)
         shell: pwsh
         # Fallback: ensure SOME clang-cl is on PATH for any pre-bootstrap
@@ -966,6 +991,7 @@ jobs:
           @(
             "$env:USERPROFILE\.mozbuild\mozmake",
             'C:\nevoflux-cache\moz-clang-20\bin',
+            'C:\nevoflux-cache\7zz',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
@@ -1156,6 +1182,7 @@ jobs:
           @(
             "$env:USERPROFILE\.mozbuild\mozmake",
             'C:\nevoflux-cache\moz-clang-20\bin',
+            'C:\nevoflux-cache\7zz',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
@@ -1230,6 +1257,7 @@ jobs:
           @(
             "$env:USERPROFILE\.mozbuild\mozmake",
             'C:\nevoflux-cache\moz-clang-20\bin',
+            'C:\nevoflux-cache\7zz',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
@@ -1530,6 +1558,7 @@ jobs:
           @(
             "$env:USERPROFILE\.mozbuild\mozmake",
             'C:\nevoflux-cache\moz-clang-20\bin',
+            'C:\nevoflux-cache\7zz',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
