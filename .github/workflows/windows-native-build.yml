@@ -808,45 +808,57 @@ jobs:
             Write-Host "nasm already on PATH: $($nasm.Source)"
           }
 
-      - name: Stage LLVM 20 (matches Firefox 149 taskcluster toolchain)
+      - name: Stage Mozilla clang 20 (provides clang.lib for --enable-clang-plugin)
         shell: pwsh
-        # Firefox 149 was built/tested with clang 20 (see
-        # taskcluster/kinds/toolchain/clang.yml: build/build-clang/clang-20.json).
-        # Newer clang (e.g. 22 from winget) promotes more warnings to errors
-        # (-Wincompatible-pointer-types in nsprpub) and breaks bindgen on MSVC
-        # STL internals. Stage the official LLVM 20 portable build to a
-        # persistent cache dir on the runner. PATH prepend handled by build
-        # jobs (mozbuild-clang already first in the build-job PATH list).
+        # Firefox 151 builds the in-tree clang-plugin (--enable-clang-plugin).
+        # On Windows that plugin links the single self-contained `clang.lib`
+        # that ONLY Mozilla's clang toolchain ships — llvm.org's portable LLVM
+        # release has the granular clang*.lib but NOT the merged clang.lib, so
+        # the link dies with: lld-link: error: could not open 'clang.lib'.
+        # We also need clang/lld 20 to read rust 1.90's internal LLVM 20 bitcode
+        # in the PGO-LTO link. So stage Mozilla's win64-clang-20 toolchain
+        # (clang 20.1.8 + clang.lib), NOT the vanilla llvm.org build. Newer
+        # clang (e.g. 22 from winget) promotes warnings to errors and breaks
+        # bindgen on MSVC STL internals; the build-job PATH ordering keeps it out.
+        #
+        # URL = the content-hashed firefox-ci toolchain index route for
+        # win64-clang-20 (artifact public/build/clang.tar.zst). To refresh after
+        # a Firefox uprev, on a checkout whose engine git tree is fully staged
+        # (so `mach taskgraph` can hash toolchain inputs) run:
+        #   cd engine && ./mach artifact toolchain -v --from-build win64-clang-20
+        # and copy the printed gecko.cache.level-3.toolchains.v3.win64-clang-20.hash.<H> route.
         run: |
-          $cacheRoot = 'C:\nevoflux-cache\llvm-20'
+          $cacheRoot = 'C:\nevoflux-cache\moz-clang-20'
           $clangCl = Join-Path $cacheRoot 'bin\clang-cl.exe'
-          if (Test-Path $clangCl) {
+          if ((Test-Path $clangCl) -and (Test-Path (Join-Path $cacheRoot 'lib\clang.lib'))) {
             $ver = & $clangCl --version 2>&1 | Select-Object -First 1
-            Write-Host "LLVM 20 already staged: $ver"
+            Write-Host "Mozilla clang 20 already staged: $ver"
           } else {
             New-Item -ItemType Directory -Force 'C:\nevoflux-cache' | Out-Null
-            $tarball = 'C:\nevoflux-cache\clang+llvm-20.1.7-x86_64-pc-windows-msvc.tar.xz'
+            $tarball = 'C:\nevoflux-cache\moz-clang-20.tar.zst'
+            $idx = 'gecko.cache.level-3.toolchains.v3.win64-clang-20.hash.5351517a11023ceabef45dcbbf802cbca637d7a0d7ef629f9b052838ab8623f1'
+            $url = "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/$idx/artifacts/public/build/clang.tar.zst"
             if (-not (Test-Path $tarball) -or (Get-Item $tarball).Length -lt 50MB) {
-              Write-Host "Downloading LLVM 20.1.7 portable ..."
+              Write-Host "Downloading Mozilla win64-clang-20 (clang.tar.zst) ..."
               $ProgressPreference = 'SilentlyContinue'
-              # `+` URL-encoded as %2B to match GitHub's browser_download_url.
-              Invoke-WebRequest `
-                -Uri 'https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.7/clang%2Bllvm-20.1.7-x86_64-pc-windows-msvc.tar.xz' `
-                -OutFile $tarball
+              Invoke-WebRequest -Uri $url -OutFile $tarball
             }
-            $stageTmp = 'C:\nevoflux-cache\_llvm-20-stage'
+            $stageTmp = 'C:\nevoflux-cache\_moz-clang-20-stage'
             if (Test-Path $stageTmp) { Remove-Item -Recurse -Force $stageTmp }
             New-Item -ItemType Directory -Force $stageTmp | Out-Null
             Write-Host "Extracting $tarball ..."
-            & 'C:\Windows\System32\tar.exe' -xJf $tarball -C $stageTmp
+            # bsdtar (Windows tar.exe) unpacks .tar.zst via its bundled libzstd.
+            & 'C:\Windows\System32\tar.exe' -xf $tarball -C $stageTmp
             if ($LASTEXITCODE -ne 0) { throw "tar extract failed" }
-            $extractedRoot = Get-ChildItem $stageTmp -Directory | Select-Object -First 1
-            if (-not $extractedRoot) { throw "no dir inside $stageTmp" }
+            # The tarball's top-level dir is `clang/`; promote it to $cacheRoot.
+            $inner = Join-Path $stageTmp 'clang'
+            if (-not (Test-Path (Join-Path $inner 'bin\clang-cl.exe'))) { throw "no clang/bin/clang-cl.exe in extracted toolchain" }
             if (Test-Path $cacheRoot) { Remove-Item -Recurse -Force $cacheRoot }
-            Move-Item $extractedRoot.FullName $cacheRoot
+            Move-Item $inner $cacheRoot
             Remove-Item -Recurse -Force $stageTmp
+            if (-not (Test-Path (Join-Path $cacheRoot 'lib\clang.lib'))) { throw "clang.lib missing after stage (wrong toolchain?)" }
             $ver = & $clangCl --version 2>&1 | Select-Object -First 1
-            Write-Host "LLVM 20 staged at $cacheRoot ($ver)"
+            Write-Host "Mozilla clang 20 staged at $cacheRoot ($ver); clang.lib present"
           }
 
       - name: Install LLVM/Clang (clang-cl)
@@ -874,7 +886,7 @@ jobs:
           }
           # Ensure LLVM 20 wins in this prepare job too (e.g. for steps that
           # might invoke clang before mach bootstrap).
-          Add-Content -Path $env:GITHUB_PATH -Value 'C:\nevoflux-cache\llvm-20\bin'
+          Add-Content -Path $env:GITHUB_PATH -Value 'C:\nevoflux-cache\moz-clang-20\bin'
 
       - name: mach bootstrap + Rust targets
         shell: 'C:\mozilla-build\msys2\usr\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
@@ -942,14 +954,15 @@ jobs:
         # fixed paths. GNU make installed by prepare lives in chocolatey's
         # bin dir which is already on system PATH.
         run: |
-          # LLVM 20 (staged by prepare) is Firefox 149's validated clang.
+          # Mozilla clang 20 (staged by prepare) — Firefox's validated clang,
+          # and the only build with the merged clang.lib the clang-plugin links.
           # `C:\Program Files\LLVM\bin` (winget LLVM 22) is DELIBERATELY
           # absent: GitHub Actions processes $GITHUB_PATH lines so later
           # entries end up higher in PATH, so leaving it there would
-          # supersede llvm-20 and pull clang 22 headers into bindgen.
+          # supersede moz-clang-20 and pull clang 22 headers into bindgen.
           @(
             "$env:USERPROFILE\.mozbuild\mozmake",
-            'C:\nevoflux-cache\llvm-20\bin',
+            'C:\nevoflux-cache\moz-clang-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
@@ -1130,14 +1143,15 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
         run: |
-          # LLVM 20 (staged by prepare) is Firefox 149's validated clang.
+          # Mozilla clang 20 (staged by prepare) — Firefox's validated clang,
+          # and the only build with the merged clang.lib the clang-plugin links.
           # `C:\Program Files\LLVM\bin` (winget LLVM 22) is DELIBERATELY
           # absent: GitHub Actions processes $GITHUB_PATH lines so later
           # entries end up higher in PATH, so leaving it there would
-          # supersede llvm-20 and pull clang 22 headers into bindgen.
+          # supersede moz-clang-20 and pull clang 22 headers into bindgen.
           @(
             "$env:USERPROFILE\.mozbuild\mozmake",
-            'C:\nevoflux-cache\llvm-20\bin',
+            'C:\nevoflux-cache\moz-clang-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
@@ -1162,7 +1176,7 @@ jobs:
           set -ex
           cd $ws_msys/engine
           export PATH=/c/mozilla-build/msys2/usr/bin:`$PATH
-          LLVM_PROFDATA=/c/Users/`$USERNAME/.mozbuild/clang/bin/llvm-profdata.exe \
+          LLVM_PROFDATA=/c/nevoflux-cache/moz-clang-20/bin/llvm-profdata.exe \
             JARLOG_FILE=$ws_msys/pgo-cache/en-US.log \
             ./mach python build/pgo/profileserver.py \
               --binary $ws_msys/pgo-cache/instrumented/nevoflux/nevoflux.exe
@@ -1200,14 +1214,15 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
         run: |
-          # LLVM 20 (staged by prepare) is Firefox 149's validated clang.
+          # Mozilla clang 20 (staged by prepare) — Firefox's validated clang,
+          # and the only build with the merged clang.lib the clang-plugin links.
           # `C:\Program Files\LLVM\bin` (winget LLVM 22) is DELIBERATELY
           # absent: GitHub Actions processes $GITHUB_PATH lines so later
           # entries end up higher in PATH, so leaving it there would
-          # supersede llvm-20 and pull clang 22 headers into bindgen.
+          # supersede moz-clang-20 and pull clang 22 headers into bindgen.
           @(
             "$env:USERPROFILE\.mozbuild\mozmake",
-            'C:\nevoflux-cache\llvm-20\bin',
+            'C:\nevoflux-cache\moz-clang-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
@@ -1497,14 +1512,15 @@ jobs:
       - name: Prepend Git Bash + Unix coreutils + LLVM + NASM to PATH
         shell: pwsh
         run: |
-          # LLVM 20 (staged by prepare) is Firefox 149's validated clang.
+          # Mozilla clang 20 (staged by prepare) — Firefox's validated clang,
+          # and the only build with the merged clang.lib the clang-plugin links.
           # `C:\Program Files\LLVM\bin` (winget LLVM 22) is DELIBERATELY
           # absent: GitHub Actions processes $GITHUB_PATH lines so later
           # entries end up higher in PATH, so leaving it there would
-          # supersede llvm-20 and pull clang 22 headers into bindgen.
+          # supersede moz-clang-20 and pull clang 22 headers into bindgen.
           @(
             "$env:USERPROFILE\.mozbuild\mozmake",
-            'C:\nevoflux-cache\llvm-20\bin',
+            'C:\nevoflux-cache\moz-clang-20\bin',
             'C:\Program Files\Git\bin',
             'C:\Program Files\Git\usr\bin',
             'C:\mozilla-build\msys2\usr\bin',
