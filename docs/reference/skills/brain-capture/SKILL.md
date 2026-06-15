@@ -22,8 +22,6 @@ dependencies:
 allowed_tools:
   - tool_search
   - tool_call_dynamic
-  - run_command
-  - read_file
 ---
 
 # brain-capture — save & ingest
