@@ -200,6 +200,103 @@ export class NevofluxParent extends JSWindowActorParent {
         }
       }
 
+      case 'canvas:capturePng': {
+        // Rasterize the Canvas artifact preview (an out-of-process iframe) to
+        // PNG bytes. The content-process page cannot capture its own OOP child
+        // (drawWindow rejects the remote window; drawSnapshot is parent-only),
+        // so it delegates here. Mirrors canvasVideo:drawFrame.
+        try {
+          const targetId = data?.browsingContextId;
+          const scale = Math.max(1, Math.min(3, Number(data?.scale) || 2));
+          const width = Math.max(1, Math.min(8000, Math.round(data?.width || 0)));
+          const height = Math.max(1, Math.min(8000, Math.round(data?.height || 0)));
+          const background =
+            typeof data?.background === 'string' && data.background
+              ? data.background
+              : 'rgb(255,255,255)';
+          if (!width || !height) {
+            return { ok: false, error: 'invalid capture dimensions' };
+          }
+
+          // Locate the preview iframe's browsing context. Match by id when the
+          // child supplies one (precise when several frames exist); otherwise
+          // fall back to the first child frame.
+          const findBc = (root, id) => {
+            for (const c of root?.children || []) {
+              if (c.id === id) {
+                return c;
+              }
+              const deep = findBc(c, id);
+              if (deep) {
+                return deep;
+              }
+            }
+            return null;
+          };
+          let childBc = targetId != null ? findBc(this.browsingContext, targetId) : null;
+          if (!childBc) {
+            childBc = (this.browsingContext.children || [])[0];
+          }
+          if (!childBc) {
+            return { ok: false, error: 'no preview iframe found' };
+          }
+
+          // Child WGP is populated asynchronously when the iframe loads in a
+          // separate process (typically <50 ms, up to a few seconds).
+          let childWgp = childBc.currentWindowGlobal;
+          const pollStart = Date.now();
+          for (let i = 0; i < 60 && !childWgp; i++) {
+            await new Promise((r) => setTimeout(r, 50));
+            childWgp = childBc.currentWindowGlobal;
+          }
+          if (!childWgp) {
+            return {
+              ok: false,
+              error: `preview WindowGlobal null after ${Date.now() - pollStart} ms`,
+            };
+          }
+
+          const bitmap = await childWgp.drawSnapshot(
+            new DOMRect(0, 0, width, height),
+            scale,
+            background
+          );
+
+          // hiddenDOMWindow is unavailable on Linux — use the most-recent
+          // browser window's document to allocate an offscreen canvas.
+          const browserWin = Services.wm.getMostRecentWindow('navigator:browser');
+          if (!browserWin) {
+            if (typeof bitmap.close === 'function') bitmap.close();
+            return { ok: false, error: 'no navigator:browser window' };
+          }
+          const canvas = browserWin.document.createElementNS(
+            'http://www.w3.org/1999/xhtml',
+            'html:canvas'
+          );
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(bitmap, 0, 0);
+          if (typeof bitmap.close === 'function') {
+            bitmap.close();
+          }
+
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+          if (!blob) {
+            return { ok: false, error: 'canvas.toBlob returned null' };
+          }
+          const buf = await blob.arrayBuffer();
+          return {
+            ok: true,
+            bytes: new Uint8Array(buf),
+            width: canvas.width,
+            height: canvas.height,
+          };
+        } catch (e) {
+          return { ok: false, error: String(e && e.message ? e.message : e) };
+        }
+      }
+
       case 'contentStore:get': {
         const { key } = data;
         const val = lazy.NevofluxContentStore.get(key);

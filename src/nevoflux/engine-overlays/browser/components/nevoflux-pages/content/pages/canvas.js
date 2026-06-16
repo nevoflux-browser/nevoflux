@@ -1048,37 +1048,49 @@ ${slidesHtml}
   },
 
   async _exportImage() {
-    await this._loadVendor('html2canvas.min.js');
-    const html = this._lastContentHtml;
-    if (!html) { this._showToast('Nothing to export', 'error'); return; }
+    // The Canvas page runs in a content process and the artifact preview is an
+    // out-of-process (Fission) iframe, so capturing it from here is impossible:
+    // html2canvas's document-clone trips Gecko's principal check ("operation is
+    // insecure"), drawWindow rejects the cross-process contentWindow, and
+    // drawSnapshot (WindowGlobalParent) only exists in the parent process.
+    // Instead we hand the preview's browsing-context id to the parent actor,
+    // which rasterizes it via drawSnapshot and returns PNG bytes. Privileged
+    // capture is WYSIWYG and never taints, on every platform.
+    const iframe = this._getCaptureIframe();
+    if (!iframe) { this._showToast('Nothing to export', 'error'); return; }
 
-    // Parse stored HTML to extract styles + body content
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
+    // The child can read its own iframe element's box even though the OOP
+    // contentDocument is inaccessible. This is the preview's CSS-pixel viewport.
+    const rect = iframe.getBoundingClientRect();
+    const width = Math.max(1, Math.round(iframe.clientWidth || rect.width));
+    const height = Math.max(1, Math.round(iframe.clientHeight || rect.height));
 
-    // Build a temporary container with styles and body in the parent document
-    const container = document.createElement('div');
-    container.style.cssText = 'position:absolute;left:-9999px;top:0;width:800px;';
-
-    // Adopt style elements into parent document
-    doc.querySelectorAll('style').forEach(s => {
-      container.appendChild(document.adoptNode(s));
+    const res = await NevofluxPage.sendQuery('canvas:capturePng', {
+      browsingContextId: iframe.browsingContext?.id ?? null,
+      width,
+      height,
+      // Fixed 2x scale keeps output resolution consistent across platforms,
+      // independent of per-OS display scaling / devicePixelRatio.
+      scale: 2,
+      background: 'rgb(255,255,255)',
     });
 
-    // Copy body content as innerHTML (avoids cross-document node issues)
-    const bodyDiv = document.createElement('div');
-    bodyDiv.innerHTML = doc.body.innerHTML;
-    container.appendChild(bodyDiv);
-    document.body.appendChild(container);
-
-    try {
-      const canvas = await html2canvas(container, { useCORS: true, scale: 2 });
-      canvas.toBlob(blob => {
-        if (blob) this._downloadBlob(blob, `${this._artifact.title || 'artifact'}.png`);
-      }, 'image/png');
-    } finally {
-      document.body.removeChild(container);
+    if (!res || !res.ok) {
+      throw new Error(res?.error || 'capture failed');
     }
+    const blob = new Blob([res.bytes], { type: 'image/png' });
+    this._downloadBlob(blob, `${this._artifact?.title || 'artifact'}.png`);
+  },
+
+  /**
+   * Pick the iframe currently showing the rendered artifact. Prefers the main
+   * preview iframe; falls back to whatever iframe lives in the viewport
+   * (slides/react render into dedicated iframes).
+   */
+  _getCaptureIframe() {
+    if (this._iframe) return this._iframe;
+    const vp = document.getElementById('viewport');
+    return vp?.querySelector('iframe') || document.querySelector('#viewport iframe') || null;
   },
 
   _exportPdf() {
