@@ -114,6 +114,9 @@ fn handle_chat_message(ctx: AppContext, message: ChatMessage) {
         ChatMessage::PlanProposal(payload) => {
             handle_plan_proposal(ctx, payload);
         }
+        ChatMessage::SetupStatus(payload) => {
+            handle_setup_status(ctx, payload);
+        }
 
         // ========== EventBus messages ==========
         ChatMessage::EventsResponse(response) => {
@@ -165,6 +168,28 @@ fn handle_chat_message(ctx: AppContext, message: ChatMessage) {
             tracing::warn!("Received unexpected ToAgent message in sidebar");
         }
     }
+}
+
+/// Apply the proxy's optimistic `setup_status` hint, pushed before the daemon
+/// finishes connecting so the onboarding screen ("Start Setup") can render
+/// during cold boot instead of after it.
+///
+/// Skipped once the authoritative daemon `status` has been applied (tracked by
+/// `ctx.setup_authoritative`): the authoritative value always wins, regardless
+/// of message arrival order (reconciliation per the startup contract).
+fn handle_setup_status(mut ctx: AppContext, payload: SetupStatusPayload) {
+    if *ctx.setup_authoritative.read() {
+        tracing::debug!(
+            "Ignoring optimistic setup_status (authoritative status already applied)"
+        );
+        return;
+    }
+    tracing::debug!(
+        "Applying optimistic setup_status: first_run={}, has_configured_provider={}, optimistic={}",
+        payload.first_run, payload.has_configured_provider, payload.optimistic
+    );
+    ctx.first_run.set(payload.first_run);
+    ctx.has_configured_provider.set(payload.has_configured_provider);
 }
 
 /// Handle BrowserToolRequest from Agent

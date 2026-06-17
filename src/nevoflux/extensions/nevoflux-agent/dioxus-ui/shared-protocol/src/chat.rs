@@ -365,6 +365,27 @@ pub struct SystemError {
     pub message: String,
 }
 
+/// Optimistic setup hint pushed by the proxy BEFORE the daemon finishes
+/// connecting, so onboarding ("Start Setup") can render during the daemon's
+/// cold boot instead of after it. Only sent when no provider is configured.
+/// The authoritative `status` system_response reconciles (overrides) these
+/// values once the daemon is up — see `setup_authoritative` in the sidebar.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetupStatusPayload {
+    /// No config file exists yet (first launch).
+    #[serde(default)]
+    pub first_run: bool,
+    /// Whether an LLM provider is already configured.
+    #[serde(default)]
+    pub has_configured_provider: bool,
+    /// True when this is the pre-daemon optimistic hint (vs. authoritative).
+    #[serde(default)]
+    pub optimistic: bool,
+    /// Daemon/proxy version string, if known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
 /// Browser tool request from Agent
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BrowserToolRequestPayload {
@@ -633,6 +654,10 @@ pub enum ChatMessage {
     PickFilesResponse(PickFilesResponsePayload),
     /// Plan proposal from agent
     PlanProposal(PlanProposalPayload),
+    /// Optimistic setup status pushed before the daemon connects, so the
+    /// onboarding screen can render during cold boot. Reconciled by the
+    /// authoritative `status` system_response.
+    SetupStatus(SetupStatusPayload),
 
     // ========== EventBus ==========
     /// EventBus request (Sidebar -> Agent)
@@ -680,6 +705,7 @@ impl ChatMessage {
             Self::BrowserToolRequest(_) |
             Self::PickFilesResponse(_) |
             Self::PlanProposal(_) |
+            Self::SetupStatus(_) |
             Self::EventsResponse(_) |
             Self::EventsDelivery(_) |
             Self::CanvasVideoRevealPathResponse(_) => MessageDirection::ToSidebar,
@@ -712,6 +738,7 @@ impl ChatMessage {
             Self::BrowserToolRequest(p) => Some(&p.session_id),
             Self::PickFilesResponse(_) => None,
             Self::PlanProposal(_) => None,
+            Self::SetupStatus(_) => None,
             Self::EventsRequest(_) => None,
             Self::EventsResponse(_) => None,
             Self::EventsDelivery(_) => None,
@@ -1557,6 +1584,34 @@ mod tests {
     // =========================================================================
     // Default Value Tests
     // =========================================================================
+
+    #[test]
+    fn test_setup_status_contract_deserialization() {
+        // Exact wire contract sent by the proxy before the daemon connects.
+        let json = r#"{"type":"setup_status","payload":{"first_run":true,"has_configured_provider":false,"optimistic":true,"version":"1.2.3"}}"#;
+        let parsed: ChatMessage = serde_json::from_str(json).unwrap();
+        match parsed {
+            ChatMessage::SetupStatus(p) => {
+                assert!(p.first_run);
+                assert!(!p.has_configured_provider);
+                assert!(p.optimistic);
+                assert_eq!(p.version.as_deref(), Some("1.2.3"));
+            }
+            other => panic!("Wrong variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_setup_status_direction_to_sidebar() {
+        let msg = ChatMessage::SetupStatus(SetupStatusPayload {
+            first_run: true,
+            has_configured_provider: false,
+            optimistic: true,
+            version: None,
+        });
+        assert_eq!(msg.direction(), MessageDirection::ToSidebar);
+        assert_eq!(msg.session_id(), None);
+    }
 
     #[test]
     fn test_default_timeout() {

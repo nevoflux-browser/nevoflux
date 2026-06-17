@@ -37,7 +37,7 @@ pub use chat::{
     ContentBlockPayload, PermissionRequestPayload, AgentStatePayload,
     StepInfo, ToolInfo, ErrorPayload, AccountStatusPayload, AccountInfo,
     PlanInfo, QuotaInfo, UsageQuota, SystemResponsePayload, SystemError,
-    BrowserToolRequestPayload,
+    BrowserToolRequestPayload, SetupStatusPayload,
     // Plan proposal/response
     PlanStep, PlanProposalPayload, PlanResponse, PlanResponsePayload,
     // Tool events & authorization

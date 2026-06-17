@@ -82,6 +82,10 @@ pub struct AppContext {
     pub first_run: Signal<bool>,
     /// Whether a provider is configured in agent settings
     pub has_configured_provider: Signal<bool>,
+    /// True once the authoritative daemon `status` has been applied. Gates the
+    /// optimistic `setup_status` hint so a late/duplicate optimistic message
+    /// can't override the reconciled (authoritative) onboarding state.
+    pub setup_authoritative: Signal<bool>,
     /// EventBus notification toasts
     pub event_notifications: Signal<Vec<EventNotification>>,
     /// Active render jobs keyed by job_id, populated from jobs:render:* EventBus deliveries
@@ -134,6 +138,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     let loops = use_signal(std::collections::HashMap::new);
     let mut first_run = use_signal(|| false);
     let mut has_configured_provider = use_signal(|| false);
+    let mut setup_authoritative = use_signal(|| false);
 
     // Build context
     let mut ctx = AppContext {
@@ -166,6 +171,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         loops,
         first_run,
         has_configured_provider,
+        setup_authoritative,
         mock_enabled,
     };
 
@@ -198,6 +204,9 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                         let has_configured = status.get("has_configured_provider").and_then(|v| v.as_bool()).unwrap_or(false);
                         first_run.set(is_first_run);
                         has_configured_provider.set(has_configured);
+                        // Authoritative status applied — it wins over any
+                        // optimistic `setup_status` hint (reconciliation).
+                        setup_authoritative.set(true);
                         status_ok = true;
                     }
                     Err(_) => {
@@ -210,6 +219,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                                     let has_configured = status.get("has_configured_provider").and_then(|v| v.as_bool()).unwrap_or(false);
                                     first_run.set(is_first_run);
                                     has_configured_provider.set(has_configured);
+                                    setup_authoritative.set(true);
                                     status_ok = true;
                                     break;
                                 }
