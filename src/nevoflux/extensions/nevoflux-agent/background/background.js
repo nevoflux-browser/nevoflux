@@ -146,7 +146,15 @@ const MAX_RECONNECT_ATTEMPTS = 20;
 // =============================================================================
 
 const CONTENT_STORE_DEBOUNCE_MS = 1000; // 1 second per-key debounce
-const CONTENT_STORE_MAX_VALUE_SIZE = 500_000; // 500KB max value size
+// Max serialized value size for a ContentStore write-through. Values above this
+// are NOT persisted (skipped with a warning), so an artifact larger than this
+// silently fails to save and reads back as "Artifact not found" after reload —
+// e.g. a pack-installed dashboard (看板/index.html) over the old 500KB cap.
+// Large messages are split by CHUNK_CONFIG (see below) before crossing native
+// messaging (Firefox's ~1MB per-message limit), so transport is NOT the
+// constraint; this cap only backstops a pathological artifact from OOMing the
+// chunk reassembler. Kept generous so multi-MB dashboards persist correctly.
+const CONTENT_STORE_MAX_VALUE_SIZE = 50_000_000; // 50MB
 const CONTENT_STORE_PERSIST_TIMEOUT_MS = 10000; // 10s timeout for awaited writes
 const contentStoreDebounceTimers = new Map(); // key -> timeoutId
 
