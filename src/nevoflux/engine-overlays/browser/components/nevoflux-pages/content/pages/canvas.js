@@ -216,6 +216,32 @@ const Canvas = {
   window.addEventListener("message", function(e) {
     if (!e.data || !e.data._nevoflux) return;
 
+    // Parent-initiated content measurement (full-page PNG export). The iframe
+    // can always read its OWN document's scroll size, even when it is an
+    // out-of-process frame the parent cannot inspect directly.
+    if (e.data.__nevofluxMeasure === 'request') {
+      try {
+        var de = document.documentElement;
+        var bd = document.body;
+        var w = Math.max(
+          de ? de.scrollWidth : 0, de ? de.clientWidth : 0,
+          bd ? bd.scrollWidth : 0, bd ? bd.offsetWidth : 0
+        );
+        var h = Math.max(
+          de ? de.scrollHeight : 0, de ? de.clientHeight : 0,
+          bd ? bd.scrollHeight : 0, bd ? bd.offsetHeight : 0
+        );
+        window.parent.postMessage({
+          _nevoflux: true,
+          __nevofluxMeasure: 'response',
+          token: e.data.token,
+          width: w,
+          height: h
+        }, "*");
+      } catch (_) {}
+      return;
+    }
+
     // Handle EventBus delivery push messages
     if (e.data.type === 'events:delivery') {
       var handlers = window._nevofluxEventHandlers || {};
@@ -1062,8 +1088,22 @@ ${slidesHtml}
     // The child can read its own iframe element's box even though the OOP
     // contentDocument is inaccessible. This is the preview's CSS-pixel viewport.
     const rect = iframe.getBoundingClientRect();
-    const width = Math.max(1, Math.round(iframe.clientWidth || rect.width));
-    const height = Math.max(1, Math.round(iframe.clientHeight || rect.height));
+    let width = Math.max(1, Math.round(iframe.clientWidth || rect.width));
+    let height = Math.max(1, Math.round(iframe.clientHeight || rect.height));
+
+    // Ask the iframe for its FULL scrollable content size so the export
+    // captures the entire artifact, not just the visible viewport. The iframe
+    // can always measure its own document (even when out-of-process); falls
+    // back to the viewport dims if no SDK is present or it does not answer.
+    try {
+      const full = await this._measureIframeContent(iframe);
+      if (full && full.width > 0 && full.height > 0) {
+        width = Math.max(width, Math.round(full.width));
+        height = Math.max(height, Math.round(full.height));
+      }
+    } catch (_) {
+      // keep viewport dims
+    }
 
     const res = await NevofluxPage.sendQuery('canvas:capturePng', {
       browsingContextId: iframe.browsingContext?.id ?? null,
@@ -1080,6 +1120,57 @@ ${slidesHtml}
     }
     const blob = new Blob([res.bytes], { type: 'image/png' });
     this._downloadBlob(blob, `${this._artifact?.title || 'artifact'}.png`);
+    if (res.downscaled) {
+      this._showToast('Exported full page (scaled down to fit size limits)', 'info');
+    }
+  },
+
+  /**
+   * Ask the preview iframe to report its full scrollable content size via the
+   * injected SDK's postMessage bridge. postMessage works across the Fission
+   * process boundary, so this succeeds even though the parent page cannot read
+   * the OOP contentDocument. Resolves to { width, height } in CSS px, or null
+   * if the iframe has no SDK / does not respond within the timeout.
+   */
+  _measureIframeContent(iframe) {
+    return new Promise((resolve) => {
+      const win = iframe?.contentWindow;
+      if (!win) {
+        resolve(null);
+        return;
+      }
+      const token = `measure-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        window.removeEventListener('message', onMsg);
+        resolve(value);
+      };
+      const onMsg = (e) => {
+        const d = e.data;
+        if (
+          !d ||
+          d.__nevofluxMeasure !== 'response' ||
+          d.token !== token ||
+          e.source !== win
+        ) {
+          return;
+        }
+        finish({ width: Number(d.width) || 0, height: Number(d.height) || 0 });
+      };
+      window.addEventListener('message', onMsg);
+      try {
+        win.postMessage(
+          { _nevoflux: true, __nevofluxMeasure: 'request', token },
+          '*'
+        );
+      } catch (_) {
+        finish(null);
+        return;
+      }
+      setTimeout(() => finish(null), 800);
+    });
   },
 
   /**

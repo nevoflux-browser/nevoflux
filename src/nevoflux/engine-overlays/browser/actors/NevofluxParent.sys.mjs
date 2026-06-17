@@ -208,15 +208,34 @@ export class NevofluxParent extends JSWindowActorParent {
         try {
           const targetId = data?.browsingContextId;
           const scale = Math.max(1, Math.min(3, Number(data?.scale) || 2));
-          const width = Math.max(1, Math.min(8000, Math.round(data?.width || 0)));
-          const height = Math.max(1, Math.min(8000, Math.round(data?.height || 0)));
+          // The requested region is the FULL content size (CSS px) measured
+          // inside the iframe — not just the visible viewport — so the export
+          // contains the entire artifact however far it scrolls.
+          const cssWidth = Math.max(1, Math.round(data?.width || 0));
+          const cssHeight = Math.max(1, Math.round(data?.height || 0));
           const background =
             typeof data?.background === 'string' && data.background
               ? data.background
               : 'rgb(255,255,255)';
-          if (!width || !height) {
+          if (!cssWidth || !cssHeight) {
             return { ok: false, error: 'invalid capture dimensions' };
           }
+
+          // Gecko canvas limits (gfx): 32766 px per side, 472907776 px area.
+          // Reduce the effective scale uniformly so even a very long page is
+          // captured in full (at lower resolution) rather than being cropped.
+          const MAX_CAPTURE_DIMENSION = 32766;
+          const MAX_CAPTURE_AREA = 472907776;
+          let effScale = Math.min(
+            scale,
+            MAX_CAPTURE_DIMENSION / cssWidth,
+            MAX_CAPTURE_DIMENSION / cssHeight,
+            Math.sqrt(MAX_CAPTURE_AREA / (cssWidth * cssHeight))
+          );
+          const downscaled = effScale < scale;
+          effScale = Math.max(0.01, effScale);
+          const devWidth = Math.max(1, Math.floor(cssWidth * effScale));
+          const devHeight = Math.max(1, Math.floor(cssHeight * effScale));
 
           // Locate the preview iframe's browsing context. Match by id when the
           // child supplies one (precise when several frames exist); otherwise
@@ -256,29 +275,50 @@ export class NevofluxParent extends JSWindowActorParent {
             };
           }
 
-          const bitmap = await childWgp.drawSnapshot(
-            new DOMRect(0, 0, width, height),
-            scale,
-            background
-          );
-
           // hiddenDOMWindow is unavailable on Linux — use the most-recent
           // browser window's document to allocate an offscreen canvas.
           const browserWin = Services.wm.getMostRecentWindow('navigator:browser');
           if (!browserWin) {
-            if (typeof bitmap.close === 'function') bitmap.close();
             return { ok: false, error: 'no navigator:browser window' };
           }
           const canvas = browserWin.document.createElementNS(
             'http://www.w3.org/1999/xhtml',
             'html:canvas'
           );
-          canvas.width = bitmap.width;
-          canvas.height = bitmap.height;
+          canvas.width = devWidth;
+          canvas.height = devHeight;
           const ctx = canvas.getContext('2d');
-          ctx.drawImage(bitmap, 0, 0);
-          if (typeof bitmap.close === 'function') {
-            bitmap.close();
+          // Pre-fill so any device-pixel rows the tiles don't cover (rounding)
+          // keep the requested background instead of staying transparent.
+          if (background && background !== 'transparent') {
+            ctx.fillStyle = background;
+            ctx.fillRect(0, 0, devWidth, devHeight);
+          }
+
+          // A single huge cross-process paint is unreliable, so capture the
+          // full region in CSS-px tiles and composite — mirroring
+          // browser/components/screenshots createCanvas (MAX_SNAPSHOT_DIMENSION).
+          const TILE = 1024;
+          for (let top = 0; top < cssHeight; top += TILE) {
+            const th = Math.min(TILE, cssHeight - top);
+            for (let left = 0; left < cssWidth; left += TILE) {
+              const tw = Math.min(TILE, cssWidth - left);
+              const bitmap = await childWgp.drawSnapshot(
+                new DOMRect(left, top, tw, th),
+                effScale,
+                background
+              );
+              ctx.drawImage(
+                bitmap,
+                Math.round(left * effScale),
+                Math.round(top * effScale),
+                Math.round(tw * effScale),
+                Math.round(th * effScale)
+              );
+              if (typeof bitmap.close === 'function') {
+                bitmap.close();
+              }
+            }
           }
 
           const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
@@ -291,6 +331,7 @@ export class NevofluxParent extends JSWindowActorParent {
             bytes: new Uint8Array(buf),
             width: canvas.width,
             height: canvas.height,
+            downscaled,
           };
         } catch (e) {
           return { ok: false, error: String(e && e.message ? e.message : e) };
