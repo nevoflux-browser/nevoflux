@@ -1843,13 +1843,51 @@ jobs:
   cleanup:
     needs: collect
     if: always()
+    # Best-effort disk reclamation only. Never fail the overall run on cleanup:
+    # if a delete is blocked (locked file) or the runner is shut down mid-step,
+    # the next build's "Clean stale obj" step (rm -rf C:/x) wipes any leftover
+    # before it configures, so a stale/partial objdir is harmless.
+    continue-on-error: true
     runs-on: [self-hosted, nevoflux-windows]
     steps:
-      - name: Reclaim disk space
+      - name: Reclaim disk space (best-effort)
         shell: pwsh
         run: |
-          Remove-Item -Recurse -Force "C:/x"  -EA SilentlyContinue
-          Remove-Item -Recurse -Force "C:/a" -EA SilentlyContinue
-          Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE\pgo-cache"                          -EA SilentlyContinue
-          Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE\build\AppDir*"                      -EA SilentlyContinue
-          Remove-Item -Recurse -Force "$env:GITHUB_WORKSPACE\dist"                               -EA SilentlyContinue
+          $ErrorActionPreference = 'SilentlyContinue'
+
+          # robocopy mirror-from-empty is the fastest multithreaded way to empty
+          # a huge tree: the C:/x and C:/a objdirs are tens of GB and a plain
+          # Remove-Item -Recurse can take many minutes, widening the window for
+          # the runner to be killed mid-delete. It also tolerates >MAX_PATH
+          # paths (the reason this objdir lives at C:/x). robocopy exit codes
+          # 0-7 are success, so $LASTEXITCODE is ignored.
+          function Remove-Fast([string]$pattern) {
+            $targets = Resolve-Path -Path $pattern -ErrorAction SilentlyContinue
+            foreach ($t in $targets) {
+              $path = $t.Path
+              Write-Host "Reclaiming $path ..."
+              try {
+                if (Test-Path -LiteralPath $path -PathType Container) {
+                  $empty = Join-Path $env:TEMP ('empty_' + [guid]::NewGuid().ToString('N'))
+                  New-Item -ItemType Directory -Path $empty -Force | Out-Null
+                  robocopy $empty $path /MIR /MT:32 /R:0 /W:0 /NFL /NDL /NJH /NJS /NC /NS | Out-Null
+                  Remove-Item -LiteralPath $path  -Recurse -Force -ErrorAction SilentlyContinue
+                  Remove-Item -LiteralPath $empty -Recurse -Force -ErrorAction SilentlyContinue
+                } else {
+                  Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
+                }
+              } catch {
+                Write-Host "  (best-effort) leftover remains, next build will wipe it: $path"
+              }
+            }
+          }
+
+          Remove-Fast 'C:/x'
+          Remove-Fast 'C:/a'
+          Remove-Fast "$env:GITHUB_WORKSPACE\pgo-cache"
+          Remove-Fast "$env:GITHUB_WORKSPACE\build\AppDir*"
+          Remove-Fast "$env:GITHUB_WORKSPACE\dist"
+
+          # Never let cleanup fail the run: robocopy can return a non-zero code,
+          # and any leftover is wiped by the next build before it configures.
+          exit 0
