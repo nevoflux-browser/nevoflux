@@ -18,9 +18,28 @@ if command -v apt-get &> /dev/null; then
 fi
 
 mkdir -p ~/.zen-keys
-echo "$ZEN_SAFEBROWSING_API_KEY" > ~/.zen-keys/safebrowsing.dat
-echo "$ZEN_MOZILLA_API_KEY" > ~/.zen-keys/mozilla.dat
-echo "$ZEN_GOOGLE_LOCATION_SERVICE_API_KEY" > ~/.zen-keys/google_location_service.dat
+# safebrowsing.dat is provisioned by the workflow's "Insert API Keys" step
+# (which carries that secret); do NOT rewrite it here — this script's env does
+# not have $ZEN_SAFEBROWSING_API_KEY, so an unconditional echo would blank it.
+#
+# For the optional Mozilla / geolocation API keyfiles: write only when the key
+# is actually set; otherwise REMOVE any stale (possibly empty) file. An empty
+# keyfile is worse than a missing one — the mozconfig guards each option with
+# `test -f`, so a 0-byte file still gets passed to --with-*-api-keyfile, which
+# the Firefox build rejects ("… is empty") and aborts. A missing file is simply
+# skipped, leaving that optional service unconfigured. On self-hosted runners a
+# failed run skips the keys-cleanup step, so an empty mozilla.dat can linger and
+# break every later run until removed here.
+if [ -n "$ZEN_MOZILLA_API_KEY" ]; then
+  printf '%s' "$ZEN_MOZILLA_API_KEY" > ~/.zen-keys/mozilla.dat
+else
+  rm -f ~/.zen-keys/mozilla.dat
+fi
+if [ -n "$ZEN_GOOGLE_LOCATION_SERVICE_API_KEY" ]; then
+  printf '%s' "$ZEN_GOOGLE_LOCATION_SERVICE_API_KEY" > ~/.zen-keys/google_location_service.dat
+else
+  rm -f ~/.zen-keys/google_location_service.dat
+fi
 
 . $HOME/.cargo/env
 
