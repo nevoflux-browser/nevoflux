@@ -84,6 +84,22 @@ jobs:
           cp configs/branding/${{ inputs.release-branch }}/logo128.png build/AppDir/usr/share/icons/hicolor/128x128/apps/zen.png
           cp configs/branding/${{ inputs.release-branch }}/logo128.png build/AppDir/zen.png && ln -s zen.png build/AppDir/.DirIcon
 
+          # Build-time safety net: AppDir/AppRun + zen.desktop are Zen-mirror
+          # files that upstream ships with the `zen` binary name. NevoFlux
+          # renames the binary to surfer.json's binaryName, so rewrite the
+          # launcher to match — this self-heals if an upstream Zen merge ever
+          # reset the template back to `zen` (which would otherwise break launch
+          # with "./zen: No such file" and drop the taskbar icon via a
+          # StartupWMClass mismatch). Icon=zen is intentionally left alone — the
+          # icon file is installed as zen.png. Runs before the twilight block so
+          # the Name normalization (-> NevoFlux) feeds its " Twilight" suffix.
+          BIN_NAME=$(node -p "require('./surfer.json').binaryName")
+          echo "Normalizing AppDir launcher to binary name: $BIN_NAME"
+          sed -i -e "s|/zen\"|/${BIN_NAME}\"|g" build/AppDir/AppRun
+          sed -i -e "s|^Exec=zen |Exec=${BIN_NAME} |g" build/AppDir/zen.desktop
+          sed -i -e "s|^StartupWMClass=zen\b|StartupWMClass=${BIN_NAME}|g" build/AppDir/zen.desktop
+          sed -i -e "s|^Name=Zen Browser\b|Name=NevoFlux|g" build/AppDir/zen.desktop
+
           if [ "${{ inputs.release-branch }}" = "twilight" ]; then
             # binaryName is global 'nevoflux' for both brands, so the running
             # window's WM_CLASS is 'nevoflux' regardless of channel — only the

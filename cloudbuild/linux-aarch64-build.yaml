@@ -251,6 +251,18 @@ steps:
         cp configs/branding/release/logo128.png $$APPDIR/zen.png
         ln -sf zen.png $$APPDIR/.DirIcon
 
+        # Build-time safety net: AppDir/AppRun + zen.desktop are Zen-mirror
+        # files upstream ships with the `zen` binary name; rewrite them to
+        # surfer.json's binaryName so an upstream merge that reset the template
+        # to `zen` can't break launch (./zen not found) or the taskbar icon
+        # (StartupWMClass mismatch). Icon=zen is left as-is (icon = zen.png).
+        BIN_NAME=$$(node -p "require('./surfer.json').binaryName")
+        echo "Normalizing AppDir launcher to binary name: $$BIN_NAME"
+        sed -i -e "s|/zen\"|/$${BIN_NAME}\"|g" build/AppDir/AppRun
+        sed -i -e "s|^Exec=zen |Exec=$${BIN_NAME} |g" build/AppDir/zen.desktop
+        sed -i -e "s|^StartupWMClass=zen\b|StartupWMClass=$${BIN_NAME}|g" build/AppDir/zen.desktop
+        sed -i -e "s|^Name=Zen Browser\b|Name=NevoFlux|g" build/AppDir/zen.desktop
+
         # Extract tarball into AppDir
         tar -xf /workspace/artifacts/nevoflux.linux-$${ARCH}.tar.xz
         cp -a nevoflux/* $$APPDIR/
