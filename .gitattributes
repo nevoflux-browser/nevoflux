@@ -6,3 +6,9 @@
 *.d.ts linguist-language=TypeScript
 
 src/zen/tests/*.js linguist-language=Test
+
+# Linux launcher + desktop entry must stay LF regardless of contributor OS:
+# CRLF breaks AppRun's `#!/bin/sh` shebang (bad interpreter) and .desktop
+# Exec parsing inside the AppImage.
+build/AppDir/AppRun text eol=lf
+*.desktop text eol=lf

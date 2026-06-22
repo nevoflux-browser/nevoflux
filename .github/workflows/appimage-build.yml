@@ -85,8 +85,11 @@ jobs:
           cp configs/branding/${{ inputs.release-branch }}/logo128.png build/AppDir/zen.png && ln -s zen.png build/AppDir/.DirIcon
 
           if [ "${{ inputs.release-branch }}" = "twilight" ]; then
-            sed -i -e 's/Name=Zen Browser/Name=Zen Twilight/g' build/AppDir/zen.desktop
-            sed -i -e 's/StartupWMClass=zen/StartupWMClass=zen-twilight/g' build/AppDir/zen.desktop
+            # binaryName is global 'nevoflux' for both brands, so the running
+            # window's WM_CLASS is 'nevoflux' regardless of channel — only the
+            # display Name differs. (Do NOT rewrite StartupWMClass to a value
+            # that no window reports, or the taskbar icon association breaks.)
+            sed -i -e 's/Name=NevoFlux/Name=NevoFlux Twilight/g' build/AppDir/zen.desktop
           fi
 
           sed -i -e 's/\$VERSION/${{ inputs.build-version }}/g' build/AppDir/zen.desktop

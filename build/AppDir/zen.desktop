@@ -1,11 +1,11 @@
 [Desktop Entry]
-Name=Zen Browser
+Name=NevoFlux
 Comment=A fast, private and secure web browser built to improve your day-to-day experience.
-Exec=zen %u
+Exec=nevoflux %u
 Icon=zen
 Type=Application
 MimeType=application/json;application/pdf;application/rdf+xml;application/rss+xml;application/x-xpinstall;application/xhtml+xml;application/xml;audio/flac;audio/ogg;audio/webm;image/avif;image/gif;image/jpeg;image/png;image/svg+xml;image/webp;text/html;text/xml;video/ogg;video/webm;x-scheme-handler/chrome;x-scheme-handler/http;x-scheme-handler/https;x-scheme-handler/mailto;
-StartupWMClass=zen
+StartupWMClass=nevoflux
 Categories=Network;WebBrowser;
 StartupNotify=true
 Terminal=false
@@ -238,7 +238,7 @@ Actions=new-window;new-blank-window;new-private-window;profilemanager;
 X-AppImage-Version=$VERSION
 
 [Desktop Action new-window]
-Exec=zen %u
+Exec=nevoflux %u
 Name=New Window
 Name[ach]=New Window
 Name[af]=New Window
@@ -353,7 +353,7 @@ Name[zh_CN]=新建窗口
 Name[zh_TW]=開新視窗
 
 [Desktop Action new-blank-window]
-Exec=zen --blank-window %u
+Exec=nevoflux --blank-window %u
 Name=New Blank Window
 Name[ach]=New Blank Window
 Name[af]=New Blank Window
@@ -468,7 +468,7 @@ Name[zh_CN]=新建空白窗口
 Name[zh_TW]=開新空白視窗
 
 [Desktop Action new-private-window]
-Exec=zen --private-window %u
+Exec=nevoflux --private-window %u
 Name=New Private Window
 Name[ach]=New Private Window
 Name[af]=New Private Window
@@ -583,7 +583,7 @@ Name[zh_CN]=新建隐私窗口
 Name[zh_TW]=開新隱私視窗
 
 [Desktop Action profilemanager]
-Exec=zen --ProfileManager %u
+Exec=nevoflux --ProfileManager %u
 Name=Open Profile Manager
 Name[ach]=Open Profile Manager
 Name[af]=Open Profile Manager
