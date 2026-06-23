@@ -440,6 +440,8 @@ export function parsePackInstallSrc(raw) {
       if (tail[0] !== 'tree' || tail.length < 2) {
         return { ok: false, error: 'unsupported github url shape' };
       }
+      // NOTE: a branch ref containing '/' (e.g. release/v2) is ambiguous in
+      // tree URLs and will mis-split; packhub should use the github:…@ref form.
       ref = tail[1];
       sub = tail.slice(2);
     } else {

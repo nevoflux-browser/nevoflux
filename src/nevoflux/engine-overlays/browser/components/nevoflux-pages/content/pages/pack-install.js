@@ -133,6 +133,9 @@ const PackInstall = {
           if (!msg || msg.type !== 'events:delivery') return;
           const ev = msg.payload && msg.payload.event;
           if (!ev || ev.topic !== 'system:pack:progress') return;
+          // op_id is ours — latch it to avoid dropping frames that arrive
+          // before the install reply returns the op_id.
+          if (!opId && ev.payload && ev.payload.op_id) opId = ev.payload.op_id;
           const view = this._logic.summarizePackProgress(ev.payload, opId);
           if (!view.matched) return;
           bar.value = view.pct;
@@ -151,10 +154,12 @@ const PackInstall = {
       if (!sub || sub.success === false) {
         throw new Error(sub?.error?.message || 'events.subscribe failed');
       }
-      subscriptionId = (sub.data && sub.data.data && sub.data.data.subscription_id) || null;
+      const subData = sub.data?.data !== undefined ? sub.data.data : sub.data;
+      subscriptionId = subData?.subscription_id || subData?.subscriptionId || null;
 
       const started = await this._installCall();
       opId = (started && (started.op_id || started.opId)) || opId;
+      if (!opId) throw new Error('daemon did not return an op_id for wait:false install');
 
       await completion;
       this._showDone();
@@ -179,9 +184,13 @@ const PackInstall = {
     const comps = (this._inspect && this._inspect.components) || {};
     const nSkills = Array.isArray(comps.skills) ? comps.skills.length : 0;
     const nTools = Array.isArray(comps.canvas_tools) ? comps.canvas_tools.length : 0;
+    const nSeed = Array.isArray(comps.seed) ? comps.seed.length : 0;
+    const parts = [`${nSkills} skill(s)`, `${nTools} canvas tool(s)`];
+    if (nSeed) parts.push(`${nSeed} seed page(s)`);
+    if (comps.dashboard) parts.push('a dashboard');
+    if (comps.knowledge) parts.push('a knowledge base');
     document.getElementById('pi-done-title').textContent = `${name} installed`;
-    document.getElementById('pi-done-msg').textContent =
-      `Installed ${nSkills} skill(s) and ${nTools} canvas tool(s).`;
+    document.getElementById('pi-done-msg').textContent = `Installed ${parts.join(', ')}.`;
   },
 
   _wireStaticButtons() {
