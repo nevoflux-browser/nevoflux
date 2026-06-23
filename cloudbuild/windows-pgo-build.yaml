@@ -13,7 +13,7 @@
 #     --substitutions=TAG_NAME=v0.1.1 --region=us-west1
 
 substitutions:
-  _GITHUB_REPO: 'dorisgyl/nevoflux'
+  _GITHUB_REPO: 'nevoflux-browser/nevoflux'
   _RELEASE_BRANCH: 'release'
   _MOZ_BUILD_DATE: ''
 

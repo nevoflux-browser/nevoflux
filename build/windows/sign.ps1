@@ -47,7 +47,7 @@ $ErrorActionPreference = "Stop"
 # Configuration - Change these for your fork
 # ==========================================================================
 
-$GITHUB_OWNER = "dorisgyl"
+$GITHUB_OWNER = "nevoflux-browser"
 $GITHUB_REPO = "nevoflux"
 $GITHUB_BINARIES_REPO = "nevoflux-windows-binaries"
 $APP_NAME = "nevoflux"                    # Must match surfer.json binName

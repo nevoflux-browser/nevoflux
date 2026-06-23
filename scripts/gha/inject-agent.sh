@@ -33,7 +33,7 @@ case "$ARCH" in
     ;;
 esac
 
-AGENT_REPO="${AGENT_REPO:-${GITHUB_REPOSITORY:-dorisgyl/nevoflux}-agent}"
+AGENT_REPO="${AGENT_REPO:-${GITHUB_REPOSITORY:-nevoflux-browser/nevoflux}-agent}"
 APPDIR_ROOT="${APPDIR_ROOT:-build}"
 DIST_DIR="$APPDIR_ROOT/AppDir-$ARCH/distribution"
 BIN_DIR="$DIST_DIR/bin"

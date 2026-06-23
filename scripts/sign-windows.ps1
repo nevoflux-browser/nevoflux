@@ -46,7 +46,7 @@
   RFC3161 timestamp server. Default: http://time.certum.pl
 
 .PARAMETER Repo
-  GitHub owner/repo of the release. Default: dorisgyl/nevoflux
+  GitHub owner/repo of the release. Default: nevoflux-browser/nevoflux
 
 .PARAMETER WorkDir
   Working directory. Default: $env:TEMP\nevoflux-winsign-<Version>
@@ -72,7 +72,7 @@ param(
   [switch]$DownloadOnly,
   [string]$Thumbprint,
   [string]$TimestampUrl = 'http://time.certum.pl',
-  [string]$Repo = 'dorisgyl/nevoflux',
+  [string]$Repo = 'nevoflux-browser/nevoflux',
   [string]$WorkDir,
   [switch]$InstallersOnly,
   [switch]$NoUpload

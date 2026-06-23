@@ -32,7 +32,7 @@ if test -n "$NEVOFLUX_MAKE_JOBS"; then
 fi
 
 # Misc
-export MOZ_SOURCE_REPO=https://github.com/dorisgyl/nevoflux
+export MOZ_SOURCE_REPO=https://github.com/nevoflux-browser/nevoflux
 export MOZ_SOURCE_CHANGESET=${changeset}
 export MOZ_INCLUDE_SOURCE_INFO=1
 

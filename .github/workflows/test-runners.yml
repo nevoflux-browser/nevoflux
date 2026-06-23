@@ -22,7 +22,7 @@ jobs:
 
       - name: Test agent download
         run: |
-          gh release list --repo dorisgyl/nevoflux-agent --limit 3 || echo "No releases yet"
+          gh release list --repo nevoflux-browser/nevoflux-agent --limit 3 || echo "No releases yet"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

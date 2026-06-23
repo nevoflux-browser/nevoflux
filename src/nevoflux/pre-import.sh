@@ -68,7 +68,7 @@ for BRANDING_NSI in "${ENGINE_DIR}"/browser/branding/*/branding.nsi; do
   if [ -f "${BRANDING_NSI}" ] && grep -q 'nevoflux.app' "${BRANDING_NSI}"; then
     echo "Reversing NevoFlux URLs in ${BRANDING_NSI#${ENGINE_DIR}/}..."
     sedi 's|https://nevoflux.app|https://zen-browser.app|g' "${BRANDING_NSI}"
-    sedi 's|https://github.com/dorisgyl/nevoflux/issues|https://github.com/zen-browser/desktop/issues|g' "${BRANDING_NSI}"
+    sedi 's|https://github.com/nevoflux-browser/nevoflux/issues|https://github.com/zen-browser/desktop/issues|g' "${BRANDING_NSI}"
   fi
 done
 

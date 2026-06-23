@@ -188,7 +188,7 @@ for BRANDING_NSI in "${ENGINE_DIR}"/browser/branding/*/branding.nsi; do
   if [ -f "${BRANDING_NSI}" ]; then
     echo "Patching NSIS branding URLs: ${BRANDING_NSI}"
     sedi 's|https://zen-browser.app|https://nevoflux.app|g' "${BRANDING_NSI}"
-    sedi 's|https://github.com/zen-browser/desktop/issues|https://github.com/dorisgyl/nevoflux/issues|g' "${BRANDING_NSI}"
+    sedi 's|https://github.com/zen-browser/desktop/issues|https://github.com/nevoflux-browser/nevoflux/issues|g' "${BRANDING_NSI}"
   fi
 done
 

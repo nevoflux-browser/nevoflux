@@ -19,14 +19,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/dorisgyl/nevoflux/actions/workflows/finalize-release.yml">
-    <img src="https://github.com/dorisgyl/nevoflux/actions/workflows/finalize-release.yml/badge.svg" alt="Release Status">
+  <a href="https://github.com/nevoflux-browser/nevoflux/actions/workflows/finalize-release.yml">
+    <img src="https://github.com/nevoflux-browser/nevoflux/actions/workflows/finalize-release.yml/badge.svg" alt="Release Status">
   </a>
-  <a href="https://github.com/dorisgyl/nevoflux/blob/main/LICENSE">
+  <a href="https://github.com/nevoflux-browser/nevoflux/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-MPL--2.0-blue.svg" alt="License">
   </a>
-  <a href="https://github.com/dorisgyl/nevoflux/stargazers">
-    <img src="https://img.shields.io/github/stars/dorisgyl/nevoflux?style=social" alt="Stars">
+  <a href="https://github.com/nevoflux-browser/nevoflux/stargazers">
+    <img src="https://img.shields.io/github/stars/nevoflux-browser/nevoflux?style=social" alt="Stars">
   </a>
 </p>
 
@@ -135,14 +135,14 @@ default_model = "claude-sonnet-4-20250514"
 
 ## Getting Started
 
-Nevoflux consists of two components: **the browser** (this repository) and the **Rust native agent** ([nevoflux-agent](https://github.com/dorisgyl/nevoflux-agent)). Both are needed for full functionality.
+Nevoflux consists of two components: **the browser** (this repository) and the **Rust native agent** ([nevoflux-agent](https://github.com/nevoflux-browser/nevoflux-agent)). Both are needed for full functionality.
 
 ### Browser
 
 ```bash
 # Prerequisites: Node.js 22+, npm, Python 3
 
-git clone https://github.com/dorisgyl/nevoflux.git
+git clone https://github.com/nevoflux-browser/nevoflux.git
 cd nevoflux
 
 npm install
@@ -158,7 +158,7 @@ npm run start
 ```bash
 # Prerequisites: Rust 1.75+
 
-git clone https://github.com/dorisgyl/nevoflux-agent.git
+git clone https://github.com/nevoflux-browser/nevoflux-agent.git
 cd nevoflux-agent
 
 cargo build --release
@@ -418,8 +418,8 @@ API keys are resolved in order: environment variables → system keychain → co
 Nevoflux is open source and welcomes contributions.
 
 - **Discord** — [Join our community](https://discord.gg/u25Q5cNABg)
-- **Bug Reports** — [GitHub Issues](https://github.com/dorisgyl/nevoflux/issues)
-- **Feature Requests** — [GitHub Discussions](https://github.com/dorisgyl/nevoflux/discussions)
+- **Bug Reports** — [GitHub Issues](https://github.com/nevoflux-browser/nevoflux/issues)
+- **Feature Requests** — [GitHub Discussions](https://github.com/nevoflux-browser/nevoflux/discussions)
 - **Code Contributions** — See [CONTRIBUTING.md](./CONTRIBUTING.md)
 
 ### Development Workflow

@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       agent-release-tag:
-        description: 'Agent release tag (leave empty for latest from dorisgyl/nevoflux-agent)'
+        description: 'Agent release tag (leave empty for latest from nevoflux-browser/nevoflux-agent)'
         required: false
         type: string
         default: ''
@@ -31,7 +31,7 @@ jobs:
             echo "tag=${{ inputs.agent-release-tag }}" >> $GITHUB_OUTPUT
             echo "Using provided agent tag: ${{ inputs.agent-release-tag }}"
           else
-            TAG=$(gh release view --repo dorisgyl/nevoflux-agent --json tagName --jq '.tagName')
+            TAG=$(gh release view --repo nevoflux-browser/nevoflux-agent --json tagName --jq '.tagName')
             echo "tag=$TAG" >> $GITHUB_OUTPUT
             echo "Resolved latest agent tag: $TAG"
           fi
@@ -58,7 +58,7 @@ jobs:
       - name: Download agent binary from agent release
         run: |
           gh release download "${{ needs.resolve-agent-tag.outputs.agent-tag }}" \
-            --repo dorisgyl/nevoflux-agent \
+            --repo nevoflux-browser/nevoflux-agent \
             --pattern "nevoflux-agent-linux-${{ matrix.arch }}.tar.gz"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -109,7 +109,7 @@ jobs:
       - name: Download agent binary from agent release
         run: |
           gh release download "${{ needs.resolve-agent-tag.outputs.agent-tag }}" \
-            --repo dorisgyl/nevoflux-agent \
+            --repo nevoflux-browser/nevoflux-agent \
             --pattern "nevoflux-agent-windows-${{ matrix.arch }}.zip"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -187,7 +187,7 @@ jobs:
       - name: Download agent binaries from agent release
         run: |
           gh release download "${{ needs.resolve-agent-tag.outputs.agent-tag }}" \
-            --repo dorisgyl/nevoflux-agent \
+            --repo nevoflux-browser/nevoflux-agent \
             --pattern "nevoflux-agent-macos-x86_64.tar.gz" \
             --pattern "nevoflux-agent-macos-aarch64.tar.gz"
         env:

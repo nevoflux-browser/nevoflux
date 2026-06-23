@@ -8,7 +8,7 @@
 
 substitutions:
   _RELEASE_BRANCH: 'release'
-  _GITHUB_REPO: 'dorisgyl/nevoflux'
+  _GITHUB_REPO: 'nevoflux-browser/nevoflux'
 
 availableSecrets:
   secretManager:
@@ -108,14 +108,14 @@ steps:
         mkdir -p /tmp/agent/
         export GH_TOKEN="$$GITHUB_TOKEN"
 
-        LATEST_TAG=$$(gh release view --repo dorisgyl/nevoflux-agent --json tagName --jq '.tagName' 2>/dev/null || true)
+        LATEST_TAG=$$(gh release view --repo nevoflux-browser/nevoflux-agent --json tagName --jq '.tagName' 2>/dev/null || true)
         if [ -n "$$LATEST_TAG" ]; then
           echo "Latest agent release tag: $$LATEST_TAG"
-          ASSET_EXISTS=$$(gh release view "$$LATEST_TAG" --repo dorisgyl/nevoflux-agent --json assets --jq ".assets[].name" 2>/dev/null | grep -c "^$${ARCHIVE_NAME}$$" || true)
+          ASSET_EXISTS=$$(gh release view "$$LATEST_TAG" --repo nevoflux-browser/nevoflux-agent --json assets --jq ".assets[].name" 2>/dev/null | grep -c "^$${ARCHIVE_NAME}$$" || true)
           if [ "$$ASSET_EXISTS" != "0" ]; then
             for attempt in 1 2 3; do
               gh release download "$$LATEST_TAG" \
-                --repo dorisgyl/nevoflux-agent \
+                --repo nevoflux-browser/nevoflux-agent \
                 --pattern "$${ARCHIVE_NAME}" \
                 --dir /tmp/agent/ --clobber && break
               if [ $$attempt -lt 3 ]; then
@@ -241,7 +241,7 @@ steps:
       - |
         set -eux
         export ARCH="aarch64"
-        UPINFO="gh-releases-zsync|dorisgyl|nevoflux|latest|nevoflux-$${ARCH}.AppImage.zsync"
+        UPINFO="gh-releases-zsync|nevoflux-browser|nevoflux|latest|nevoflux-$${ARCH}.AppImage.zsync"
 
         APPDIR=build/AppDir
 
