@@ -117,7 +117,6 @@ const PackInstall = {
     const channelId = 'packinst_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
     let opId = '';
     let subscriptionId = null;
-    let settled = false;
     let messageListener = null;
 
     const bar = document.getElementById('pi-bar');
@@ -139,8 +138,7 @@ const PackInstall = {
           bar.value = view.pct;
           phase.textContent = view.line;
           if (view.terminal) {
-            settled = true;
-            view.ok ? resolve() : reject(new Error('install failed'));
+            view.ok ? resolve() : reject(new Error(view.line || 'install failed'));
           }
         };
         window.addEventListener('NevofluxMessage', messageListener);
@@ -172,7 +170,6 @@ const PackInstall = {
         }
         await NevofluxPage.sendQuery('events:channel_close', { channelId });
       } catch (_) {}
-      void settled;
     }
   },
 

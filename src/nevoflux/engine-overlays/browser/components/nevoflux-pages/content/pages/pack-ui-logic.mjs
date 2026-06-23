@@ -403,7 +403,10 @@ export function summarizePackProgress(frame, opId) {
 export function parsePackInstallSrc(raw) {
   if (typeof raw !== 'string') return { ok: false, error: 'missing source' };
   // Check for control characters BEFORE trimming to catch embedded newlines etc.
-  if (/[\x00-\x1f\x7f]/.test(raw)) return { ok: false, error: 'illegal characters' };
+  for (let i = 0; i < raw.length; i++) {
+    const code = raw.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) return { ok: false, error: 'illegal characters' };
+  }
   const s = raw.trim();
   if (!s) return { ok: false, error: 'missing source' };
   if (s.length > 512) return { ok: false, error: 'source too long' };
