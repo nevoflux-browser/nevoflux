@@ -36,11 +36,11 @@ const PackInstall = {
       type: 'agent:command',
       payload: { command, params },
     });
-    if (!result || result.success === false) {
+    if (!result || !result.success) {
       throw new Error(result?.error?.message || 'Bridge request failed');
     }
     const agentResponse = result.data;
-    if (!agentResponse || agentResponse.success === false) {
+    if (!agentResponse || !agentResponse.success) {
       throw new Error(agentResponse?.error?.message || 'Agent command failed');
     }
     return agentResponse.data;
@@ -105,6 +105,7 @@ const PackInstall = {
     document.getElementById('pi-done-settings').addEventListener('click', settings);
     document.getElementById('pi-cancel').addEventListener('click', () => window.close());
     document.getElementById('pi-done-close').addEventListener('click', () => window.close());
+    document.getElementById('pi-error-retry').addEventListener('click', () => this._loadPreview());
   },
 
   _show(id) {
