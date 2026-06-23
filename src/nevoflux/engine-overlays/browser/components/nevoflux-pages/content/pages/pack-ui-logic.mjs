@@ -386,3 +386,76 @@ export function summarizePackProgress(frame, opId) {
     failed,
   };
 }
+
+/**
+ * Strictly parse + normalize a deep-link `src` value (GitHub-only).
+ *
+ * Accepts:
+ *   github:OWNER/REPO[/SUB/DIR][@REF]
+ *   https://github.com/OWNER/REPO[/tree/REF/SUB/DIR]
+ * Rejects everything else (local paths, file:/javascript:, non-github https,
+ * git@/ssh, control chars, path traversal, overlong input). On success returns
+ * the canonical `github:` form so exactly one wire shape reaches the daemon.
+ *
+ * @param {unknown} raw  the (already URL-decoded) ?src value
+ * @returns {{ok: boolean, source?: string, display?: string, error?: string}}
+ */
+export function parsePackInstallSrc(raw) {
+  if (typeof raw !== 'string') return { ok: false, error: 'missing source' };
+  // Check for control characters BEFORE trimming to catch embedded newlines etc.
+  if (/[\x00-\x1f\x7f]/.test(raw)) return { ok: false, error: 'illegal characters' };
+  const s = raw.trim();
+  if (!s) return { ok: false, error: 'missing source' };
+  if (s.length > 512) return { ok: false, error: 'source too long' };
+
+  const NAME = /^[A-Za-z0-9._-]+$/;
+  const refOk = (ref) =>
+    ref == null ||
+    (/^[A-Za-z0-9._/-]+$/.test(ref) && !ref.split('/').includes('..'));
+  const segOk = (seg) => NAME.test(seg) && seg !== '..';
+
+  let owner, repo, sub, ref;
+
+  if (s.startsWith('github:')) {
+    let body = s.slice('github:'.length);
+    const at = body.indexOf('@');
+    if (at !== -1) {
+      ref = body.slice(at + 1);
+      body = body.slice(0, at);
+    }
+    const parts = body.split('/').filter(Boolean);
+    if (parts.length < 2) return { ok: false, error: 'expected owner/repo' };
+    [owner, repo] = parts;
+    sub = parts.slice(2);
+  } else if (s.startsWith('https://github.com/')) {
+    const rest = s.slice('https://github.com/'.length).replace(/\/+$/, '');
+    const parts = rest.split('/').filter(Boolean);
+    if (parts.length < 2) return { ok: false, error: 'expected owner/repo' };
+    [owner, repo] = parts;
+    const tail = parts.slice(2);
+    if (tail.length) {
+      if (tail[0] !== 'tree' || tail.length < 2) {
+        return { ok: false, error: 'unsupported github url shape' };
+      }
+      ref = tail[1];
+      sub = tail.slice(2);
+    } else {
+      sub = [];
+    }
+  } else {
+    return { ok: false, error: 'only github sources are allowed' };
+  }
+
+  if (!NAME.test(owner) || !NAME.test(repo)) {
+    return { ok: false, error: 'invalid owner/repo' };
+  }
+  if (sub.some((seg) => !segOk(seg))) {
+    return { ok: false, error: 'invalid subdirectory' };
+  }
+  if (!refOk(ref)) return { ok: false, error: 'invalid ref' };
+
+  let display = `${owner}/${repo}`;
+  if (sub.length) display += `/${sub.join('/')}`;
+  if (ref) display += `@${ref}`;
+  return { ok: true, source: `github:${display}`, display };
+}

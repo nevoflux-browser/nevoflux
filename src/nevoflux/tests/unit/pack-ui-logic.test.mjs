@@ -20,6 +20,7 @@ import {
   inspectParams,
   summarizeInspect,
   summarizePackProgress,
+  parsePackInstallSrc,
 } from '../../engine-overlays/browser/components/nevoflux-pages/content/pages/pack-ui-logic.mjs';
 
 describe('pack-ui-logic: isRemoteSource', () => {
@@ -510,5 +511,59 @@ describe('pack-ui-logic: summarizePackProgress', () => {
       expect(v.failed).toBe(true);
       expect(v.ok).toBe(false);
     }
+  });
+});
+
+describe('pack-ui-logic: parsePackInstallSrc', () => {
+  it('accepts github: shorthand and normalizes', () => {
+    expect(parsePackInstallSrc('github:owner/repo')).toEqual({
+      ok: true, source: 'github:owner/repo', display: 'owner/repo',
+    });
+    expect(parsePackInstallSrc('github:owner/repo@v1.2.0')).toEqual({
+      ok: true, source: 'github:owner/repo@v1.2.0', display: 'owner/repo@v1.2.0',
+    });
+    expect(parsePackInstallSrc('github:owner/repo/sub/dir@v1')).toEqual({
+      ok: true, source: 'github:owner/repo/sub/dir@v1', display: 'owner/repo/sub/dir@v1',
+    });
+  });
+
+  it('accepts https github URLs and normalizes to github: form', () => {
+    expect(parsePackInstallSrc('https://github.com/owner/repo')).toEqual({
+      ok: true, source: 'github:owner/repo', display: 'owner/repo',
+    });
+    expect(parsePackInstallSrc('https://github.com/owner/repo/tree/v1/sub/dir')).toEqual({
+      ok: true, source: 'github:owner/repo/sub/dir@v1', display: 'owner/repo/sub/dir@v1',
+    });
+  });
+
+  it('trims whitespace', () => {
+    expect(parsePackInstallSrc('  github:owner/repo  ').ok).toBe(true);
+  });
+
+  it('rejects missing / empty / non-string', () => {
+    expect(parsePackInstallSrc('').ok).toBe(false);
+    expect(parsePackInstallSrc('   ').ok).toBe(false);
+    expect(parsePackInstallSrc(null).ok).toBe(false);
+    expect(parsePackInstallSrc(42).ok).toBe(false);
+  });
+
+  it('rejects non-github and dangerous sources', () => {
+    expect(parsePackInstallSrc('/tmp/pack.toml').ok).toBe(false);
+    expect(parsePackInstallSrc('./rel/manifest.toml').ok).toBe(false);
+    expect(parsePackInstallSrc('file:///etc/passwd').ok).toBe(false);
+    expect(parsePackInstallSrc('javascript:alert(1)').ok).toBe(false);
+    expect(parsePackInstallSrc('https://gitlab.com/u/r').ok).toBe(false);
+    expect(parsePackInstallSrc('https://example.com/github.com/u/r').ok).toBe(false);
+    expect(parsePackInstallSrc('git@github.com:u/r.git').ok).toBe(false);
+  });
+
+  it('rejects path traversal and control chars', () => {
+    expect(parsePackInstallSrc('github:owner/repo/../../x').ok).toBe(false);
+    expect(parsePackInstallSrc('github:owner/repo@v1\n').ok).toBe(false);
+    expect(parsePackInstallSrc('github:owner/repo@..').ok).toBe(false);
+  });
+
+  it('rejects overlong input', () => {
+    expect(parsePackInstallSrc('github:owner/' + 'r'.repeat(600)).ok).toBe(false);
   });
 });
