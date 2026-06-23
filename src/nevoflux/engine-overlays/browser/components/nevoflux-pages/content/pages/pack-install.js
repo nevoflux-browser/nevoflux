@@ -96,7 +96,95 @@ const PackInstall = {
       downgrade: `Reinstall (downgrade to ${(this._inspect.pack && this._inspect.pack.version) || ''})`,
     };
     primary.textContent = labels[this._decision.action] || 'Install';
-    // Task 6 wires primary.onclick.
+    primary.onclick = () => this._runInstall();
+  },
+
+  _installCall() {
+    const src = this._parsed.source;
+    const a = this._decision.action;
+    if (a === 'update') {
+      return this._sendMcpCommand('pack.update', { ...this._logic.updateParams(src), wait: false });
+    }
+    // install (fresh) | reinstall | downgrade → install, force for the latter two
+    const force = a === 'reinstall' || a === 'downgrade';
+    return this._sendMcpCommand('pack.install', this._logic.installParams(src, { wait: false, force }));
+  },
+
+  async _runInstall() {
+    document.getElementById('pi-primary').disabled = true;
+    this._show('pi-progress');
+
+    const channelId = 'packinst_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    let opId = '';
+    let subscriptionId = null;
+    let settled = false;
+    let messageListener = null;
+
+    const bar = document.getElementById('pi-bar');
+    const phase = document.getElementById('pi-phase');
+
+    try {
+      await NevofluxPage.sendQuery('events:channel_open', { channelId });
+
+      const completion = new Promise((resolve, reject) => {
+        messageListener = (event) => {
+          const detail = event.detail;
+          if (!detail || detail.type !== 'bridge:push') return;
+          const msg = detail.msg;
+          if (!msg || msg.type !== 'events:delivery') return;
+          const ev = msg.payload && msg.payload.event;
+          if (!ev || ev.topic !== 'system:pack:progress') return;
+          const view = this._logic.summarizePackProgress(ev.payload, opId);
+          if (!view.matched) return;
+          bar.value = view.pct;
+          phase.textContent = view.line;
+          if (view.terminal) {
+            settled = true;
+            view.ok ? resolve() : reject(new Error('install failed'));
+          }
+        };
+        window.addEventListener('NevofluxMessage', messageListener);
+      });
+
+      const sub = await NevofluxPage.sendQuery('bridge:request', {
+        type: 'events.subscribe',
+        payload: { patterns: ['system:pack:progress'], replay_sticky: false, channel_id: channelId },
+      });
+      if (!sub || sub.success === false) {
+        throw new Error(sub?.error?.message || 'events.subscribe failed');
+      }
+      subscriptionId = (sub.data && sub.data.data && sub.data.data.subscription_id) || null;
+
+      const started = await this._installCall();
+      opId = (started && (started.op_id || started.opId)) || opId;
+
+      await completion;
+      this._showDone();
+    } catch (e) {
+      this._showError(this._logic.packErrorMessage(e), this._parsed.display, true);
+    } finally {
+      if (messageListener) window.removeEventListener('NevofluxMessage', messageListener);
+      try {
+        if (subscriptionId) {
+          await NevofluxPage.sendQuery('bridge:request', {
+            type: 'events.unsubscribe', payload: { subscription_id: subscriptionId },
+          });
+        }
+        await NevofluxPage.sendQuery('events:channel_close', { channelId });
+      } catch (_) {}
+      void settled;
+    }
+  },
+
+  _showDone() {
+    this._show('pi-done');
+    const name = (this._inspect && this._inspect.pack && this._inspect.pack.name) || this._parsed.display;
+    const comps = (this._inspect && this._inspect.components) || {};
+    const nSkills = Array.isArray(comps.skills) ? comps.skills.length : 0;
+    const nTools = Array.isArray(comps.canvas_tools) ? comps.canvas_tools.length : 0;
+    document.getElementById('pi-done-title').textContent = `${name} installed`;
+    document.getElementById('pi-done-msg').textContent =
+      `Installed ${nSkills} skill(s) and ${nTools} canvas tool(s).`;
   },
 
   _wireStaticButtons() {
