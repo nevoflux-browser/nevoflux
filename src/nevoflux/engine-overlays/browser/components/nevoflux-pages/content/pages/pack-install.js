@@ -14,6 +14,8 @@
 const PackInstall = {
   _logic: null,
   _parsed: null,
+  _inspect: null,
+  _decision: null,
 
   async init() {
     this._logic = await import('chrome://nevoflux/content/pages/pack-ui-logic.mjs');
@@ -26,10 +28,75 @@ const PackInstall = {
       return;
     }
     this._parsed = parsed;
-    // Task 5 fills in inspect/preview here. For now show the validated source.
+    await this._loadPreview();
+  },
+
+  async _sendMcpCommand(command, params = {}) {
+    const result = await NevofluxPage.sendQuery('bridge:request', {
+      type: 'agent:command',
+      payload: { command, params },
+    });
+    if (!result || result.success === false) {
+      throw new Error(result?.error?.message || 'Bridge request failed');
+    }
+    const agentResponse = result.data;
+    if (!agentResponse || agentResponse.success === false) {
+      throw new Error(agentResponse?.error?.message || 'Agent command failed');
+    }
+    return agentResponse.data;
+  },
+
+  async _loadPreview() {
     this._show('pi-loading');
-    document.getElementById('pi-loading').textContent =
-      `Validated source: ${parsed.display}`;
+    document.getElementById('pi-loading').textContent = 'Inspecting pack…';
+    let inspect, listData;
+    try {
+      [inspect, listData] = await Promise.all([
+        this._sendMcpCommand('pack.inspect', this._logic.inspectParams(this._parsed.source)),
+        this._sendMcpCommand('pack.list', {}),
+      ]);
+    } catch (e) {
+      this._showError(this._logic.packErrorMessage(e), this._parsed.display, true);
+      return;
+    }
+    this._inspect = inspect;
+
+    const summary = this._logic.summarizeInspect(inspect);
+    const name = (inspect && inspect.pack && inspect.pack.name) || this._parsed.display;
+    const incomingVersion = (inspect && inspect.pack && String(inspect.pack.version)) || '';
+    const rows = this._logic.packListToRows(listData);
+    const installed = this._logic.findInstalledVersion(rows, name);
+    this._decision = this._logic.decidePackAction(installed, incomingVersion);
+
+    this._renderPreview(name, summary);
+  },
+
+  _renderPreview(name, summary) {
+    this._show('pi-preview');
+    document.getElementById('pi-name').textContent = name;
+    document.getElementById('pi-src').textContent = this._parsed.display;
+    document.getElementById('pi-summary').textContent = summary.text;
+
+    const vio = document.getElementById('pi-violations');
+    const primary = document.getElementById('pi-primary');
+    if (summary.hasViolations) {
+      vio.classList.remove('pi-hidden');
+      vio.textContent = `Blocked: capability violations (${summary.violations.length}). This pack tries to escape the sandbox and cannot be installed.`;
+      primary.disabled = true;
+      primary.textContent = 'Install';
+      return;
+    }
+    vio.classList.add('pi-hidden');
+    primary.disabled = false;
+
+    const labels = {
+      install: 'Install',
+      update: `Update (${this._decision.currentVersion} → ${(this._inspect.pack && this._inspect.pack.version) || ''})`,
+      reinstall: 'Reinstall (already latest)',
+      downgrade: `Reinstall (downgrade to ${(this._inspect.pack && this._inspect.pack.version) || ''})`,
+    };
+    primary.textContent = labels[this._decision.action] || 'Install';
+    // Task 6 wires primary.onclick.
   },
 
   _wireStaticButtons() {
