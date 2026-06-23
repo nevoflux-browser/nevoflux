@@ -66,9 +66,10 @@ Under the hood: a Rust-native agent daemon with 16+ LLM providers, 80+ browser a
 - 🧬 **Identity & Soul** — Your companion has its own personality, values, and behavioral patterns that evolve over time
 - 🧠 **Memory & Learning** — Remembers across sessions, learns your preferences, adapts to how you work — with encrypted storage
 - 🎛️ **Progressive Autonomy** — Three modes (Chat, Browser, Agent) — you decide how much control to hand over
+- ⏰ **Operate: Loops** — Set a loop and your companion runs on its own — watches the pages you care about, catches what changed, files it to your brain. Command once, it keeps running while you're away.
 - ⚡ **Build: Micro Apps (Canvas)** — Generate fully functional mini-apps on the fly — not just rendered artifacts, but living apps with full agent capabilities. Exportable to 10+ formats (HTML, PNG, PDF, DOCX, PPTX, XLSX, SVG, ZIP). Every other AI just shows you text — Nevoflux creates tools you can actually use.
 - 📚 **Remember: Second Brain (GBrain)** — A personal knowledge base you grow on purpose — capture pages, notes, and research, then recall and synthesize across everything you've saved. Distinct from the agent's automatic memory: this is *your* curated brain, stored as local markdown pages and shareable via encrypted, zero-knowledge links. Canvas Micro Apps help you **build** tools; GBrain helps you **remember** what matters.
-- 🧩 **WASM Skills** — Extensible skill system powered by WebAssembly — sandboxed, pluggable, and progressively loaded
+- 🧩 **Skills & Packs** — Skills are the runtime unit of capability — sandboxed, WASM-powered, progressively loaded. A **Pack** bundles skills, canvas tools, and seed knowledge into one installable `pack.toml`, so a single install teaches your browser a whole new workflow.
 - 🖥️ **Browser + Computer Control** — 80+ browser APIs and cross-platform desktop control (screenshot, mouse, keyboard)
 - 🤖 **Multi-LLM Freedom** — 16+ providers: Anthropic, OpenAI, Qwen, DeepSeek, Gemini, Ollama, and more — your choice
 - 🔧 **Coding Agent Delegation** — Seamlessly delegate development tasks to Claude Code, Gemini CLI, or Kimi Agent — they work as sub-agents within your browser
@@ -120,7 +121,7 @@ Nevoflux uses progressive capability unlocking — each mode builds on the previ
 | Claude Code      | Coding   | Subprocess integration            |
 | Gemini CLI       | Coding   | Subprocess integration            |
 | Kimi Agent       | Coding   | Subprocess integration            |
-| OpenClaw         | Personal | Personal AI assistant integration |
+| OpenClaw         | Personal | Reach your companion from chat apps while away |
 
 Configure your preferred provider in `~/.config/nevoflux/config.toml`:
 
@@ -212,13 +213,14 @@ Then register the native messaging host:
 │  └──────────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────────────────────┘
 
-         Build ▼                            Remember ▼
-  ┌─────────────────────┐          ┌──────────────────────────┐
-  │  Canvas Micro Apps   │          │  GBrain                   │
-  │  Create tools,       │          │  Second brain —           │
-  │  export to 10+       │          │  capture, recall,         │
-  │  formats             │          │  synthesize               │
-  └─────────────────────┘          └──────────────────────────┘
+         Build ▼            Operate ▼              Remember ▼
+  ┌──────────────┐   ┌──────────────────┐   ┌──────────────────┐
+  │ Canvas Micro │   │  Loops            │   │  GBrain           │
+  │ Apps         │   │  Scheduled &      │   │  Second brain —   │
+  │ Create tools │   │  triggered runs,  │   │  capture, recall, │
+  │ export 10+   │   │  autonomous while │   │  synthesize       │
+  │ formats      │   │  you're away      │   │                   │
+  └──────────────┘   └──────────────────┘   └──────────────────┘
 
          Code ▼
   ┌────────────┐ ┌─────────────┐ ┌─────────────┐
@@ -285,6 +287,22 @@ Canvas artifacts are living applications with access to the NevofluxSDK, enablin
 | PPTX       | Slides artifacts                |
 | XLSX       | Artifacts containing tables     |
 | ZIP        | Project (multi-file) artifacts  |
+
+---
+
+## Loops
+
+Loops turn one-off commands into standing tasks. Define a trigger — a schedule or an event such as a page change — and your companion re-runs a prompt or a saved skill on its own, even while you're away from the desk.
+
+A loop can watch a set of pages, catch what changed, run the task in Agent mode, and file the result straight into your GBrain. It carries a scratchpad across runs, so each iteration builds on the last. You stay in charge of what runs and when; it handles the hours.
+
+| Part             | What it does                                                        |
+| ---------------- | ------------------------------------------------------------------ |
+| **Trigger**      | When the loop fires — a schedule or an event (e.g. a page change)   |
+| **What it runs** | A prompt or a saved skill, executed in Chat, Browser, or Agent mode |
+| **Scratchpad**   | State the loop carries from one run to the next                     |
+
+> Loops run under the same default-deny permission model — a loop can only do what you've granted its mode.
 
 ---
 
