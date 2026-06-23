@@ -459,3 +459,50 @@ export function parsePackInstallSrc(raw) {
   if (ref) display += `@${ref}`;
   return { ok: true, source: `github:${display}`, display };
 }
+
+/**
+ * Find an installed pack's version by name in the rows from packListToRows.
+ * @param {Array<{name?: string, version?: string}>|null|undefined} rows
+ * @param {string} name
+ * @returns {string|null}
+ */
+export function findInstalledVersion(rows, name) {
+  if (!Array.isArray(rows) || typeof name !== 'string' || !name) return null;
+  const hit = rows.find((r) => r && r.name === name);
+  return hit && typeof hit.version === 'string' ? hit.version : null;
+}
+
+/**
+ * Compare two semver-ish versions. Pre-release suffixes (after '-') are
+ * ignored. Returns -1 if a<b, 0 if equal, 1 if a>b.
+ * @param {string} a
+ * @param {string} b
+ * @returns {-1|0|1}
+ */
+export function comparePackVersions(a, b) {
+  const core = (v) => String(v == null ? '' : v).split('-')[0].split('.').map((n) => parseInt(n, 10) || 0);
+  const pa = core(a);
+  const pb = core(b);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const da = pa[i] || 0;
+    const db = pb[i] || 0;
+    if (da < db) return -1;
+    if (da > db) return 1;
+  }
+  return 0;
+}
+
+/**
+ * Decide the primary action for the deep-link page given the installed version
+ * (or null) and the incoming pack version.
+ * @param {string|null} installedVersion
+ * @param {string} incomingVersion
+ * @returns {{action: 'install'|'update'|'reinstall'|'downgrade', currentVersion: string|null}}
+ */
+export function decidePackAction(installedVersion, incomingVersion) {
+  if (installedVersion == null) return { action: 'install', currentVersion: null };
+  const cmp = comparePackVersions(incomingVersion, installedVersion);
+  const action = cmp > 0 ? 'update' : cmp < 0 ? 'downgrade' : 'reinstall';
+  return { action, currentVersion: installedVersion };
+}
