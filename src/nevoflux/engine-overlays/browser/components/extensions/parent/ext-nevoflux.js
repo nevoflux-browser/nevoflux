@@ -2318,6 +2318,24 @@ this.nevoflux = class extends ExtensionAPI {
           },
         }).api(),
 
+        onBridgeNotify: new EventManager({
+          context,
+          module: 'nevoflux',
+          event: 'onBridgeNotify',
+          register: (fire) => {
+            const { NevofluxBridgeRouter } = ChromeUtils.importESModule(
+              'resource:///modules/NevofluxBridgeRouter.sys.mjs'
+            );
+            const handler = (type, payload) => {
+              fire.async(type, payload);
+            };
+            NevofluxBridgeRouter.setNotifyHandler(handler);
+            return () => {
+              NevofluxBridgeRouter.removeNotifyHandler();
+            };
+          },
+        }).api(),
+
         onContentStoreChanged: new EventManager({
           context,
           module: 'nevoflux',

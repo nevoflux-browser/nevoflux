@@ -1669,6 +1669,15 @@
           { "name": "type", "type": "string" },
           { "name": "payload", "type": "any", "optional": true }
         ]
+      },
+      {
+        "name": "onBridgeNotify",
+        "type": "function",
+        "description": "Fired (one-way, no response) when chrome emits a recording event to background",
+        "parameters": [
+          { "name": "type", "type": "string" },
+          { "name": "payload", "type": "any" }
+        ]
       }
     ]
   }
