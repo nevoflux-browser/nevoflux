@@ -5,7 +5,7 @@
 'use strict';
 
 // DOM-free recording helpers (pure functions; no chrome, no browser.*)
-import { makeRecordingId } from '../content/handoff-logic.mjs';
+import { makeRecordingId, buildSkillCreatorOpeningPrompt } from '../content/handoff-logic.mjs';
 import { makeHeader } from '../content/recorder-logic.mjs';
 
 // Immediate debug log to verify script is loading
@@ -7489,12 +7489,48 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
           }
 
           const rec = activeRecordings.get(tabId);
+          const recordingId = rec?.recording_id || null;
+          const goalHint = rec?.goal_hint || '';
+
           // Clear parent-process singleton first.
           await browser.nevoflux.clearRecordingState(tabId);
           // Clean up background state.
           activeRecordings.delete(tabId);
 
-          sendResponse({ success: true, recording_id: rec?.recording_id || null });
+          // --- Trigger A: auto-start a skill-creator agent session ---
+          // Trace-path strategy (c): the daemon agent runs in the same process
+          // as the recorder and knows its own recordings_dir. We embed the
+          // recording_id and the path pattern so the agent can locate the file
+          // without the extension needing to know the absolute recordings_dir.
+          if (recordingId) {
+            const tracePath = `<recordings_dir>/${recordingId}.jsonl`;
+            const openingPrompt = buildSkillCreatorOpeningPrompt({ tracePath, goalHint });
+
+            const sessionId = `skill_creator_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+            // Start the skill-creator session in agent mode (needs file I/O
+            // to read the jsonl trace and write SKILL.md).
+            channelManager.sendToAgent({
+              type: MessageTypes.CHAT_MESSAGE,
+              payload: {
+                session_id: sessionId,
+                message_id: messageId,
+                content: openingPrompt,
+                mode: 'agent',
+                attachments: [],
+                local_files: [],
+                tab_id: null,
+                tab_ids: [],
+              },
+            });
+
+            console.log(
+              `[NevoFlux] Trigger A: skill-creator session ${sessionId} started for recording ${recordingId}`
+            );
+          }
+
+          sendResponse({ success: true, recording_id: recordingId });
         } catch (err) {
           console.error('[NevoFlux] RECORDING_STOP error:', err);
           sendResponse({ success: false, error: err.message });
