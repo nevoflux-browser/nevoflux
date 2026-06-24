@@ -18,6 +18,60 @@ ChromeUtils.defineLazyGetter(lazy, 'a11yService', () => {
 // InspectorUtils is globally available in privileged Firefox contexts
 // Used to detect event listeners added via addEventListener
 
+// ── Recorder-logic helpers (inlined from content/recorder-logic.mjs) ─────────
+// recorder-logic.mjs lives under the extension's content/ path which is not
+// accessible via resource:/// from a chrome actor. The canonical, unit-tested
+// source is src/nevoflux/extensions/nevoflux-agent/content/recorder-logic.mjs;
+// these copies must be kept in sync with that file.
+
+const _REC_SECRET_RE = /pass|token|secret|otp|cvv/i;
+
+function _recIsSecretField({ inputType, name } = {}) {
+  if ((inputType || '').toLowerCase() === 'password') return true;
+  return _REC_SECRET_RE.test(name || '');
+}
+
+function _recSnake(s) {
+  return String(s || 'value')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'value';
+}
+
+function _recBuildStep({ action, target, value, inputType, name, autocomplete, url, title, tsMs, waitAfter = null }) {
+  const step = {
+    type: 'step',
+    action,
+    target: { ...target },
+    url,
+    title,
+    ts_ms: tsMs,
+    wait_after: waitAfter,
+  };
+  const isFile = (inputType || '').toLowerCase() === 'file';
+  if (isFile) {
+    step.target.element_kind = 'file';
+    step.value = '{{file}}';
+    step.input_ref = '{{file}}';
+    return step;
+  }
+  // Secret detection: check inputType, name, and autocomplete attribute
+  const secretName = name || autocomplete || '';
+  if (action === 'fill' && _recIsSecretField({ inputType, name: secretName })) {
+    step.value = null;
+    step.redacted = true;
+    return step; // no input_ref for secrets
+  }
+  step.value = value ?? null;
+  if (action === 'fill' && value != null) {
+    step.input_ref = `{{${_recSnake(name || target?.name)}}}`;
+  }
+  return step;
+}
+
+// ── End recorder-logic helpers ────────────────────────────────────────────────
+
 // Interactive roles for filtering (A11y tree — Gecko nsIAccessible role names)
 const INTERACTIVE_ROLES = new Set([
   'pushbutton',
@@ -6656,5 +6710,336 @@ export class NevofluxChild extends JSWindowActorChild {
       enumerable: true,
       configurable: false,
     });
+  }
+
+  // ========== Passive Recorder ==========
+
+  async actorCreated() {
+    // Pull-on-creation re-arm: ask the parent if this document's tab is being
+    // recorded. If so, start attaching listeners immediately.
+    let info;
+    try {
+      info = await this.sendQuery('recording:isActive', {});
+    } catch (_e) {
+      // Parent not ready or destroyed — skip recording for this document.
+      return;
+    }
+    if (info && info.recordingId) {
+      this._startRecording(info);
+    }
+  }
+
+  didDestroy() {
+    this._stopRecording();
+  }
+
+  _startRecording(info) {
+    if (this._recActive) {
+      return; // Already recording for this document
+    }
+    this._recActive = true;
+    this._recInfo = info; // { recordingId, goalHint }
+    this._recFillBuffer = []; // Buffered input/keydown events for current field
+    this._recFillTarget = null; // DOM node being filled
+    this._recFillTsMs = null; // ts_ms of first input event in buffer
+
+    // Bound handler references for later removal
+    this._recOnClick = this._recHandleClick.bind(this);
+    this._recOnInput = this._recHandleInput.bind(this);
+    this._recOnChange = this._recHandleChange.bind(this);
+    this._recOnKeydown = this._recHandleKeydown.bind(this);
+    this._recOnSubmit = this._recHandleSubmit.bind(this);
+    this._recOnScroll = this._recHandleScroll.bind(this);
+    this._recOnBlur = this._recHandleBlur.bind(this);
+
+    const doc = this.document;
+    if (!doc) return;
+
+    doc.addEventListener('click', this._recOnClick, true);
+    doc.addEventListener('input', this._recOnInput, true);
+    doc.addEventListener('change', this._recOnChange, true);
+    doc.addEventListener('keydown', this._recOnKeydown, true);
+    doc.addEventListener('submit', this._recOnSubmit, true);
+    // scroll is passive — must NOT prevent default
+    doc.addEventListener('scroll', this._recOnScroll, { capture: true, passive: true });
+    // blur on any element to flush pending fill
+    doc.addEventListener('blur', this._recOnBlur, true);
+  }
+
+  _stopRecording() {
+    if (!this._recActive) return;
+    this._recActive = false;
+
+    const doc = this.document;
+    if (doc) {
+      doc.removeEventListener('click', this._recOnClick, true);
+      doc.removeEventListener('input', this._recOnInput, true);
+      doc.removeEventListener('change', this._recOnChange, true);
+      doc.removeEventListener('keydown', this._recOnKeydown, true);
+      doc.removeEventListener('submit', this._recOnSubmit, true);
+      doc.removeEventListener('scroll', this._recOnScroll, { capture: true, passive: true });
+      doc.removeEventListener('blur', this._recOnBlur, true);
+    }
+
+    this._recFillBuffer = null;
+    this._recFillTarget = null;
+    this._recInfo = null;
+  }
+
+  // Build the target descriptor from a DOM node using the actor's snapshot pipeline.
+  _recBuildTarget(node) {
+    if (!node || node.nodeType !== 1) return {};
+    // Role: use A11y if available, else tag-based fallback
+    let role = null;
+    let name = null;
+    let landmark = null;
+    if (lazy.a11yService) {
+      try {
+        const acc = lazy.a11yService.getAccessibleFor(node);
+        if (acc) {
+          role = ROLE_MAP[acc.role] || null;
+          name = acc.name || null;
+        }
+      } catch (_e) {}
+    }
+    if (!role) {
+      role = node.tagName?.toLowerCase() || 'unknown';
+    }
+    if (!name) {
+      name =
+        node.getAttribute('aria-label') ||
+        node.getAttribute('placeholder') ||
+        node.getAttribute('title') ||
+        node.getAttribute('name') ||
+        null;
+    }
+    // Landmark: walk DOM upward (mirrors _findLandmarkFromDOM)
+    landmark = this._findLandmarkFromDOM(node);
+
+    // Selectors: use the snapshot pipeline's _generateSelectors (requires an el object)
+    const doc = this.document;
+    const elObj = { node, role: role || '', name: name || '', inferred: true, signal: null };
+    let selectors = [];
+    try {
+      selectors = this._generateSelectors(elObj, doc, null);
+    } catch (_e) {}
+
+    // Strip ephemeral eN/data-ai-id selectors from output
+    selectors = selectors.filter((s) => {
+      if (!s.value) return true;
+      // Reject data-ai-id and bare eN id selectors
+      if (s.strategy === 'ai-id') return false;
+      if (s.strategy === 'id' && /^#e\d+$/.test(s.value)) return false;
+      return true;
+    });
+
+    return { role, name, landmark, selectors, tag: node.tagName?.toLowerCase() };
+  }
+
+  _recEmitStep(step) {
+    try {
+      this.sendAsyncMessage('recording:event', {
+        __recording_id: this._recInfo.recordingId,
+        line: step,
+      });
+    } catch (_e) {
+      // Actor destroyed or not connected — ignore
+    }
+  }
+
+  _recGetFieldMeta(node) {
+    return {
+      inputType: node.type || node.getAttribute?.('type') || null,
+      name: node.name || node.getAttribute?.('name') || null,
+      autocomplete: node.autocomplete || node.getAttribute?.('autocomplete') || null,
+    };
+  }
+
+  _recHandleClick(event) {
+    if (!event.isTrusted || !this._recActive) return;
+    // Never preventDefault or stopPropagation
+    const node = event.target;
+    if (!node || node.nodeType !== 1) return;
+
+    // Flush any pending fill first (click on a different element)
+    if (this._recFillTarget && this._recFillTarget !== node) {
+      this._recFlushFill();
+    }
+
+    const win = this.contentWindow;
+    const doc = this.document;
+    const tsMs = Date.now();
+    const target = this._recBuildTarget(node);
+    const { inputType } = this._recGetFieldMeta(node);
+    const step = _recBuildStep({
+      action: 'click',
+      target,
+      value: null,
+      inputType,
+      name: target.name,
+      url: win?.location?.href || doc?.URL || '',
+      title: doc?.title || '',
+      tsMs,
+    });
+    this._recEmitStep(step);
+  }
+
+  _recHandleInput(event) {
+    if (!event.isTrusted || !this._recActive) return;
+    const node = event.target;
+    if (!node || node.nodeType !== 1) return;
+
+    // If we've switched fields, flush the old one first
+    if (this._recFillTarget && this._recFillTarget !== node) {
+      this._recFlushFill();
+    }
+
+    if (!this._recFillTarget) {
+      this._recFillTarget = node;
+      this._recFillTsMs = Date.now();
+    }
+
+    // Buffer the current value (ts_ms is event-occurrence time for the flush)
+    this._recFillBuffer.push({ value: node.value ?? '', tsMs: Date.now() });
+  }
+
+  _recHandleKeydown(event) {
+    if (!event.isTrusted || !this._recActive) return;
+    const node = event.target;
+    if (!node || node.nodeType !== 1) return;
+
+    // If we've switched fields, flush the old one first
+    if (this._recFillTarget && this._recFillTarget !== node) {
+      this._recFlushFill();
+    }
+
+    // Track the field (may not have seen input event yet)
+    if (!this._recFillTarget && node.tagName &&
+        ['INPUT', 'TEXTAREA', 'SELECT'].includes(node.tagName)) {
+      this._recFillTarget = node;
+      this._recFillTsMs = Date.now();
+    }
+
+    // Flush on Enter key in a fill field
+    if (event.key === 'Enter' && this._recFillBuffer.length > 0) {
+      this._recFlushFill();
+    }
+  }
+
+  _recHandleChange(event) {
+    if (!event.isTrusted || !this._recActive) return;
+    const node = event.target;
+    if (!node || node.nodeType !== 1) return;
+
+    // Flush for the changed field specifically
+    if (this._recFillTarget && this._recFillTarget !== node) {
+      this._recFlushFill();
+    }
+    if (!this._recFillTarget) {
+      // change fired without prior input (e.g. checkbox, select)
+      this._recFillTarget = node;
+      this._recFillTsMs = Date.now();
+      this._recFillBuffer.push({ value: node.value ?? '', tsMs: Date.now() });
+    }
+    this._recFlushFill();
+  }
+
+  _recHandleBlur(event) {
+    if (!event.isTrusted || !this._recActive) return;
+    if (this._recFillBuffer.length > 0) {
+      this._recFlushFill();
+    }
+  }
+
+  _recFlushFill() {
+    if (!this._recFillBuffer || this._recFillBuffer.length === 0) {
+      this._recFillTarget = null;
+      this._recFillTsMs = null;
+      return;
+    }
+    const node = this._recFillTarget;
+    const finalValue = this._recFillBuffer[this._recFillBuffer.length - 1].value;
+    const tsMs = this._recFillTsMs || Date.now();
+    const win = this.contentWindow;
+    const doc = this.document;
+    const target = this._recBuildTarget(node);
+    const { inputType, name, autocomplete } = this._recGetFieldMeta(node);
+    const step = _recBuildStep({
+      action: 'fill',
+      target,
+      value: finalValue,
+      inputType,
+      name: name || target.name,
+      autocomplete,
+      url: win?.location?.href || doc?.URL || '',
+      title: doc?.title || '',
+      tsMs,
+    });
+    this._recEmitStep(step);
+    // Reset buffer
+    this._recFillBuffer = [];
+    this._recFillTarget = null;
+    this._recFillTsMs = null;
+  }
+
+  _recHandleSubmit(event) {
+    if (!event.isTrusted || !this._recActive) return;
+    // Flush any pending fill first
+    if (this._recFillBuffer.length > 0) {
+      this._recFlushFill();
+    }
+    const node = event.target; // form element
+    const win = this.contentWindow;
+    const doc = this.document;
+    const tsMs = Date.now();
+    const target = this._recBuildTarget(node);
+    const step = _recBuildStep({
+      action: 'click', // submit = click of submit button; form submit is a navigation effect
+      target,
+      value: null,
+      inputType: null,
+      name: target.name,
+      url: win?.location?.href || doc?.URL || '',
+      title: doc?.title || '',
+      tsMs,
+    });
+    // Tag action as submit for downstream clarity
+    step.action = 'submit';
+    this._recEmitStep(step);
+  }
+
+  // Scroll convergence: only emit a scroll step when the document is "settling"
+  // (no further scroll within 300 ms). We use a single debounce timer.
+  _recHandleScroll(event) {
+    if (!this._recActive) return;
+    // isTrusted check: scroll events from programmatic scrolling may not be
+    // trusted — record all scrolls since passive listener can't distinguish intent;
+    // the daemon/plan-1 filters noise. Guard only on _recActive.
+    const win = this.contentWindow;
+    const doc = this.document;
+    if (this._recScrollTimer) {
+      win?.clearTimeout?.(this._recScrollTimer);
+    }
+    const tsMs = Date.now();
+    this._recScrollTimer = win?.setTimeout?.(() => {
+      this._recScrollTimer = null;
+      if (!this._recActive) return;
+      const scrollX = Math.round(win.scrollX || 0);
+      const scrollY = Math.round(win.scrollY || 0);
+      const step = _recBuildStep({
+        action: 'scroll',
+        target: { role: 'document', name: doc?.title || '', landmark: null, selectors: [] },
+        value: null,
+        inputType: null,
+        name: null,
+        url: win?.location?.href || doc?.URL || '',
+        title: doc?.title || '',
+        tsMs,
+      });
+      // Attach scroll coordinates for replay
+      step.scroll_x = scrollX;
+      step.scroll_y = scrollY;
+      this._recEmitStep(step);
+    }, 300);
   }
 }
