@@ -62,8 +62,11 @@ export function recordingTracePath(recordingsDir, recordingId) {
  *   2. Follow the **Record & Replay** section of the skill to generate
  *      SKILL.md from the trace.
  *
- * Both `tracePath` and `goalHint` are embedded literally so the agent can
- * act on them directly.
+ * `tracePath` may contain the sentinel `{{NEVOFLUX_RECORDINGS_DIR}}`, which
+ * the daemon expands to the absolute recordings directory before the agent
+ * sees the message — no runtime config lookup is required on the agent side.
+ * Both `tracePath` (post-expansion) and `goalHint` are embedded literally so
+ * the agent can act on them directly.
  *
  * @param {{ tracePath: string, goalHint: string }} options
  * @returns {string}

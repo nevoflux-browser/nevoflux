@@ -7498,22 +7498,16 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
           activeRecordings.delete(tabId);
 
           // --- Trigger A: auto-start a skill-creator agent session ---
-          // Trace-path strategy (c): the daemon agent runs in the same process
-          // as the recorder and knows its own recordings_dir. We embed the
-          // recording_id and the path pattern so the agent can locate the file
-          // without the extension needing to know the absolute recordings_dir.
+          // Trace-path strategy (d): the daemon expands the sentinel
+          // {{NEVOFLUX_RECORDINGS_DIR}} in incoming chat text to the absolute
+          // recordings directory before the agent sees the message. We embed
+          // the sentinel so the agent receives a fully-resolved path with no
+          // runtime config lookup required on its side.
           if (recordingId) {
-            // Fix 2: the extension has no RPC to learn the daemon's absolute
-            // data dir (no data_dir / get_config / paths field exists in the
-            // protocol). The daemon agent runs in the same process as the
-            // recorder and has direct filesystem access, so we instruct it to
-            // resolve <data_dir> from its own runtime config and read the
-            // recording trace from "<data_dir>/recordings/<recording_id>.jsonl".
-            // The recording_id is substituted here with the real value so the
-            // agent can locate the file without ambiguity.
-            const tracePath = `<data_dir>/recordings/${recordingId}.jsonl` +
-              ` (resolve <data_dir> from your runtime config; the file is` +
-              ` "${recordingId}.jsonl" in the daemon's recordings directory)`;
+            // The daemon substitutes {{NEVOFLUX_RECORDINGS_DIR}} → absolute
+            // recordings dir before the agent processes this message, so the
+            // agent receives a fully-resolved path with no config lookup needed.
+            const tracePath = `{{NEVOFLUX_RECORDINGS_DIR}}/${recordingId}.jsonl`;
             const openingPrompt = buildSkillCreatorOpeningPrompt({ tracePath, goalHint });
 
             const sessionId = `skill_creator_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
