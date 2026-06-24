@@ -386,3 +386,128 @@ export function summarizePackProgress(frame, opId) {
     failed,
   };
 }
+
+/**
+ * Strictly parse + normalize a deep-link `src` value (GitHub-only).
+ *
+ * Accepts:
+ *   github:OWNER/REPO[/SUB/DIR][@REF]
+ *   https://github.com/OWNER/REPO[/tree/REF/SUB/DIR]
+ * Rejects everything else (local paths, file:/javascript:, non-github https,
+ * git@/ssh, control chars, path traversal, overlong input). On success returns
+ * the canonical `github:` form so exactly one wire shape reaches the daemon.
+ *
+ * @param {unknown} raw  the (already URL-decoded) ?src value
+ * @returns {{ok: boolean, source?: string, display?: string, error?: string}}
+ */
+export function parsePackInstallSrc(raw) {
+  if (typeof raw !== 'string') return { ok: false, error: 'missing source' };
+  // Check for control characters BEFORE trimming to catch embedded newlines etc.
+  for (let i = 0; i < raw.length; i++) {
+    const code = raw.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) return { ok: false, error: 'illegal characters' };
+  }
+  const s = raw.trim();
+  if (!s) return { ok: false, error: 'missing source' };
+  if (s.length > 512) return { ok: false, error: 'source too long' };
+
+  const NAME = /^[A-Za-z0-9._-]+$/;
+  const refOk = (ref) =>
+    ref == null ||
+    (/^[A-Za-z0-9._/-]+$/.test(ref) && !ref.split('/').includes('..'));
+  const segOk = (seg) => NAME.test(seg) && seg !== '..';
+
+  let owner, repo, sub, ref;
+
+  if (s.startsWith('github:')) {
+    let body = s.slice('github:'.length);
+    const at = body.indexOf('@');
+    if (at !== -1) {
+      ref = body.slice(at + 1);
+      body = body.slice(0, at);
+    }
+    const parts = body.split('/').filter(Boolean);
+    if (parts.length < 2) return { ok: false, error: 'expected owner/repo' };
+    [owner, repo] = parts;
+    sub = parts.slice(2);
+  } else if (s.startsWith('https://github.com/')) {
+    const rest = s.slice('https://github.com/'.length).replace(/\/+$/, '');
+    const parts = rest.split('/').filter(Boolean);
+    if (parts.length < 2) return { ok: false, error: 'expected owner/repo' };
+    [owner, repo] = parts;
+    const tail = parts.slice(2);
+    if (tail.length) {
+      if (tail[0] !== 'tree' || tail.length < 2) {
+        return { ok: false, error: 'unsupported github url shape' };
+      }
+      // NOTE: a branch ref containing '/' (e.g. release/v2) is ambiguous in
+      // tree URLs and will mis-split; packhub should use the github:…@ref form.
+      ref = tail[1];
+      sub = tail.slice(2);
+    } else {
+      sub = [];
+    }
+  } else {
+    return { ok: false, error: 'only github sources are allowed' };
+  }
+
+  if (!NAME.test(owner) || !NAME.test(repo)) {
+    return { ok: false, error: 'invalid owner/repo' };
+  }
+  if (sub.some((seg) => !segOk(seg))) {
+    return { ok: false, error: 'invalid subdirectory' };
+  }
+  if (!refOk(ref)) return { ok: false, error: 'invalid ref' };
+
+  let display = `${owner}/${repo}`;
+  if (sub.length) display += `/${sub.join('/')}`;
+  if (ref) display += `@${ref}`;
+  return { ok: true, source: `github:${display}`, display };
+}
+
+/**
+ * Find an installed pack's version by name in the rows from packListToRows.
+ * @param {Array<{name?: string, version?: string}>|null|undefined} rows
+ * @param {string} name
+ * @returns {string|null}
+ */
+export function findInstalledVersion(rows, name) {
+  if (!Array.isArray(rows) || typeof name !== 'string' || !name) return null;
+  const hit = rows.find((r) => r && r.name === name);
+  return hit && typeof hit.version === 'string' ? hit.version : null;
+}
+
+/**
+ * Compare two semver-ish versions. Pre-release suffixes (after '-') are
+ * ignored. Returns -1 if a<b, 0 if equal, 1 if a>b.
+ * @param {string} a
+ * @param {string} b
+ * @returns {-1|0|1}
+ */
+export function comparePackVersions(a, b) {
+  const core = (v) => String(v == null ? '' : v).split('-')[0].split('.').map((n) => parseInt(n, 10) || 0);
+  const pa = core(a);
+  const pb = core(b);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const da = pa[i] || 0;
+    const db = pb[i] || 0;
+    if (da < db) return -1;
+    if (da > db) return 1;
+  }
+  return 0;
+}
+
+/**
+ * Decide the primary action for the deep-link page given the installed version
+ * (or null) and the incoming pack version.
+ * @param {string|null} installedVersion
+ * @param {string} incomingVersion
+ * @returns {{action: 'install'|'update'|'reinstall'|'downgrade', currentVersion: string|null}}
+ */
+export function decidePackAction(installedVersion, incomingVersion) {
+  if (installedVersion == null) return { action: 'install', currentVersion: null };
+  const cmp = comparePackVersions(incomingVersion, installedVersion);
+  const action = cmp > 0 ? 'update' : cmp < 0 ? 'downgrade' : 'reinstall';
+  return { action, currentVersion: installedVersion };
+}

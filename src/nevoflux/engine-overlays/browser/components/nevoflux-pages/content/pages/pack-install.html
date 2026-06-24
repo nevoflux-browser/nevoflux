@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Install Pack — NevoFlux</title>
+  <link rel="stylesheet" href="chrome://nevoflux/content/pages/common.css">
+  <style>
+    body { max-width: 640px; margin: 0 auto; padding: var(--nevoflux-space-2xl); }
+    .pi-card { border: 1px solid var(--nevoflux-border, #ccc); border-radius: 12px; padding: var(--nevoflux-space-xl); }
+    .pi-title { font-size: 20px; font-weight: 700; }
+    .pi-source { font-family: monospace; opacity: 0.8; word-break: break-all; }
+    .pi-section { margin-top: var(--nevoflux-space-lg); }
+    .pi-warn { color: #b00020; }
+    .pi-actions { margin-top: var(--nevoflux-space-xl); display: flex; gap: var(--nevoflux-space-md); }
+    button { padding: 8px 16px; border-radius: 8px; cursor: pointer; }
+    button[disabled] { opacity: 0.5; cursor: not-allowed; }
+    .pi-hidden { display: none; }
+    progress { width: 100%; }
+    pre.pi-preview { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div id="pi-root">
+    <div id="pi-loading">Loading…</div>
+
+    <div id="pi-error" class="pi-card pi-hidden">
+      <div class="pi-title pi-warn">Can't install this pack</div>
+      <p id="pi-error-msg"></p>
+      <p class="pi-source" id="pi-error-src"></p>
+      <div class="pi-actions">
+        <button id="pi-error-retry" class="pi-hidden">Retry</button>
+        <button id="pi-error-settings">Open Packs settings</button>
+      </div>
+    </div>
+
+    <div id="pi-preview" class="pi-card pi-hidden">
+      <div class="pi-title" id="pi-name">Pack</div>
+      <p class="pi-source" id="pi-src"></p>
+      <pre class="pi-preview" id="pi-summary"></pre>
+      <div class="pi-section pi-warn pi-hidden" id="pi-violations"></div>
+      <div class="pi-actions">
+        <button id="pi-primary">Install</button>
+        <button id="pi-cancel">Cancel</button>
+      </div>
+    </div>
+
+    <div id="pi-progress" class="pi-card pi-hidden">
+      <div class="pi-title">Installing…</div>
+      <progress id="pi-bar" max="100" value="0"></progress>
+      <p id="pi-phase"></p>
+    </div>
+
+    <div id="pi-done" class="pi-card pi-hidden">
+      <div class="pi-title" id="pi-done-title">Installed</div>
+      <p id="pi-done-msg"></p>
+      <div class="pi-actions">
+        <button id="pi-done-settings">Open Packs settings</button>
+        <button id="pi-done-close">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="chrome://nevoflux/content/pages/common.js"></script>
+  <script src="chrome://nevoflux/content/pages/pack-install.js"></script>
+</body>
+</html>

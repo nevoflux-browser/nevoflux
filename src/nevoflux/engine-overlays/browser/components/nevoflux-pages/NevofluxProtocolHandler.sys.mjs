@@ -16,6 +16,7 @@ const BUILTIN_ROUTES = {
   plan: 'chrome://nevoflux/content/pages/plan.html',
   render: 'chrome://nevoflux/content/pages/render.html',
   brain: 'chrome://nevoflux/content/pages/brain.html',
+  'pack-install': 'chrome://nevoflux/content/pages/pack-install.html',
 };
 
 /**
