@@ -7503,11 +7503,27 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
           // recording_id and the path pattern so the agent can locate the file
           // without the extension needing to know the absolute recordings_dir.
           if (recordingId) {
-            const tracePath = `<recordings_dir>/${recordingId}.jsonl`;
+            // Fix 2: the extension has no RPC to learn the daemon's absolute
+            // data dir (no data_dir / get_config / paths field exists in the
+            // protocol). The daemon agent runs in the same process as the
+            // recorder and has direct filesystem access, so we instruct it to
+            // resolve <data_dir> from its own runtime config and read the
+            // recording trace from "<data_dir>/recordings/<recording_id>.jsonl".
+            // The recording_id is substituted here with the real value so the
+            // agent can locate the file without ambiguity.
+            const tracePath = `<data_dir>/recordings/${recordingId}.jsonl` +
+              ` (resolve <data_dir> from your runtime config; the file is` +
+              ` "${recordingId}.jsonl" in the daemon's recordings directory)`;
             const openingPrompt = buildSkillCreatorOpeningPrompt({ tracePath, goalHint });
 
             const sessionId = `skill_creator_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
             const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+            // Fix 1: register the session in canvasSessions so daemon streaming
+            // responses for this session_id are routed back to the sidebar via
+            // bridgePush — mirrors the canonical agent:chat path (lines 2058-2059).
+            canvasSessions.set(sessionId, { active: true, messageId });
+            _activeCanvasSessionId = sessionId;
 
             // Start the skill-creator session in agent mode (needs file I/O
             // to read the jsonl trace and write SKILL.md).
