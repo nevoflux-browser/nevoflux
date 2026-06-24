@@ -7444,7 +7444,7 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
           const recordingId = makeRecordingId([String(tabId), String(_recordingCounter)]);
 
           // Store background-side recording state.
-          activeRecordings.set(tabId, { recording_id: recordingId, goal_hint: goalHint });
+          activeRecordings.set(tabId, { recording_id: recordingId, goal_hint: goalHint, lastNavUrl: '' });
 
           // Set the parent-process singleton (NevofluxBridgeRouter.setRecording)
           // so actorCreated re-arm resolves correctly.
@@ -7627,26 +7627,32 @@ tabEventListeners.onUpdated = async (tabId, changeInfo, _tab) => {
   }
 
   // Emit a navigate step if this tab is being recorded and the URL/status changed.
+  // De-dupe: a single navigation can fire both a changeInfo.url event and a later
+  // changeInfo.status==='complete' event for the same URL. Skip if we already
+  // published this URL for the current recording.
   if (changeInfo.status === 'complete' || changeInfo.url) {
     const rec = activeRecordings.get(tabId);
     if (rec) {
       const navTab = _tab || null;
       const navUrl = navTab?.url || changeInfo.url || '';
-      channelManager.sendToAgent({
-        type: MessageTypes.EVENTS_REQUEST,
-        payload: {
-          action: 'publish',
-          topic: `recording:${rec.recording_id}`,
+      if (navUrl && navUrl !== rec.lastNavUrl) {
+        rec.lastNavUrl = navUrl;
+        channelManager.sendToAgent({
+          type: MessageTypes.EVENTS_REQUEST,
           payload: {
-            type: 'step',
-            action: 'navigate',
-            url: navUrl,
-            ts_ms: Date.now(),
-            wait_after: null,
+            action: 'publish',
+            topic: `recording:${rec.recording_id}`,
+            payload: {
+              type: 'step',
+              action: 'navigate',
+              url: navUrl,
+              ts_ms: Date.now(),
+              wait_after: null,
+            },
+            delivery: 'ephemeral',
           },
-          delivery: 'ephemeral',
-        },
-      });
+        });
+      }
     }
   }
 };

@@ -250,6 +250,15 @@ body {
   background: color-mix(in srgb, var(--nevo-error, #dc2626) 15%, transparent);
 }
 
+.record-cancel-btn {
+  color: var(--nevo-text-secondary);
+}
+
+.record-cancel-btn:hover {
+  background: var(--nevo-surface);
+  color: var(--nevo-text);
+}
+
 /* Active-recording bar: dot + label + stop button inline */
 .record-active-bar {
   display: flex;

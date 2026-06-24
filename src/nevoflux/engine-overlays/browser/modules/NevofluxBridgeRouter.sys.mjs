@@ -190,6 +190,8 @@ export const NevofluxBridgeRouter = {
       } catch (e) {
         console.warn('NevofluxBridgeRouter.notify handler threw', e);
       }
+    } else {
+      console.warn('NevofluxBridgeRouter.notify: no handler registered, dropping', type);
     }
   },
 

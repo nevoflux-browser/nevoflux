@@ -1654,7 +1654,7 @@
         "async": "promise",
         "description": "Set the recording-active state for a tab's top BrowsingContext in the parent-process singleton",
         "parameters": [
-          { "name": "tabId", "type": "integer" },
+          { "name": "tabId", "type": "integer", "optional": true },
           { "name": "info", "type": "any" }
         ],
         "returns": { "$ref": "ApiResult" }
@@ -1665,7 +1665,7 @@
         "async": "promise",
         "description": "Clear the recording-active state for a tab's top BrowsingContext in the parent-process singleton",
         "parameters": [
-          { "name": "tabId", "type": "integer" }
+          { "name": "tabId", "type": "integer", "optional": true }
         ],
         "returns": { "$ref": "ApiResult" }
       }
