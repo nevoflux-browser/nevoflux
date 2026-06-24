@@ -44,6 +44,11 @@ It's OK to briefly explain terms if you're in doubt.
 
 Start by understanding the user's intent. The current conversation might already contain a workflow the user wants to capture (e.g., they say "turn this into a skill"). If so, extract answers from the conversation history first -- the tools used, the sequence of steps, corrections the user made, input/output formats observed. The user may need to fill the gaps, and should confirm before proceeding.
 
+> If the workflow came from a browser recording (a skill-creator session
+> that started from a stopped recording), the demonstration is in a JSONL
+> trace whose path is in the opening prompt. Read it first, then see the
+> **Record & Replay** section.
+
 1. What should this skill enable the agent to do?
 2. When should this skill trigger? (what user phrases/contexts)
 3. What's the expected output format?
@@ -196,6 +201,48 @@ Save test cases to `evals/evals.json`. Don't write assertions yet -- just the pr
 ```
 
 See `references/schemas.md` for the full schema (including the `assertions` field).
+
+## Record & Replay
+
+Sometimes a workflow is easier to *show* than to describe — it is repetitive,
+depends on the user's own preferences, or has fiddly steps that are hard to
+write out. For those, the user can demonstrate the workflow in the browser once
+and you turn that demonstration into a skill. Scope today is **browser use
+only** (in-page interactions plus navigation), not full computer use.
+
+When the user finishes a recording, a skill-creator session starts
+automatically and hands you:
+
+- the path to the recording — a normalized JSONL trace at `{recording_id}.jsonl`
+- a `goal_hint`, the user's own one-line description of the task
+
+A recording is just a demonstrated workflow, which is exactly what **Capture
+Intent** is for. So the flow is the normal one, with three specializations:
+
+1. **Read the trace** (`read_file` on the recording path) and play the workflow
+   back to the user in plain language so they can confirm you understood it.
+2. **Confirm the variables.** The recorder marks *candidate* inputs only
+   (the `input_ref` on the step lines); you present them and let the user decide
+   which values truly vary and which are fixed. Secrets are never baked in —
+   they become inputs supplied at replay.
+3. **Generalize, don't transcribe.** Turn confirmed values into `{{placeholders}}`
+   and write the steps as instructions the agent carries out with browser tools
+   (re-locating elements live by their durable role + name), not a hardcoded
+   selector macro. That is what lets a recorded skill survive DOM drift.
+
+Then continue into the usual draft → validate → eval loop.
+
+For the trace schema, the action-to-tool mapping (`browser_input`-first, plus
+the native-`select` / file-upload / submit special cases), the relocate-then-act
+pattern, and how to test replay, **load `references/record-and-replay.md`**.
+
+One thing worth holding in mind even before you open that file: the recorder
+strips its per-snapshot element ids (`e0`, `e1`, …), and you must keep them out
+of the skill too — they are reassigned on every snapshot, so any skill that
+pins one breaks on the next run. Carry the durable `role` + `name` + ranked
+selectors instead, and let the agent resolve a fresh id at replay.
+
+---
 
 ## Running and evaluating test cases
 
