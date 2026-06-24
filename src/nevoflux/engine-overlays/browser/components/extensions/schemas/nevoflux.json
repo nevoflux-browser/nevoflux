@@ -1647,6 +1647,27 @@
           { "name": "selector", "type": "string" },
           { "name": "options", "type": "object", "optional": true, "additionalProperties": true }
         ]
+      },
+      {
+        "name": "setRecordingState",
+        "type": "function",
+        "async": "promise",
+        "description": "Set the recording-active state for a tab's top BrowsingContext in the parent-process singleton",
+        "parameters": [
+          { "name": "tabId", "type": "integer" },
+          { "name": "info", "type": "any" }
+        ],
+        "returns": { "$ref": "ApiResult" }
+      },
+      {
+        "name": "clearRecordingState",
+        "type": "function",
+        "async": "promise",
+        "description": "Clear the recording-active state for a tab's top BrowsingContext in the parent-process singleton",
+        "parameters": [
+          { "name": "tabId", "type": "integer" }
+        ],
+        "returns": { "$ref": "ApiResult" }
       }
     ],
     "events": [
