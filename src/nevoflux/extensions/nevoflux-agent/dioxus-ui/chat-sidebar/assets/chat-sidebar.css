@@ -205,6 +205,91 @@ body {
   color: var(--nevo-text);
 }
 
+/* Record a Skill — header controls */
+
+/* Idle: record button — subtle until hovered */
+.record-skill-btn {
+  color: var(--nevo-text-secondary);
+}
+
+.record-skill-btn:hover {
+  color: var(--nevo-error, #dc2626);
+}
+
+/* Goal-entry row: input + confirm + cancel inline */
+.record-goal-entry {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.record-goal-input {
+  height: 28px;
+  padding: 0 8px;
+  font-size: var(--nevo-font-size-sm, 12px);
+  font-family: var(--nevo-font-family, system-ui, sans-serif);
+  background: var(--nevo-input-bg, var(--nevo-surface));
+  color: var(--nevo-text);
+  border: 1px solid var(--nevo-border);
+  border-radius: var(--nevo-border-radius-sm, 4px);
+  outline: none;
+  width: 130px;
+  transition: border-color 0.1s ease, box-shadow 0.1s ease;
+}
+
+.record-goal-input:focus {
+  border-color: var(--nevo-error, #dc2626);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--nevo-error, #dc2626) 20%, transparent);
+}
+
+.record-confirm-btn {
+  color: var(--nevo-error, #dc2626);
+}
+
+.record-confirm-btn:hover {
+  background: color-mix(in srgb, var(--nevo-error, #dc2626) 15%, transparent);
+}
+
+/* Active-recording bar: dot + label + stop button inline */
+.record-active-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  height: 28px;
+  background: color-mix(in srgb, var(--nevo-error, #dc2626) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--nevo-error, #dc2626) 35%, transparent);
+  border-radius: var(--nevo-border-radius-sm, 4px);
+}
+
+.record-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--nevo-error, #dc2626);
+  flex-shrink: 0;
+  animation: pulse-recording 1.5s ease-in-out infinite;
+}
+
+.record-label {
+  font-size: var(--nevo-font-size-sm, 12px);
+  font-family: var(--nevo-font-family, system-ui, sans-serif);
+  color: var(--nevo-error, #dc2626);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.record-stop-btn {
+  color: var(--nevo-error, #dc2626);
+  padding: 4px;
+  width: 24px;
+  height: 24px;
+}
+
+.record-stop-btn:hover {
+  background: color-mix(in srgb, var(--nevo-error, #dc2626) 20%, transparent);
+}
+
 /* Dropdown Menu */
 .menu-overlay {
   position: fixed;
