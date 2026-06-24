@@ -16,16 +16,17 @@ export function mapEventToAction(type) {
   }
 }
 
-export function isSecretField({ tag, inputType, name } = {}) {
+export function isSecretField({ tag, inputType, name, autocomplete } = {}) {
   if ((inputType || '').toLowerCase() === 'password') return true;
-  return SECRET_RE.test(name || '');
+  if (SECRET_RE.test(name || '')) return true;
+  return SECRET_RE.test(autocomplete || '');
 }
 
 function snake(s) {
   return String(s || 'value').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'value';
 }
 
-export function buildStep({ action, target, value, inputType, name, url, title, tsMs, waitAfter = null }) {
+export function buildStep({ action, target, value, inputType, name, autocomplete, url, title, tsMs, waitAfter = null }) {
   const step = { type: 'step', action, target: { ...target }, url, title, ts_ms: tsMs, wait_after: waitAfter };
   const isFile = (inputType || '').toLowerCase() === 'file';
   if (isFile) {
@@ -34,7 +35,7 @@ export function buildStep({ action, target, value, inputType, name, url, title, 
     step.input_ref = '{{file}}';
     return step;
   }
-  if (action === 'fill' && isSecretField({ tag: target?.tag, inputType, name })) {
+  if (action === 'fill' && isSecretField({ tag: target?.tag, inputType, name, autocomplete })) {
     step.value = null;
     step.redacted = true;
     return step; // no input_ref for secrets

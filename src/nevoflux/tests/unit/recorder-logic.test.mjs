@@ -27,6 +27,12 @@ describe('recorder-logic: isSecretField', () => {
     expect(isSecretField({ tag: 'input', inputType: 'text', name: 'api_token' })).toBe(true);
     expect(isSecretField({ tag: 'input', inputType: 'text', name: 'email' })).toBe(false);
   });
+  it('flags secret autocomplete values', () => {
+    expect(isSecretField({ inputType: 'text', name: 'x', autocomplete: 'current-password' })).toBe(true);
+    expect(isSecretField({ inputType: 'text', name: 'x', autocomplete: 'new-password' })).toBe(true);
+    expect(isSecretField({ inputType: 'text', name: 'x', autocomplete: 'email' })).toBe(false);
+    expect(isSecretField({ inputType: 'text', name: 'x', autocomplete: 'username' })).toBe(false);
+  });
 });
 
 describe('recorder-logic: buildStep', () => {
@@ -50,6 +56,22 @@ describe('recorder-logic: buildStep', () => {
       value: 'C:/x.pdf', inputType: 'file', name: 'doc', url: 'u', tsMs: 5 });
     expect(s.value).toBe('{{file}}');
     expect(s.target.element_kind).toBe('file');
+  });
+  it('redacts fills when autocomplete signals a secret', () => {
+    const s = buildStep({ action: 'fill', target: { role: 'textbox', name: 'New password' },
+      value: 's3cr3t', inputType: 'text', name: 'pwd_field', autocomplete: 'new-password',
+      url: 'u', tsMs: 5 });
+    expect(s.value).toBe(null);
+    expect(s.redacted).toBe(true);
+    expect(s.input_ref).toBe(undefined);
+  });
+  it('does not redact when autocomplete is non-secret', () => {
+    const s = buildStep({ action: 'fill', target: { role: 'textbox', name: 'Email' },
+      value: 'a@b.c', inputType: 'text', name: 'email', autocomplete: 'email',
+      url: 'u', tsMs: 5 });
+    expect(s.value).toBe('a@b.c');
+    expect(s.redacted).toBe(undefined);
+    expect(s.input_ref).toBe('{{email}}');
   });
 });
 

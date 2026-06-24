@@ -26,9 +26,12 @@ ChromeUtils.defineLazyGetter(lazy, 'a11yService', () => {
 
 const _REC_SECRET_RE = /pass|token|secret|otp|cvv/i;
 
-function _recIsSecretField({ inputType, name } = {}) {
+// Canonical source: src/nevoflux/extensions/nevoflux-agent/content/recorder-logic.mjs
+// This inlined copy MUST stay behaviourally identical to isSecretField() there.
+function _recIsSecretField({ inputType, name, autocomplete } = {}) {
   if ((inputType || '').toLowerCase() === 'password') return true;
-  return _REC_SECRET_RE.test(name || '');
+  if (_REC_SECRET_RE.test(name || '')) return true;
+  return _REC_SECRET_RE.test(autocomplete || '');
 }
 
 function _recSnake(s) {
@@ -57,8 +60,7 @@ function _recBuildStep({ action, target, value, inputType, name, autocomplete, u
     return step;
   }
   // Secret detection: check inputType, name, and autocomplete attribute
-  const secretName = name || autocomplete || '';
-  if (action === 'fill' && _recIsSecretField({ inputType, name: secretName })) {
+  if (action === 'fill' && _recIsSecretField({ inputType, name, autocomplete })) {
     step.value = null;
     step.redacted = true;
     return step; // no input_ref for secrets
@@ -6781,6 +6783,13 @@ export class NevofluxChild extends JSWindowActorChild {
       doc.removeEventListener('blur', this._recOnBlur, true);
     }
 
+    // Clear any pending scroll debounce timer
+    const win = this.contentWindow;
+    if (this._recScrollTimer) {
+      win?.clearTimeout(this._recScrollTimer);
+      this._recScrollTimer = null;
+    }
+
     this._recFillBuffer = null;
     this._recFillTarget = null;
     this._recInfo = null;
@@ -7011,10 +7020,7 @@ export class NevofluxChild extends JSWindowActorChild {
   // Scroll convergence: only emit a scroll step when the document is "settling"
   // (no further scroll within 300 ms). We use a single debounce timer.
   _recHandleScroll(event) {
-    if (!this._recActive) return;
-    // isTrusted check: scroll events from programmatic scrolling may not be
-    // trusted — record all scrolls since passive listener can't distinguish intent;
-    // the daemon/plan-1 filters noise. Guard only on _recActive.
+    if (!event.isTrusted || !this._recActive) return;
     const win = this.contentWindow;
     const doc = this.document;
     if (this._recScrollTimer) {
