@@ -169,4 +169,45 @@ export const NevofluxBridgeRouter = {
       this._sessionTimers.delete(sessionId);
     }
   },
+
+  // ── One-way notify channel (fire-and-forget to background; no pending/timer) ──
+
+  _notifyHandler: null,
+
+  setNotifyHandler(fn) {
+    this._notifyHandler = fn;
+  },
+
+  removeNotifyHandler() {
+    this._notifyHandler = null;
+  },
+
+  /** One-way fire-and-forget to background. No pending entry, no timer. */
+  notify(type, payload) {
+    if (this._notifyHandler) {
+      try {
+        this._notifyHandler(type, payload);
+      } catch (e) {
+        console.warn('NevofluxBridgeRouter.notify handler threw', e);
+      }
+    } else {
+      console.warn('NevofluxBridgeRouter.notify: no handler registered, dropping', type);
+    }
+  },
+
+  // ── Recording-active state (survives navigation; keyed by top BrowsingContext id) ──
+
+  _recordings: new Map(), // bcId(number) -> { recordingId, goalHint }
+
+  setRecording(bcId, info) {
+    this._recordings.set(bcId, info);
+  },
+
+  clearRecording(bcId) {
+    this._recordings.delete(bcId);
+  },
+
+  getRecording(bcId) {
+    return this._recordings.get(bcId) || null;
+  },
 };

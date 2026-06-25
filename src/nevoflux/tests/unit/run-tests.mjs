@@ -14,6 +14,8 @@ import { runner } from './test-runner.mjs';
 import './nevoflux-child.test.mjs';
 import './ext-nevoflux.test.mjs';
 import './pack-ui-logic.test.mjs';
+import './recorder-logic.test.mjs';
+import './handoff-logic.test.mjs';
 
 // Run all tests
 const results = await runner.run();

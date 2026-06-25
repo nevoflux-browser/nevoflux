@@ -500,6 +500,18 @@ export class NevofluxParent extends JSWindowActorParent {
         return { success: true };
       }
 
+      case 'recording:event': {
+        // Fire-and-forget: forward the step/header to background → daemon.
+        lazy.NevofluxBridgeRouter.notify('recording:event', data);
+        return; // one-way, no reply
+      }
+
+      case 'recording:isActive': {
+        // Re-arm pull: the child asks whether its tab is being recorded.
+        const bcId = this.browsingContext?.top?.id;
+        return lazy.NevofluxBridgeRouter.getRecording(bcId); // {recordingId, goalHint}|null
+      }
+
       default:
         return null;
     }

@@ -4,6 +4,10 @@
 
 'use strict';
 
+// DOM-free recording helpers (pure functions; no chrome, no browser.*)
+import { makeRecordingId, buildSkillCreatorOpeningPrompt } from '../content/handoff-logic.mjs';
+import { makeHeader } from '../content/recorder-logic.mjs';
+
 // Immediate debug log to verify script is loading
 console.log('[NevoFlux] Background script starting...');
 
@@ -66,6 +70,10 @@ const BackgroundAPI = {
 
   // System commands (sidebar → agent with async response)
   SYSTEM_COMMAND: 'bg:system_command',
+
+  // Recording control (sidebar → background → actor recording-state singleton)
+  RECORDING_START: 'bg:recording_start',
+  RECORDING_STOP: 'bg:recording_stop',
 
   // Canvas persist save (sidebar pin-to-My-Canvas action)
   CANVAS_PERSIST_SAVE: 'bg:canvas_persist_save',
@@ -178,6 +186,11 @@ const pendingSystemCommands = new Map();
 const eventBusSubscriptions = new Map(); // subscription_id → { source, tabId, bridgeId, patterns }
 const tabSubscriptions = new Map(); // tabId → Set<subscription_id>
 const pendingEventHistoryRequests = new Map(); // requestId → bridgeRequestId
+
+// Recording state: tabId → { recording_id, goal_hint }
+// Survives navigation (lives in background, which is extension-global).
+const activeRecordings = new Map();
+let _recordingCounter = 0;
 
 // Convert SDK delivery string/object to the Rust DeliveryMode JSON shape.
 //   "ephemeral" / "sticky" -> same string (unit variants)
@@ -2630,6 +2643,27 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
   });
 } else {
   console.warn('[NevoFlux] browser.nevoflux API not available, Bridge handler disabled');
+}
+
+// =============================================================================
+// Bridge Notify Handler — one-way recording events from chrome → daemon
+// =============================================================================
+
+if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeNotify) {
+  browser.nevoflux.onBridgeNotify.addListener((type, payload) => {
+    if (type === 'recording:event' && payload && payload.__recording_id) {
+      channelManager.sendToAgent({
+        type: MessageTypes.EVENTS_REQUEST,
+        payload: {
+          action: 'publish',
+          topic: `recording:${payload.__recording_id}`,
+          payload: payload.line,      // the header/step object
+          delivery: 'ephemeral',
+        },
+      });
+    }
+    // One-way: never bridgeRespond
+  });
 }
 
 // =============================================================================
@@ -7392,6 +7426,129 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
       return true; // Keep sendResponse channel open for async response
     }
 
+    case BackgroundAPI.RECORDING_START: {
+      (async () => {
+        try {
+          // Resolve the target tab (caller may supply tab_id, else active tab).
+          const tabId = message.tab_id != null
+            ? message.tab_id
+            : (await browser.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+          if (tabId == null) {
+            sendResponse({ success: false, error: 'No active tab' });
+            return;
+          }
+          const goalHint = message.goal_hint || null;
+
+          // Mint a deterministic recording id from tabId + monotonic counter.
+          _recordingCounter += 1;
+          const recordingId = makeRecordingId([String(tabId), String(_recordingCounter)]);
+
+          // Store background-side recording state.
+          activeRecordings.set(tabId, { recording_id: recordingId, goal_hint: goalHint, lastNavUrl: '' });
+
+          // Set the parent-process singleton (NevofluxBridgeRouter.setRecording)
+          // so actorCreated re-arm resolves correctly.
+          await browser.nevoflux.setRecordingState(tabId, { recordingId, goalHint });
+
+          // Emit the header line to the daemon via EventBus.
+          const tab = await browser.tabs.get(tabId);
+          const headerLine = makeHeader({
+            recordingId,
+            createdAt: Date.now(),
+            startUrl: tab.url || '',
+            goalHint,
+          });
+          channelManager.sendToAgent({
+            type: MessageTypes.EVENTS_REQUEST,
+            payload: {
+              action: 'publish',
+              topic: `recording:${recordingId}`,
+              payload: headerLine,
+              delivery: 'ephemeral',
+            },
+          });
+
+          sendResponse({ success: true, recording_id: recordingId });
+        } catch (err) {
+          console.error('[NevoFlux] RECORDING_START error:', err);
+          sendResponse({ success: false, error: err.message });
+        }
+      })();
+      return true; // Keep sendResponse channel open for async
+    }
+
+    case BackgroundAPI.RECORDING_STOP: {
+      (async () => {
+        try {
+          const tabId = message.tab_id != null
+            ? message.tab_id
+            : (await browser.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+          if (tabId == null) {
+            sendResponse({ success: false, error: 'No active tab' });
+            return;
+          }
+
+          const rec = activeRecordings.get(tabId);
+          const recordingId = rec?.recording_id || null;
+          const goalHint = rec?.goal_hint || '';
+
+          // Clear parent-process singleton first.
+          await browser.nevoflux.clearRecordingState(tabId);
+          // Clean up background state.
+          activeRecordings.delete(tabId);
+
+          // --- Trigger A: auto-start a skill-creator agent session ---
+          // Trace-path strategy (d): the daemon expands the sentinel
+          // {{NEVOFLUX_RECORDINGS_DIR}} in incoming chat text to the absolute
+          // recordings directory before the agent sees the message. We embed
+          // the sentinel so the agent receives a fully-resolved path with no
+          // runtime config lookup required on its side.
+          if (recordingId) {
+            // The daemon substitutes {{NEVOFLUX_RECORDINGS_DIR}} → absolute
+            // recordings dir before the agent processes this message, so the
+            // agent receives a fully-resolved path with no config lookup needed.
+            const tracePath = `{{NEVOFLUX_RECORDINGS_DIR}}/${recordingId}.jsonl`;
+            const openingPrompt = buildSkillCreatorOpeningPrompt({ tracePath, goalHint });
+
+            const sessionId = `skill_creator_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+            // Fix 1: register the session in canvasSessions so daemon streaming
+            // responses for this session_id are routed back to the sidebar via
+            // bridgePush — mirrors the canonical agent:chat path (lines 2058-2059).
+            canvasSessions.set(sessionId, { active: true, messageId });
+            _activeCanvasSessionId = sessionId;
+
+            // Start the skill-creator session in agent mode (needs file I/O
+            // to read the jsonl trace and write SKILL.md).
+            channelManager.sendToAgent({
+              type: MessageTypes.CHAT_MESSAGE,
+              payload: {
+                session_id: sessionId,
+                message_id: messageId,
+                content: openingPrompt,
+                mode: 'agent',
+                attachments: [],
+                local_files: [],
+                tab_id: null,
+                tab_ids: [],
+              },
+            });
+
+            console.log(
+              `[NevoFlux] Trigger A: skill-creator session ${sessionId} started for recording ${recordingId}`
+            );
+          }
+
+          sendResponse({ success: true, recording_id: recordingId });
+        } catch (err) {
+          console.error('[NevoFlux] RECORDING_STOP error:', err);
+          sendResponse({ success: false, error: err.message });
+        }
+      })();
+      return true; // Keep sendResponse channel open for async
+    }
+
     default:
       console.warn('[NevoFlux] Unknown Background API:', apiType);
       sendResponse({ success: false, error: 'Unknown API' });
@@ -7466,6 +7623,36 @@ tabEventListeners.onUpdated = async (tabId, changeInfo, _tab) => {
         type: MessageTypes.TAB_CONTEXT_UPDATE,
         payload: context,
       });
+    }
+  }
+
+  // Emit a navigate step if this tab is being recorded and the URL/status changed.
+  // De-dupe: a single navigation can fire both a changeInfo.url event and a later
+  // changeInfo.status==='complete' event for the same URL. Skip if we already
+  // published this URL for the current recording.
+  if (changeInfo.status === 'complete' || changeInfo.url) {
+    const rec = activeRecordings.get(tabId);
+    if (rec) {
+      const navTab = _tab || null;
+      const navUrl = navTab?.url || changeInfo.url || '';
+      if (navUrl && navUrl !== rec.lastNavUrl) {
+        rec.lastNavUrl = navUrl;
+        channelManager.sendToAgent({
+          type: MessageTypes.EVENTS_REQUEST,
+          payload: {
+            action: 'publish',
+            topic: `recording:${rec.recording_id}`,
+            payload: {
+              type: 'step',
+              action: 'navigate',
+              url: navUrl,
+              ts_ms: Date.now(),
+              wait_after: null,
+            },
+            delivery: 'ephemeral',
+          },
+        });
+      }
     }
   }
 };

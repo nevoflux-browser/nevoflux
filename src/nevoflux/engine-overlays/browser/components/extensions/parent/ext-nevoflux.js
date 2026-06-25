@@ -2273,6 +2273,41 @@ this.nevoflux = class extends ExtensionAPI {
           return { success: true, delivered };
         },
 
+        // ========== Recording State (parent-process singleton) ==========
+
+        async setRecordingState(tabId, info) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          const tab = extension.tabManager.get(resolvedTabId);
+          if (!tab?.browser) {
+            return { success: false, error: { code: -1, message: 'Tab not found', recoverable: false } };
+          }
+          const { NevofluxBridgeRouter } = ChromeUtils.importESModule(
+            'resource:///modules/NevofluxBridgeRouter.sys.mjs'
+          );
+          const bcId = tab.browser.browsingContext?.top?.id;
+          if (bcId == null) {
+            return { success: false, error: { code: -1, message: 'No top BrowsingContext', recoverable: false } };
+          }
+          NevofluxBridgeRouter.setRecording(bcId, info);
+          return { success: true, bcId };
+        },
+
+        async clearRecordingState(tabId) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          const tab = extension.tabManager.get(resolvedTabId);
+          if (!tab?.browser) {
+            return { success: false, error: { code: -1, message: 'Tab not found', recoverable: false } };
+          }
+          const { NevofluxBridgeRouter } = ChromeUtils.importESModule(
+            'resource:///modules/NevofluxBridgeRouter.sys.mjs'
+          );
+          const bcId = tab.browser.browsingContext?.top?.id;
+          if (bcId != null) {
+            NevofluxBridgeRouter.clearRecording(bcId);
+          }
+          return { success: true };
+        },
+
         // ========== Sidebar Layout ==========
 
         async setSidebarWidth(width) {
@@ -2314,6 +2349,24 @@ this.nevoflux = class extends ExtensionAPI {
             NevofluxBridgeRouter.setHandler(handler);
             return () => {
               NevofluxBridgeRouter.removeHandler();
+            };
+          },
+        }).api(),
+
+        onBridgeNotify: new EventManager({
+          context,
+          module: 'nevoflux',
+          event: 'onBridgeNotify',
+          register: (fire) => {
+            const { NevofluxBridgeRouter } = ChromeUtils.importESModule(
+              'resource:///modules/NevofluxBridgeRouter.sys.mjs'
+            );
+            const handler = (type, payload) => {
+              fire.async(type, payload);
+            };
+            NevofluxBridgeRouter.setNotifyHandler(handler);
+            return () => {
+              NevofluxBridgeRouter.removeNotifyHandler();
             };
           },
         }).api(),

@@ -1300,6 +1300,93 @@ pub async fn send_canvas_video_reveal_path(path: &str, action: &str) -> Result<(
     Ok(())
 }
 
+// ============================================
+// Recording Messages (Record & Replay)
+// ============================================
+
+/// Start a browser-activity recording session.
+///
+/// Sends `bg:recording_start` to background.js which mints a recording ID,
+/// sets parent-process recording state, and emits the header line to the daemon.
+///
+/// `goal_hint` is optional; pass an empty string if the user left it blank.
+/// Returns the `recording_id` string on success.
+pub async fn send_recording_start(goal_hint: &str) -> Result<String, String> {
+    let request = serde_json::json!({
+        "type": "bg:recording_start",
+        "goal_hint": if goal_hint.is_empty() { serde_json::Value::Null } else { serde_json::Value::String(goal_hint.to_string()) },
+    });
+
+    let js_value = to_js_value(&request)
+        .map_err(|e| format!("Serialize error: {:?}", e))?;
+
+    let response = JsFuture::from(runtime_send_message(js_value))
+        .await
+        .map_err(|e| format!("Send failed: {:?}", e))?;
+
+    if response.is_undefined() || response.is_null() {
+        return Err("bg:recording_start returned undefined/null".to_string());
+    }
+
+    let response_obj: serde_json::Value = from_js_value(response)
+        .map_err(|e| format!("Parse recording_start response error: {}", e))?;
+
+    if response_obj.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+        let id = response_obj
+            .get("recording_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        Ok(id)
+    } else {
+        Err(response_obj
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("unknown error")
+            .to_string())
+    }
+}
+
+/// Stop the active recording session and trigger the skill-creator session.
+///
+/// Sends `bg:recording_stop` to background.js which clears parent-process
+/// recording state and auto-starts a skill-creator agent session (Trigger A).
+/// Returns the `recording_id` of the stopped session.
+pub async fn send_recording_stop() -> Result<String, String> {
+    let request = serde_json::json!({
+        "type": "bg:recording_stop",
+    });
+
+    let js_value = to_js_value(&request)
+        .map_err(|e| format!("Serialize error: {:?}", e))?;
+
+    let response = JsFuture::from(runtime_send_message(js_value))
+        .await
+        .map_err(|e| format!("Send failed: {:?}", e))?;
+
+    if response.is_undefined() || response.is_null() {
+        return Err("bg:recording_stop returned undefined/null".to_string());
+    }
+
+    let response_obj: serde_json::Value = from_js_value(response)
+        .map_err(|e| format!("Parse recording_stop response error: {}", e))?;
+
+    if response_obj.get("success").and_then(|v| v.as_bool()).unwrap_or(false) {
+        let id = response_obj
+            .get("recording_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        Ok(id)
+    } else {
+        Err(response_obj
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("unknown error")
+            .to_string())
+    }
+}
+
 /// Async sleep using JavaScript setTimeout
 pub async fn sleep_ms(ms: u32) {
     let promise = js_sys::Promise::new(&mut |resolve, _| {
