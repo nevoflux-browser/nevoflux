@@ -16,12 +16,13 @@ The user demonstrates a workflow by driving the browser themselves. A passive
 recorder in the page actor observes their real interactions (it never blocks
 them) and a daemon-side collector writes a normalized, ordered, lossless trace.
 
-When the user stops recording, a skill-creator session starts automatically
-(trigger model A). The opening prompt hands you two things:
-
-- the path to the recording, a JSONL file at `{recording_id}.jsonl`
-- a one-line `goal_hint` the user typed before recording (their intent in their
-  own words)
+You drive the recording yourself from inside the skill-creator session, in
+agent mode. `start_recording` (with a one-line `goal_hint`) arms the recorder on
+the active tab and returns `{ recording_id, trace_path }`; you then tell the
+user to demonstrate the workflow, and when they say they are done you call
+`stop_recording` with the `recording_id`. `trace_path` is the **absolute path**
+to the recording — a JSONL file at `{recording_id}.jsonl` — which you read
+directly (no further path resolution needed).
 
 Read the whole file with `read_file`. It is **NDJSON**: the first line is a
 `header` record and every other line is a normalized `step`. **Sort the step
