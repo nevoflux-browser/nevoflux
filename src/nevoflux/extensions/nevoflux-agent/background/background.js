@@ -1617,6 +1617,12 @@ class ChannelManager {
         // action and forwarding there causes a silent Deserialize-error drop
         // and the daemon waits forever (until registry cleanup at 10 min).
         'extractVisualIdentity',
+        // Record & Replay: arm/disarm recording via browser.nevoflux API;
+        // sidebar WASM IncomingMessage enum has no handler for these actions —
+        // forwarding there causes a silent Deserialize-error drop and the
+        // daemon's oneshot never fires (30s timeout, no recording armed).
+        'recording_start',
+        'recording_stop',
       ]);
       if (DIRECT_ACTIONS.has(action)) {
         console.log(`[NevoFlux] Handling ${action} directly (bypassing sidebar)`);
