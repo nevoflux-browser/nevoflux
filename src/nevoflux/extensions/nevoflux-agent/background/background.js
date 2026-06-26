@@ -3474,6 +3474,28 @@ async function executeBrowserTool(request, caller = 'unknown') {
       case 'extractVisualIdentity':
         return await executeExtractVisualIdentity(params, targetTabId, timeout_ms);
 
+      // Recording control — arm/disarm the chrome-side recorder for the
+      // active tab. Dispatched by the agent's start_recording/stop_recording
+      // tools. tab_id is always null (daemon passes no tab); targetTabId is
+      // resolved by the dispatcher above via getActiveTabId().
+      case 'recording_start': {
+        const { recording_id: recordingId, goal_hint: goalHint = '' } = params || {};
+        if (!recordingId) {
+          return {
+            success: false,
+            error: { code: -1, message: 'recording_start: missing recording_id', recoverable: false },
+          };
+        }
+        await browser.nevoflux.setRecordingState(targetTabId, { recordingId, goalHint });
+        const startTab = await browser.tabs.get(targetTabId);
+        return { success: true, result: { start_url: startTab.url || '' } };
+      }
+
+      case 'recording_stop': {
+        await browser.nevoflux.clearRecordingState(targetTabId);
+        return { success: true, result: {} };
+      }
+
       default:
         return {
           success: false,
