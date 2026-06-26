@@ -5,7 +5,7 @@
 'use strict';
 
 // DOM-free recording helpers (pure functions; no chrome, no browser.*)
-import { makeRecordingId, buildSkillCreatorOpeningPrompt } from '../content/handoff-logic.mjs';
+import { makeRecordingId } from '../content/handoff-logic.mjs';
 import { makeHeader } from '../content/recorder-logic.mjs';
 
 // Immediate debug log to verify script is loading
@@ -7496,49 +7496,6 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
           await browser.nevoflux.clearRecordingState(tabId);
           // Clean up background state.
           activeRecordings.delete(tabId);
-
-          // --- Trigger A: auto-start a skill-creator agent session ---
-          // Trace-path strategy (d): the daemon expands the sentinel
-          // {{NEVOFLUX_RECORDINGS_DIR}} in incoming chat text to the absolute
-          // recordings directory before the agent sees the message. We embed
-          // the sentinel so the agent receives a fully-resolved path with no
-          // runtime config lookup required on its side.
-          if (recordingId) {
-            // The daemon substitutes {{NEVOFLUX_RECORDINGS_DIR}} → absolute
-            // recordings dir before the agent processes this message, so the
-            // agent receives a fully-resolved path with no config lookup needed.
-            const tracePath = `{{NEVOFLUX_RECORDINGS_DIR}}/${recordingId}.jsonl`;
-            const openingPrompt = buildSkillCreatorOpeningPrompt({ tracePath, goalHint });
-
-            const sessionId = `skill_creator_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-            const messageId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-
-            // Fix 1: register the session in canvasSessions so daemon streaming
-            // responses for this session_id are routed back to the sidebar via
-            // bridgePush — mirrors the canonical agent:chat path (lines 2058-2059).
-            canvasSessions.set(sessionId, { active: true, messageId });
-            _activeCanvasSessionId = sessionId;
-
-            // Start the skill-creator session in agent mode (needs file I/O
-            // to read the jsonl trace and write SKILL.md).
-            channelManager.sendToAgent({
-              type: MessageTypes.CHAT_MESSAGE,
-              payload: {
-                session_id: sessionId,
-                message_id: messageId,
-                content: openingPrompt,
-                mode: 'agent',
-                attachments: [],
-                local_files: [],
-                tab_id: null,
-                tab_ids: [],
-              },
-            });
-
-            console.log(
-              `[NevoFlux] Trigger A: skill-creator session ${sessionId} started for recording ${recordingId}`
-            );
-          }
 
           sendResponse({ success: true, recording_id: recordingId });
         } catch (err) {
