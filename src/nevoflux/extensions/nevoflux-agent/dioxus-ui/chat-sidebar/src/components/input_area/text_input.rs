@@ -593,6 +593,48 @@ pub fn TextInput(disabled: bool) -> Element {
             // Falls through to normal send if parser rejects (e.g. "/loop ").
         }
 
+        // /record slash-command path.
+        // "/record" or "/record <goal>" → start recording with optional goal hint.
+        // "/record stop" → stop an active recording.
+        if text == "/record" || text.starts_with("/record ") {
+            let remainder = text
+                .strip_prefix("/record")
+                .unwrap_or("")
+                .trim()
+                .to_string();
+
+            input_text.set(String::new());
+            rows.set(1);
+            show_tab_selector.set(false);
+            attached_files.set(Vec::new());
+
+            ctx.messages.write().push(Message::user(&text));
+
+            if remainder == "stop" || remainder == "-stop" {
+                // Stop recording
+                ctx.messages.write().push(Message::assistant(
+                    "\u{23F9} Recording stopped \u{2014} generating skill from your demonstration\u{2026}",
+                ));
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Err(e) = crate::messaging::send_recording_stop().await {
+                        tracing::error!("[Sidebar] send_recording_stop failed: {}", e);
+                    }
+                });
+            } else {
+                // Start recording; remainder is the goal hint (may be empty)
+                let goal = remainder.clone();
+                ctx.messages.write().push(Message::assistant(
+                    "\u{1F534} Recording started \u{2014} demonstrate your workflow in the page, then type `/record stop` to finish.",
+                ));
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Err(e) = crate::messaging::send_recording_start(&goal).await {
+                        tracing::error!("[Sidebar] send_recording_start failed: {}", e);
+                    }
+                });
+            }
+            return;
+        }
+
         input_text.set(String::new());
         rows.set(1);
         show_tab_selector.set(false);
@@ -997,7 +1039,7 @@ pub fn TextInput(disabled: bool) -> Element {
             textarea {
                 class: "text-input",
                 class: if current_rows > 1 { "expanded" },
-                placeholder: "Message Agentic Chat... (/ skills, @ tabs)",
+                placeholder: "Message Agentic Chat... (/ skills, @ tabs, /record a skill)",
                 disabled: disabled,
                 value: "{input_text}",
                 oninput: handle_input,
