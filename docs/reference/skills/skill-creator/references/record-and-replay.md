@@ -183,8 +183,20 @@ State these as explicit branches in the skill so it never misroutes:
 ## allowed_tools and replay mode
 
 In the generated skill's frontmatter, declare the browser tools it needs in
-`allowed_tools` (e.g. `browser_*`) so the skill is only injected when those
-tools are present. A recorded skill is useless in a text-only run.
+`allowed_tools` so the skill is only injected when those tools are present. A
+recorded skill is useless in a text-only run.
+
+**`allowed_tools` must be a YAML sequence, not a bare scalar.** Write the list
+form — a bare string like `allowed_tools: browser_*` is the most common
+generation mistake (it parsed as a string and the whole skill was silently
+dropped at load time):
+
+```yaml
+allowed_tools:
+  - browser_*
+```
+
+The same applies to `tags`, `dependencies`, and `triggers` — always lists.
 
 Remember the mode is fixed when a run starts — the tool catalog comes from
 `get_tools_for_mode` at launch and cannot be escalated mid-run. So replay (and
