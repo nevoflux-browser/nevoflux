@@ -44,10 +44,10 @@ It's OK to briefly explain terms if you're in doubt.
 
 Start by understanding the user's intent. The current conversation might already contain a workflow the user wants to capture (e.g., they say "turn this into a skill"). If so, extract answers from the conversation history first -- the tools used, the sequence of steps, corrections the user made, input/output formats observed. The user may need to fill the gaps, and should confirm before proceeding.
 
-> If the workflow came from a browser recording (a skill-creator session
-> that started from a stopped recording), the demonstration is in a JSONL
-> trace whose path is in the opening prompt. Read it first, then see the
-> **Record & Replay** section.
+> If the user would rather *show* you the workflow than describe it, you can
+> record their demonstration and turn the resulting JSONL trace into the skill.
+> You drive this yourself with the `start_recording` / `stop_recording` tools
+> (agent mode) — see the **Record & Replay** section.
 
 1. What should this skill enable the agent to do?
 2. When should this skill trigger? (what user phrases/contexts)
@@ -210,14 +210,28 @@ write out. For those, the user can demonstrate the workflow in the browser once
 and you turn that demonstration into a skill. Scope today is **browser use
 only** (in-page interactions plus navigation), not full computer use.
 
-When the user finishes a recording, a skill-creator session starts
-automatically and hands you:
+You run the recording yourself, in **agent mode** — the `start_recording` /
+`stop_recording` tools are agent-mode only. The flow:
 
-- the path to the recording — a normalized JSONL trace at `{recording_id}.jsonl`
-- a `goal_hint`, the user's own one-line description of the task
+1. **Start.** Call `start_recording` with a one-line `goal_hint` that captures
+   what the user wants the skill to do. It arms a passive recorder on the active
+   tab and returns `{ recording_id, trace_path }`; hold on to both. The
+   `trace_path` is an absolute path you read directly once recording stops.
+2. **Hand the browser to the user.** Tell them recording has started, to perform
+   the workflow themselves in the page now (the recorder watches their real
+   interactions and never blocks them), and to say when they are done —
+   e.g. "录制完成" / "done" / "stop recording".
+3. **Stop.** When they signal they are finished, call `stop_recording` with the
+   `recording_id`. Keep this turn in agent mode: if the session dropped to chat
+   mode, `stop_recording` will not be in the catalog — ask the user to switch
+   back to agent mode and tell you they are done again.
+
+If `start_recording` is not available at all, the run is not in agent mode —
+ask the user to switch to agent mode and re-invoke the skill.
 
 A recording is just a demonstrated workflow, which is exactly what **Capture
-Intent** is for. So the flow is the normal one, with three specializations:
+Intent** is for. So from here the flow is the normal one, with three
+specializations:
 
 1. **Read the trace** (`read_file` on the recording path) and play the workflow
    back to the user in plain language so they can confirm you understood it.

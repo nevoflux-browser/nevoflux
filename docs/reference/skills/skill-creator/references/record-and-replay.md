@@ -16,12 +16,13 @@ The user demonstrates a workflow by driving the browser themselves. A passive
 recorder in the page actor observes their real interactions (it never blocks
 them) and a daemon-side collector writes a normalized, ordered, lossless trace.
 
-When the user stops recording, a skill-creator session starts automatically
-(trigger model A). The opening prompt hands you two things:
-
-- the path to the recording, a JSONL file at `{recording_id}.jsonl`
-- a one-line `goal_hint` the user typed before recording (their intent in their
-  own words)
+You drive the recording yourself from inside the skill-creator session, in
+agent mode. `start_recording` (with a one-line `goal_hint`) arms the recorder on
+the active tab and returns `{ recording_id, trace_path }`; you then tell the
+user to demonstrate the workflow, and when they say they are done you call
+`stop_recording` with the `recording_id`. `trace_path` is the **absolute path**
+to the recording — a JSONL file at `{recording_id}.jsonl` — which you read
+directly (no further path resolution needed).
 
 Read the whole file with `read_file`. It is **NDJSON**: the first line is a
 `header` record and every other line is a normalized `step`. **Sort the step
@@ -182,8 +183,20 @@ State these as explicit branches in the skill so it never misroutes:
 ## allowed_tools and replay mode
 
 In the generated skill's frontmatter, declare the browser tools it needs in
-`allowed_tools` (e.g. `browser_*`) so the skill is only injected when those
-tools are present. A recorded skill is useless in a text-only run.
+`allowed_tools` so the skill is only injected when those tools are present. A
+recorded skill is useless in a text-only run.
+
+**`allowed_tools` must be a YAML sequence, not a bare scalar.** Write the list
+form — a bare string like `allowed_tools: browser_*` is the most common
+generation mistake (it parsed as a string and the whole skill was silently
+dropped at load time):
+
+```yaml
+allowed_tools:
+  - browser_*
+```
+
+The same applies to `tags`, `dependencies`, and `triggers` — always lists.
 
 Remember the mode is fixed when a run starts — the tool catalog comes from
 `get_tools_for_mode` at launch and cannot be escalated mid-run. So replay (and
