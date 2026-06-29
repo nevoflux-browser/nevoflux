@@ -77,6 +77,15 @@ jobs:
           cp nevoflux-agent nevoflux/distribution/bin/nevoflux-agent
           chmod +x nevoflux/distribution/bin/nevoflux-agent
 
+          # Refresh ONNX Runtime lib/ to match the swapped binary. The agent is an
+          # ort-load-dynamic build and resolves <bin>/lib/libonnxruntime.so at
+          # startup; a stale/missing lib makes the embedder deadlock on first use.
+          if [ -d lib ]; then
+            rm -rf nevoflux/distribution/bin/lib
+            cp -r lib nevoflux/distribution/bin/lib
+            echo "Refreshed ONNX Runtime lib/"
+          fi
+
           # Repack tarball
           rm "nevoflux.linux-${{ matrix.arch }}.tar.xz"
           tar -cJf "nevoflux.linux-${{ matrix.arch }}.tar.xz" nevoflux/
@@ -151,6 +160,17 @@ jobs:
               cp "$AGENT_SRC" browser-contents/distribution/bin/nevoflux-agent.exe
             fi
             echo "Injected agent binary into distribution/bin/"
+          fi
+
+          # Refresh ONNX Runtime lib/ next to the agent (ort-load-dynamic resolves
+          # <bin>/lib/onnxruntime.dll); a stale/missing lib deadlocks the embedder.
+          if [ -d agent-contents/lib ]; then
+            BIN_DST=$(dirname "$(find browser-contents -path '*/distribution/bin/nevoflux-agent.exe' -type f | head -1)")
+            if [ -n "$BIN_DST" ]; then
+              rm -rf "$BIN_DST/lib"
+              cp -r agent-contents/lib "$BIN_DST/lib"
+              echo "Refreshed ONNX Runtime lib/ at $BIN_DST/lib"
+            fi
           fi
 
           # Repack zip
@@ -235,6 +255,29 @@ jobs:
             cp nevoflux-agent-universal "$AGENT_PATH"
             chmod +x "$AGENT_PATH"
             echo "Injected agent at: $AGENT_PATH"
+          fi
+
+          # Refresh ONNX Runtime dylib to match the swapped (universal) binary.
+          # The app is universal, so lipo the per-arch dylibs when both exist.
+          # NOTE: the agent release currently bundles ORT only for arm64
+          # (release.yml has no osx-x64 case), so we fall back to whatever is
+          # present. Full universal coverage needs the agent repo to also bundle
+          # the osx-x64 ONNX Runtime.
+          APP_LIB="dmg-contents/${APP_NAME}/Contents/Resources/distribution/bin/lib"
+          if [ -f agent-x86_64/lib/libonnxruntime.dylib ] && [ -f agent-aarch64/lib/libonnxruntime.dylib ]; then
+            mkdir -p "$APP_LIB"
+            lipo -create -output "$APP_LIB/libonnxruntime.dylib" \
+              agent-x86_64/lib/libonnxruntime.dylib \
+              agent-aarch64/lib/libonnxruntime.dylib
+            echo "Refreshed universal ONNX Runtime dylib at $APP_LIB"
+          elif [ -d agent-aarch64/lib ]; then
+            rm -rf "$APP_LIB"
+            cp -r agent-aarch64/lib "$APP_LIB"
+            echo "::warning::Refreshed ONNX Runtime lib/ from arm64 only (no osx-x64 ORT in agent release)"
+          elif [ -d agent-x86_64/lib ]; then
+            rm -rf "$APP_LIB"
+            cp -r agent-x86_64/lib "$APP_LIB"
+            echo "::warning::Refreshed ONNX Runtime lib/ from x86_64 only"
           fi
 
           # Create new compressed DMG
