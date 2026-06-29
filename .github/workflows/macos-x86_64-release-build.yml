@@ -230,12 +230,12 @@ jobs:
               cp -r /tmp/agent/models build/AppDir/distribution/bin/models
               echo "Models directory installed"
             fi
-            # Copy ONNX Runtime lib/ (ort-load-dynamic resolves <bin>/lib/libonnxruntime.dylib);
-            # without it the embedder deadlocks on first use on a clean install.
-            if [ -d "/tmp/agent/lib" ]; then
-              cp -r /tmp/agent/lib build/AppDir/distribution/bin/lib
-              echo "ONNX Runtime lib installed"
-            fi
+            # NOTE: ONNX Runtime is intentionally NOT bundled on macOS per-arch here.
+            # ORT 1.24.x ships no Intel-macOS build (the x86_64 agent is no_embedding),
+            # so only arm64 has a dylib. Injecting it per-arch leaves the file in the
+            # arm64 .app but not the x86_64 .app, and the universal build's unify.py
+            # fails trying to lipo it into a fat binary. Bundling arm64 ORT for Apple
+            # Silicon must instead be done post-unify in macos-universal-release-build.yml.
           else
             echo "::notice::No agent binary available for ${PLATFORM}-${ARCH}, build continues without it."
           fi
