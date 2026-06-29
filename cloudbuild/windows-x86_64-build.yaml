@@ -181,6 +181,11 @@ steps:
           if [ -d "/tmp/agent/models" ]; then
             cp -r /tmp/agent/models build/AppDir/distribution/bin/models
           fi
+          # ONNX Runtime lib/ (ort-load-dynamic resolves <bin>/lib/onnxruntime.dll);
+          # without it the embedder deadlocks on first use on a clean install.
+          if [ -d "/tmp/agent/lib" ]; then
+            cp -r /tmp/agent/lib build/AppDir/distribution/bin/lib
+          fi
         fi
 
         # ---- soul templates ----
@@ -369,6 +374,11 @@ steps:
             mv /tmp/agent/nevoflux-agent build/AppDir/distribution/bin/nevoflux-agent.exe || true
           if [ -d "/tmp/agent/models" ]; then
             cp -r /tmp/agent/models build/AppDir/distribution/bin/models
+          fi
+          # ONNX Runtime lib/ (ort-load-dynamic resolves <bin>/lib/onnxruntime.dll);
+          # without it the embedder deadlocks on first use on a clean install.
+          if [ -d "/tmp/agent/lib" ]; then
+            cp -r /tmp/agent/lib build/AppDir/distribution/bin/lib
           fi
         fi
 

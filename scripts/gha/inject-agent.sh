@@ -14,6 +14,7 @@
 # Output:
 #   $APPDIR_ROOT/AppDir-<arch>/distribution/bin/nevoflux-agent.exe
 #   $APPDIR_ROOT/AppDir-<arch>/distribution/bin/models/ (if present in zip)
+#   $APPDIR_ROOT/AppDir-<arch>/distribution/bin/lib/ (ONNX Runtime, if present in zip)
 #   $APPDIR_ROOT/AppDir-<arch>/distribution/bin/defaults/soul/*.md
 #   $APPDIR_ROOT/AppDir-<arch>/distribution/bin/defaults/skills/
 #
@@ -106,6 +107,15 @@ else
     if [ -d "$TMP_DIR/models" ]; then
       cp -r "$TMP_DIR/models" "$BIN_DIR/models"
       echo "Placed: $BIN_DIR/models/"
+    fi
+
+    # ONNX Runtime dynamic library. The agent is an ort-load-dynamic build and
+    # resolves <bin>/lib/onnxruntime.dll at startup; the release zip ships it
+    # under lib/. Without copying it the embedder gets no ONNX Runtime and
+    # deadlocks on the first embedding call (KB write/search, semantic memory).
+    if [ -d "$TMP_DIR/lib" ]; then
+      cp -r "$TMP_DIR/lib" "$BIN_DIR/lib"
+      echo "Placed: $BIN_DIR/lib/"
     fi
   fi
 fi

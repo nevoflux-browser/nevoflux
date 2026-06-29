@@ -110,6 +110,59 @@ fi
 
 rm -rf "$TMP"
 
+# Test 5: a successful download bundles the agent binary + lib/ (ONNX Runtime) +
+# models/. Regression guard for the dropped-lib shipping bug that left
+# embeddings (KB, semantic memory) deadlocked on clean installs.
+if command -v python3 >/dev/null 2>&1; then
+  TMP=$(mktemp -d)
+  mkdir -p "$TMP/bin" "$TMP/payload/lib" "$TMP/payload/models/fastembed"
+  : > "$TMP/payload/nevoflux-agent.exe"
+  : > "$TMP/payload/lib/onnxruntime.dll"
+  : > "$TMP/payload/models/fastembed/model.onnx"
+  ZIP_SRC="$TMP/agent.zip"
+  python3 -c "import shutil,sys; shutil.make_archive(sys.argv[1], 'zip', sys.argv[2])" \
+    "${ZIP_SRC%.zip}" "$TMP/payload"
+
+  # Mock gh: report a tag, list the asset, and "download" by copying our zip.
+  cat > "$TMP/bin/gh" <<'MOCK'
+#!/usr/bin/env bash
+case "$*" in
+  *"--json tagName"*) echo "v0.0.0-test" ;;
+  *"--json assets"*)  echo "nevoflux-agent-windows-x86_64.zip" ;;
+  *"release download"*)
+    out=""; want=0
+    for a in "$@"; do
+      [ "$want" = "1" ] && { out="$a"; want=0; }
+      [ "$a" = "--dir" ] && want=1
+    done
+    cp "$NEVOTEST_ZIP" "$out/nevoflux-agent-windows-x86_64.zip"
+    ;;
+esac
+exit 0
+MOCK
+  chmod +x "$TMP/bin/gh"
+
+  set +e
+  (
+    cd "$REPO_ROOT"
+    PATH="$TMP/bin:$PATH" \
+    APPDIR_ROOT="$TMP/build" \
+    AGENT_REPO="fake/repo" \
+    NEVOTEST_ZIP="$ZIP_SRC" \
+    bash scripts/gha/inject-agent.sh x86_64 >"$TMP/out.log" 2>&1
+  )
+  rc=$?
+  set -e
+  assert_eq "x86_64-download-exits-zero" "0" "$rc"
+  BIN="$TMP/build/AppDir-x86_64/distribution/bin"
+  if [ -f "$BIN/nevoflux-agent.exe" ]; then assert_eq "x86_64-agent-binary-placed" "yes" "yes"; else assert_eq "x86_64-agent-binary-placed" "yes" "no"; fi
+  if [ -f "$BIN/lib/onnxruntime.dll" ]; then assert_eq "x86_64-onnxruntime-lib-placed" "yes" "yes"; else assert_eq "x86_64-onnxruntime-lib-placed" "yes" "no"; fi
+  if [ -d "$BIN/models" ]; then assert_eq "x86_64-models-placed" "yes" "yes"; else assert_eq "x86_64-models-placed" "yes" "no"; fi
+  rm -rf "$TMP"
+else
+  echo "SKIP: x86_64-onnxruntime-lib-placed (python3 unavailable to build test zip)"
+fi
+
 echo
 echo "Passed: $PASS"
 echo "Failed: $FAIL"

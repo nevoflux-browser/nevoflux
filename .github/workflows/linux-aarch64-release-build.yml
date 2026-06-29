@@ -178,6 +178,12 @@ jobs:
               cp -r /tmp/agent/models build/AppDir/distribution/bin/models
               echo "Models directory installed"
             fi
+            # Copy ONNX Runtime lib/ (ort-load-dynamic resolves <bin>/lib/libonnxruntime.so);
+            # without it the embedder deadlocks on first use on a clean install.
+            if [ -d "/tmp/agent/lib" ]; then
+              cp -r /tmp/agent/lib build/AppDir/distribution/bin/lib
+              echo "ONNX Runtime lib installed"
+            fi
           else
             echo "::notice::No agent binary available for ${PLATFORM}-${ARCH}, build continues without it."
           fi
