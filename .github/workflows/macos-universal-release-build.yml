@@ -252,6 +252,32 @@ jobs:
           ./mach python "./toolkit/mozapps/installer/unify.py" "./obj-x86_64-apple-darwin/dist/${{ env.APP_NAME }}.app" "./obj-aarch64-apple-darwin/dist/${{ env.APP_NAME }}.app"
           echo "Merged aarch64 into x86_64!"
 
+      - name: Bundle arm64 ONNX Runtime into universal app (Apple Silicon)
+        run: |
+          set -ex
+          cd engine
+          # ONNX Runtime 1.24.x ships no Intel-macOS build, so libonnxruntime.dylib
+          # cannot be a fat binary and cannot go through unify.py (per-arch injection
+          # leaves it in one .app but not the other and breaks the universal build).
+          # Inject the arm64 dylib into the already-unified app HERE — before
+          # precomplete/sign/dmg/mar — so it is listed, signed, notarized and
+          # packaged. Apple Silicon loads it (KB works); Intel Macs run the x86_64
+          # slice and won't load it (unavoidable — ORT has no Intel build).
+          # Keep ORT_V in lockstep with the agent repo's release.yml ORT_VERSION.
+          ORT_V="1.24.2"
+          url="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_V}/onnxruntime-osx-arm64-${ORT_V}.tgz"
+          for attempt in 1 2 3; do
+            curl -fsSL "$url" -o /tmp/ort-arm64.tgz && break
+            echo "::warning::ONNX Runtime download attempt $attempt/3 failed; retrying in 15s"; sleep 15
+          done
+          tar xzf /tmp/ort-arm64.tgz -C /tmp
+          APP="./obj-x86_64-apple-darwin/dist/${{ env.APP_NAME }}.app"
+          LIBDIR="$APP/Contents/Resources/distribution/bin/lib"
+          mkdir -p "$LIBDIR"
+          cp "/tmp/onnxruntime-osx-arm64-${ORT_V}/lib/libonnxruntime.${ORT_V}.dylib" "$LIBDIR/libonnxruntime.dylib"
+          echo "Injected arm64 libonnxruntime.dylib (${ORT_V}) into $LIBDIR"
+          ls -la "$LIBDIR"
+
       - name: Regenerate precomplete after unify
         run: |
           set -ex
