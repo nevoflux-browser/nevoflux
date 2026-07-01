@@ -16,12 +16,14 @@ const PackInstall = {
   _parsed: null,
   _inspect: null,
   _decision: null,
+  _rawSrc: '',
 
   async init() {
     this._logic = await import('chrome://nevoflux/content/pages/pack-ui-logic.mjs');
     this._wireStaticButtons();
 
     const src = new URLSearchParams(window.location.search).get('src');
+    this._rawSrc = src || ''; // reported to the website on a successful install
     const parsed = this._logic.parsePackInstallSrc(src);
     if (!parsed.ok) {
       this._showError(parsed.error || 'Unrecognized pack source', src || '(none)', false);
@@ -162,6 +164,7 @@ const PackInstall = {
       if (!opId) throw new Error('daemon did not return an op_id for wait:false install');
 
       await completion;
+      this._reportInstall();
       this._showDone();
     } catch (e) {
       this._showError(this._logic.packErrorMessage(e), this._parsed.display, true);
@@ -176,6 +179,24 @@ const PackInstall = {
         await NevofluxPage.sendQuery('events:channel_close', { channelId });
       } catch (_) {}
     }
+  },
+
+  /**
+   * Best-effort: tell the website an install succeeded so it can bump the
+   * pack's install count. Keyed by the raw `src` (equals pack.install_src).
+   * Cross-origin from chrome://, fire-and-forget — failures are non-fatal and
+   * must never block the install UI.
+   */
+  _reportInstall() {
+    const src = this._rawSrc;
+    if (!src) return;
+    try {
+      fetch('https://nevoflux.app/api/packs/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ src }),
+      }).catch(() => {});
+    } catch (_) {}
   },
 
   _showDone() {
