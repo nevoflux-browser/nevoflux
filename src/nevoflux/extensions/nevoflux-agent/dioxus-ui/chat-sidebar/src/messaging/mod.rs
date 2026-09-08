@@ -10,6 +10,7 @@ mod bridge;
 mod browser_tools;
 pub mod device_login;
 pub mod device_pair;
+pub mod devices;
 mod handler;
 mod sender;
 

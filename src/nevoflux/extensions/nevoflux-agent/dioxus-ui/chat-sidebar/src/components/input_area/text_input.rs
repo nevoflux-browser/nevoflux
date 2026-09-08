@@ -708,6 +708,45 @@ pub fn TextInput(disabled: bool) -> Element {
             return;
         }
 
+        // /devices and /unpair: what can reach this machine, and how to stop
+        // it. Same handling as the two above — the daemon answers them as
+        // system commands, not as a chat turn.
+        if text.trim() == "/devices" {
+            input_text.set(String::new());
+            rows.set(1);
+            show_tab_selector.set(false);
+            attached_files.set(Vec::new());
+
+            ctx.messages.write().push(Message::user(&text));
+            let messages = ctx.messages;
+            wasm_bindgen_futures::spawn_local(async move {
+                crate::messaging::devices::list(messages).await;
+            });
+            return;
+        }
+
+        // Bare `/unpair` is caught too, so it answers with what to type rather
+        // than going to the model as a chat turn about unpairing.
+        if text.trim() == "/unpair" || text.trim().starts_with("/unpair ") {
+            let typed = text
+                .trim()
+                .strip_prefix("/unpair")
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            input_text.set(String::new());
+            rows.set(1);
+            show_tab_selector.set(false);
+            attached_files.set(Vec::new());
+
+            ctx.messages.write().push(Message::user(&text));
+            let messages = ctx.messages;
+            wasm_bindgen_futures::spawn_local(async move {
+                crate::messaging::devices::unpair(messages, typed).await;
+            });
+            return;
+        }
+
         // /pair-device: the durable counterpart to /remote-control. Handled
         // here for the same reason that one is — it never reaches the daemon as
         // a chat turn.

@@ -2110,6 +2110,10 @@ fn with_builtin_commands(mut skills: Vec<SkillItem>) -> Vec<SkillItem> {
             "pair-device",
             "Pair a phone with this machine, so it keeps working after a restart",
         ),
+        // A pairing outlives restarts by design, so revoking one has to be
+        // reachable — a phone that is lost or sold otherwise keeps its way in.
+        ("devices", "List the devices paired with this machine"),
+        ("unpair", "Revoke one paired device, by the id `/devices` shows"),
     ];
     for (name, description) in BUILTINS {
         if !skills.iter().any(|s| s.name == *name) {
