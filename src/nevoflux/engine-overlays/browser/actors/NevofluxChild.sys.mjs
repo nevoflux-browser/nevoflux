@@ -6737,11 +6737,33 @@ export class NevofluxChild extends JSWindowActorChild {
     );
 
     // -- callTool (unified tool execution) -----------------------------------
+    //
+    // Which panel is asking, taken from the page's own URL
+    // (`nevoflux://canvas/<id>`, or `?id=`) rather than accepted as an
+    // argument. A page that could name its own artifact id could claim another
+    // pack's declared capabilities, so this is derived, never passed in.
+    //
+    // The verdict itself is settled in the background script, not here: the
+    // rule that matters is about the site the action lands on, and only the
+    // background script knows which tab that is.
+    const panelArtifactId = () => {
+      try {
+        const url = new content.URL(content.location.href);
+        return url.searchParams.get('id') || url.pathname.replace(/^\//, '') || null;
+      } catch (e) {
+        return null;
+      }
+    };
+
     const callToolFn = Cu.exportFunction(function callTool(action, params) {
       return actor
         .sendQuery('bridge:request', {
           type: 'exec_tool',
-          payload: { action, params: params || {} },
+          payload: {
+            action,
+            params: params || {},
+            artifact_id: panelArtifactId(),
+          },
         })
         .then((res) => {
           const val = res.success ? res.data || res : res;

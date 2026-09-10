@@ -731,18 +731,143 @@ function agentCommandTimeoutMs(command) {
   return AGENT_COMMAND_TIMEOUT_MS[command] ?? DEFAULT_AGENT_COMMAND_TIMEOUT_MS;
 }
 
+/**
+ * Send a system_command to the daemon from inside the background script and
+ * wait for the matching system_response.
+ *
+ * The bridge path (`agent:command`) already does this for content; this is the
+ * same machinery for callers that have no bridge request to answer.
+ */
+function askDaemon(command, params) {
+  return new Promise((resolve) => {
+    const requestId = `bgcmd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    pendingAgentCommands.set(requestId, {
+      resolve,
+      deadline: Date.now() + agentCommandTimeoutMs(command),
+    });
+    channelManager.sendToAgent({
+      type: MessageTypes.SYSTEM_COMMAND,
+      payload: { command, request_id: requestId, params: params || {} },
+    });
+  });
+}
+
+// Browser actions that only read. Mirrors `is_read_only_action` in the daemon's
+// tool_pipeline::canvas_gate -- the two must agree, because this is the list
+// that decides what still works when the daemon cannot be reached.
+const CANVAS_READ_ONLY_ACTIONS = new Set([
+  'get_content',
+  'get_markdown',
+  'screenshot',
+  'snapshot',
+  'get_element',
+  'get_elements',
+  'query_all',
+  'get_tabs',
+  'query_tabs',
+  'list_tabs',
+  'read_artifact',
+  'wait_for',
+  'wait_for_stable',
+  'web_fetch',
+  'web_search',
+]);
+
+// Tabs a Canvas panel opened itself, keyed by artifact id. A panel may drive
+// what it opened; reaching into a tab the user opened is a different act and
+// is refused (design spec 4.5).
+const canvasOwnedTabs = new Map();
+
+function rememberCanvasTab(artifactId, tabId) {
+  if (!artifactId || !tabId) return;
+  if (!canvasOwnedTabs.has(artifactId)) canvasOwnedTabs.set(artifactId, new Set());
+  canvasOwnedTabs.get(artifactId).add(tabId);
+}
+
+browser.tabs.onRemoved.addListener((tabId) => {
+  for (const owned of canvasOwnedTabs.values()) owned.delete(tabId);
+});
+
+/**
+ * Whether a Canvas panel may run this action, per the daemon's policy.
+ *
+ * Falls back by risk when the daemon cannot answer: reads proceed, writes do
+ * not. Refusing every read would break panels doing nothing dangerous, while
+ * allowing a write would make "kill the daemon" a way around a pack's rules.
+ */
+async function canvasPolicyVerdict(request, targetTabId) {
+  const { action, artifact_id: artifactId } = request;
+
+  // Opening a new tab is not reaching into an existing one -- it is how a
+  // panel gets its first tab at all, so ownership cannot apply to it.
+  const opensItsOwnTab = action === 'navigate' && request.params?.new_tab;
+
+  // Reaching into a tab the panel did not open is refused before the daemon is
+  // even asked: it is about who owns the tab, not about the site it is on.
+  if (!CANVAS_READ_ONLY_ACTIONS.has(action) && targetTabId && !opensItsOwnTab) {
+    const owned = canvasOwnedTabs.get(artifactId);
+    if (!owned || !owned.has(targetTabId)) {
+      return {
+        allow: false,
+        code: 'TAB_NOT_OWNED',
+        message:
+          'this panel may only act on tabs it opened; open one with navigate({ new_tab: true }) first',
+      };
+    }
+  }
+
+  let tabUrl = null;
+  try {
+    if (targetTabId) tabUrl = (await browser.tabs.get(targetTabId)).url || null;
+  } catch (e) {
+    // The tab went away between resolution and here. The daemon can still
+    // judge by action and artifact alone, so carry on without a URL.
+  }
+
+  try {
+    const res = await askDaemon('canvas.policy_check', {
+      artifact_id: artifactId,
+      action,
+      params: request.params || {},
+      tab_url: tabUrl,
+    });
+    const data = res?.data;
+    if (res?.success && data && typeof data.allow === 'boolean') {
+      return data;
+    }
+    throw new Error('policy_check returned no verdict');
+  } catch (e) {
+    if (CANVAS_READ_ONLY_ACTIONS.has(action)) {
+      console.warn('[NevoFlux] canvas policy unavailable; allowing a read:', e.message);
+      return { allow: true };
+    }
+    console.warn('[NevoFlux] canvas policy unavailable; refusing a write:', e.message);
+    return {
+      allow: false,
+      code: 'POLICY_UNAVAILABLE',
+      message: 'the agent could not be reached to check this pack\'s rules',
+    };
+  }
+}
+
 // Cleanup pending agent commands that outlive their per-command deadline.
 setInterval(() => {
   const now = Date.now();
   for (const [reqId, entry] of pendingAgentCommands) {
     if (now > entry.deadline) {
       pendingAgentCommands.delete(reqId);
-      browser.nevoflux
-        .bridgeRespond(entry.bridgeId, {
-          success: false,
-          error: { code: 'TIMEOUT', message: 'Agent command timed out' },
-        })
-        .catch(() => {});
+      const timedOut = {
+        success: false,
+        error: { code: 'TIMEOUT', message: 'Agent command timed out' },
+      };
+      if (entry.resolve) {
+        // Resolve rather than reject: a caller that treats a timeout as a
+        // normal answer can apply its own fallback, and an unhandled rejection
+        // in a sweeper would be noise.
+        entry.resolve(timedOut);
+      } else {
+        browser.nevoflux.bridgeRespond(entry.bridgeId, timedOut).catch(() => {});
+      }
     }
   }
   // Cleanup stale pending event history requests after 30s
@@ -1443,9 +1568,17 @@ class ChannelManager {
       const entry = pendingAgentCommands.get(reqId);
       if (entry) {
         pendingAgentCommands.delete(reqId);
-        browser.nevoflux.bridgeRespond(entry.bridgeId, message.payload).catch((err) => {
-          console.error('[NevoFlux] agent:command bridgeRespond failed:', err);
-        });
+        // Two kinds of waiter: a bridge request answered by bridgeRespond, and
+        // background-internal code answered by resolving its promise. The
+        // correlation and timeout machinery is the same for both, so it is
+        // shared rather than duplicated.
+        if (entry.resolve) {
+          entry.resolve(message.payload);
+        } else {
+          browser.nevoflux.bridgeRespond(entry.bridgeId, message.payload).catch((err) => {
+            console.error('[NevoFlux] agent:command bridgeRespond failed:', err);
+          });
+        }
         // Cache status response for first-launch detection
         if (message.payload?.command === 'status' && message.payload?.success) {
           const statusData = message.payload.data;
@@ -4087,6 +4220,7 @@ async function executeBrowserTool(request, caller = 'unknown') {
         } else {
           // Genuinely no web tab — create one
           const newTab = await browser.tabs.create({ url: params.url });
+          rememberCanvasTab(request.artifact_id, newTab.id);
           return { success: true, result: { url: params.url, tab_id: newTab.id, new_tab: true } };
         }
       } else {
@@ -4102,6 +4236,29 @@ async function executeBrowserTool(request, caller = 'unknown') {
     }
   }
 
+  // A Canvas panel asks policy before acting (design spec 4.5). Checked here
+  // rather than in the child actor because this is where the target tab is
+  // known, and the rule that matters is about the site the action lands on.
+  if (caller === 'bridge' && request.artifact_id) {
+    const verdict = await canvasPolicyVerdict(request, targetTabId);
+    if (!verdict.allow) {
+      console.info(
+        `[NevoFlux] canvas action refused: ${action} (${verdict.code}) for ${request.artifact_id}`
+      );
+      return {
+        success: false,
+        error: {
+          code: -1,
+          policy_code: verdict.code,
+          message: verdict.message,
+          // Not recoverable: retrying a policy decision changes nothing, and a
+          // panel that retries would just spin.
+          recoverable: false,
+        },
+      };
+    }
+  }
+
   // Check if browser.nevoflux API is available
   const useNevofluxApi = isNevofluxApiAvailable();
   console.log(
@@ -4111,8 +4268,14 @@ async function executeBrowserTool(request, caller = 'unknown') {
   try {
     switch (action) {
       // Navigation
-      case 'navigate':
-        return await executeNavigateViaApi(targetTabId, params);
+      case 'navigate': {
+        const navResult = await executeNavigateViaApi(targetTabId, params);
+        // A panel may drive what it opened, so record the tab it just created.
+        if (caller === 'bridge' && navResult?.success && navResult.result?.new_tab) {
+          rememberCanvasTab(request.artifact_id, navResult.result.tab_id);
+        }
+        return navResult;
+      }
 
       case 'activateTab':
         return await executeActivateTabViaApi(targetTabId, params);
