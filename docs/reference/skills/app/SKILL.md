@@ -167,7 +167,17 @@ Use app-specific key prefixes (e.g. `todo:items`, `dashboard:config`) to avoid c
 await NevofluxSDK.callTool(action, params);
 ```
 
-Most action names use **snake_case**; a few use camelCase (flagged below). Common actions:
+Most action names use **snake_case**; a few use camelCase (flagged below).
+
+**A panel may read any tab, but may only write to a tab it opened.** Open one with
+`navigate({ url, new_tab: true })`, keep the returned `tab_id`, and pass it on
+later calls. Writing without it falls back to the tab the user is looking at,
+which is not yours, and returns `TAB_NOT_OWNED`. A pack's panel additionally
+reaches only the actions its manifest declares in
+`dashboard.capabilities.call_tool`. See `callTool-actions.md` for both rules and
+the refusal codes.
+
+Common actions:
 
 | Action          | Params                                        | Purpose                                      |
 | --------------- | --------------------------------------------- | -------------------------------------------- |
@@ -538,7 +548,8 @@ cwd = "$SESSION_DIR"
 
 | Goal | Use |
 |------|-----|
-| Click/type/read current browser tab | `NevofluxSDK.callTool('click', ...)` etc. |
+| Read any browser tab | `NevofluxSDK.callTool('get_markdown')` etc. |
+| Click/type in a tab **your panel opened** | `NevofluxSDK.callTool('click', { tab_id, ... })` |
 | Read page text as markdown | `NevofluxSDK.callTool('get_markdown')` |
 | Run whitelisted CLI (ffmpeg/git/registered tool) | `NevofluxSDK.tool.invoke('name', params, { onEvent })` |
 | Run arbitrary shell / use MCP tools | `NevofluxSDK.agent.chat('please run ...')` |

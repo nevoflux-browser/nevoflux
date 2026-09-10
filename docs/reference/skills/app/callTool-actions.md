@@ -3,7 +3,11 @@
 Complete reference for `NevofluxSDK.callTool(action, params)`.
 
 All actions return `{ success: boolean, result?: object, error?: { code, message, recoverable } }`.
-Most actions accept an optional `tab_id` param to target a specific tab (defaults to active tab).
+A refused action also carries `error.policy_code` (see **Policy refusals** below).
+
+Most actions accept an optional `tab_id` param to target a specific tab. Reads
+default to the active tab; **writes must target a tab this panel opened** —
+see **Which tabs a panel may drive**.
 
 **Naming convention**: most actions use `snake_case` (`get_markdown`, `list_tabs`). A few newer actions use `camelCase` and are called out in each table: `activateTab`, `fillRichText`, `uploadFile`. Match the exact casing shown.
 
@@ -172,6 +176,65 @@ Runs in the context of the active browser tab, not the artifact iframe. Many sit
 
 - `cache_file`: `content` should be base64-encoded for binary files. Text MIME types are auto-decoded.
 - `cache_tab_markdown`: converts current tab to markdown and saves to cache file. Default `max_length`: 100000.
+
+## Which tabs a panel may drive
+
+A panel may read from any tab, but it may only **write** to a tab it opened
+itself. Reaching into the tab the user happens to be looking at is a different
+act from driving your own, and it is refused.
+
+So the first thing an interactive panel does is open its own tab:
+
+```js
+const { result } = await NevofluxSDK.callTool('navigate', {
+  url: 'https://example.com',
+  new_tab: true,          // exempt from the ownership rule -- this is how you get a tab
+});
+const myTab = result.tab_id;
+
+// From here, pass that tab_id explicitly rather than relying on the default.
+await NevofluxSDK.callTool('click', { tab_id: myTab, selector: '#go' });
+```
+
+Writing without `tab_id` falls back to the active tab, which is usually **not**
+yours, and returns `TAB_NOT_OWNED`. Read actions are unaffected.
+
+Tabs are forgotten when they close.
+
+## Declaring what a pack panel may reach
+
+A panel shipped by a pack reaches **only** the actions its manifest declares:
+
+```toml
+[components.dashboard]
+artifact_id  = "mypack-dashboard"
+content_type = "text/html"
+files_from   = "panel"
+entry        = "index.html"
+capabilities = { call_tool = ["navigate", "get_content", "click"], invoke = [] }
+```
+
+Declaring nothing reaches nothing — an empty or absent `call_tool` list refuses
+every action with `CAPABILITY_NOT_DECLARED`. That is deliberate: reviewing a
+pack should tell you what its panel can do without reading its code.
+
+A canvas that no pack owns — one you or a session created — has no declaration
+to enforce and is not subject to this. It is still subject to site rules.
+
+## Policy refusals
+
+An installed pack can restrict what happens on particular sites. A refused call
+returns `success: false` with a `policy_code`:
+
+| `policy_code`             | Meaning                                                                 |
+| ------------------------- | ----------------------------------------------------------------------- |
+| `POLICY_DENIED`           | A pack's rule forbids this action here. `message` is the pack's own text |
+| `TAB_NOT_OWNED`           | Write aimed at a tab this panel did not open                            |
+| `CAPABILITY_NOT_DECLARED` | Action absent from this panel's `dashboard.capabilities.call_tool`       |
+| `POLICY_UNAVAILABLE`      | The agent could not be reached to check; writes refuse, reads proceed    |
+
+These are decisions, not failures: they arrive with `recoverable: false` and
+retrying changes nothing. Show the `message` and offer the user another route.
 
 ## Error Codes
 
