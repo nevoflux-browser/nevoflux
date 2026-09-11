@@ -236,6 +236,17 @@ returns `success: false` with a `policy_code`:
 These are decisions, not failures: they arrive with `recoverable: false` and
 retrying changes nothing. Show the `message` and offer the user another route.
 
+**The checks are ordered, and an earlier one hides the later ones.** A write is
+tested for tab ownership in the browser first, without asking the agent at all;
+only if it owns the tab does the call reach the capability list, and only then
+the site rules. So a panel that has not opened a tab yet sees `TAB_NOT_OWNED`
+for everything, even actions it never declared and actions a site rule would
+have forbidden anyway. Fix them in that order: get a tab first, then declare
+the action, then check the site.
+
+If you are debugging and a refusal does not match what you expected, look at
+which code came back before assuming the rule is wrong.
+
 ## Error Codes
 
 | Range         | Category                                                                     |

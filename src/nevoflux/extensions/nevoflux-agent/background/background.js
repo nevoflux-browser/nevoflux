@@ -725,6 +725,12 @@ async function loadTabSubscriptions(tabId) {
 // (an AI draft, which can crawl on a slow endpoint) need a much longer leash.
 const AGENT_COMMAND_TIMEOUT_MS = {
   'soul.generate': 150000,
+  // A policy check reads a few local manifests and matches a glob -- it is
+  // milliseconds of work, and it sits in front of every panel action. The 30s
+  // default meant a panel hung for half a minute before refusing whenever the
+  // daemon was slow or gone, which is worse for the user than the refusal it
+  // was on its way to.
+  'canvas.policy_check': 2000,
 };
 const DEFAULT_AGENT_COMMAND_TIMEOUT_MS = 30000;
 function agentCommandTimeoutMs(command) {
