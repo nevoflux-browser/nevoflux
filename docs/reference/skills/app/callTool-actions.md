@@ -199,7 +199,11 @@ await NevofluxSDK.callTool('click', { tab_id: myTab, selector: '#go' });
 Writing without `tab_id` falls back to the active tab, which is usually **not**
 yours, and returns `TAB_NOT_OWNED`. Read actions are unaffected.
 
-Tabs are forgotten when they close.
+Which tabs a panel owns is remembered in memory only: a tab is forgotten when
+it closes, and **restarting the browser forgets all of them**. After a restart
+a panel owns nothing, so its first write is refused even though the tab is
+still open on screen. Open your own tab on startup rather than assuming last
+session's is still yours.
 
 ## Declaring what a pack panel may reach
 
