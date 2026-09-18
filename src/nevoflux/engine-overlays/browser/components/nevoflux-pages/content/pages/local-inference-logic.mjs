@@ -186,16 +186,20 @@ export function cardView(status) {
     }
 
     case 'ready':
+      // No Stop button: there is no `local.stop` RPC, and the latch holds for
+      // the life of the process regardless, so the button could only lie.
       card.badge = 'Ready';
-      card.actions.push({ id: 'stop', label: 'Stop' });
       if (state.degraded && state.reason) {
         card.degradedNote = `Running reduced: ${state.reason}`;
       }
       break;
 
     case 'stopped':
+      // Likewise no Start: a stopped engine cold-starts on demand when the
+      // next message needs it. Offering a button that maps to no RPC would
+      // just produce an error.
       card.badge = 'Idle';
-      card.actions.push({ id: 'start', label: 'Start' });
+      card.subtitle = `${card.subtitle} — starts when next needed`;
       break;
 
     case 'failed': {

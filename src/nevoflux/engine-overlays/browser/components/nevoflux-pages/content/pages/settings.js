@@ -404,7 +404,10 @@ const Settings = {
     const status = this._localStatus || {};
     // cardView cannot know which provider is answering; the daemon does not
     // report it (see the module's note on `activeProvider`).
-    const active = this._llmProviders.find((p) => p.is_active);
+    // `config.llm.list` emits `active`, not `is_active` — the rest of this
+    // file already reads it that way. Getting it wrong made the card think no
+    // provider was ever active, so "Set as default" never rendered at all.
+    const active = this._llmProviders.find((p) => p.active);
     const view = logic.cardView({
       ...status,
       activeProvider: active ? active.display_name || active.id : null,
@@ -492,15 +495,19 @@ const Settings = {
         case 'cancel':
           await this._sendAgentCommand('local.cancel', {});
           break;
-        case 'start':
-        case 'retry':
-          await this._sendAgentCommand('local.retry_backend', {});
+        case 'retry': {
+          // `local.retry_backend` REQUIRES a concrete backend (cpu/vulkan/
+          // cuda/metal) and rejects anything else — including `auto`, which
+          // is a BackendPref and not a Backend. The running state carries the
+          // real one; the config may not.
+          const backend = this._localStatus?.state?.backend;
+          if (!backend) {
+            say('Nothing to retry: no backend has been selected yet.');
+            return;
+          }
+          await this._sendAgentCommand('local.retry_backend', { backend });
           break;
-        case 'stop':
-          // Releasing the default is the only honest "stop": the latch holds
-          // for the life of the process either way.
-          say('On-device inference keeps this process offline until it restarts.');
-          return;
+        }
         case 'update':
           await this._sendAgentCommand('local.update_engine', {});
           break;
@@ -648,11 +655,23 @@ const Settings = {
       okBtn.disabled = true;
       status.textContent = 'Starting…';
       try {
-        await this._sendAgentCommand('local.install', {
+        const res = await this._sendAgentCommand('local.install', {
           model: model.id,
           quant: quant.bits,
           backend: plan.backend,
         });
+        // `local.install` answers `{started:false, reason:"already_running"}`
+        // with success:true. Closing the dialog on that would look like a
+        // download had begun when none had.
+        if (res && res.started === false) {
+          status.textContent =
+            res.reason === 'already_running'
+              ? 'Another on-device operation is already running.'
+              : 'The download did not start.';
+          status.className = 'llm-modal-status error';
+          okBtn.disabled = false;
+          return;
+        }
         modal.remove();
         await this._localRefresh();
       } catch (e) {
@@ -751,6 +770,25 @@ const Settings = {
       actions.append(cancelBtn, okBtn);
       content.appendChild(actions);
 
+      // Every dismissal path must settle the promise, or _saveLlmProvider
+      // waits forever with its save button still enabled.
+      const dismiss = () => {
+        document.removeEventListener('keydown', onKey, true);
+        modal.remove();
+        resolve(false);
+      };
+      const onKey = (e) => {
+        if (e.key === 'Escape') dismiss();
+      };
+      document.addEventListener('keydown', onKey, true);
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) dismiss();
+      });
+      cancelBtn.addEventListener('click', dismiss);
+      okBtn.addEventListener('click', () => {
+        document.removeEventListener('keydown', onKey, true);
+      });
+
       modal.appendChild(content);
       document.body.appendChild(modal);
       setTimeout(() => cancelBtn.focus(), 50);
@@ -761,11 +799,22 @@ const Settings = {
   _localApplyCudaHint(probe) {
     const hint = document.getElementById('local-cuda-hint');
     if (!hint || !probe) return;
-    const stranded = probe.has_physical_nvidia && !probe.has_usable_nvidia;
-    hint.hidden = !stranded;
-    if (stranded) {
+    // Two different conditions, two different sentences. `has_usable_nvidia`
+    // is false only when CUDA_VISIBLE_DEVICES hides the devices — telling
+    // that user to install a runtime they already have is useless advice.
+    // A missing runtime shows up as an empty `cuda_runtime_lines`.
+    const hidden = probe.has_physical_nvidia && !probe.has_usable_nvidia;
+    const noRuntime =
+      probe.has_usable_nvidia &&
+      (!probe.cuda_runtime_lines || probe.cuda_runtime_lines.length === 0);
+    hint.hidden = !(hidden || noRuntime);
+    if (hidden) {
       hint.textContent =
-        'An NVIDIA GPU is present but no usable CUDA runtime was found. ' +
+        'An NVIDIA GPU is present but hidden from this process (CUDA_VISIBLE_DEVICES). ' +
+        'Clear that variable to use it, or continue on Vulkan or CPU.';
+    } else if (noRuntime) {
+      hint.textContent =
+        'An NVIDIA GPU is present but no CUDA runtime was found. ' +
         'Install the CUDA runtime to use it, or continue on Vulkan or CPU.';
     }
   },
@@ -792,9 +841,11 @@ const Settings = {
     }
 
     const modelSel = document.createElement('select');
+    const actions = new Map();
     for (const m of this._localModels) {
       const q = (m.quants && m.quants[0]) || {};
       const opt = logic.modelOptionLabel(m, q);
+      actions.set(m.id, { action: opt.action, model: m, quant: q });
       const el = document.createElement('option');
       el.value = m.id;
       el.textContent = opt.text;
@@ -802,9 +853,25 @@ const Settings = {
       el.selected = m.id === cfg.model;
       modelSel.appendChild(el);
     }
-    modelSel.addEventListener('change', () =>
-      this._localSetConfig({ model: modelSel.value })
-    );
+    // A model whose file is already here is just a config switch. One that
+    // is missing or half-downloaded needs the consent flow first — writing
+    // it into the config would point the engine at a file that is not there.
+    modelSel.addEventListener('change', async () => {
+      const picked = actions.get(modelSel.value);
+      if (!picked) return;
+      if (picked.action === 'select') {
+        await this._localSetConfig({
+          model: picked.model.id,
+          quant: picked.quant.bits,
+        });
+        return;
+      }
+      const plan = await this._sendAgentCommand('local.plan', {
+        model: picked.model.id,
+        quant: picked.quant.bits,
+      });
+      await this._localConsentModal(picked.model, picked.quant, plan);
+    });
     box.appendChild(this._localRow('Model', modelSel));
 
     // macOS forces Metal; a backend choice there would be a control that does
@@ -881,10 +948,12 @@ const Settings = {
    */
   async _localEnsureSubscribed() {
     if (this._localSubscribed) return;
-    this._localSubscribed = true;
 
     const channelId = 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    // Opened BEFORE the flag is set: if this throws, the flag must stay false
+    // so a later render can try again, or the card never updates live.
     await NevofluxPage.sendQuery('events:channel_open', { channelId });
+    this._localSubscribed = true;
 
     const listener = (event) => {
       const detail = event.detail;
@@ -900,8 +969,13 @@ const Settings = {
         } else if (ev.topic === 'system:local:latch_changed') {
           this._localLatched = !!(ev.payload && ev.payload.on);
         } else if (ev.topic === 'system:local:progress') {
-          this._localStatus = { ...(this._localStatus || {}), state: ev.payload };
-          this._localPaint();
+          // A progress frame is `{phase, done, total}` — NOT a LocalState.
+          // Writing it into `state` destroys the `state` tag every card
+          // decision reads, so the whole multi-GB download would render as
+          // "Unknown state: undefined" with no Cancel button. Progress only
+          // refines the bar; the state machine stays where it is.
+          this._localProgress = ev.payload;
+          this._localPaintProgress();
         }
       } catch (err) {
         console.warn('[local] event handler failed:', err);
