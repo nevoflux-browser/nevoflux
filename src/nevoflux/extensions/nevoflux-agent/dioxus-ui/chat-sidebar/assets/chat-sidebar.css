@@ -171,6 +171,20 @@ body {
   object-fit: cover;
 }
 
+.header-local-badge {
+  margin-left: var(--nevo-space-sm);
+  padding: 2px var(--nevo-space-sm);
+  border-radius: var(--nevo-radius-full);
+  border: 1px solid var(--nevo-success);
+  color: var(--nevo-success);
+  background: color-mix(in srgb, var(--nevo-success) 12%, transparent);
+  font-size: var(--nevo-font-size-xs);
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: default;
+}
+
 .header-right {
   display: flex;
   align-items: center;

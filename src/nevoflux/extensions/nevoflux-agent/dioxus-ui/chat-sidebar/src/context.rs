@@ -127,6 +127,11 @@ pub struct AppContext {
     /// (`{active, running, failed_recent, next_fire_at}`). Drives the header
     /// calendar-badge state even before the per-schedule map is fully primed.
     pub schedule_snapshot: Signal<Option<serde_json::Value>>,
+    /// Whether on-device inference has latched this process offline.
+    ///
+    /// Drives the header badge. Sourced from `system:local:latch_changed`,
+    /// which is sticky, so a sidebar opened mid-session still learns about it.
+    pub local_on: Signal<bool>,
     /// Whether mock mode is enabled
     pub mock_enabled: bool,
 }
@@ -176,6 +181,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     let show_jobs_panel = use_signal(|| parse_maximize_params().panel.as_deref() == Some("jobs"));
     let show_loops_panel = use_signal(|| parse_maximize_params().panel.as_deref() == Some("loops"));
     let schedule_snapshot = use_signal(|| None::<serde_json::Value>);
+    let local_on = use_signal(|| false);
     let mut first_run = use_signal(|| false);
     let mut has_configured_provider = use_signal(|| false);
     let mut setup_authoritative = use_signal(|| false);
@@ -221,6 +227,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         first_run,
         has_configured_provider,
         setup_authoritative,
+        local_on,
         mock_enabled,
     };
 
@@ -325,6 +332,17 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                 .await
                 {
                     tracing::warn!("EventBus subscribe to system:schedule:* failed: {}", e);
+                }
+
+                // `system:local:*`, also replay_sticky=TRUE. The latch event is
+                // sticky, so a sidebar opened after on-device inference has
+                // already answered still shows the badge, rather than waiting
+                // for a flip that may not come again this session.
+                if let Err(e) =
+                    crate::messaging::send_events_subscribe(vec!["system:local:*".to_string()], true, 64)
+                        .await
+                {
+                    tracing::warn!("EventBus subscribe to system:local:* failed: {}", e);
                 }
 
                 // Resolve window-session binding

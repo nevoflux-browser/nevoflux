@@ -1143,6 +1143,140 @@
       padding-right: 60px;
     }
 
+    /* ── On-device inference ───────────────────────── */
+    .local-card {
+      border: 1px solid var(--nevoflux-border);
+      border-radius: var(--nevoflux-radius-md);
+      padding: var(--nevoflux-space-lg);
+      background: var(--nevoflux-bg-secondary);
+    }
+
+    .local-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--nevoflux-space-md);
+    }
+
+    .local-card-title {
+      font-size: var(--nevoflux-font-size-lg);
+      font-weight: 600;
+      color: var(--nevoflux-text);
+      margin: 0;
+    }
+
+    .local-card-sub {
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+      margin: var(--nevoflux-space-xs) 0 0;
+    }
+
+    .local-badge {
+      font-size: var(--nevoflux-font-size-sm);
+      padding: 2px var(--nevoflux-space-sm);
+      border-radius: var(--nevoflux-radius-sm);
+      border: 1px solid var(--nevoflux-border);
+      color: var(--nevoflux-text-secondary);
+      white-space: nowrap;
+    }
+
+    .local-badge-ready {
+      color: light-dark(#0a7c42, #6ee7a8);
+      border-color: light-dark(#0a7c4233, #6ee7a833);
+      background: light-dark(#0a7c4211, #6ee7a811);
+    }
+
+    .local-badge-problem {
+      color: light-dark(#b42318, #f88);
+      border-color: light-dark(#b4231833, #f8888833);
+      background: light-dark(#b4231811, #f8888811);
+    }
+
+    .local-progress {
+      height: 6px;
+      margin-top: var(--nevoflux-space-md);
+      border-radius: var(--nevoflux-radius-sm);
+      background: var(--nevoflux-bg-tertiary);
+      overflow: hidden;
+    }
+
+    .local-progress-bar {
+      height: 100%;
+      background: var(--nevoflux-accent);
+      transition: width 0.3s ease;
+    }
+
+    .local-note {
+      font-size: var(--nevoflux-font-size-sm);
+      line-height: 1.4;
+      margin-top: var(--nevoflux-space-md);
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-md);
+      border-radius: var(--nevoflux-radius-sm);
+    }
+
+    .local-note-degraded {
+      color: light-dark(#8a6100, #f0c674);
+      border: 1px solid light-dark(#8a610033, #f0c67433);
+      background: light-dark(#8a610011, #f0c67411);
+    }
+
+    .local-note-update {
+      color: var(--nevoflux-text);
+      border: 1px solid color-mix(in srgb, var(--nevoflux-accent) 30%, transparent);
+      background: color-mix(in srgb, var(--nevoflux-accent) 10%, transparent);
+    }
+
+    .local-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--nevoflux-space-sm);
+      margin-top: var(--nevoflux-space-lg);
+    }
+
+    .local-hint {
+      font-size: var(--nevoflux-font-size-sm);
+      color: var(--nevoflux-text-secondary);
+      margin-top: var(--nevoflux-space-md);
+      line-height: 1.4;
+    }
+
+    .local-config {
+      margin-top: var(--nevoflux-space-lg);
+    }
+
+    .local-consent-list {
+      list-style: none;
+      margin: var(--nevoflux-space-md) 0;
+      padding: 0;
+      font-size: var(--nevoflux-font-size-base);
+      color: var(--nevoflux-text);
+    }
+
+    .local-consent-list li {
+      display: flex;
+      justify-content: space-between;
+      padding: var(--nevoflux-space-xs) 0;
+    }
+
+    .local-consent-total {
+      border-top: 1px solid var(--nevoflux-border);
+      margin-top: var(--nevoflux-space-xs);
+      padding-top: var(--nevoflux-space-sm);
+      font-weight: 600;
+    }
+
+    .local-card button:focus-visible,
+    .local-config select:focus-visible {
+      outline: 2px solid var(--nevoflux-accent);
+      outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .local-progress-bar {
+        transition: none;
+      }
+    }
+
     /* ── Shortcuts ─────────────────────────────────── */
     .shortcut-row {
       display: flex;

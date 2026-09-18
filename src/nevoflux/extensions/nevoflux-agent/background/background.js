@@ -731,6 +731,20 @@ const AGENT_COMMAND_TIMEOUT_MS = {
   // daemon was slow or gone, which is worse for the user than the refusal it
   // was on its way to.
   'canvas.policy_check': 2000,
+  // On-device setup. Probing hardware and pricing a download are real work
+  // (nvidia-smi, disk checks, a release lookup) but should never take the
+  // full default -- if they do, something is wrong and saying so beats a
+  // thirty-second stare at a spinner.
+  'local.probe': 20000,
+  'local.plan': 20000,
+  // Kicks the install off and returns; the download itself reports on
+  // `system:local:*`. Same for update_engine/repair_engine, which spawn and
+  // return `{started:true}` the same way -- they keep the default. Listed
+  // explicitly even though it currently equals the default, so that changing
+  // the default later does not silently change what an install waits for.
+  'local.install': 30000,
+  'local.set_default': 15000,
+  'local.set_config': 15000,
 };
 const DEFAULT_AGENT_COMMAND_TIMEOUT_MS = 30000;
 function agentCommandTimeoutMs(command) {

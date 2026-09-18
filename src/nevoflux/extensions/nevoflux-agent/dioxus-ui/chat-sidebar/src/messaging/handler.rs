@@ -339,6 +339,28 @@ fn handle_event_delivery(mut ctx: AppContext, delivery: shared_protocol::EventBu
         return;
     }
 
+    // system:local:* — on-device inference. Only the latch is acted on here:
+    // the badge is a claim about where conversation content goes, and the latch
+    // is exactly what tracks that. Engine state and download progress belong to
+    // the settings page, which subscribes separately.
+    // Dedupe before touching any signal (see the schedule note above).
+    if topic.starts_with("system:local:") {
+        if !dedupe_event_id(&delivery.event.event_id) {
+            return;
+        }
+        if topic == "system:local:latch_changed" {
+            let on = delivery
+                .event
+                .payload
+                .get("on")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let mut ctx = ctx;
+            ctx.local_on.set(on);
+        }
+        return;
+    }
+
     if topic.contains(":notification") {
         let title = delivery.event.payload
             .get("title")

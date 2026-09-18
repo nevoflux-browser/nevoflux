@@ -17,6 +17,9 @@ pub fn Header() -> Element {
     // Read maximize state
     let is_maximized = ctx.maximize.read().is_maximized;
 
+    // On-device latch, for the header badge.
+    let local_on = *ctx.local_on.read();
+
     let toggle_history = {
         let mut ctx = ctx.clone();
         move |_| {
@@ -163,6 +166,16 @@ pub fn Header() -> Element {
                             alt: "Avatar",
                             class: "header-avatar-img",
                         }
+                    }
+                }
+                // Says where the conversation goes, and is careful not to
+                // promise more than the latch delivers: tools still reach the
+                // network, and claiming otherwise would be the worse error.
+                if local_on {
+                    span {
+                        class: "header-local-badge",
+                        title: "Conversation content isn't sent to any AI provider. Web pages, search and MCP tools still use the network.",
+                        "On-device"
                     }
                 }
             }

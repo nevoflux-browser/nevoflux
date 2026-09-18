@@ -246,6 +246,16 @@ const Settings = {
     return this._customLogic;
   },
 
+  /** Lazily load the DOM-free on-device logic (see the .mjs module). */
+  async _ensureLocalLogic() {
+    if (!this._localLogic) {
+      this._localLogic = await import(
+        'chrome://nevoflux/content/pages/local-inference-logic.mjs'
+      );
+    }
+    return this._localLogic;
+  },
+
   _renderLLMSection() {
     const section = this._createSection('llm', 'AI Models');
 
@@ -255,6 +265,10 @@ const Settings = {
     banner.id = 'llm-guidance-banner';
     banner.style.display = 'none';
     section.appendChild(banner);
+
+    // On-device group, above the provider grid: it is the only provider whose
+    // setup is a download rather than an API key, so it needs its own surface.
+    section.appendChild(this._renderLocalGroup());
 
     // LLM Providers group (service + local)
     const providerGroup = this._createGroup('LLM Providers');
@@ -298,6 +312,693 @@ const Settings = {
     });
 
     return section;
+  },
+
+  // ── On-device inference ─────────────────────────────────
+  //
+  // Every decision about what to *say* lives in local-inference-logic.mjs,
+  // which is unit-tested; this half only talks to the daemon and moves DOM.
+  // The wire shapes are the daemon's own (`crates/daemon/src/local/`):
+  // LocalState is tagged on `state`, LocalError on `code`, Fit on `fit`.
+
+  _localLogic: null,
+  _localStatus: null,
+  /** Latch state, cached so the provider-switch guard can read it cheaply. */
+  _localLatched: undefined,
+  _localModels: null,
+  _localSubscribed: false,
+
+  _renderLocalGroup() {
+    const group = this._createGroup('On-device');
+
+    const desc = document.createElement('p');
+    desc.className = 'section-desc';
+    desc.textContent =
+      'Run a model on this machine. Nothing leaves it — once on-device inference ' +
+      'has answered, this process will not talk to a network model until it restarts.';
+    group.appendChild(desc);
+
+    const card = document.createElement('div');
+    card.className = 'local-card';
+    card.id = 'local-card';
+    group.appendChild(card);
+
+    const hint = document.createElement('p');
+    hint.className = 'local-hint';
+    hint.id = 'local-cuda-hint';
+    hint.hidden = true;
+    group.appendChild(hint);
+
+    const config = document.createElement('div');
+    config.className = 'local-config';
+    config.id = 'local-config';
+    config.hidden = true;
+    group.appendChild(config);
+
+    // Render is synchronous; the data arrives after.
+    this._localRefresh().catch((e) => {
+      card.textContent = `Could not read on-device status: ${e.message}`;
+    });
+    this._localEnsureSubscribed().catch((e) => {
+      console.warn('[local] subscribe failed:', e);
+    });
+
+    return group;
+  },
+
+  /** Fetch `local.status` and repaint. */
+  async _localRefresh() {
+    const data = await this._retryWithBackoff(() =>
+      this._sendAgentCommand('local.status', {})
+    );
+    this._localStatus = data || {};
+    this._localLatched = !!(data && data.latched);
+    await this._localPaint();
+  },
+
+  /**
+   * The latch, for the provider-switch guard.
+   *
+   * Asks the daemon if the on-device group never rendered — someone can change
+   * providers without ever opening it, and guessing `false` there would skip a
+   * confirmation that exists precisely because the switch cannot take effect
+   * until a restart.
+   */
+  async _localIsLatched() {
+    if (this._localLatched === undefined) {
+      try {
+        const data = await this._sendAgentCommand('local.status', {});
+        this._localLatched = !!(data && data.latched);
+      } catch (_e) {
+        this._localLatched = false;
+      }
+    }
+    return this._localLatched;
+  },
+
+  async _localPaint() {
+    const logic = await this._ensureLocalLogic();
+    const card = document.getElementById('local-card');
+    if (!card) return;
+
+    const status = this._localStatus || {};
+    // cardView cannot know which provider is answering; the daemon does not
+    // report it (see the module's note on `activeProvider`).
+    // `config.llm.list` emits `active`, not `is_active` — the rest of this
+    // file already reads it that way. Getting it wrong made the card think no
+    // provider was ever active, so "Set as default" never rendered at all.
+    const active = this._llmProviders.find((p) => p.active);
+    const view = logic.cardView({
+      ...status,
+      activeProvider: active ? active.display_name || active.id : null,
+    });
+
+    card.textContent = '';
+
+    const head = document.createElement('div');
+    head.className = 'local-card-head';
+    const title = document.createElement('h3');
+    title.className = 'local-card-title';
+    title.textContent = view.title;
+    const badge = document.createElement('span');
+    badge.className = `local-badge local-badge-${view.badge.toLowerCase()}`;
+    badge.textContent = view.badge;
+    head.append(title, badge);
+    card.appendChild(head);
+
+    const sub = document.createElement('p');
+    sub.className = 'local-card-sub';
+    sub.textContent = view.subtitle;
+    card.appendChild(sub);
+
+    if (view.progress) {
+      const wrap = document.createElement('div');
+      wrap.className = 'local-progress';
+      wrap.setAttribute('role', 'progressbar');
+      wrap.setAttribute('aria-valuemin', '0');
+      wrap.setAttribute('aria-valuemax', '100');
+      wrap.setAttribute('aria-valuenow', String(view.progress.pct));
+      const bar = document.createElement('div');
+      bar.className = 'local-progress-bar';
+      bar.style.width = `${view.progress.pct}%`;
+      wrap.appendChild(bar);
+      card.appendChild(wrap);
+      const plabel = document.createElement('p');
+      plabel.className = 'local-card-sub';
+      plabel.textContent = view.progress.label;
+      card.appendChild(plabel);
+    }
+
+    for (const [text, cls] of [
+      [view.degradedNote, 'local-note-degraded'],
+      [view.updateNote, 'local-note-update'],
+    ]) {
+      if (!text) continue;
+      const note = document.createElement('p');
+      note.className = `local-note ${cls}`;
+      note.textContent = text;
+      card.appendChild(note);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'local-actions';
+    for (const action of view.actions) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = action.primary ? 'mcp-btn-primary' : 'mcp-btn-secondary';
+      btn.textContent = action.label;
+      btn.addEventListener('click', () => this._localAction(action.id));
+      actions.appendChild(btn);
+    }
+    card.appendChild(actions);
+
+    const statusLine = document.createElement('p');
+    statusLine.className = 'local-card-sub';
+    statusLine.id = 'local-action-status';
+    card.appendChild(statusLine);
+
+    await this._localPaintConfig();
+  },
+
+  /** Route a card button to its RPC. */
+  async _localAction(id) {
+    const say = (msg) => {
+      const el = document.getElementById('local-action-status');
+      if (el) el.textContent = msg;
+    };
+    try {
+      switch (id) {
+        case 'setup':
+        case 'consent':
+          await this._localBeginSetup();
+          return;
+        case 'cancel':
+          await this._sendAgentCommand('local.cancel', {});
+          break;
+        case 'retry': {
+          // `local.retry_backend` REQUIRES a concrete backend (cpu/vulkan/
+          // cuda/metal) and rejects anything else — including `auto`, which
+          // is a BackendPref and not a Backend. The running state carries the
+          // real one; the config may not.
+          const backend = this._localStatus?.state?.backend;
+          if (!backend) {
+            say('Nothing to retry: no backend has been selected yet.');
+            return;
+          }
+          await this._sendAgentCommand('local.retry_backend', { backend });
+          break;
+        }
+        case 'update':
+          await this._sendAgentCommand('local.update_engine', {});
+          break;
+        case 'repair':
+          await this._sendAgentCommand('local.repair_engine', {});
+          break;
+        case 'set-default':
+          await this._localSetDefault();
+          return;
+        default:
+          return;
+      }
+      await this._localRefresh();
+    } catch (e) {
+      say(`Error: ${e.message}`);
+    }
+  },
+
+  /** Probe → models → plan → consent → install. */
+  async _localBeginSetup() {
+    const say = (msg) => {
+      const el = document.getElementById('local-action-status');
+      if (el) el.textContent = msg;
+    };
+    say('Checking this machine…');
+    const probe = await this._sendAgentCommand('local.probe', {});
+    this._localApplyCudaHint(probe);
+
+    this._localModels = await this._sendAgentCommand('local.models', {});
+    const cfg = (this._localStatus && this._localStatus.config) || {};
+    const model = this._localModels.find((m) => m.id === cfg.model) || this._localModels[0];
+    if (!model) {
+      say('No models available.');
+      return;
+    }
+    const quant = (model.quants && model.quants[0]) || {};
+
+    say('Working out the download…');
+    const plan = await this._sendAgentCommand('local.plan', {
+      model: model.id,
+      quant: quant.bits,
+    });
+    say('');
+    await this._localConsentModal(model, quant, plan);
+  },
+
+  /**
+   * The consent dialog. Nothing is downloaded before this is accepted, which
+   * is the whole point: several gigabytes should be a decision, not a
+   * side effect of clicking "Set up".
+   */
+  async _localConsentModal(model, quant, plan) {
+    const logic = await this._ensureLocalLogic();
+    const summary = logic.consentSummary(plan);
+
+    const modal = document.createElement('div');
+    modal.className = 'llm-modal show';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'local-consent-title');
+
+    const content = document.createElement('div');
+    content.className = 'llm-modal-content';
+
+    const header = document.createElement('div');
+    header.className = 'llm-modal-header';
+    const title = document.createElement('h2');
+    title.id = 'local-consent-title';
+    title.textContent = `Download ${model.display_name}?`;
+    header.appendChild(title);
+    const sub = document.createElement('p');
+    sub.textContent = 'Nothing is downloaded until you accept.';
+    header.appendChild(sub);
+    content.appendChild(header);
+
+    const list = document.createElement('ul');
+    list.className = 'local-consent-list';
+    for (const line of summary.lines) {
+      const li = document.createElement('li');
+      li.textContent = `${line.label} — ${logic.formatBytes(line.bytes)}`;
+      list.appendChild(li);
+    }
+    const totalLi = document.createElement('li');
+    totalLi.className = 'local-consent-total';
+    totalLi.textContent = `Total — ${logic.formatBytes(summary.total)}`;
+    list.appendChild(totalLi);
+    content.appendChild(list);
+
+    const from = document.createElement('p');
+    from.className = 'local-card-sub';
+    from.textContent = `From: ${summary.sources.join(', ')}`;
+    content.appendChild(from);
+
+    const disk = document.createElement('p');
+    disk.className = summary.disk.enough ? 'local-card-sub' : 'llm-tos-warning';
+    disk.textContent = summary.disk.enough
+      ? `Needs ${logic.formatBytes(summary.disk.needed)}; ${logic.formatBytes(summary.disk.available)} free.`
+      : `Needs ${logic.formatBytes(summary.disk.needed)} but only ${logic.formatBytes(summary.disk.available)} is free.`;
+    content.appendChild(disk);
+
+    const status = document.createElement('div');
+    status.className = 'llm-modal-status';
+    content.appendChild(status);
+
+    const actions = document.createElement('div');
+    actions.className = 'mcp-modal-actions';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'mcp-btn-secondary';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => modal.remove());
+    actions.appendChild(cancelBtn);
+
+    if (summary.altButton) {
+      const altBtn = document.createElement('button');
+      altBtn.type = 'button';
+      altBtn.className = 'mcp-btn-secondary';
+      altBtn.textContent = summary.altButton.label;
+      altBtn.addEventListener('click', async () => {
+        altBtn.disabled = true;
+        try {
+          const replanned = await this._sendAgentCommand('local.plan', {
+            model: model.id,
+            quant: quant.bits,
+            backend: summary.altButton.backend,
+          });
+          modal.remove();
+          await this._localConsentModal(model, quant, replanned);
+        } catch (e) {
+          status.textContent = `Error: ${e.message}`;
+          status.className = 'llm-modal-status error';
+          altBtn.disabled = false;
+        }
+      });
+      actions.appendChild(altBtn);
+    }
+
+    const okBtn = document.createElement('button');
+    okBtn.type = 'button';
+    okBtn.className = 'mcp-btn-primary';
+    okBtn.textContent = 'Download';
+    okBtn.disabled = !summary.disk.enough;
+    okBtn.addEventListener('click', async () => {
+      okBtn.disabled = true;
+      status.textContent = 'Starting…';
+      try {
+        const res = await this._sendAgentCommand('local.install', {
+          model: model.id,
+          quant: quant.bits,
+          backend: plan.backend,
+        });
+        // `local.install` answers `{started:false, reason:"already_running"}`
+        // with success:true. Closing the dialog on that would look like a
+        // download had begun when none had.
+        if (res && res.started === false) {
+          status.textContent =
+            res.reason === 'already_running'
+              ? 'Another on-device operation is already running.'
+              : 'The download did not start.';
+          status.className = 'llm-modal-status error';
+          okBtn.disabled = false;
+          return;
+        }
+        modal.remove();
+        await this._localRefresh();
+      } catch (e) {
+        status.textContent = `Error: ${e.message}`;
+        status.className = 'llm-modal-status error';
+        okBtn.disabled = false;
+      }
+    });
+    actions.appendChild(okBtn);
+
+    content.appendChild(actions);
+    modal.appendChild(content);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) modal.remove();
+    });
+    document.body.appendChild(modal);
+    setTimeout(() => cancelBtn.focus(), 50);
+  },
+
+  /** Make on-device the default, and report what the latch paused. */
+  async _localSetDefault() {
+    const el = document.getElementById('local-action-status');
+    const say = (msg) => {
+      if (el) el.textContent = msg;
+    };
+    say('Switching…');
+    const res = await this._sendAgentCommand('local.set_default', { on: true });
+    const paused = res || {};
+    const bits = [
+      [paused.paused_loops, 'loop'],
+      [paused.paused_schedules, 'schedule'],
+      [paused.paused_goals, 'goal'],
+    ]
+      .filter(([n]) => Number(n) > 0)
+      .map(([n, word]) => `${n} ${word}${Number(n) === 1 ? '' : 's'}`);
+    say(
+      bits.length
+        ? `On-device is now the default. Paused: ${bits.join(', ')}.`
+        : 'On-device is now the default.'
+    );
+    await this._localRefresh();
+    await this._populateLlmProviders();
+  },
+
+  /**
+   * Confirm leaving on-device while the latch is on.
+   *
+   * Resolves true to proceed. The switch cannot take effect until a restart,
+   * so saying nothing would look like the setting simply failed to save.
+   */
+  async _confirmExitLocal(providerName) {
+    return new Promise((resolve) => {
+      const modal = document.createElement('div');
+      modal.className = 'llm-modal show';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-labelledby', 'local-exit-title');
+
+      const content = document.createElement('div');
+      content.className = 'llm-modal-content';
+
+      const header = document.createElement('div');
+      header.className = 'llm-modal-header';
+      const title = document.createElement('h2');
+      title.id = 'local-exit-title';
+      title.textContent = `Switch to ${providerName}?`;
+      header.appendChild(title);
+      content.appendChild(header);
+
+      const warn = document.createElement('div');
+      warn.className = 'llm-tos-warning';
+      warn.textContent =
+        'On-device inference has already answered in this session, so this ' +
+        'process stays offline until NevoFlux restarts. The change is saved ' +
+        'now and takes effect after a restart.';
+      content.appendChild(warn);
+
+      const actions = document.createElement('div');
+      actions.className = 'mcp-modal-actions';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'mcp-btn-secondary';
+      cancelBtn.textContent = 'Keep on-device';
+      cancelBtn.addEventListener('click', () => {
+        modal.remove();
+        resolve(false);
+      });
+      const okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.className = 'mcp-btn-primary';
+      okBtn.textContent = 'Switch anyway';
+      okBtn.addEventListener('click', () => {
+        modal.remove();
+        resolve(true);
+      });
+      actions.append(cancelBtn, okBtn);
+      content.appendChild(actions);
+
+      // Every dismissal path must settle the promise, or _saveLlmProvider
+      // waits forever with its save button still enabled.
+      const dismiss = () => {
+        document.removeEventListener('keydown', onKey, true);
+        modal.remove();
+        resolve(false);
+      };
+      const onKey = (e) => {
+        if (e.key === 'Escape') dismiss();
+      };
+      document.addEventListener('keydown', onKey, true);
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) dismiss();
+      });
+      cancelBtn.addEventListener('click', dismiss);
+      okBtn.addEventListener('click', () => {
+        document.removeEventListener('keydown', onKey, true);
+      });
+
+      modal.appendChild(content);
+      document.body.appendChild(modal);
+      setTimeout(() => cancelBtn.focus(), 50);
+    });
+  },
+
+  /** NVIDIA hardware present but no usable CUDA runtime. */
+  _localApplyCudaHint(probe) {
+    const hint = document.getElementById('local-cuda-hint');
+    if (!hint || !probe) return;
+    // Two different conditions, two different sentences. `has_usable_nvidia`
+    // is false only when CUDA_VISIBLE_DEVICES hides the devices — telling
+    // that user to install a runtime they already have is useless advice.
+    // A missing runtime shows up as an empty `cuda_runtime_lines`.
+    const hidden = probe.has_physical_nvidia && !probe.has_usable_nvidia;
+    const noRuntime =
+      probe.has_usable_nvidia &&
+      (!probe.cuda_runtime_lines || probe.cuda_runtime_lines.length === 0);
+    hint.hidden = !(hidden || noRuntime);
+    if (hidden) {
+      hint.textContent =
+        'An NVIDIA GPU is present but hidden from this process (CUDA_VISIBLE_DEVICES). ' +
+        'Clear that variable to use it, or continue on Vulkan or CPU.';
+    } else if (noRuntime) {
+      hint.textContent =
+        'An NVIDIA GPU is present but no CUDA runtime was found. ' +
+        'Install the CUDA runtime to use it, or continue on Vulkan or CPU.';
+    }
+  },
+
+  async _localPaintConfig() {
+    const box = document.getElementById('local-config');
+    if (!box) return;
+    const status = this._localStatus || {};
+    const cfg = status.config || {};
+    const state = status.state && status.state.state;
+    // Only worth showing once something is installed.
+    box.hidden = state === 'idle' || state === undefined;
+    if (box.hidden) return;
+
+    box.textContent = '';
+    const logic = await this._ensureLocalLogic();
+
+    if (!this._localModels) {
+      try {
+        this._localModels = await this._sendAgentCommand('local.models', {});
+      } catch (_e) {
+        this._localModels = [];
+      }
+    }
+
+    const modelSel = document.createElement('select');
+    const actions = new Map();
+    for (const m of this._localModels) {
+      const q = (m.quants && m.quants[0]) || {};
+      const opt = logic.modelOptionLabel(m, q);
+      actions.set(m.id, { action: opt.action, model: m, quant: q });
+      const el = document.createElement('option');
+      el.value = m.id;
+      el.textContent = opt.text;
+      el.disabled = opt.disabled;
+      el.selected = m.id === cfg.model;
+      modelSel.appendChild(el);
+    }
+    // A model whose file is already here is just a config switch. One that
+    // is missing or half-downloaded needs the consent flow first — writing
+    // it into the config would point the engine at a file that is not there.
+    modelSel.addEventListener('change', async () => {
+      const picked = actions.get(modelSel.value);
+      if (!picked) return;
+      if (picked.action === 'select') {
+        await this._localSetConfig({
+          model: picked.model.id,
+          quant: picked.quant.bits,
+        });
+        return;
+      }
+      const plan = await this._sendAgentCommand('local.plan', {
+        model: picked.model.id,
+        quant: picked.quant.bits,
+      });
+      await this._localConsentModal(picked.model, picked.quant, plan);
+    });
+    box.appendChild(this._localRow('Model', modelSel));
+
+    // macOS forces Metal; a backend choice there would be a control that does
+    // nothing. `local.status` carries no probe, so the platform comes from the
+    // page, the same way the KB section decides it.
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    if (!isMac) {
+      const backendSel = document.createElement('select');
+      for (const b of ['auto', 'cpu', 'vulkan', 'cuda']) {
+        const el = document.createElement('option');
+        el.value = b;
+        el.textContent = b === 'auto' ? 'Automatic' : b.toUpperCase();
+        el.selected = (cfg.backend || 'auto') === b;
+        backendSel.appendChild(el);
+      }
+      backendSel.addEventListener('change', () =>
+        this._localSetConfig({ backend: backendSel.value })
+      );
+      box.appendChild(this._localRow('Backend', backendSel));
+    }
+
+    const ctxSel = document.createElement('select');
+    for (const [value, label] of [
+      ['auto', 'Automatic'],
+      ['16384', '16K'],
+      ['32768', '32K'],
+    ]) {
+      const el = document.createElement('option');
+      el.value = value;
+      el.textContent = label;
+      el.selected = String(cfg.ctx_size ?? 'auto') === value;
+      ctxSel.appendChild(el);
+    }
+    ctxSel.addEventListener('change', () =>
+      this._localSetConfig({
+        ctx_size: ctxSel.value === 'auto' ? 'auto' : Number(ctxSel.value),
+      })
+    );
+    box.appendChild(this._localRow('Context', ctxSel));
+
+    if (status.engine) {
+      const line = document.createElement('p');
+      line.className = 'local-card-sub';
+      line.textContent = `Engine ${status.engine.tag} · ${status.engine.kind} · ${logic.formatBytes(status.engine.bytes)}`;
+      box.appendChild(line);
+    }
+  },
+
+  _localRow(label, control) {
+    const row = document.createElement('div');
+    row.className = 'form-row';
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    row.append(lbl, control);
+    return row;
+  },
+
+  async _localSetConfig(params) {
+    const el = document.getElementById('local-action-status');
+    try {
+      await this._sendAgentCommand('local.set_config', params);
+      await this._localRefresh();
+    } catch (e) {
+      if (el) el.textContent = `Could not save: ${e.message}`;
+    }
+  },
+
+  /**
+   * Subscribe to the three on-device topics.
+   *
+   * Two-step, like the speech models and the KB wizard: a persistent EventBus
+   * channel, then subscribe through the bridge. State and latch are sticky and
+   * replayed, so a page opened mid-download still paints the right card.
+   */
+  async _localEnsureSubscribed() {
+    if (this._localSubscribed) return;
+
+    const channelId = 'local_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    // Opened BEFORE the flag is set: if this throws, the flag must stay false
+    // so a later render can try again, or the card never updates live.
+    await NevofluxPage.sendQuery('events:channel_open', { channelId });
+    this._localSubscribed = true;
+
+    const listener = (event) => {
+      const detail = event.detail;
+      if (!detail || detail.type !== 'bridge:push') return;
+      const msg = detail.msg;
+      if (!msg || msg.type !== 'events:delivery') return;
+      const ev = msg.payload?.event;
+      if (!ev) return;
+      try {
+        if (ev.topic === 'system:local:state') {
+          this._localStatus = { ...(this._localStatus || {}), state: ev.payload };
+          this._localPaint();
+        } else if (ev.topic === 'system:local:latch_changed') {
+          this._localLatched = !!(ev.payload && ev.payload.on);
+        } else if (ev.topic === 'system:local:progress') {
+          // A progress frame is `{phase, done, total}` — NOT a LocalState.
+          // Writing it into `state` destroys the `state` tag every card
+          // decision reads, so the whole multi-GB download would render as
+          // "Unknown state: undefined" with no Cancel button. Progress only
+          // refines the bar; the state machine stays where it is.
+          this._localProgress = ev.payload;
+          this._localPaintProgress();
+        }
+      } catch (err) {
+        console.warn('[local] event handler failed:', err);
+      }
+    };
+    window.addEventListener('NevofluxMessage', listener);
+
+    const res = await NevofluxPage.sendQuery('bridge:request', {
+      type: 'events.subscribe',
+      payload: {
+        patterns: ['system:local:state', 'system:local:progress', 'system:local:latch_changed'],
+        replay_sticky: true,
+        channel_id: channelId,
+      },
+    });
+    if (!res || res.success === false) {
+      window.removeEventListener('NevofluxMessage', listener);
+      this._localSubscribed = false;
+      try {
+        await NevofluxPage.sendQuery('events:channel_close', { channelId });
+      } catch (_e) {}
+      throw new Error(res?.error?.message || 'events.subscribe failed');
+    }
   },
 
   async _populateLlmProviders() {
@@ -720,6 +1421,23 @@ const Settings = {
       isCreate,
       id: this._llmEditCustomId,
     });
+
+    // A custom provider activates through `set_active` exactly like a built-in
+    // one, so it needs the same confirmation. The plan only pointed at the
+    // built-in path; guarding just that one would let this switch away from
+    // on-device with no warning at all.
+    if (params.set_active && (await this._localIsLatched())) {
+      const localLogic = await this._ensureLocalLogic();
+      const target = params.id || 'custom';
+      if (localLogic.needsExitConfirm(true, target)) {
+        const go = await this._confirmExitLocal(params.display_name || 'this provider');
+        if (!go) {
+          statusEl.textContent = 'Kept on-device.';
+          statusEl.className = 'llm-modal-status';
+          return;
+        }
+      }
+    }
 
     saveBtn.disabled = true;
     statusEl.textContent = 'Saving...';
@@ -1328,6 +2046,21 @@ const Settings = {
     const model = document.getElementById('llm-modal-model').value.trim();
     const baseUrl = document.getElementById('llm-modal-baseurl').value.trim();
     const setActive = document.getElementById('llm-modal-set-active').checked;
+
+    // Leaving on-device while the latch is on cannot take effect until a
+    // restart. Asked here, before any RPC, so a refusal leaves nothing
+    // half-saved.
+    if (setActive && (await this._localIsLatched())) {
+      const logic = await this._ensureLocalLogic();
+      if (logic.needsExitConfirm(true, providerId)) {
+        const go = await this._confirmExitLocal(providerId);
+        if (!go) {
+          statusEl.textContent = 'Kept on-device.';
+          statusEl.className = 'llm-modal-status';
+          return;
+        }
+      }
+    }
 
     saveBtn.disabled = true;
     statusEl.textContent = 'Saving...';
