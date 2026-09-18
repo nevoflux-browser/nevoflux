@@ -444,7 +444,7 @@ const Settings = {
       wrap.appendChild(bar);
       card.appendChild(wrap);
       const plabel = document.createElement('p');
-      plabel.className = 'local-card-sub';
+      plabel.className = 'local-card-sub local-progress-label';
       plabel.textContent = view.progress.label;
       card.appendChild(plabel);
     }
@@ -478,6 +478,38 @@ const Settings = {
     card.appendChild(statusLine);
 
     await this._localPaintConfig();
+  },
+
+  /**
+   * Refine the bar the state machine already put on screen.
+   *
+   * Deliberately does NOT re-run `cardView`: a progress frame is
+   * `{phase, done, total}`, not a `LocalState`, and feeding it through the
+   * card would erase the very state the card is built from. If no bar is on
+   * screen yet there is nothing to refine, and this does nothing.
+   */
+  async _localPaintProgress() {
+    const p = this._localProgress;
+    const card = document.getElementById('local-card');
+    if (!p || !card) return;
+
+    const wrap = card.querySelector('.local-progress');
+    const bar = card.querySelector('.local-progress-bar');
+    if (!wrap || !bar) return;
+
+    const total = Number(p.total) || 0;
+    const pct = total
+      ? Math.max(0, Math.min(100, Math.round((Number(p.done) / total) * 100)))
+      : 0;
+    bar.style.width = `${pct}%`;
+    wrap.setAttribute('aria-valuenow', String(pct));
+
+    const label = card.querySelector('.local-progress-label');
+    if (label) {
+      const logic = await this._ensureLocalLogic();
+      const phase = p.phase ? ` (${p.phase})` : '';
+      label.textContent = `${pct}% of ${logic.formatBytes(total)}${phase}`;
+    }
   },
 
   /** Route a card button to its RPC. */
