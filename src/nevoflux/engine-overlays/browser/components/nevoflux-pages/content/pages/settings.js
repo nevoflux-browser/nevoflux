@@ -527,19 +527,17 @@ const Settings = {
         case 'cancel':
           await this._sendAgentCommand('local.cancel', {});
           break;
-        case 'retry': {
-          // `local.retry_backend` REQUIRES a concrete backend (cpu/vulkan/
-          // cuda/metal) and rejects anything else — including `auto`, which
-          // is a BackendPref and not a Backend. The running state carries the
-          // real one; the config may not.
-          const backend = this._localStatus?.state?.backend;
-          if (!backend) {
-            say('Nothing to retry: no backend has been selected yet.');
-            return;
-          }
-          await this._sendAgentCommand('local.retry_backend', { backend });
-          break;
-        }
+        case 'retry':
+          // Straight back through probe -> plan -> consent -> install.
+          //
+          // NOT `local.retry_backend`, for two independent reasons. It takes a
+          // concrete Backend, and `LocalState::Failed` carries no backend at
+          // all — so in the one state where a retry is offered, the argument
+          // it requires cannot be read from the state. And it only clears bad
+          // marks and stops a degraded engine; it never starts a download,
+          // which is precisely the thing that just failed.
+          await this._localBeginSetup();
+          return;
         case 'update':
           await this._sendAgentCommand('local.update_engine', {});
           break;
