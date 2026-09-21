@@ -1097,6 +1097,14 @@ const Settings = {
       this._llmProviders = [];
     }
     this._refreshLlmGrid();
+    // Repaint the on-device card too. It shows "Set as default" only when it
+    // knows which provider is currently answering, and that comes from this
+    // list — which loads asynchronously, with polling and retries, while the
+    // card paints immediately on render. Without this the card keeps its
+    // first, provider-less rendering (no button) until something unrelated
+    // happens to repaint it, and a page reload "fixes" it only because the
+    // ordering happens to work out that time.
+    this._localPaint().catch((e) => console.warn('[local] repaint failed:', e));
   },
 
   _refreshLlmGrid() {
