@@ -223,9 +223,15 @@ export function cardView(status) {
       break;
   }
 
-  // Ready but some other provider is answering: the engine is warm and unused,
-  // which is worth one button rather than a paragraph.
-  if (state.state === 'ready' && active && active !== 'local') {
+  // Some other provider is answering while a usable engine sits here — worth
+  // one button rather than a paragraph.
+  //
+  // `stopped` counts, not just `ready`. A stopped engine is installed and
+  // cold-starts on demand, so making it the default is exactly how it gets
+  // used. Requiring `ready` created a deadlock after every restart: the engine
+  // is only running once it is the default, and it could only be made the
+  // default once it was running.
+  if ((state.state === 'ready' || state.state === 'stopped') && active && active !== 'local') {
     card.subtitle = `${card.subtitle} · Currently using ${active}`;
     card.actions.push({ id: 'set-default', label: 'Set as default', primary: true });
   }

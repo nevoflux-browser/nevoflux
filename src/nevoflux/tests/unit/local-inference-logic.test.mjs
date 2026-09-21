@@ -91,6 +91,25 @@ describe('local-inference-logic: cardView', () => {
     expect(card.actions.some((a) => a.id === 'set-default')).toBeTruthy();
   });
 
+  it('offers to take over when stopped, not only when ready', () => {
+    // After a restart the engine is installed but not resident, so the daemon
+    // reports `stopped`. Requiring `ready` here was a deadlock: the engine
+    // only runs once it is the default, and could only be made the default
+    // once it was running.
+    const card = cardView(
+      status({ state: 'stopped', backend: 'cuda' }, { activeProvider: 'ChinaMobile' })
+    );
+    expect(card.actions.some((a) => a.id === 'set-default')).toBeTruthy();
+    expect(card.subtitle).toContain('Currently using ChinaMobile');
+  });
+
+  it('does not offer to take over when stopped and already the default', () => {
+    const card = cardView(
+      status({ state: 'stopped', backend: 'cuda' }, { activeProvider: 'local' })
+    );
+    expect(card.actions.some((a) => a.id === 'set-default')).toBeFalsy();
+  });
+
   it('does not offer to take over when it is already the default', () => {
     const card = cardView(
       status(
