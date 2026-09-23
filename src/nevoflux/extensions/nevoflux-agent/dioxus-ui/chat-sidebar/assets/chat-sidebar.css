@@ -871,6 +871,69 @@ body {
   opacity: 1; /* always visible, not hover-dependent */
 }
 
+/* Per-reply token stats, right-aligned in the assistant toolbar.
+   The toolbar wraps so a narrow sidebar puts the stats on their own line
+   instead of squeezing the buttons. */
+.message-toolbar {
+  flex-wrap: wrap;
+}
+
+.usage-stats {
+  position: relative;
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--nevo-font-size-xs);
+  color: var(--nevo-text-muted);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.usage-stats:focus-visible {
+  outline: 2px solid var(--nevo-primary);
+  outline-offset: 2px;
+  border-radius: var(--nevo-radius-sm);
+}
+
+.usage-detail {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 10;
+  min-width: 220px;
+  max-width: 320px;
+  padding: var(--nevo-space-sm);
+  background: var(--nevo-surface);
+  border: 1px solid var(--nevo-border);
+  border-radius: var(--nevo-radius-md);
+  box-shadow: var(--nevo-shadow-md);
+  color: var(--nevo-text-muted);
+  font-size: var(--nevo-font-size-xs);
+  text-align: left;
+  white-space: pre-wrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--nevo-transition-fast);
+}
+
+.usage-stats:hover .usage-detail,
+.usage-stats:focus-visible .usage-detail,
+.usage-stats:focus-within .usage-detail {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.usage-detail-line {
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usage-detail {
+    transition: none;
+  }
+}
+
 .toolbar-btn {
   display: flex;
   align-items: center;
