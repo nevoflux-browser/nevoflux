@@ -926,15 +926,21 @@ body {
   right: 0;
   bottom: calc(100% + 6px);
   z-index: 10;
-  min-width: 220px;
-  max-width: 320px;
-  padding: var(--nevo-space-sm);
-  background: var(--nevo-surface);
+  min-width: 240px;
+  max-width: 340px;
+  padding: var(--nevo-space-md);
+  /* A page-coloured card, not another surface tint: the panel sits on top of
+     message bubbles and has to separate from them in both themes. */
+  background: var(--nevo-background);
   border: 1px solid var(--nevo-border);
   border-radius: var(--nevo-radius-md);
-  box-shadow: var(--nevo-shadow-md);
-  color: var(--nevo-text-muted);
-  font-size: var(--nevo-font-size-xs);
+  box-shadow: var(--nevo-shadow-lg);
+  /* Body-text contrast — muted grey on a surface tint was unreadable. */
+  color: var(--nevo-text);
+  /* Monospace so the leading-space indentation actually lines the numbers up. */
+  font-family: var(--nevo-font-mono);
+  font-size: var(--nevo-font-size-sm);
+  font-variant-numeric: tabular-nums;
   text-align: left;
   white-space: pre-wrap;
   opacity: 0;
@@ -950,7 +956,7 @@ body {
 }
 
 .usage-detail-line {
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 @media (prefers-reduced-motion: reduce) {
