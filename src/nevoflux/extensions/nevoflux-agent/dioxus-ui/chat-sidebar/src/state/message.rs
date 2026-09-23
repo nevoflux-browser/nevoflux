@@ -69,6 +69,10 @@ pub struct Message {
     /// Used to show "Done" indicator for no-tool-call responses.
     /// Historical messages loaded from session.resolve keep the default `false`.
     pub is_live: bool,
+    /// Token usage for this reply (assistant messages only). `None` for user
+    /// messages, for replies that predate the feature, and for replies that
+    /// were cancelled before a final frame arrived.
+    pub usage: Option<shared_protocol::chat::TurnUsage>,
 }
 
 /// Message role
@@ -162,6 +166,7 @@ impl Message {
             timestamp: js_sys::Date::now() as u64,
             status: MessageStatus::Sent,
             is_live: false,
+            usage: None,
         }
     }
 
@@ -176,6 +181,7 @@ impl Message {
             timestamp: js_sys::Date::now() as u64,
             status: MessageStatus::Sent,
             is_live: false,
+            usage: None,
         }
     }
 
@@ -190,6 +196,7 @@ impl Message {
             timestamp: js_sys::Date::now() as u64,
             status: MessageStatus::Sent,
             is_live: false,
+            usage: None,
         }
     }
 
@@ -204,6 +211,7 @@ impl Message {
             timestamp: js_sys::Date::now() as u64,
             status: MessageStatus::Sent,
             is_live: false,
+            usage: None,
         }
     }
 
@@ -222,6 +230,7 @@ impl Message {
             timestamp: js_sys::Date::now() as u64,
             status: MessageStatus::Sent,
             is_live: false,
+            usage: None,
         }
     }
 
@@ -239,6 +248,7 @@ impl Message {
             timestamp: js_sys::Date::now() as u64,
             status: MessageStatus::Sent,
             is_live: false,
+            usage: None,
         }
     }
 
@@ -257,6 +267,7 @@ impl Message {
             timestamp: js_sys::Date::now() as u64,
             status: MessageStatus::Sent,
             is_live: false,
+            usage: None,
         }
     }
 
@@ -283,6 +294,7 @@ impl Message {
             timestamp: js_sys::Date::now() as u64,
             status: MessageStatus::Sent,
             is_live: false,
+            usage: None,
         }
     }
 
@@ -312,6 +324,7 @@ impl Message {
             timestamp: js_sys::Date::now() as u64,
             status: MessageStatus::Sent,
             is_live: false,
+            usage: None,
         }
     }
 

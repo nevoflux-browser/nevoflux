@@ -11,6 +11,8 @@ mod error_card;
 mod code_block;
 mod activity_feed;
 mod live_tool_feed;
+mod usage_format;
+mod usage_stats;
 
 pub use welcome_screen::WelcomeScreen;
 pub use message_list::MessageList;
@@ -20,6 +22,7 @@ pub use code_block::CodeBlock;
 pub use activity_feed::ActivityFeed;
 pub use activity_feed::DoneFeed;
 pub use live_tool_feed::LiveToolFeed;
+pub use usage_stats::UsageStats;
 
 use dioxus::prelude::*;
 use wasm_bindgen::prelude::*;
