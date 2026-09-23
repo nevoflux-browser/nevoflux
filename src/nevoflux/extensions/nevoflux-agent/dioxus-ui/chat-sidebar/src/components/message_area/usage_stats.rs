@@ -43,16 +43,21 @@ pub fn UsageStats(usage: TurnUsage) -> Element {
             }
             span { class: "usage-summary", aria_hidden: "true",
                 for (i, segment) in segments.iter().enumerate() {
-                    match segment {
-                        StatSegment::Label(text) => rsx! {
-                            span { key: "{i}", class: "usage-label", "{text}" }
-                        },
-                        StatSegment::Value(text) => rsx! {
-                            span { key: "{i}", class: "usage-value", "{text}" }
-                        },
-                        StatSegment::Sep => rsx! {
-                            span { key: "{i}", class: "usage-sep", "·" }
-                        },
+                    // The separating space lives in the text, not in a flex
+                    // gap: a gap looks right but copies as `in25.0k·out36`.
+                    {
+                        let lead = if i == 0 { "" } else { " " };
+                        match segment {
+                            StatSegment::Label(text) => rsx! {
+                                span { key: "{i}", class: "usage-label", "{lead}{text}" }
+                            },
+                            StatSegment::Value(text) => rsx! {
+                                span { key: "{i}", class: "usage-value", "{lead}{text}" }
+                            },
+                            StatSegment::Sep => rsx! {
+                                span { key: "{i}", class: "usage-sep", "{lead}·" }
+                            },
+                        }
                     }
                 }
             }

@@ -894,9 +894,9 @@ body {
 }
 
 .usage-summary {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
+  /* Not a flex row: the spaces between segments are real characters so the
+     line reads the same when copied as it looks on screen. */
+  white-space: pre;
 }
 
 /* The words and separators stay quiet so the digits read first. */
@@ -909,10 +909,7 @@ body {
   color: var(--nevo-text-secondary);
 }
 
-/* `in 18.3k` is one unit — no separator gap between the word and its number. */
-.usage-summary .usage-label + .usage-value {
-  margin-left: -1px;
-}
+
 
 .usage-estimated {
   color: var(--nevo-text-muted);
