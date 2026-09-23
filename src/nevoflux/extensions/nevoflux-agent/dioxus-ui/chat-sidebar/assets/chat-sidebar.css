@@ -883,11 +883,39 @@ body {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 2px;
-  font-size: var(--nevo-font-size-xs);
-  color: var(--nevo-text-muted);
+  gap: 3px;
+  /* 10px muted grey was unreadable next to the buttons; the numbers are the
+     point of this row, so they get the same weight as secondary body text. */
+  font-size: var(--nevo-font-size-sm);
+  color: var(--nevo-text-secondary);
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   cursor: default;
+}
+
+.usage-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+/* The words and separators stay quiet so the digits read first. */
+.usage-summary .usage-label,
+.usage-summary .usage-sep {
+  color: var(--nevo-text-muted);
+}
+
+.usage-summary .usage-value {
+  color: var(--nevo-text-secondary);
+}
+
+/* `in 18.3k` is one unit — no separator gap between the word and its number. */
+.usage-summary .usage-label + .usage-value {
+  margin-left: -1px;
+}
+
+.usage-estimated {
+  color: var(--nevo-text-muted);
 }
 
 .usage-stats:focus-visible {
