@@ -8,7 +8,7 @@ use dioxus::prelude::*;
 use crate::context::use_app_context;
 use crate::components::RenderProgressCard;
 use crate::state::{Message, MessageContent, MessageRole, MessageStatus};
-use super::{ActivityFeed, DoneFeed, CodeBlock, ErrorCard, copy_text_fallback};
+use super::{ActivityFeed, DoneFeed, CodeBlock, ErrorCard, UsageStats, copy_text_fallback};
 
 /// Single message bubble component
 #[component]
@@ -249,7 +249,10 @@ pub fn MessageBubble(
 
                         rsx! {
                             if message.role == MessageRole::Assistant && has_text {
-                                AssistantMessageToolbar { content: content_text.clone() }
+                                AssistantMessageToolbar {
+                                    content: content_text.clone(),
+                                    usage: message.usage.clone(),
+                                }
                             }
                         }
                     }
@@ -385,9 +388,12 @@ fn EditMessageForm(
     }
 }
 
-/// Toolbar for assistant messages (reactions + copy)
+/// Toolbar for assistant messages (reactions + copy + token stats)
 #[component]
-fn AssistantMessageToolbar(content: String) -> Element {
+fn AssistantMessageToolbar(
+    content: String,
+    usage: Option<shared_protocol::chat::TurnUsage>,
+) -> Element {
     let mut copied = use_signal(|| false);
     let mut reaction = use_signal(|| Option::<bool>::None); // Some(true)=good, Some(false)=bad
     let content_for_copy = content.clone();
@@ -463,6 +469,11 @@ fn AssistantMessageToolbar(content: String) -> Element {
                 title: "Copy response",
                 aria_label: "Copy response",
                 if copied() { "✓" } else { "📋" }
+            }
+
+            // Token stats, right-aligned
+            if let Some(usage) = usage.clone() {
+                UsageStats { usage }
             }
         }
     }

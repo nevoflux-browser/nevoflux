@@ -556,6 +556,16 @@ fn bind_job_to_message(mut ctx: AppContext, job_id: &str) {
 // Stream Handlers
 // ============================================
 
+/// Read a reply's token stats back out of a stored message's metadata.
+///
+/// The daemon writes the same snapshot it put on the final stream frame, so a
+/// reloaded conversation shows exactly the numbers it showed live.
+fn usage_from_metadata(
+    metadata: Option<&serde_json::Value>,
+) -> Option<shared_protocol::chat::TurnUsage> {
+    serde_json::from_value(metadata?.get("usage")?.clone()).ok()
+}
+
 fn handle_stream_chunk(mut ctx: AppContext, payload: StreamChunkPayload) {
     // Capture session title if provided (generated from first message)
     if let Some(ref title) = payload.session_title {
@@ -581,6 +591,8 @@ fn handle_stream_chunk(mut ctx: AppContext, payload: StreamChunkPayload) {
 
     // New protocol: content + done flag (no stream_id needed)
     if payload.done {
+        // Token stats for the whole reply; only the final frame carries them.
+        let turn_usage = payload.usage.clone();
         // Stream complete - finalize accumulated content and tool_calls into a message
         let (final_content, accumulated_tool_calls) = {
             let mut streaming = ctx.streaming.write();
@@ -685,6 +697,7 @@ fn handle_stream_chunk(mut ctx: AppContext, payload: StreamChunkPayload) {
                     {
                         last_assistant.tool_calls.extend(tool_calls);
                         last_assistant.is_live = true;
+                        last_assistant.usage = turn_usage.clone();
                         // Change ID so Dioxus sees a different key and
                         // creates a fresh MessageBubble (bypasses memoization).
                         last_assistant.id = uuid::Uuid::new_v4().to_string();
@@ -694,18 +707,22 @@ fn handle_stream_chunk(mut ctx: AppContext, payload: StreamChunkPayload) {
                         ).into());
                     } else {
                         web_sys::console::log_1(&"[WASM] MERGE: no prev assistant, creating new msg".into());
-                        msgs.push(Message::assistant_with_activity(display_content, tool_calls).set_live());
+                        let mut merged =
+                            Message::assistant_with_activity(display_content, tool_calls).set_live();
+                        merged.usage = turn_usage.clone();
+                        msgs.push(merged);
                     }
                     // write guard drops here → Dioxus marks signal dirty
                 }
             } else {
                 let tc_count = tool_calls.len();
                 let has_content = !display_content.is_empty();
-                let message = if tool_calls.is_empty() {
+                let mut message = if tool_calls.is_empty() {
                     Message::assistant_markdown(display_content).set_live()
                 } else {
                     Message::assistant_with_activity(display_content, tool_calls).set_live()
                 };
+                message.usage = turn_usage.clone();
                 web_sys::console::log_1(&format!(
                     "[WASM] NEW msg: has_content={}, tool_calls={}",
                     has_content, tc_count
@@ -1595,6 +1612,9 @@ fn handle_session_resolve_response(mut ctx: AppContext, data: serde_json::Value)
                     if let Some(ts) = msg_json.get("created_at").and_then(|v| v.as_u64()) {
                         msg.timestamp = ts * 1000; // Backend stores seconds, UI uses milliseconds
                     }
+                    if msg.role == MessageRole::Assistant {
+                        msg.usage = usage_from_metadata(metadata);
+                    }
                     new_messages.push(msg);
                 }
             }
@@ -2447,5 +2467,48 @@ fn apply_schedule_event(
         _ => {
             tracing::warn!("[Sidebar] unknown system:schedule:* topic: {topic}");
         }
+    }
+}
+
+#[cfg(test)]
+mod usage_metadata_tests {
+    use super::*;
+
+    #[test]
+    fn history_assistant_message_restores_usage_from_metadata() {
+        let msg_json = serde_json::json!({
+            "id": "m1",
+            "role": "assistant",
+            "content": "hi",
+            "content_type": "text",
+            "metadata": {
+                "usage": {
+                    "main": {"input": 120, "output": 30, "calls": 2},
+                    "decode_ms": 1000
+                }
+            }
+        });
+        let usage =
+            usage_from_metadata(msg_json.get("metadata")).expect("metadata carries usage");
+        assert_eq!(usage.main.input, 120);
+        assert_eq!(usage.main.calls, 2);
+        assert_eq!(usage.decode_ms, Some(1000));
+    }
+
+    #[test]
+    fn history_message_without_usage_metadata_has_none() {
+        let msg_json = serde_json::json!({"id": "m1", "role": "assistant", "content": "hi"});
+        assert!(usage_from_metadata(msg_json.get("metadata")).is_none());
+    }
+
+    #[test]
+    fn metadata_without_a_usage_key_is_not_mistaken_for_stats() {
+        let msg_json = serde_json::json!({
+            "id": "m1",
+            "role": "assistant",
+            "content": "hi",
+            "metadata": {"container": "default"}
+        });
+        assert!(usage_from_metadata(msg_json.get("metadata")).is_none());
     }
 }
