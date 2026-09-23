@@ -673,8 +673,16 @@ fn handle_stream_chunk(mut ctx: AppContext, payload: StreamChunkPayload) {
         // assistant message so the ActivityFeed stays visually unified with
         // the text rather than appearing as a separate empty bubble below.
         web_sys::console::log_1(&format!(
-            "[WASM] stream done: content_len={}, tool_calls={}",
-            display_content.len(), tool_calls.len()
+            "[WASM] stream done: content_len={}, tool_calls={}, usage={}",
+            display_content.len(),
+            tool_calls.len(),
+            match &turn_usage {
+                Some(u) => format!(
+                    "calls={} in={} out={}",
+                    u.main.calls, u.main.input, u.main.output
+                ),
+                None => "none".to_string(),
+            }
         ).into());
 
         if !display_content.is_empty() || !tool_calls.is_empty() {
