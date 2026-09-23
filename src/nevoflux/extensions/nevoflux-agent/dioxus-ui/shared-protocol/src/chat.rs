@@ -272,6 +272,62 @@ pub struct BrowserToolError {
 // Agent → Sidebar Payloads
 // =============================================================================
 
+/// Skip `false` when serializing.
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
+/// Token accounting for one party (main agent or subagents) within a reply.
+///
+/// Hand-synced with the daemon's `nevoflux_protocol::UsageBucket` — changes
+/// must be made in both places.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct UsageBucket {
+    /// Input tokens summed over this party's LLM calls.
+    pub input: u64,
+    /// Output tokens summed over this party's LLM calls.
+    pub output: u64,
+    /// Number of LLM calls, streaming and non-streaming alike.
+    pub calls: u32,
+    /// True when at least one call's numbers came from estimation.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub estimated: bool,
+}
+
+/// Token usage snapshot for one assistant reply.
+///
+/// Hand-synced with the daemon's `nevoflux_protocol::TurnUsage` — changes must
+/// be made in both places. Carries raw facts only; tok/s is derived here from
+/// `main.output / decode_ms`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct TurnUsage {
+    /// The main agent's accounting.
+    pub main: UsageBucket,
+    /// Subagent accounting, absent when no subagent ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subagent: Option<UsageBucket>,
+    /// Input of the main agent's last call, i.e. the current context size.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_input: Option<u64>,
+    /// Generation time summed over the main agent's streaming calls, in ms.
+    /// `None` means no usable window, and tok/s is then not shown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decode_ms: Option<u64>,
+    /// Request-to-first-chunk latency of the first streaming call, in ms.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_token_ms: Option<u64>,
+    /// Wall-clock duration of the reply in ms, tool time included.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_ms: Option<u64>,
+    /// Model used by the main agent's last call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// The provider runs its own agent loop, so generation time cannot be
+    /// separated from its internal tool execution and tok/s is hidden.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub external_agent: bool,
+}
+
 /// Stream chunk for streaming responses (matches nevoflux-agent protocol)
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct StreamChunkPayload {
@@ -295,6 +351,9 @@ pub struct StreamChunkPayload {
     /// When true, replace accumulated content instead of appending
     #[serde(default)]
     pub replace_content: bool,
+    /// Token usage for the reply; only present on the final frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TurnUsage>,
 }
 
 /// Tool call information from agent
@@ -2055,5 +2114,40 @@ mod mention_tests {
 
         let back: SoulMention = serde_json::from_value(pick).unwrap();
         assert_eq!(back.slug.as_deref(), Some("research"));
+    }
+}
+
+#[cfg(test)]
+mod turn_usage_tests {
+    use super::*;
+
+    #[test]
+    fn done_payload_with_usage_deserializes() {
+        let json = r#"{
+            "content": "",
+            "done": true,
+            "usage": {
+                "main": {"input": 8329, "output": 646, "calls": 5},
+                "subagent": {"input": 4102, "output": 210, "calls": 3, "estimated": true},
+                "last_input": 3204,
+                "decode_ms": 15300,
+                "first_token_ms": 1200,
+                "total_ms": 28400,
+                "model": "claude-sonnet-5"
+            }
+        }"#;
+        let payload: StreamChunkPayload = serde_json::from_str(json).unwrap();
+        let usage = payload.usage.expect("usage present");
+        assert_eq!(usage.main.input, 8329);
+        assert_eq!(usage.subagent.unwrap().output, 210);
+        assert_eq!(usage.decode_ms, Some(15300));
+        assert!(!usage.external_agent);
+    }
+
+    #[test]
+    fn done_payload_without_usage_still_deserializes() {
+        let payload: StreamChunkPayload =
+            serde_json::from_str(r#"{"content": "hi", "done": true}"#).unwrap();
+        assert!(payload.usage.is_none());
     }
 }
