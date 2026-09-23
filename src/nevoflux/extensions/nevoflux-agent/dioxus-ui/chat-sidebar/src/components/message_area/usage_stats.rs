@@ -4,7 +4,7 @@
 
 //! Token stats shown at the right end of an assistant message's toolbar.
 
-use super::usage_format::{detail_lines, is_estimated, summary_line};
+use super::usage_format::{detail_lines, is_estimated, summary_line, summary_segments, StatSegment};
 use dioxus::prelude::*;
 use shared_protocol::chat::TurnUsage;
 
@@ -16,7 +16,7 @@ static DETAIL_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::
 /// breakdown on hover or keyboard focus.
 #[component]
 pub fn UsageStats(usage: TurnUsage) -> Element {
-    let summary = summary_line(&usage);
+    let segments = summary_segments(&usage);
     let lines = detail_lines(&usage);
     let estimated = is_estimated(&usage);
     // Stable for the life of this component instance, so focus does not
@@ -27,8 +27,9 @@ pub fn UsageStats(usage: TurnUsage) -> Element {
             DETAIL_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         )
     });
-    // Screen readers get the same breakdown the tooltip shows.
-    let aria = lines.join("; ");
+    // Screen readers get the summary plus the same breakdown the tooltip
+    // shows, since the spans themselves are hidden from them.
+    let aria = format!("{}; {}", summary_line(&usage), lines.join("; "));
 
     rsx! {
         div {
@@ -40,7 +41,26 @@ pub fn UsageStats(usage: TurnUsage) -> Element {
             if estimated {
                 span { class: "usage-estimated", aria_hidden: "true", "≈" }
             }
-            span { class: "usage-summary", aria_hidden: "true", "{summary}" }
+            span { class: "usage-summary", aria_hidden: "true",
+                for (i, segment) in segments.iter().enumerate() {
+                    // The separating space lives in the text, not in a flex
+                    // gap: a gap looks right but copies as `in25.0k·out36`.
+                    {
+                        let lead = if i == 0 { "" } else { " " };
+                        match segment {
+                            StatSegment::Label(text) => rsx! {
+                                span { key: "{i}", class: "usage-label", "{lead}{text}" }
+                            },
+                            StatSegment::Value(text) => rsx! {
+                                span { key: "{i}", class: "usage-value", "{lead}{text}" }
+                            },
+                            StatSegment::Sep => rsx! {
+                                span { key: "{i}", class: "usage-sep", "{lead}·" }
+                            },
+                        }
+                    }
+                }
+            }
 
             div {
                 class: "usage-detail",

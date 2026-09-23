@@ -247,11 +247,18 @@ pub fn MessageBubble(
                             _ => false,
                         };
 
+                        // The toolbar also carries the reply's token stats, so
+                        // it appears for a reply that is nothing but tool calls
+                        // too — there the buttons have nothing to act on and
+                        // only the stats show.
+                        let has_usage = message.usage.is_some();
+
                         rsx! {
-                            if message.role == MessageRole::Assistant && has_text {
+                            if message.role == MessageRole::Assistant && (has_text || has_usage) {
                                 AssistantMessageToolbar {
                                     content: content_text.clone(),
                                     usage: message.usage.clone(),
+                                    show_actions: has_text,
                                 }
                             }
                         }
@@ -389,10 +396,14 @@ fn EditMessageForm(
 }
 
 /// Toolbar for assistant messages (reactions + copy + token stats)
+///
+/// `show_actions` is false for replies with no text: react-to-this and
+/// copy-this have nothing to point at, but the token stats still do.
 #[component]
 fn AssistantMessageToolbar(
     content: String,
     usage: Option<shared_protocol::chat::TurnUsage>,
+    #[props(default = true)] show_actions: bool,
 ) -> Element {
     let mut copied = use_signal(|| false);
     let mut reaction = use_signal(|| Option::<bool>::None); // Some(true)=good, Some(false)=bad
@@ -441,34 +452,36 @@ fn AssistantMessageToolbar(
 
     rsx! {
         div { class: "message-toolbar assistant-toolbar",
-            // Good response
-            button {
-                class: "toolbar-btn reaction-btn",
-                class: if reaction() == Some(true) { "active good" },
-                onclick: handle_good,
-                title: "Good response",
-                aria_label: "Good response",
-                "👍"
-            }
+            if show_actions {
+                // Good response
+                button {
+                    class: "toolbar-btn reaction-btn",
+                    class: if reaction() == Some(true) { "active good" },
+                    onclick: handle_good,
+                    title: "Good response",
+                    aria_label: "Good response",
+                    "👍"
+                }
 
-            // Bad response
-            button {
-                class: "toolbar-btn reaction-btn",
-                class: if reaction() == Some(false) { "active bad" },
-                onclick: handle_bad,
-                title: "Bad response",
-                aria_label: "Bad response",
-                "👎"
-            }
+                // Bad response
+                button {
+                    class: "toolbar-btn reaction-btn",
+                    class: if reaction() == Some(false) { "active bad" },
+                    onclick: handle_bad,
+                    title: "Bad response",
+                    aria_label: "Bad response",
+                    "👎"
+                }
 
-            // Copy
-            button {
-                class: "toolbar-btn copy-btn",
-                class: if copied() { "copied" },
-                onclick: handle_copy,
-                title: "Copy response",
-                aria_label: "Copy response",
-                if copied() { "✓" } else { "📋" }
+                // Copy
+                button {
+                    class: "toolbar-btn copy-btn",
+                    class: if copied() { "copied" },
+                    onclick: handle_copy,
+                    title: "Copy response",
+                    aria_label: "Copy response",
+                    if copied() { "✓" } else { "📋" }
+                }
             }
 
             // Token stats, right-aligned

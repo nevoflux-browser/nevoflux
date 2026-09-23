@@ -556,6 +556,22 @@ fn bind_job_to_message(mut ctx: AppContext, job_id: &str) {
 // Stream Handlers
 // ============================================
 
+/// Keep stats already on a message when a later frame carries none.
+///
+/// A reply ends with two terminal frames: the stream's own, and the one the
+/// chat handler sends after the agent run returns. Only frames that went
+/// through the daemon's chunk path carry usage, so assigning blindly would let
+/// the second frame erase what the first one delivered.
+fn keep_usage(
+    existing: Option<shared_protocol::chat::TurnUsage>,
+    incoming: &Option<shared_protocol::chat::TurnUsage>,
+) -> Option<shared_protocol::chat::TurnUsage> {
+    match incoming {
+        Some(usage) => Some(usage.clone()),
+        None => existing,
+    }
+}
+
 /// Read a reply's token stats back out of a stored message's metadata.
 ///
 /// The daemon writes the same snapshot it put on the final stream frame, so a
@@ -673,8 +689,16 @@ fn handle_stream_chunk(mut ctx: AppContext, payload: StreamChunkPayload) {
         // assistant message so the ActivityFeed stays visually unified with
         // the text rather than appearing as a separate empty bubble below.
         web_sys::console::log_1(&format!(
-            "[WASM] stream done: content_len={}, tool_calls={}",
-            display_content.len(), tool_calls.len()
+            "[WASM] stream done: content_len={}, tool_calls={}, usage={}",
+            display_content.len(),
+            tool_calls.len(),
+            match &turn_usage {
+                Some(u) => format!(
+                    "calls={} in={} out={}",
+                    u.main.calls, u.main.input, u.main.output
+                ),
+                None => "none".to_string(),
+            }
         ).into());
 
         if !display_content.is_empty() || !tool_calls.is_empty() {
@@ -697,7 +721,8 @@ fn handle_stream_chunk(mut ctx: AppContext, payload: StreamChunkPayload) {
                     {
                         last_assistant.tool_calls.extend(tool_calls);
                         last_assistant.is_live = true;
-                        last_assistant.usage = turn_usage.clone();
+                        last_assistant.usage =
+                            keep_usage(last_assistant.usage.take(), &turn_usage);
                         // Change ID so Dioxus sees a different key and
                         // creates a fresh MessageBubble (bypasses memoization).
                         last_assistant.id = uuid::Uuid::new_v4().to_string();
@@ -2467,6 +2492,44 @@ fn apply_schedule_event(
         _ => {
             tracing::warn!("[Sidebar] unknown system:schedule:* topic: {topic}");
         }
+    }
+}
+
+#[cfg(test)]
+mod usage_frame_tests {
+    use super::*;
+    use shared_protocol::chat::{TurnUsage, UsageBucket};
+
+    fn usage(calls: u32) -> TurnUsage {
+        TurnUsage {
+            main: UsageBucket {
+                input: 100,
+                output: 20,
+                calls,
+                estimated: false,
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_later_frame_without_stats_does_not_erase_the_ones_already_shown() {
+        // A reply ends with two terminal frames and only one of them carries
+        // usage; the tool-call frame arriving second must not blank it out.
+        let kept = keep_usage(Some(usage(2)), &None);
+        assert_eq!(kept.expect("stats survive").main.calls, 2);
+    }
+
+    #[test]
+    fn a_later_frame_with_stats_replaces_the_earlier_ones() {
+        let kept = keep_usage(Some(usage(1)), &Some(usage(3)));
+        assert_eq!(kept.expect("stats present").main.calls, 3);
+    }
+
+    #[test]
+    fn stats_arriving_on_a_message_that_had_none_are_taken() {
+        let kept = keep_usage(None, &Some(usage(2)));
+        assert_eq!(kept.expect("stats present").main.calls, 2);
     }
 }
 

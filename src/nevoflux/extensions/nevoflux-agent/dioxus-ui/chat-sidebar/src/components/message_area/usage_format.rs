@@ -70,18 +70,59 @@ pub fn is_estimated(usage: &TurnUsage) -> bool {
     usage.main.estimated || usage.subagent.as_ref().is_some_and(|s| s.estimated)
 }
 
-/// The toolbar line, without the leading `≈` (the component adds that based
-/// on [`is_estimated`]).
-pub fn summary_line(usage: &TurnUsage) -> String {
-    let base = format!(
-        "↑{} ↓{}",
-        compact_tokens(total_input(usage)),
-        compact_tokens(total_output(usage))
-    );
-    match tokens_per_second(usage) {
-        Some(speed) => format!("{base} · {speed}"),
-        None => base,
+/// One piece of the toolbar line. The component renders each in its own span
+/// so the digits can read louder than the words around them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StatSegment {
+    /// A word: `in`, `out`, `tok/s`.
+    Label(String),
+    /// A number.
+    Value(String),
+    /// The `·` between groups.
+    Sep,
+}
+
+/// The toolbar line as segments, without the leading `≈` (the component adds
+/// that based on [`is_estimated`]).
+///
+/// Spelled `in`/`out` rather than `↑`/`↓`: at this size an arrow sits right
+/// against the first digit and reads as a `1`.
+pub fn summary_segments(usage: &TurnUsage) -> Vec<StatSegment> {
+    let mut segments = vec![
+        StatSegment::Label("in".into()),
+        StatSegment::Value(compact_tokens(total_input(usage))),
+        StatSegment::Sep,
+        StatSegment::Label("out".into()),
+        StatSegment::Value(compact_tokens(total_output(usage))),
+    ];
+    if let Some(speed) = tokens_per_second(usage) {
+        // `42 tok/s` — split so the rate reads as loudly as the counts.
+        let (rate, unit) = speed.split_once(' ').unwrap_or((speed.as_str(), ""));
+        segments.push(StatSegment::Sep);
+        segments.push(StatSegment::Value(rate.to_string()));
+        if !unit.is_empty() {
+            segments.push(StatSegment::Label(unit.to_string()));
+        }
     }
+    segments
+}
+
+/// The toolbar line as one string — used for the accessible label and in
+/// tests. Same content the spans render.
+pub fn summary_line(usage: &TurnUsage) -> String {
+    let mut out = String::new();
+    for segment in summary_segments(usage) {
+        match segment {
+            StatSegment::Sep => out.push_str(" ·"),
+            StatSegment::Label(text) | StatSegment::Value(text) => {
+                if !out.is_empty() {
+                    out.push(' ');
+                }
+                out.push_str(&text);
+            }
+        }
+    }
+    out
 }
 
 /// The hover detail, one line per entry.
@@ -230,7 +271,7 @@ mod tests {
 
     #[test]
     fn summary_line_includes_totals_and_speed() {
-        assert_eq!(summary_line(&usage()), "↑8.3k ↓646 · 42 tok/s");
+        assert_eq!(summary_line(&usage()), "in 8.3k · out 646 · 42 tok/s");
     }
 
     #[test]
@@ -244,7 +285,25 @@ mod tests {
             }),
             ..usage()
         };
-        assert_eq!(summary_line(&u), "↑12.4k ↓856 · 42 tok/s");
+        assert_eq!(summary_line(&u), "in 12.4k · out 856 · 42 tok/s");
+    }
+
+    #[test]
+    fn summary_segments_separate_words_from_numbers() {
+        let segments = summary_segments(&usage());
+        assert_eq!(
+            segments,
+            vec![
+                StatSegment::Label("in".into()),
+                StatSegment::Value("8.3k".into()),
+                StatSegment::Sep,
+                StatSegment::Label("out".into()),
+                StatSegment::Value("646".into()),
+                StatSegment::Sep,
+                StatSegment::Value("42".into()),
+                StatSegment::Label("tok/s".into()),
+            ]
+        );
     }
 
     #[test]
@@ -253,7 +312,7 @@ mod tests {
             decode_ms: None,
             ..usage()
         };
-        assert_eq!(summary_line(&u), "↑8.3k ↓646");
+        assert_eq!(summary_line(&u), "in 8.3k · out 646");
     }
 
     #[test]
