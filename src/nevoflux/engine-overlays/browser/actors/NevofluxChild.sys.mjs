@@ -10,6 +10,12 @@ import {
   isMeaningfulAttributeChange,
   isTextEditable,
   controlStateChanged,
+  pointInViewport,
+  classifyClickPoints,
+  shouldTryNextTier,
+  describeOccluder,
+  coveredMessage,
+  clickEffect,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -2355,21 +2361,24 @@ export class NevofluxChild extends JSWindowActorChild {
     console.log('[NevofluxChild.click] selector:', selector);
     console.log('[NevofluxChild.click] element:', el.tagName, el.className);
 
-    // 2. Ensure element is visible (scroll into view if needed)
+    // 2. Bring it into view (instant), then let layout settle before reading
+    //    coordinates: 2 frames, at most 50 ms.
+    const r0 = el.getBoundingClientRect();
+    const center0 = { x: r0.left + r0.width / 2, y: r0.top + r0.height / 2 };
+    if (!pointInViewport(center0, win.innerWidth, win.innerHeight)) {
+      el.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'center' });
+      await this._nextFrames(win, 2, 50);
+    }
     if (!force && !this.isVisible({ selector })) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      await this.sleep(300);
-      if (!this.isVisible({ selector })) {
-        return {
-          success: false,
-          error: {
-            code: 1002,
-            message: 'Element not visible',
-            recoverable: true,
-            suggestion: 'Use force: true to click anyway',
-          },
-        };
-      }
+      return {
+        success: false,
+        error: {
+          code: 1002,
+          message: 'Element not visible',
+          recoverable: true,
+          suggestion: 'Use force: true to click anyway',
+        },
+      };
     }
 
     // 3. Resolve actual click target (handle pointer-events: none)
@@ -2379,10 +2388,6 @@ export class NevofluxChild extends JSWindowActorChild {
       if (style.pointerEvents === 'none') {
         const clickableChild = this._findClickableDescendant(targetEl, win);
         if (clickableChild) {
-          console.log(
-            '[NevofluxChild.click] Bypassing pointer-events:none, using child:',
-            clickableChild.tagName
-          );
           targetEl = clickableChild;
         }
       }
@@ -2390,177 +2395,105 @@ export class NevofluxChild extends JSWindowActorChild {
       /* ignore style access errors */
     }
 
-    // 4. Calculate click coordinates
+    // 4. Where to click. A covered target is refused, not clicked through:
+    //    the click would land on the cover (§4.5 遮挡).
+    const pick = this._pickClickPoint(targetEl, doc, win);
+    if (pick.kind === 'covered') {
+      return {
+        success: false,
+        error: { code: 1003, message: coveredMessage(pick.occluder), recoverable: true },
+      };
+    }
+    if (pick.kind === 'offscreen') {
+      return {
+        success: false,
+        error: {
+          code: 1002,
+          message: 'Element is outside the viewport after scrolling; the click was not sent.',
+          recoverable: true,
+        },
+      };
+    }
+    const clickPoint = pick.point;
     const rect = targetEl.getBoundingClientRect();
     const buttonCode = { left: 0, middle: 1, right: 2 }[button] || 0;
-
-    // 5. Find unobstructed click point (multi-point strategy)
-    let clickPoint = this._findUnobstructedPoint(targetEl, doc);
-    if (!clickPoint) {
-      clickPoint = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      console.log('[NevofluxChild.click] All points obstructed, using center');
-    }
-
-    console.log('[NevofluxChild.click] Target:', targetEl.tagName, 'coords:', clickPoint, 'rect:', {
-      width: rect.width,
-      height: rect.height,
-    });
-
-    // 6. Check what element is at the click point
-    const elementAtPoint = doc.elementFromPoint(clickPoint.x, clickPoint.y);
-    const isTargetAtPoint = elementAtPoint === targetEl || targetEl.contains(elementAtPoint);
-    console.log(
-      '[NevofluxChild.click] elementFromPoint:',
-      elementAtPoint?.tagName,
-      'isTargetAtPoint:',
-      isTargetAtPoint
-    );
-
-    // 7. Get windowUtils for trusted events
     const domUtils = this._getWindowUtils();
 
-    // 8. Tiered click with DOM change detection between tiers
-    //    Each tier fires a click method, then waits up to 500ms for DOM/network effect.
-    //    If effect detected, skip remaining tiers to avoid double/triple firing.
-    let clickMethod = 'none';
+    // 5. Send the click once. A lower tier runs only if the one above sent
+    //    nothing; an unseen effect is reported, never "fixed" by a 2nd click.
+    let clickMethod = 'all_tiers_exhausted';
     let domChanged = false;
     let networkRequestMade = false;
-
+    let stateChanged = false;
     try {
-      // Set up effect watcher BEFORE any click (captures changes during click)
       const watcher = this._setupClickEffectWatcher(doc, win);
+      const before = this._controlState(targetEl);
 
-      // --- Tier 1: windowUtils.sendMouseEvent (trusted events through browser input pipeline) ---
+      let outcome = 'unavailable';
       if (domUtils && typeof domUtils.sendMouseEvent === 'function') {
-        console.log(
-          '[NevofluxChild.click] Tier 1: windowUtils.sendMouseEvent at',
-          clickPoint.x,
-          clickPoint.y
-        );
+        const progress = {};
+        try {
+          for (let i = 0; i < clickCount; i++) {
+            await this._sendTrustedMouseClick(
+              domUtils,
+              clickPoint.x,
+              clickPoint.y,
+              buttonCode,
+              progress
+            );
+            if (delay > 0 && i < clickCount - 1) await this.sleep(delay);
+          }
+          outcome = 'pressed';
+        } catch (e) {
+          outcome = progress.pressed ? 'pressed' : 'threw_before_press';
+          console.warn('[NevofluxChild.click] trusted click failed:', e.message);
+        }
+        if (outcome === 'pressed') clickMethod = 'trusted_event';
+      }
+      if (shouldTryNextTier(outcome) && typeof targetEl.click === 'function') {
         for (let i = 0; i < clickCount; i++) {
-          await this._sendTrustedMouseClick(domUtils, clickPoint.x, clickPoint.y, buttonCode);
+          targetEl.click();
           if (delay > 0 && i < clickCount - 1) await this.sleep(delay);
         }
-
-        const tier1 = await watcher.waitForEffect(500);
-        if (tier1.changed) {
-          clickMethod = 'trusted_event';
-          domChanged = tier1.domChanged;
-          networkRequestMade = tier1.networkRequest;
-          console.log(
-            '[NevofluxChild.click] Tier 1 effective - domChanged:',
-            tier1.domChanged,
-            'network:',
-            tier1.networkRequest
-          );
-        }
+        outcome = 'pressed';
+        clickMethod = 'native_click';
+      }
+      if (shouldTryNextTier(outcome)) {
+        this._dispatchMouseEvents(targetEl, clickPoint.x, clickPoint.y, buttonCode, win);
+        outcome = 'pressed';
+        clickMethod = 'synthetic';
       }
 
-      // --- Tier 2: element.click() (only if tier 1 didn't detect effect) ---
-      if (clickMethod === 'none') {
-        // Check if tier 1's effect arrived just after timeout (late detection)
-        if (watcher.changed) {
-          clickMethod = 'trusted_event_delayed';
-          domChanged = watcher.domChanged;
-          networkRequestMade = watcher.networkRequest;
-          console.log('[NevofluxChild.click] Tier 1 late effect detected, skipping tier 2');
-        } else {
-          console.log('[NevofluxChild.click] Tier 2: targetEl.click()');
-          targetEl.scrollIntoView({ behavior: 'instant', block: 'center' });
-          await this.sleep(50);
-          if (typeof targetEl.click === 'function') {
-            for (let i = 0; i < clickCount; i++) {
-              targetEl.click();
-              if (delay > 0 && i < clickCount - 1) await this.sleep(delay);
-            }
-          }
-
-          const tier2 = await watcher.waitForEffect(500);
-          if (tier2.changed) {
-            clickMethod = 'native_click';
-            domChanged = tier2.domChanged;
-            networkRequestMade = tier2.networkRequest;
-            console.log(
-              '[NevofluxChild.click] Tier 2 effective - domChanged:',
-              tier2.domChanged,
-              'network:',
-              tier2.networkRequest
-            );
-          }
-        }
+      if (outcome === 'pressed') {
+        const seen = await watcher.waitForEffect(500);
+        domChanged = seen.domChanged;
+        networkRequestMade = seen.networkRequest;
+        stateChanged = controlStateChanged(before, this._controlState(targetEl));
       }
-
-      // --- Tier 3: synthetic dispatchEvent (last resort) ---
-      if (clickMethod === 'none') {
-        // Check for late detection again
-        if (watcher.changed) {
-          clickMethod = 'native_click_delayed';
-          domChanged = watcher.domChanged;
-          networkRequestMade = watcher.networkRequest;
-          console.log('[NevofluxChild.click] Tier 2 late effect detected, skipping tier 3');
-        } else {
-          console.log('[NevofluxChild.click] Tier 3: synthetic dispatchEvent');
-          this._dispatchMouseEvents(targetEl, clickPoint.x, clickPoint.y, buttonCode, win);
-
-          // Also try pointer-events:none and element-at-point fallbacks in tier 3
-          if (el !== targetEl) {
-            console.log(
-              '[NevofluxChild.click] Also clicking original element (pointer-events workaround)'
-            );
-            if (typeof el.click === 'function') el.click();
-            const elRect = el.getBoundingClientRect();
-            this._dispatchMouseEvents(
-              el,
-              elRect.left + elRect.width / 2,
-              elRect.top + elRect.height / 2,
-              buttonCode,
-              win
-            );
-          }
-          if (!isTargetAtPoint && elementAtPoint && elementAtPoint !== targetEl) {
-            console.log('[NevofluxChild.click] Clicking element at point:', elementAtPoint.tagName);
-            if (typeof elementAtPoint.click === 'function') elementAtPoint.click();
-            this._dispatchMouseEvents(elementAtPoint, clickPoint.x, clickPoint.y, buttonCode, win);
-          }
-
-          const tier3 = await watcher.waitForEffect(300);
-          clickMethod = tier3.changed ? 'synthetic' : 'all_tiers_exhausted';
-          domChanged = tier3.domChanged;
-          networkRequestMade = tier3.networkRequest;
-        }
-      }
-
       watcher.disconnect();
     } catch (e) {
       console.error('[NevofluxChild.click] Error:', e.message, e.stack);
       return { success: false, error: { code: 5001, message: e.message, recoverable: false } };
     }
 
-    // 9. Determine results
+    // 6. Report what happened; the agent attaches a fresh snapshot.
     const elementRemoved = !(doc.body?.contains(el) ?? false);
-    const clickEffective = domChanged || networkRequestMade || elementRemoved;
-    console.log(
-      '[NevofluxChild.click] Complete - method:',
-      clickMethod,
-      'domChanged:',
-      domChanged,
-      'network:',
-      networkRequestMade,
-      'removed:',
+    const { effective, effect } = clickEffect({
+      method: clickMethod,
+      changed: domChanged || networkRequestMade || stateChanged,
       elementRemoved,
-      'effective:',
-      clickEffective
-    );
-
+    });
     return {
       success: true,
-      effective: clickEffective,
+      effective,
+      effect,
       clickMethod,
-      domChanged,
+      domChanged: domChanged || stateChanged,
       networkRequestMade,
       elementRemoved,
-      // Provide screen-absolute bounds when all tiers failed — enables computer_click fallback
-      ...(clickMethod === 'all_tiers_exhausted' && !clickEffective
+      // Nothing could be sent: give screen bounds so the agent's
+      // computer_click becomes the first (and only) click.
+      ...(clickMethod === 'all_tiers_exhausted'
         ? {
             screenBounds: {
               x: rect.left + win.mozInnerScreenX,
@@ -2572,7 +2505,6 @@ export class NevofluxChild extends JSWindowActorChild {
         : {}),
     };
   }
-
   /**
    * Click at viewport coordinates using trusted sendMouseEvent.
    * Used as fallback when CSS selector resolution fails (e.g., cross-origin iframes).
@@ -2620,6 +2552,7 @@ export class NevofluxChild extends JSWindowActorChild {
       return {
         success: true,
         effective,
+        effect: effective ? 'observed' : 'none_observed',
         clickMethod: 'coordinate_click',
         domChanged: result.domChanged,
         networkRequestMade: result.networkRequest,
@@ -3094,9 +3027,10 @@ export class NevofluxChild extends JSWindowActorChild {
    * @param {number} y - viewport Y coordinate
    * @param {number} buttonCode - 0=left, 1=middle, 2=right
    */
-  async _sendTrustedMouseClick(domUtils, x, y, buttonCode) {
+  async _sendTrustedMouseClick(domUtils, x, y, buttonCode, progress = {}) {
     domUtils.sendMouseEvent('mousemove', x, y, buttonCode, 0, 0);
     await this.sleep(10);
+    progress.pressed = true;
     domUtils.sendMouseEvent('mousedown', x, y, buttonCode, 1, 0);
     await this.sleep(50);
     domUtils.sendMouseEvent('mouseup', x, y, buttonCode, 1, 0);
@@ -3649,25 +3583,70 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   /**
-   * Find the first unobstructed point that hits the target element
+   * elementFromPoint stops at a shadow host; descend open and closed shadow
+   * roots to the element actually under the point.
    */
-  _findUnobstructedPoint(el, doc) {
-    const rect = el.getBoundingClientRect();
-    const points = this._getClickPoints(rect);
-
-    for (const point of points) {
-      try {
-        const elementAtPoint = doc.elementFromPoint(point.x, point.y);
-        // Check if the point hits the element or one of its descendants
-        if (elementAtPoint === el || el.contains(elementAtPoint)) {
-          return point;
-        }
-      } catch (e) {
-        /* ignore */
+  _deepElementFromPoint(doc, x, y) {
+    let hit = doc.elementFromPoint(x, y);
+    for (let depth = 0; hit && depth < 32; depth++) {
+      const inner = this._shadowRootOf(hit)?.elementFromPoint?.(x, y);
+      if (!inner || inner === hit) {
+        break;
       }
+      hit = inner;
     }
+    return hit;
+  }
 
-    return null; // All points are obstructed
+  /** Name the cover: the hit, or its nearest ancestor with an id or role. */
+  _describeOccluder(hit) {
+    let node = hit;
+    for (let i = 0; node && i < 6; i++) {
+      if (node.id || node.getAttribute?.('role')) {
+        break;
+      }
+      node = node.parentElement || node.getRootNode?.()?.host || null;
+    }
+    node = node || hit;
+    return describeOccluder({
+      tagName: node.tagName,
+      id: node.id,
+      role: node.getAttribute?.('role'),
+      label: node.getAttribute?.('aria-label') || (node.textContent || '').slice(0, 80),
+    });
+  }
+
+  /**
+   * Where to click `el`: the first of its sample points that is in the
+   * viewport and hits it (or something inside it, or an ancestor it sits in).
+   */
+  _pickClickPoint(el, doc, win) {
+    const points = this._getClickPoints(el.getBoundingClientRect());
+    const hits = points.map((p) => {
+      if (!pointInViewport(p, win.innerWidth, win.innerHeight)) {
+        return 'offscreen';
+      }
+      const hit = this._deepElementFromPoint(doc, p.x, p.y);
+      if (!hit) {
+        return 'offscreen';
+      }
+      if (hit === el || this._composedContains(el, hit) || this._composedContains(hit, el)) {
+        return 'target';
+      }
+      return { occluder: this._describeOccluder(hit) };
+    });
+    const pick = classifyClickPoints(hits);
+    return pick.kind === 'target' ? { kind: 'target', point: points[pick.index] } : pick;
+  }
+
+  /** Wait for `n` animation frames, but never longer than `capMs`. */
+  _nextFrames(win, n, capMs) {
+    const frames = new Promise((resolve) => {
+      let left = n;
+      const step = () => (--left <= 0 ? resolve() : win.requestAnimationFrame(step));
+      win.requestAnimationFrame(step);
+    });
+    return Promise.race([frames, this.sleep(capMs)]);
   }
 
   /**

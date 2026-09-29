@@ -111,3 +111,72 @@ export function controlStateChanged(before, after) {
   }
   return CONTROL_STATE_KEYS.some((k) => before[k] !== after[k]);
 }
+
+/** Whether a viewport point is inside a width×height viewport. */
+export function pointInViewport(point, width, height) {
+  return point.x >= 0 && point.y >= 0 && point.x < width && point.y < height;
+}
+
+/**
+ * Pick where to click from per-point hit results ('target', 'offscreen' or
+ * { occluder }). Never a covered point: a click there lands on the cover.
+ */
+export function classifyClickPoints(hits) {
+  const index = hits.indexOf('target');
+  if (index !== -1) {
+    return { kind: 'target', index };
+  }
+  const cover = hits.find((h) => h && typeof h === 'object' && h.occluder);
+  if (cover) {
+    return { kind: 'covered', occluder: cover.occluder };
+  }
+  return { kind: 'offscreen' };
+}
+
+/**
+ * A lower click tier runs only when the one above sent nothing. Once a press
+ * reached the page, a second tier is a second click (a toggle flips back, a
+ * payment is sent twice), even if no effect was seen.
+ */
+export function shouldTryNextTier(outcome) {
+  return outcome !== 'pressed';
+}
+
+/** A short, model-readable name for the element covering a target. */
+export function describeOccluder({ tagName, id, role, label }) {
+  let s = String(tagName || 'element').toLowerCase();
+  if (id) {
+    s += `#${id}`;
+  }
+  if (role) {
+    s += `[role=${role}]`;
+  }
+  const text = String(label || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text) {
+    s += ` "${text.length > 40 ? text.slice(0, 37) + '...' : text}"`;
+  }
+  return s;
+}
+
+/**
+ * The refusal the model reads. The daemon forwards only `error.message`, so
+ * the advice has to be in it.
+ */
+export function coveredMessage(occluder) {
+  return (
+    `Element is covered by ${occluder}; the click was not sent. ` +
+    'Dismiss or close that element first (for example accept the cookie banner ' +
+    'or close the dialog), then take a new snapshot.'
+  );
+}
+
+/** What a finished click reports about its effect. */
+export function clickEffect({ method, changed, elementRemoved }) {
+  if (method === 'all_tiers_exhausted') {
+    return { effective: false, effect: 'not_dispatched' };
+  }
+  const effective = Boolean(changed || elementRemoved);
+  return { effective, effect: effective ? 'observed' : 'none_observed' };
+}

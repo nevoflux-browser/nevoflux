@@ -10,6 +10,12 @@ import {
   isMeaningfulAttributeChange,
   isTextEditable,
   controlStateChanged,
+  pointInViewport,
+  classifyClickPoints,
+  shouldTryNextTier,
+  describeOccluder,
+  coveredMessage,
+  clickEffect,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -100,5 +106,91 @@ describe('controlStateChanged', () => {
     expect(controlStateChanged(base, { ...base })).toBe(false);
     expect(controlStateChanged(null, base)).toBe(false);
     expect(controlStateChanged(base, null)).toBe(false);
+  });
+});
+
+describe('pointInViewport', () => {
+  it('is true inside, false on or past the edges', () => {
+    expect(pointInViewport({ x: 10, y: 10 }, 800, 600)).toBe(true);
+    expect(pointInViewport({ x: -1, y: 10 }, 800, 600)).toBe(false);
+    expect(pointInViewport({ x: 10, y: 600 }, 800, 600)).toBe(false);
+    expect(pointInViewport({ x: 800, y: 10 }, 800, 600)).toBe(false);
+  });
+});
+
+describe('classifyClickPoints', () => {
+  it('takes the first point that hits the target', () => {
+    expect(classifyClickPoints([{ occluder: 'div#x' }, 'target', 'target'])).toEqual({
+      kind: 'target',
+      index: 1,
+    });
+  });
+
+  it('reports the cover when no point hits the target', () => {
+    expect(classifyClickPoints(['offscreen', { occluder: 'div#cookie-banner' }])).toEqual({
+      kind: 'covered',
+      occluder: 'div#cookie-banner',
+    });
+  });
+
+  it('is offscreen when every point is outside the viewport', () => {
+    expect(classifyClickPoints(['offscreen', 'offscreen'])).toEqual({ kind: 'offscreen' });
+    expect(classifyClickPoints([])).toEqual({ kind: 'offscreen' });
+  });
+});
+
+describe('shouldTryNextTier', () => {
+  it('falls back only when nothing was pressed', () => {
+    expect(shouldTryNextTier('unavailable')).toBe(true);
+    expect(shouldTryNextTier('threw_before_press')).toBe(true);
+    expect(shouldTryNextTier('pressed')).toBe(false);
+  });
+});
+
+describe('describeOccluder / coveredMessage', () => {
+  it('names the cover by tag, id, role and label', () => {
+    expect(
+      describeOccluder({
+        tagName: 'DIV',
+        id: 'cookie-banner',
+        role: 'dialog',
+        label: '  We use\n cookies. ',
+      })
+    ).toBe('div#cookie-banner[role=dialog] "We use cookies."');
+    expect(describeOccluder({ tagName: 'SPAN' })).toBe('span');
+    expect(describeOccluder({ tagName: 'DIV', label: 'y'.repeat(60) })).toBe(
+      `div "${'y'.repeat(37)}..."`
+    );
+  });
+
+  it('says the click was not sent and what to do', () => {
+    const m = coveredMessage('div#cookie-banner');
+    expect(m).toContain('covered by div#cookie-banner');
+    expect(m).toContain('not sent');
+    expect(m).toContain('new snapshot');
+  });
+});
+
+describe('clickEffect', () => {
+  it('observed when something changed or the element went away', () => {
+    expect(clickEffect({ method: 'trusted_event', changed: true, elementRemoved: false })).toEqual({
+      effective: true,
+      effect: 'observed',
+    });
+    expect(
+      clickEffect({ method: 'native_click', changed: false, elementRemoved: true }).effect
+    ).toBe('observed');
+  });
+
+  it('none_observed when a sent click changed nothing', () => {
+    expect(
+      clickEffect({ method: 'trusted_event', changed: false, elementRemoved: false })
+    ).toEqual({ effective: false, effect: 'none_observed' });
+  });
+
+  it('not_dispatched when no tier could send', () => {
+    expect(
+      clickEffect({ method: 'all_tiers_exhausted', changed: false, elementRemoved: false })
+    ).toEqual({ effective: false, effect: 'not_dispatched' });
   });
 });
