@@ -12,6 +12,7 @@ import { makeHeader } from '../content/recorder-logic.mjs';
 import { createAgentStatusMachine } from './agent-status-machine.mjs';
 import { promptFor } from './avatar-prompt-policy.mjs';
 import { checkWebSession } from './web-session.mjs';
+import { afterCandidateClick, mayUseCoordinateFallback } from './click-policy.mjs';
 import {
   NetworkCapture,
   redactUrl,
@@ -6494,110 +6495,58 @@ async function executeClickByIdViaApi(tabId, params, timeout_ms) {
       `[NevoFlux] Trying to click element ${element_id}, ${selectorList.length} candidate(s)`
     );
 
-    // Try each selector until one has detectable effect
+    // Try candidates until one click is sent; that click is final.
     let lastError = null;
-    let lastResult = null;
     for (let i = 0; i < selectorList.length; i++) {
       const selector = selectorList[i];
-      console.log(
-        `[NevoFlux] Attempt ${i + 1}/${selectorList.length}: clicking '${selector.substring(0, 100)}...'`
-      );
-
+      let result;
       try {
-        const result = await browser.nevoflux.click(tabId, selector);
-
-        if (result.success === false) {
-          lastError = result.error || { message: 'Click returned success=false' };
-          console.log(`[NevoFlux] Attempt ${i + 1} failed:`, lastError.message || lastError);
-          continue;
-        }
-
-        // Check if click had detectable effect (DOM change, network request, or element removed)
-        const effective = result.effective === true;
-        console.log(
-          `[NevoFlux] Attempt ${i + 1} - effective: ${effective}, domChanged: ${result.domChanged}, networkRequest: ${result.networkRequestMade}, elementRemoved: ${result.elementRemoved}`
-        );
-
-        if (effective) {
-          console.log(`[NevoFlux] Click effective on attempt ${i + 1}`);
-          return {
-            success: true,
-            result: {
-              element_id,
-              selector,
-              clicked: true,
-              method: 'nevoflux_api',
-              attempt: i + 1,
-              ...result,
-            },
-          };
-        }
-
-        // Click executed but no detectable effect - try next selector
-        lastResult = result;
-        console.log(`[NevoFlux] Attempt ${i + 1} no effect, trying next...`);
+        result = await browser.nevoflux.click(tabId, selector);
       } catch (clickError) {
-        lastError = { message: clickError.message || String(clickError) };
-        console.log(`[NevoFlux] Attempt ${i + 1} threw error:`, lastError.message);
+        result = { success: false, error: { message: clickError.message || String(clickError) } };
       }
-    }
-
-    // All attempts had no detectable effect
-    // Return last result if any click was executed (might still have worked, just not detected)
-    if (lastResult) {
-      // For ?cursor elements (text with cursor:pointer but no own handler),
-      // try coordinate click — physical events bubble to ancestor handlers.
-      // Guard: only ?cursor. Other signals mean the element IS interactive,
-      // so "not effective" is a detection miss, not a real failure.
-      // Double-clicking would break toggles/modals.
-      const normalizedId = normalizeElementId(element_id);
-      const curTabData = snapshotRefs.get(tabId);
-      const elementRef = curTabData?.refs?.[normalizedId];
-      if (elementRef?.signal === 'cursor') {
-        console.log(
-          `[NevoFlux] ?cursor element ${element_id} click ineffective, trying coordinate fallback`
-        );
-        const coordFallback = await tryCoordinateClickFallback(tabId, element_id);
-        if (coordFallback?.result?.effective) return coordFallback;
+      if (afterCandidateClick(result) === 'next') {
+        lastError = result?.error || { message: 'Click returned success=false' };
+        continue;
       }
-
-      console.log(
-        `[NevoFlux] All ${selectorList.length} attempts had no detectable effect, returning last result`
-      );
+      if (result.success === false) {
+        // Covered: report the refusal as is; the message says what to do.
+        return { success: false, error: result.error };
+      }
       return {
         success: true,
         result: {
           element_id,
-          selector: selectorList[selectorList.length - 1],
+          selector,
           clicked: true,
           method: 'nevoflux_api',
-          effective: false,
-          ...lastResult,
+          attempt: i + 1,
+          ...result,
         },
       };
     }
 
-    // All selector-based attempts truly failed — try coordinate-based click
-    // This handles cross-origin iframe elements where querySelector returns null
-    const coordFallback = await tryCoordinateClickFallback(tabId, element_id);
-    if (coordFallback) return coordFallback;
-
-    // All attempts truly failed
-    console.error(
-      `[NevoFlux] All ${selectorList.length} click attempts + coordinate fallback failed`
-    );
+    // No candidate could be clicked: the stored-rect coordinate click is the
+    // first click, not a second one.
+    if (mayUseCoordinateFallback({ anyClickSent: false, covered: false })) {
+      const coordFallback = await tryCoordinateClickFallback(tabId, element_id);
+      if (coordFallback) return coordFallback;
+    }
     return {
       success: false,
       error: {
         code: -1,
-        message: `All click attempts failed. Last error: ${lastError?.message || 'unknown'}`,
+        message: `Could not click element ${element_id}. Last error: ${lastError?.message || 'unknown'}. Take a new snapshot.`,
         recoverable: true,
       },
     };
   } catch (error) {
+    // Not a content-script retry: the click may already have been sent.
     console.error('[NevoFlux] nevoflux.click failed:', error.message);
-    // Fallback to content script
-    return await executeInContentScript(tabId, 'click_by_id', params, timeout_ms);
+    return {
+      success: false,
+      error: { code: -1, message: `Click failed: ${error.message}`, recoverable: true },
+    };
   }
 }
 
