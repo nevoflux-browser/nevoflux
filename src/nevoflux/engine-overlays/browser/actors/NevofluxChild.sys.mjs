@@ -4,6 +4,7 @@
 
 // Import Turndown for HTML to Markdown conversion (with GFM tables support)
 import { TurndownService, gfm } from 'resource:///actors/Turndown.sys.mjs';
+import { snapshotValue } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
 const lazy = {};
@@ -1911,10 +1912,10 @@ export class NevofluxChild extends JSWindowActorChild {
     if (el.states?.disabled) line += ' [dis]';
     if (el.states?.focused) line += ' [foc]';
 
-    // Value for inputs
+    // Value for inputs — never for password/file/hidden (see snapshotValue).
     try {
-      if (node.value) {
-        const v = node.value.length > 30 ? node.value.slice(0, 27) + '...' : node.value;
+      const v = snapshotValue({ tagName: node.tagName, type: node.type, value: node.value });
+      if (v !== null) {
         line += ` val="${v}"`;
       }
     } catch {}
