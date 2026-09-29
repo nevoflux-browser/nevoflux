@@ -29,3 +29,26 @@ export function afterCandidateClick(result) {
 export function mayUseCoordinateFallback({ anyClickSent, covered }) {
   return !anyClickSent && !covered;
 }
+
+/** Actions that change the page; sending one twice does it twice. */
+export const MUTATING_ACTIONS = new Set([
+  'click',
+  'click_by_id',
+  'type',
+  'type_by_id',
+  'fill',
+  'fill_by_id',
+]);
+
+/**
+ * executeInContentScript injects content.js and sends again when the first
+ * send failed. For a mutation that is safe only if nobody received the first
+ * message; after a timeout the action may have run.
+ */
+export function mayResendAfterInjection(action, error) {
+  if (!MUTATING_ACTIONS.has(action)) {
+    return true;
+  }
+  const message = String(error?.message ?? error ?? '');
+  return /Receiving end does not exist|Could not establish connection/i.test(message);
+}

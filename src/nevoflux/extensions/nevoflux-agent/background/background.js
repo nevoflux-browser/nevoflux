@@ -12,7 +12,11 @@ import { makeHeader } from '../content/recorder-logic.mjs';
 import { createAgentStatusMachine } from './agent-status-machine.mjs';
 import { promptFor } from './avatar-prompt-policy.mjs';
 import { checkWebSession } from './web-session.mjs';
-import { afterCandidateClick, mayUseCoordinateFallback } from './click-policy.mjs';
+import {
+  afterCandidateClick,
+  mayUseCoordinateFallback,
+  mayResendAfterInjection,
+} from './click-policy.mjs';
 import {
   NetworkCapture,
   redactUrl,
@@ -7412,6 +7416,17 @@ async function executeInContentScript(tabId, action, params, timeout_ms) {
       return { success: true, result: response };
     }
   } catch (error) {
+    if (!mayResendAfterInjection(action, error)) {
+      if (timeoutId) clearTimeout(timeoutId);
+      return {
+        success: false,
+        error: {
+          code: -1,
+          message: `${action} did not answer in time and may have run; it was not sent again. Take a new snapshot to check.`,
+          recoverable: true,
+        },
+      };
+    }
     // Content script not loaded, try injecting it
     console.warn('[NevoFlux] Content script not responding, injecting:', error.message);
 
