@@ -4,7 +4,13 @@
 
 // Import Turndown for HTML to Markdown conversion (with GFM tables support)
 import { TurndownService, gfm } from 'resource:///actors/Turndown.sys.mjs';
-import { snapshotValue } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
+import {
+  snapshotValue,
+  EFFECT_ATTRIBUTES,
+  isMeaningfulAttributeChange,
+  isTextEditable,
+  controlStateChanged,
+} from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
 const lazy = {};
@@ -3152,20 +3158,9 @@ export class NevofluxChild extends JSWindowActorChild {
         }
         if (mutation.type === 'attributes') {
           const attr = mutation.attributeName;
-          if (attr === 'style') continue;
-          if (attr === 'class') {
-            const oldVal = mutation.oldValue || '';
-            const newVal = mutation.target.className || '';
-            const hoverClasses = /\b(hover|active|focus|focused|pressed|highlighted)\b/gi;
-            const oldClean = oldVal.replace(hoverClasses, '').trim();
-            const newClean = newVal.replace(hoverClasses, '').trim();
-            if (oldClean !== newClean) {
-              domChanged = true;
-              notifyChange();
-              return;
-            }
-          } else {
-            // Meaningful attribute: hidden, disabled, aria-*, data-state
+          // getAttribute, not className: className is an object on SVG.
+          const newValue = mutation.target.getAttribute?.(attr) ?? null;
+          if (isMeaningfulAttributeChange(attr, mutation.oldValue, newValue)) {
             domChanged = true;
             notifyChange();
             return;
@@ -3179,20 +3174,21 @@ export class NevofluxChild extends JSWindowActorChild {
       subtree: true,
       attributes: true,
       attributeOldValue: true,
-      attributeFilter: [
-        'class',
-        'style',
-        'hidden',
-        'disabled',
-        'aria-hidden',
-        'aria-expanded',
-        'aria-selected',
-        'data-state',
-        'data-active',
-      ],
+      attributeFilter: EFFECT_ATTRIBUTES,
     };
 
     observer.observe(doc.body || doc.documentElement, observeOpts);
+
+    // Property changes (checked, value, selectedIndex) are invisible to a
+    // MutationObserver; the events they fire are not.
+    const onFormEvent = () => {
+      domChanged = true;
+      notifyChange();
+    };
+    const FORM_EVENTS = ['input', 'change', 'toggle'];
+    for (const type of FORM_EVENTS) {
+      doc.addEventListener(type, onFormEvent, true);
+    }
 
     // Also observe inside OPEN shadow roots. A MutationObserver with
     // subtree:true does NOT cross shadow boundaries, so a click that mounts or
@@ -3275,8 +3271,46 @@ export class NevofluxChild extends JSWindowActorChild {
       disconnect() {
         observer.disconnect();
         if (perfObserver) perfObserver.disconnect();
+        for (const type of FORM_EVENTS) {
+          doc.removeEventListener(type, onFormEvent, true);
+        }
         resolveWait = null;
       },
+    };
+  }
+
+  /**
+   * The observable state of the control a click is meant to change: the
+   * element itself, the input a <label> controls, or the first form control
+   * inside it. Compared before and after a click (controlStateChanged),
+   * because events inside a shadow root never reach the watcher's listeners.
+   */
+  _controlState(el) {
+    if (!el) {
+      return null;
+    }
+    const node =
+      el.control ||
+      (el.matches?.('input,select,textarea') ? el : el.querySelector?.('input,select,textarea')) ||
+      el;
+    const attr = (name) => node.getAttribute?.(name) ?? null;
+    return {
+      checked: typeof node.checked === 'boolean' ? node.checked : null,
+      value: typeof node.value === 'string' ? node.value : null,
+      selectedIndex: typeof node.selectedIndex === 'number' ? node.selectedIndex : null,
+      open: typeof node.open === 'boolean' ? node.open : attr('open'),
+      ariaChecked: attr('aria-checked'),
+      ariaPressed: attr('aria-pressed'),
+      ariaExpanded: attr('aria-expanded'),
+      // Focus counts only where focusing is the point (a text field);
+      // otherwise every button click would look effective.
+      focused: isTextEditable({
+        tagName: node.tagName,
+        type: node.type,
+        isContentEditable: node.isContentEditable,
+      })
+        ? this._deepActiveElement(node.ownerDocument) === node
+        : null,
     };
   }
 

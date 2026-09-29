@@ -26,3 +26,88 @@ export function snapshotValue({ tagName, type, value }) {
   }
   return value.length > 30 ? value.slice(0, 27) + '...' : value;
 }
+
+/**
+ * Attributes whose change after a click counts as its effect. Includes the
+ * state attributes a toggle, a pressed button or a disclosure flips; without
+ * them a checkbox tick looked ineffective and got clicked again (unticked).
+ */
+export const EFFECT_ATTRIBUTES = [
+  'class',
+  'style',
+  'hidden',
+  'disabled',
+  'open',
+  'aria-hidden',
+  'aria-expanded',
+  'aria-selected',
+  'aria-checked',
+  'aria-pressed',
+  'aria-current',
+  'data-state',
+  'data-active',
+];
+
+const HOVER_CLASSES = /\b(hover|active|focus|focused|pressed|highlighted)\b/gi;
+
+function cleanClasses(value) {
+  return String(value || '')
+    .replace(HOVER_CLASSES, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Whether an observed attribute mutation is an effect of the click. */
+export function isMeaningfulAttributeChange(attr, oldValue, newValue) {
+  if (attr === 'style') {
+    return false;
+  }
+  if (attr === 'class') {
+    return cleanClasses(oldValue) !== cleanClasses(newValue);
+  }
+  return oldValue !== newValue;
+}
+
+const NON_TEXT_INPUT_TYPES = new Set([
+  'button',
+  'checkbox',
+  'color',
+  'file',
+  'hidden',
+  'image',
+  'radio',
+  'range',
+  'reset',
+  'submit',
+]);
+
+/** Whether focusing this element is itself the point of clicking it. */
+export function isTextEditable({ tagName, type, isContentEditable }) {
+  const tag = String(tagName || '').toUpperCase();
+  if (tag === 'TEXTAREA') {
+    return true;
+  }
+  if (tag === 'INPUT') {
+    return !NON_TEXT_INPUT_TYPES.has(String(type || 'text').toLowerCase());
+  }
+  return isContentEditable === true;
+}
+
+const CONTROL_STATE_KEYS = [
+  'checked',
+  'value',
+  'selectedIndex',
+  'open',
+  'ariaChecked',
+  'ariaPressed',
+  'ariaExpanded',
+  'focused',
+];
+
+/** Whether a control's state moved between two `_controlState` readings. */
+export function controlStateChanged(before, after) {
+  if (!before || !after) {
+    return false;
+  }
+  return CONTROL_STATE_KEYS.some((k) => before[k] !== after[k]);
+}
