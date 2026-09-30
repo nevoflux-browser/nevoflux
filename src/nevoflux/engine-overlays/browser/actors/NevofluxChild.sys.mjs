@@ -16,6 +16,7 @@ import {
   describeOccluder,
   coveredMessage,
   clickEffect,
+  shouldRescrollAndRepick,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -2397,7 +2398,13 @@ export class NevofluxChild extends JSWindowActorChild {
 
     // 4. Where to click. A covered target is refused, not clicked through:
     //    the click would land on the cover (§4.5 遮挡).
-    const pick = this._pickClickPoint(targetEl, doc, win);
+    let pick = this._pickClickPoint(targetEl, doc, win);
+    if (shouldRescrollAndRepick(pick, false)) {
+      // Clipped by an inner scroller? 'nearest' is a no-op when it's visible.
+      targetEl.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'nearest' });
+      await this._nextFrames(win, 2, 50);
+      pick = this._pickClickPoint(targetEl, doc, win);
+    }
     if (pick.kind === 'covered') {
       return {
         success: false,
@@ -3618,7 +3625,8 @@ export class NevofluxChild extends JSWindowActorChild {
 
   /**
    * Where to click `el`: the first of its sample points that is in the
-   * viewport and hits it (or something inside it, or an ancestor it sits in).
+   * viewport and hits it or something inside it; failing that, one that hits
+   * an ancestor it sits in.
    */
   _pickClickPoint(el, doc, win) {
     const points = this._getClickPoints(el.getBoundingClientRect());
@@ -3630,8 +3638,11 @@ export class NevofluxChild extends JSWindowActorChild {
       if (!hit) {
         return 'offscreen';
       }
-      if (hit === el || this._composedContains(el, hit) || this._composedContains(hit, el)) {
+      if (hit === el || this._composedContains(el, hit)) {
         return 'target';
+      }
+      if (this._composedContains(hit, el)) {
+        return 'ancestor';
       }
       return { occluder: this._describeOccluder(hit) };
     });

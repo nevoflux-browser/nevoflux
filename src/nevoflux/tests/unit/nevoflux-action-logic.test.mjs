@@ -16,6 +16,7 @@ import {
   describeOccluder,
   coveredMessage,
   clickEffect,
+  shouldRescrollAndRepick,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -133,6 +134,22 @@ describe('classifyClickPoints', () => {
     });
   });
 
+  it('prefers a point on the target over one on an ancestor', () => {
+    // A wrapped inline link: its box centre falls on the paragraph.
+    expect(classifyClickPoints(['ancestor', 'offscreen', 'target'])).toEqual({
+      kind: 'target',
+      index: 2,
+    });
+  });
+
+  it('uses an ancestor point only when no point hits the target', () => {
+    // e.g. a visually hidden checkbox whose label receives the hit.
+    expect(classifyClickPoints([{ occluder: 'div#x' }, 'ancestor'])).toEqual({
+      kind: 'target',
+      index: 1,
+    });
+  });
+
   it('is offscreen when every point is outside the viewport', () => {
     expect(classifyClickPoints(['offscreen', 'offscreen'])).toEqual({ kind: 'offscreen' });
     expect(classifyClickPoints([])).toEqual({ kind: 'offscreen' });
@@ -192,5 +209,19 @@ describe('clickEffect', () => {
     expect(
       clickEffect({ method: 'all_tiers_exhausted', changed: false, elementRemoved: false })
     ).toEqual({ effective: false, effect: 'not_dispatched' });
+  });
+});
+
+describe('shouldRescrollAndRepick', () => {
+  it('scrolls the target into view once when no point hit it', () => {
+    // A target clipped by an inner scroll container is inside the window
+    // viewport, but its points land outside the scroller.
+    expect(shouldRescrollAndRepick({ kind: 'covered', occluder: 'div' }, false)).toBe(true);
+    expect(shouldRescrollAndRepick({ kind: 'offscreen' }, false)).toBe(true);
+  });
+
+  it('not when a point hit it, nor a second time', () => {
+    expect(shouldRescrollAndRepick({ kind: 'target', index: 0 }, false)).toBe(false);
+    expect(shouldRescrollAndRepick({ kind: 'covered', occluder: 'div' }, true)).toBe(false);
   });
 });

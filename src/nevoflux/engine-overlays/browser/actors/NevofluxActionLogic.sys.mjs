@@ -118,11 +118,16 @@ export function pointInViewport(point, width, height) {
 }
 
 /**
- * Pick where to click from per-point hit results ('target', 'offscreen' or
- * { occluder }). Never a covered point: a click there lands on the cover.
+ * Pick where to click from per-point hit results ('target', 'ancestor',
+ * 'offscreen' or { occluder }). A point on the target itself wins; a point
+ * on an ancestor (a label around a hidden checkbox) only when none hits
+ * the target. Never a covered point: a click there lands on the cover.
  */
 export function classifyClickPoints(hits) {
-  const index = hits.indexOf('target');
+  let index = hits.indexOf('target');
+  if (index === -1) {
+    index = hits.indexOf('ancestor');
+  }
   if (index !== -1) {
     return { kind: 'target', index };
   }
@@ -179,4 +184,13 @@ export function clickEffect({ method, changed, elementRemoved }) {
   }
   const effective = Boolean(changed || elementRemoved);
   return { effective, effect: effective ? 'observed' : 'none_observed' };
+}
+
+/**
+ * When no point hit the target, scroll it into view once and pick again: a
+ * target clipped by an inner scroll container is inside the window but its
+ * points land outside the scroller, and it is not really covered.
+ */
+export function shouldRescrollAndRepick(pick, alreadyRescrolled) {
+  return pick.kind !== 'target' && !alreadyRescrolled;
 }
