@@ -28,6 +28,8 @@ import {
   selectOptionEntries,
   waitAfterClick,
   capVisibleText,
+  domRoleKey,
+  uniqueByNode,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -436,5 +438,32 @@ describe('capVisibleText', () => {
     const out = capVisibleText(['a'.repeat(1000), 'b'.repeat(1000)], 1500);
     expect(out.length).toBeLessThan(1530);
     expect(out).toContain('…(+');
+  });
+});
+
+describe('domRoleKey', () => {
+  // The staleness fingerprint's role must not depend on whether Gecko has
+  // built the node's accessible yet — it does so lazily, so an a11y role read
+  // at act time differed from the tag read at snapshot time (J20 run: five
+  // "it is now a combobox/textbox/link" refusals, all false).
+  it('comes from the DOM only: ARIA role, else tag (+ input type)', () => {
+    expect(domRoleKey({ tagName: 'SELECT' })).toBe('select');
+    expect(domRoleKey({ tagName: 'INPUT', type: 'checkbox' })).toBe('input:checkbox');
+    expect(domRoleKey({ tagName: 'INPUT' })).toBe('input:text');
+    expect(domRoleKey({ tagName: 'DIV', roleAttr: 'Button' })).toBe('button');
+    expect(domRoleKey({ tagName: 'A' })).toBe('a');
+  });
+});
+
+describe('uniqueByNode', () => {
+  it('keeps the first entry for each node', () => {
+    const n1 = {};
+    const n2 = {};
+    const out = uniqueByNode([
+      { node: n1, k: 1 },
+      { node: n2, k: 2 },
+      { node: n1, k: 3 },
+    ]);
+    expect(out.map((e) => e.k)).toEqual([1, 2]);
   });
 });

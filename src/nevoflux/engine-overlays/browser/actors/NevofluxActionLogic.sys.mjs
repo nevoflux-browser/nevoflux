@@ -405,3 +405,28 @@ export function selectOptionEntries(options, cap = 25) {
   }
   return { shown, more: options.length - shown.length };
 }
+
+/**
+ * The element kind the staleness fingerprint compares, from the DOM only.
+ * Gecko builds accessibles lazily, so an a11y role can appear between the
+ * snapshot and the action; a fingerprint using it saw a change that wasn't.
+ */
+export function domRoleKey({ tagName, roleAttr, type }) {
+  if (roleAttr) {
+    return String(roleAttr).trim().toLowerCase();
+  }
+  const tag = String(tagName || '').toLowerCase();
+  return tag === 'input' ? `input:${String(type || 'text').toLowerCase()}` : tag;
+}
+
+/** Snapshot entries with one entry per node (the first wins). */
+export function uniqueByNode(entries) {
+  const seen = new Set();
+  return entries.filter((e) => {
+    if (seen.has(e.node)) {
+      return false;
+    }
+    seen.add(e.node);
+    return true;
+  });
+}

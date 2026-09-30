@@ -29,6 +29,8 @@ import {
   selectOptionEntries,
   waitAfterClick,
   capVisibleText,
+  domRoleKey,
+  uniqueByNode,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -381,6 +383,10 @@ export class NevofluxChild extends JSWindowActorChild {
       truncatedCount = Math.max(0, nonKwElements.length - remainingSlots);
       elements = kwElements.concat(nonKwElements.slice(0, remainingSlots));
     }
+
+    // One entry per node: the same node could be reached twice (a11y and
+    // DOM), and with node-bound ids that showed as a repeated id.
+    elements = uniqueByNode(elements);
 
     // Every option of a listed <select> is its own target (J20 §4.5 控件分类).
     const expanded = [];
@@ -1568,28 +1574,19 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   /**
-   * What an id's element must still be when the model acts on it. The role
-   * is recomputed from the node the same way at snapshot and at act time
-   * (a11y role if Gecko has one, else the ARIA/tag name) — never copied
-   * from the snapshot entry, or a change could not be seen.
+   * What an id's element must still be when the model acts on it. The kind
+   * comes from the DOM (domRoleKey), identically at snapshot and act time.
    */
   _fingerprint(node) {
     return {
       url: node.ownerDocument?.URL || '',
-      role: this._stableRoleOf(node),
+      role: domRoleKey({
+        tagName: node.tagName,
+        roleAttr: node.getAttribute?.('role'),
+        type: node.type,
+      }),
       context: this._contextKey(node),
     };
-  }
-
-  _stableRoleOf(node) {
-    try {
-      const acc = lazy.a11yService?.getAccessibleFor(node);
-      const role = acc ? this._roleOf(acc) : '';
-      if (role) {
-        return role;
-      }
-    } catch {}
-    return (node.getAttribute?.('role') || node.tagName || '').toLowerCase();
   }
 
   /** The form, dialog or table row an element sits in, as a short key. */
@@ -2417,7 +2414,7 @@ export class NevofluxChild extends JSWindowActorChild {
         tagName: node.tagName,
         type: node.type,
         isContentEditable: node.isContentEditable,
-        role: before?.role,
+        role: (before?.role || '').replace(/^input:/, ''),
       });
       if (problem) {
         return {
