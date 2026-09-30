@@ -463,3 +463,13 @@ export function tallyRoleNames(pairs) {
 export function isUniqueRoleName(tally, role, name) {
   return tally.get(`${role}|${name}`) === 1;
 }
+
+/** Whether `node` is a listed element or inside one (parent walk, Set lookup). */
+export function withinListed(node, listedSet) {
+  for (let n = node; n; n = n.parentElement) {
+    if (listedSet.has(n)) {
+      return true;
+    }
+  }
+  return false;
+}

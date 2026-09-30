@@ -34,6 +34,7 @@ import {
   refNodeIsLive,
   tallyRoleNames,
   isUniqueRoleName,
+  withinListed,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -534,5 +535,33 @@ describe('snapshot selector generation', () => {
       'utf8'
     );
     expect(src.includes('this._isUniqueA11y(docAcc, ariaRole, el.name)')).toBe(false);
+  });
+});
+
+describe('withinListed', () => {
+  it('finds a listed ancestor by walking parents, not by scanning the list', () => {
+    const root = { parentElement: null };
+    const listed = { parentElement: root };
+    const child = { parentElement: listed };
+    const other = { parentElement: root };
+    const set = new Set([listed]);
+    expect(withinListed(child, set)).toBe(true);
+    expect(withinListed(listed, set)).toBe(true);
+    expect(withinListed(other, set)).toBe(false);
+  });
+});
+
+describe('snapshot visible text', () => {
+  // A scrolled wiki article: counting every text node from the top used up
+  // the 3000-node budget above the viewport, leaving the section empty.
+  it('skips off-screen subtrees instead of spending the budget on them', () => {
+    const src = readFileSync(
+      new URL('../../engine-overlays/browser/actors/NevofluxChild.sys.mjs', import.meta.url),
+      'utf8'
+    );
+    const start = src.indexOf('  _visibleText(doc, win, listedNodes) {');
+    const body = src.slice(start, src.indexOf('\n  }\n', start));
+    expect(body.includes('FILTER_REJECT')).toBe(true);
+    expect(body.includes('listedNodes.some(')).toBe(false);
   });
 });

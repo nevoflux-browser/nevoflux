@@ -35,6 +35,7 @@ import {
   refNodeIsLive,
   tallyRoleNames,
   isUniqueRoleName,
+  withinListed,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -1747,15 +1748,38 @@ export class NevofluxChild extends JSWindowActorChild {
     if (!root) {
       return '';
     }
-    const walker = doc.createTreeWalker(root, win.NodeFilter.SHOW_TEXT);
-    let n = 0;
-    for (let t = walker.nextNode(); t && n < 3000; t = walker.nextNode(), n++) {
+    const listed = new Set(listedNodes);
+    const vh = win.innerHeight;
+    const SKIP = 'script, style, noscript, template, input, textarea, select, option';
+    // Elements outside the viewport (50 px margin) are skipped with their
+    // whole subtree, so a scrolled page spends nothing above the fold.
+    const walker = doc.createTreeWalker(
+      root,
+      win.NodeFilter.SHOW_ELEMENT | win.NodeFilter.SHOW_TEXT,
+      {
+        acceptNode(n) {
+          if (n.nodeType !== 1) {
+            return win.NodeFilter.FILTER_ACCEPT;
+          }
+          if (n.matches(SKIP)) {
+            return win.NodeFilter.FILTER_REJECT;
+          }
+          const r = n.getBoundingClientRect();
+          if (r.height > 0 && (r.bottom < -50 || r.top > vh + 50)) {
+            return win.NodeFilter.FILTER_REJECT;
+          }
+          return win.NodeFilter.FILTER_SKIP;
+        },
+      }
+    );
+    let visited = 0;
+    for (let t = walker.nextNode(); t && visited < 20000 && chunks.length < 300; t = walker.nextNode()) {
+      visited++;
       const p = t.parentElement;
       if (!p || !t.textContent.trim()) continue;
-      if (p.closest('script, style, noscript, template, input, textarea, select, option')) continue;
-      if (listedNodes.some((ln) => ln === p || ln.contains?.(p))) continue;
+      if (withinListed(p, listed)) continue;
       const r = p.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0 || r.bottom < 0 || r.top > win.innerHeight) continue;
+      if (r.width === 0 || r.height === 0 || r.bottom < 0 || r.top > vh) continue;
       const cs = win.getComputedStyle(p);
       if (cs.visibility === 'hidden' || cs.display === 'none') continue;
       chunks.push(t.textContent);
