@@ -32,6 +32,8 @@ import {
   uniqueByNode,
   shouldRetryA11yWalk,
   refNodeIsLive,
+  tallyRoleNames,
+  isUniqueRoleName,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -506,5 +508,31 @@ describe('snapshot occlusion sampling', () => {
     const body = src.slice(start, src.indexOf('  _deduplicateNested(', start));
     expect(body.includes('this._deepElementFromPoint(doc, x, y)')).toBe(true);
     expect(body.includes('el.node.contains(topEl)')).toBe(false);
+  });
+});
+
+describe('tallyRoleNames / isUniqueRoleName', () => {
+  // One a11y walk per snapshot instead of one per listed element.
+  it('counts role|name pairs once and answers uniqueness from the tally', () => {
+    const tally = tallyRoleNames([
+      ['button', 'Save'],
+      ['button', 'Save'],
+      ['link', 'Save'],
+      ['button', 'Cancel'],
+    ]);
+    expect(isUniqueRoleName(tally, 'button', 'Save')).toBe(false);
+    expect(isUniqueRoleName(tally, 'link', 'Save')).toBe(true);
+    expect(isUniqueRoleName(tally, 'button', 'Cancel')).toBe(true);
+    expect(isUniqueRoleName(tally, 'button', 'Missing')).toBe(false);
+  });
+});
+
+describe('snapshot selector generation', () => {
+  it('does not walk the a11y tree once per element', () => {
+    const src = readFileSync(
+      new URL('../../engine-overlays/browser/actors/NevofluxChild.sys.mjs', import.meta.url),
+      'utf8'
+    );
+    expect(src.includes('this._isUniqueA11y(docAcc, ariaRole, el.name)')).toBe(false);
   });
 });

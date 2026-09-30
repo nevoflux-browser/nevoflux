@@ -33,6 +33,8 @@ import {
   uniqueByNode,
   shouldRetryA11yWalk,
   refNodeIsLive,
+  tallyRoleNames,
+  isUniqueRoleName,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -446,6 +448,7 @@ export class NevofluxChild extends JSWindowActorChild {
 
     // === Phase 4: Selector generation ===
     const docAcc = useA11y && lazy.a11yService ? lazy.a11yService.getAccessibleFor(doc) : null;
+    this._roleNameTallies = new WeakMap(); // one a11y walk per snapshot, built on first use
     for (const el of elements) {
       el.selectors = this._generateSelectors(el, doc, docAcc);
     }
@@ -1398,7 +1401,7 @@ export class NevofluxChild extends JSWindowActorChild {
         // a11y: locator (works for name from any source)
         if (selectors.length === 0 || selectors[0].strategy !== 'role') {
           const a11yLoc = `a11y:${ariaRole}/${el.name}`;
-          if (!docAcc || this._isUniqueA11y(docAcc, ariaRole, el.name)) {
+          if (!docAcc || isUniqueRoleName(this._roleNameTally(docAcc), ariaRole, el.name)) {
             selectors.push({ type: 'a11y', strategy: 'role', value: a11yLoc });
           }
         }
@@ -1472,29 +1475,37 @@ export class NevofluxChild extends JSWindowActorChild {
     }
   }
 
-  _isUniqueA11y(docAcc, targetRole, targetName) {
-    let count = 0;
+  /**
+   * `role|name` counts for the whole a11y tree, walked once per snapshot and
+   * reading names only for controls (name computation is the costly part).
+   */
+  _roleNameTally(docAcc) {
+    this._roleNameTallies ??= new WeakMap();
+    let tally = this._roleNameTallies.get(docAcc);
+    if (tally) {
+      return tally;
+    }
+    const pairs = [];
     const walk = (acc) => {
-      if (count > 1) return;
-      const ariaRole = this._roleOf(acc);
-      let name = '';
-      try {
-        name = acc.name || '';
-      } catch {}
-      if (ariaRole === targetRole && name === targetName) {
-        count++;
-        if (count > 1) return;
+      const role = this._roleOf(acc);
+      if (role) {
+        let name = '';
+        try {
+          name = acc.name || '';
+        } catch {}
+        pairs.push([role, name]);
       }
       for (let i = 0; i < (acc.childCount || 0); i++) {
         try {
           const child = acc.getChildAt(i);
           if (child) walk(child);
-          if (count > 1) return;
         } catch {}
       }
     };
     walk(docAcc);
-    return count === 1;
+    tally = tallyRoleNames(pairs);
+    this._roleNameTallies.set(docAcc, tally);
+    return tally;
   }
 
   _isDynamicId(id) {

@@ -448,3 +448,18 @@ export function shouldRetryA11yWalk({ a11yCount, hasBody, retried }) {
 export function refNodeIsLive(node) {
   return Boolean(node && node.isConnected && node.ownerDocument?.defaultView);
 }
+
+/** Count `role|name` pairs of a page's accessibles (one walk per snapshot). */
+export function tallyRoleNames(pairs) {
+  const tally = new Map();
+  for (const [role, name] of pairs) {
+    const key = `${role}|${name}`;
+    tally.set(key, (tally.get(key) || 0) + 1);
+  }
+  return tally;
+}
+
+/** Whether exactly one accessible has this role and name. */
+export function isUniqueRoleName(tally, role, name) {
+  return tally.get(`${role}|${name}`) === 1;
+}
