@@ -26,6 +26,7 @@ import {
   staleMessage,
   fillTargetProblem,
   selectPlan,
+  selectOptionEntries,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -378,6 +379,37 @@ export class NevofluxChild extends JSWindowActorChild {
       truncatedCount = Math.max(0, nonKwElements.length - remainingSlots);
       elements = kwElements.concat(nonKwElements.slice(0, remainingSlots));
     }
+
+    // Every option of a listed <select> is its own target (J20 §4.5 控件分类).
+    const expanded = [];
+    for (const el of elements) {
+      expanded.push(el);
+      if (el.node?.tagName !== 'SELECT') {
+        continue;
+      }
+      const opts = Array.from(el.node.options);
+      const { shown, more } = selectOptionEntries(
+        opts.map((o) => ({ label: o.label || o.text, selected: o.selected, disabled: o.disabled }))
+      );
+      for (const i of shown) {
+        const o = opts[i];
+        expanded.push({
+          node: o,
+          role: 'option',
+          name: (o.label || o.text || '').trim(),
+          states: { selected: o.selected, disabled: o.disabled },
+          viewportRect: el.viewportRect,
+          landmark: el.landmark,
+          inferred: false,
+          signal: null,
+          optionOf: el,
+        });
+      }
+      if (more > 0) {
+        el.moreOptions = more;
+      }
+    }
+    elements = expanded;
 
     // === Phase 5 (before Phase 4): ids from the registry ===
     // A node keeps its id across snapshots; nothing is written into the page.
@@ -1661,7 +1693,7 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   _elementToCompactLine(el, win) {
-    let line = `[${el.id}]`;
+    let line = el.optionOf ? `  [${el.id}]` : `[${el.id}]`;
 
     // Prefix: A11y role or ?signal for inferred
     if (el.inferred) {
@@ -1702,7 +1734,8 @@ export class NevofluxChild extends JSWindowActorChild {
     // Value for inputs — never for password/file/hidden (see snapshotValue).
     try {
       const v = snapshotValue({ tagName: node.tagName, type: node.type, value: node.value });
-      if (v !== null) {
+      // An option's value is its form value; [sel] already shows selection.
+      if (v !== null && !el.optionOf) {
         line += ` val="${v}"`;
       }
     } catch {}
@@ -1718,6 +1751,10 @@ export class NevofluxChild extends JSWindowActorChild {
         }
       }
     } catch {}
+
+    if (el.moreOptions) {
+      line += ` (+${el.moreOptions} more options — fill this element with an option's label to pick one of them)`;
+    }
 
     return line;
   }

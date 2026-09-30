@@ -372,3 +372,21 @@ export function selectPlan(options, wanted) {
   }
   return { index };
 }
+
+export function waitAfterClick() {
+  return null;
+}
+
+export function capVisibleText() {
+  return null;
+}
+
+/** Which options of a select the snapshot lists: the first `cap`, plus the selected one. */
+export function selectOptionEntries(options, cap = 25) {
+  const shown = options.slice(0, cap).map((_, i) => i);
+  const sel = options.findIndex((o) => o.selected);
+  if (sel >= cap) {
+    shown.push(sel);
+  }
+  return { shown, more: options.length - shown.length };
+}

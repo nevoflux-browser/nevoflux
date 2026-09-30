@@ -25,6 +25,9 @@ import {
   staleMessage,
   fillTargetProblem,
   selectPlan,
+  selectOptionEntries,
+  waitAfterClick,
+  capVisibleText,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -381,5 +384,25 @@ describe('selectPlan', () => {
     const miss = selectPlan(opts, 'Medium').error;
     expect(miss).toContain('Small');
     expect(miss).toContain('Extra large');
+  });
+});
+
+describe('selectOptionEntries', () => {
+  const mk = (n, selected = -1) =>
+    Array.from({ length: n }, (_, i) => ({
+      label: `o${i}`,
+      selected: i === selected,
+      disabled: false,
+    }));
+
+  it('lists all options of a short select', () => {
+    expect(selectOptionEntries(mk(4))).toEqual({ shown: [0, 1, 2, 3], more: 0 });
+  });
+
+  it('caps a long select and keeps the selected option in view', () => {
+    const r = selectOptionEntries(mk(300, 250), 25);
+    expect(r.shown.length).toBe(26);
+    expect(r.shown[25]).toBe(250);
+    expect(r.more).toBe(274);
   });
 });
