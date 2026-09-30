@@ -36,6 +36,7 @@ import {
   tallyRoleNames,
   isUniqueRoleName,
   withinListed,
+  checkMark,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -1819,7 +1820,17 @@ export class NevofluxChild extends JSWindowActorChild {
     } catch {}
 
     // States (symbols)
-    if (el.states?.checked) line += ' \u2713';
+    const toggleRole = el.inferred
+      ? (node.getAttribute?.('role') || (node.tagName === 'INPUT' ? node.type : '')).toLowerCase()
+      : el.role;
+    const mark = checkMark({
+      role: toggleRole,
+      checked:
+        Boolean(el.states?.checked) ||
+        node.checked === true ||
+        node.getAttribute?.('aria-checked') === 'true',
+    });
+    if (mark) line += ` ${mark}`;
     if (el.states?.expanded === true) line += ' \u25BC';
     if (el.states?.expanded === false) line += ' \u25B6';
     if (el.states?.selected) line += ' [sel]';

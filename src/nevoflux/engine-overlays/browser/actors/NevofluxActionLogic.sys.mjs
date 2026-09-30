@@ -7,7 +7,9 @@
  * ChromeUtils so node unit tests import this exact file.
  */
 
-const SECRET_INPUT_TYPES = new Set(['password', 'file', 'hidden']);
+// Password/file/hidden: secret. Checkbox/radio: `value` is the form value
+// ("on"), not the state — the ✓/☐ mark shows that.
+const SECRET_INPUT_TYPES = new Set(['password', 'file', 'hidden', 'checkbox', 'radio']);
 
 /**
  * The value a snapshot line may show for a node, or null for none. A
@@ -472,4 +474,14 @@ export function withinListed(node, listedSet) {
     }
   }
   return false;
+}
+
+const TOGGLE_ROLES = new Set(['checkbox', 'radio', 'switch']);
+
+/** The state mark for a toggle: ticked, unticked, or '' for non-toggles. */
+export function checkMark({ role, checked }) {
+  if (!TOGGLE_ROLES.has(role)) {
+    return '';
+  }
+  return checked ? '✓' : '☐';
 }

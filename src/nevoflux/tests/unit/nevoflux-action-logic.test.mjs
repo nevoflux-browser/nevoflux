@@ -35,6 +35,7 @@ import {
   tallyRoleNames,
   isUniqueRoleName,
   withinListed,
+  checkMark,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -563,5 +564,23 @@ describe('snapshot visible text', () => {
     const body = src.slice(start, src.indexOf('\n  }\n', start));
     expect(body.includes('FILTER_REJECT')).toBe(true);
     expect(body.includes('listedNodes.some(')).toBe(false);
+  });
+});
+
+describe('checkbox and radio state in snapshot lines', () => {
+  // J20: `[e6] checkbox "Gift wrap" val="on"` — the form value read as
+  // "on", and an unticked box showed no mark at all; the model spent six
+  // eval_js calls finding out whether it was ticked.
+  it('never prints a checkbox or radio form value', () => {
+    expect(snapshotValue({ tagName: 'INPUT', type: 'checkbox', value: 'on' })).toBeNull();
+    expect(snapshotValue({ tagName: 'INPUT', type: 'radio', value: 'std' })).toBeNull();
+  });
+
+  it('marks ticked and unticked toggles', () => {
+    expect(checkMark({ role: 'checkbox', checked: true })).toBe('✓');
+    expect(checkMark({ role: 'checkbox', checked: false })).toBe('☐');
+    expect(checkMark({ role: 'radio', checked: false })).toBe('☐');
+    expect(checkMark({ role: 'switch', checked: true })).toBe('✓');
+    expect(checkMark({ role: 'button', checked: false })).toBe('');
   });
 });
