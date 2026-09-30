@@ -17,6 +17,8 @@ import {
   coveredMessage,
   clickEffect,
   shouldRescrollAndRepick,
+  canonicalRole,
+  isInteractiveRole,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -88,41 +90,6 @@ function _recBuildStep({ action, target, value, inputType, name, autocomplete, u
 
 // ── End recorder-logic helpers ────────────────────────────────────────────────
 
-// Interactive roles for filtering (A11y tree — Gecko nsIAccessible role names)
-const INTERACTIVE_ROLES = new Set([
-  'pushbutton',
-  'button',
-  'link',
-  'entry',
-  'password text',
-  'text',
-  'text container',
-  'editable text',
-  'searchbox',
-  'checkbox',
-  'radio button',
-  'check menu item',
-  'radio menu item',
-  'toggle button',
-  'combobox',
-  'listbox',
-  'option',
-  'combobox option',
-  'slider',
-  'spinbutton',
-  'menuitem',
-  'menubar',
-  'menu',
-  'tab',
-  'pagetab',
-  'tablist',
-  'tree item',
-  'switch',
-  'autocomplete',
-  'editbar',
-  'dropdown list',
-]);
-
 // Landmark roles for grouping in compact output
 const LANDMARK_ROLES = new Set([
   'banner',
@@ -134,31 +101,6 @@ const LANDMARK_ROLES = new Set([
   'form',
   'region',
 ]);
-
-// Gecko role name → ARIA role (for a11y: locator protocol)
-const ROLE_TO_ARIA = {
-  pushbutton: 'button',
-  entry: 'textbox',
-  link: 'link',
-  'password text': 'textbox',
-  checkbox: 'checkbox',
-  'radio button': 'radio',
-  combobox: 'combobox',
-  slider: 'slider',
-  tab: 'tab',
-  pagetab: 'tab',
-  menuitem: 'menuitem',
-  switch: 'switch',
-  searchbox: 'searchbox',
-  'toggle button': 'button',
-  option: 'option',
-  'combobox option': 'option',
-  spinbutton: 'spinbutton',
-  listbox: 'listbox',
-  'tree item': 'treeitem',
-  'editable text': 'textbox',
-  'text container': 'textbox',
-};
 
 // Interactive events for InspectorUtils detection
 const INTERACTIVE_EVENTS = new Set([
@@ -173,192 +115,6 @@ const INTERACTIVE_EVENTS = new Set([
   'keyup',
   'keypress',
 ]);
-
-// Role mapping from nsIAccessible role constants to readable strings
-const ROLE_MAP = {
-  1: 'pushbutton',
-  3: 'check menu item',
-  4: 'dropdown list',
-  5: 'menu bar',
-  6: 'scroll bar',
-  7: 'grip',
-  8: 'sound',
-  9: 'cursor',
-  10: 'caret',
-  11: 'alert',
-  12: 'window',
-  13: 'internal frame',
-  14: 'menupopup',
-  15: 'menuitem',
-  16: 'tooltip',
-  17: 'application',
-  18: 'document',
-  19: 'pane',
-  20: 'chart',
-  21: 'dialog',
-  22: 'border',
-  23: 'grouping',
-  24: 'separator',
-  25: 'toolbar',
-  26: 'statusbar',
-  27: 'table',
-  28: 'columnheader',
-  29: 'rowheader',
-  30: 'column',
-  31: 'row',
-  32: 'cell',
-  33: 'link',
-  34: 'helpballoon',
-  35: 'character',
-  36: 'list',
-  37: 'listitem',
-  38: 'outline',
-  39: 'outlineitem',
-  40: 'pagetab',
-  41: 'propertypage',
-  42: 'indicator',
-  43: 'graphic',
-  44: 'statictext',
-  45: 'text leaf',
-  46: 'pushbutton',
-  47: 'checkbutton',
-  48: 'radiobutton',
-  49: 'combobox',
-  50: 'droplist',
-  51: 'progressbar',
-  52: 'dial',
-  53: 'hotkeyfield',
-  54: 'slider',
-  55: 'spinbutton',
-  56: 'diagram',
-  57: 'animation',
-  58: 'equation',
-  59: 'buttondropdown',
-  60: 'buttonmenu',
-  61: 'buttondropdowngrid',
-  62: 'whitespace',
-  63: 'pagetablist',
-  64: 'clock',
-  65: 'splitbutton',
-  66: 'ipaddress',
-  67: 'accel label',
-  68: 'arrow',
-  69: 'canvas',
-  70: 'check menu item',
-  71: 'color chooser',
-  72: 'date editor',
-  73: 'desktop icon',
-  74: 'desktop frame',
-  75: 'directory pane',
-  76: 'file chooser',
-  77: 'font chooser',
-  78: 'chrome window',
-  79: 'glass pane',
-  80: 'html container',
-  81: 'icon',
-  82: 'label',
-  83: 'layered pane',
-  84: 'option pane',
-  85: 'password text',
-  86: 'popup menu',
-  87: 'radio menu item',
-  88: 'root pane',
-  89: 'scroll pane',
-  90: 'split pane',
-  91: 'table column header',
-  92: 'table row header',
-  93: 'tear off menu item',
-  94: 'terminal',
-  95: 'text container',
-  96: 'toggle button',
-  97: 'tree table',
-  98: 'viewport',
-  99: 'header',
-  100: 'footer',
-  101: 'paragraph',
-  102: 'ruler',
-  103: 'autocomplete',
-  104: 'editbar',
-  105: 'entry',
-  106: 'caption',
-  107: 'document frame',
-  108: 'heading',
-  109: 'page',
-  110: 'section',
-  111: 'redundant object',
-  112: 'form',
-  113: 'ime',
-  114: 'app root',
-  115: 'parent menuitem',
-  116: 'calendar',
-  117: 'combobox list',
-  118: 'combobox option',
-  119: 'image map',
-  120: 'option',
-  121: 'listbox',
-  122: 'flat equation',
-  123: 'gridcell',
-  124: 'embedded object',
-  125: 'note',
-  126: 'figure',
-  127: 'check rich option',
-  128: 'rich option',
-  129: 'definition list',
-  130: 'term',
-  131: 'definition',
-  132: 'key',
-  133: 'switch',
-  134: 'mathml math',
-  135: 'mathml identifier',
-  136: 'mathml number',
-  137: 'mathml operator',
-  138: 'mathml text',
-  139: 'mathml string literal',
-  140: 'mathml glyph',
-  141: 'mathml row',
-  142: 'mathml fraction',
-  143: 'mathml sqrt',
-  144: 'mathml root',
-  145: 'mathml fenced',
-  146: 'mathml enclosed',
-  147: 'mathml style',
-  148: 'mathml sub',
-  149: 'mathml sup',
-  150: 'mathml subsup',
-  151: 'mathml under',
-  152: 'mathml over',
-  153: 'mathml underover',
-  154: 'mathml multiscripts',
-  155: 'mathml table',
-  156: 'mathml labeled row',
-  157: 'mathml table row',
-  158: 'mathml cell',
-  159: 'mathml action',
-  160: 'mathml error',
-  161: 'mathml stack',
-  162: 'mathml long division',
-  163: 'mathml stack group',
-  164: 'mathml stack row',
-  165: 'mathml stack carries',
-  166: 'mathml stack carry',
-  167: 'mathml stack line',
-  168: 'details',
-  169: 'summary',
-  170: 'meter',
-  171: 'navigation',
-  172: 'complementary',
-  173: 'contentinfo',
-  174: 'main',
-  175: 'search',
-  176: 'banner',
-  177: 'region',
-  178: 'article',
-  179: 'landmark',
-  180: 'blockquote',
-  181: 'mark',
-  182: 'suggestion',
-  183: 'comment',
-};
 
 export class NevofluxChild extends JSWindowActorChild {
   // Frame context: null = main document, string = iframe selector
@@ -636,7 +392,7 @@ export class NevofluxChild extends JSWindowActorChild {
     this._markDuplicateNames(elements);
     // Compute landmarks for inferred elements
     for (const el of elements) {
-      if (el.inferred && !el.landmark) {
+      if (!el.landmark) {
         el.landmark = this._findLandmarkFromDOM(el.node);
       }
     }
@@ -735,18 +491,8 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     // Step 2: Landmark stack maintenance
-    const roleNum = acc.role;
-    const roleName = ROLE_MAP[roleNum] || '';
-    let currentLandmark = landmarkStack[landmarkStack.length - 1] || null;
-
-    if (LANDMARK_ROLES.has(roleName)) {
-      let accName = '';
-      try {
-        accName = acc.name || '';
-      } catch {}
-      currentLandmark = accName ? `${roleName} "${accName}"` : roleName;
-      landmarkStack.push(currentLandmark);
-    }
+    // Landmarks come from the DOM for every element (_findLandmarkFromDOM).
+    const roleName = this._roleOf(acc);
 
     // Step 3: Collect DOMNode (ALL nodes, not just interactive)
     let domNode = null;
@@ -757,7 +503,8 @@ export class NevofluxChild extends JSWindowActorChild {
       seenNodes.add(domNode); // Mark as A11y-traversed
 
       // Step 4: Interactive role filter (no subtree pruning)
-      if (INTERACTIVE_ROLES.has(roleName)) {
+      // <option>s are listed by the snapshot itself, under their <select>.
+      if (isInteractiveRole(roleName) && domNode.tagName !== 'OPTION') {
         let accName = '';
         try {
           accName = acc.name || '';
@@ -769,7 +516,7 @@ export class NevofluxChild extends JSWindowActorChild {
           name: accName,
           states: this._extractA11yStates(acc),
           viewportRect: vr,
-          landmark: currentLandmark,
+          landmark: null,
           inferred: false,
           signal: null,
         });
@@ -785,10 +532,20 @@ export class NevofluxChild extends JSWindowActorChild {
       } catch {}
     }
 
-    // Pop landmark scope
-    if (LANDMARK_ROLES.has(roleName)) {
-      landmarkStack.pop();
+  }
+
+  /** Canonical role of an accessible (Gecko's own role name, mapped). */
+  _roleOf(acc) {
+    const num = acc.role;
+    this._roleNames ??= new Map();
+    if (!this._roleNames.has(num)) {
+      let gecko = '';
+      try {
+        gecko = lazy.a11yService.getStringRole(num);
+      } catch {}
+      this._roleNames.set(num, canonicalRole(gecko));
     }
+    return this._roleNames.get(num);
   }
 
   _extractA11yStates(acc) {
@@ -1521,22 +1278,10 @@ export class NevofluxChild extends JSWindowActorChild {
     // Functional weight (A11y: role-based)
     if (!el.inferred) {
       const role = el.role;
-      if (
-        [
-          'entry',
-          'searchbox',
-          'textbox',
-          'password text',
-          'combobox',
-          'spinbutton',
-          'editable text',
-        ].includes(role)
-      )
-        p += 15;
-      if (['pushbutton', 'button', 'toggle button', 'switch'].includes(role)) p += 12;
+      if (['textbox', 'searchbox', 'combobox', 'spinbutton'].includes(role)) p += 15;
+      if (['button', 'switch'].includes(role)) p += 12;
       if (role === 'link') p += 8;
-      if (['checkbox', 'radio button', 'option', 'menuitem', 'tab', 'pagetab'].includes(role))
-        p += 6;
+      if (['checkbox', 'radio', 'option', 'menuitem', 'tab'].includes(role)) p += 6;
     }
 
     // Functional weight (Inferred: tag + signal based)
@@ -1566,7 +1311,7 @@ export class NevofluxChild extends JSWindowActorChild {
 
     // A11y elements: try a11y: locator protocol first
     if (!el.inferred && el.role && el.name) {
-      const ariaRole = ROLE_TO_ARIA[el.role];
+      const ariaRole = el.role;
       if (ariaRole) {
         // Try CSS form first (only when name = aria-label)
         const ariaLabel = node.getAttribute('aria-label');
@@ -1670,8 +1415,7 @@ export class NevofluxChild extends JSWindowActorChild {
     let count = 0;
     const walk = (acc) => {
       if (count > 1) return;
-      const roleName = ROLE_MAP[acc.role] || '';
-      const ariaRole = ROLE_TO_ARIA[roleName] || '';
+      const ariaRole = this._roleOf(acc);
       let name = '';
       try {
         name = acc.name || '';
@@ -2002,8 +1746,7 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   _findByRoleName(acc, targetRole, targetName) {
-    const roleName = ROLE_MAP[acc.role] || '';
-    const ariaRole = ROLE_TO_ARIA[roleName] || '';
+    const ariaRole = this._roleOf(acc);
     let name = '';
     try {
       name = acc.name || '';
@@ -7120,7 +6863,7 @@ export class NevofluxChild extends JSWindowActorChild {
       try {
         const acc = lazy.a11yService.getAccessibleFor(node);
         if (acc) {
-          role = ROLE_MAP[acc.role] || null;
+          role = this._roleOf(acc) || null;
           name = acc.name || null;
         }
       } catch (_e) {}

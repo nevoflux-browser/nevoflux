@@ -194,3 +194,47 @@ export function clickEffect({ method, changed, elementRemoved }) {
 export function shouldRescrollAndRepick(pick, alreadyRescrolled) {
   return pick.kind !== 'target' && !alreadyRescrolled;
 }
+
+/**
+ * Gecko accessible role names (nsIAccessibilityService.getStringRole, see
+ * engine/accessible/base/RoleMap.inc) → the ARIA role the snapshot prints.
+ * The actor used to map role *numbers* through a hand-written table that
+ * matched no Gecko version, so buttons, fields and selects vanished.
+ */
+const GECKO_TO_ARIA = {
+  pushbutton: 'button',
+  'toggle button': 'button',
+  buttonmenu: 'button',
+  checkbutton: 'checkbox',
+  radiobutton: 'radio',
+  entry: 'textbox',
+  'password text': 'textbox',
+  combobox: 'combobox',
+  editcombobox: 'combobox',
+  'combobox list': 'listbox',
+  listbox: 'listbox',
+  'combobox option': 'option',
+  'listbox option': 'option',
+  'listbox rich option': 'option',
+  link: 'link',
+  switch: 'switch',
+  slider: 'slider',
+  spinbutton: 'spinbutton',
+  pagetab: 'tab',
+  menuitem: 'menuitem',
+  'check menu item': 'menuitem',
+  'radio menu item': 'menuitem',
+  outlineitem: 'treeitem',
+};
+
+const INTERACTIVE = new Set(Object.values(GECKO_TO_ARIA));
+
+/** The ARIA role for a Gecko role name, or '' for non-controls. */
+export function canonicalRole(geckoName) {
+  return GECKO_TO_ARIA[geckoName] || '';
+}
+
+/** Whether a canonical role is a control the snapshot lists. */
+export function isInteractiveRole(role) {
+  return INTERACTIVE.has(role);
+}

@@ -17,6 +17,8 @@ import {
   coveredMessage,
   clickEffect,
   shouldRescrollAndRepick,
+  canonicalRole,
+  isInteractiveRole,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -223,5 +225,51 @@ describe('shouldRescrollAndRepick', () => {
   it('not when a point hit it, nor a second time', () => {
     expect(shouldRescrollAndRepick({ kind: 'target', index: 0 }, false)).toBe(false);
     expect(shouldRescrollAndRepick({ kind: 'covered', occluder: 'div' }, true)).toBe(false);
+  });
+});
+
+describe('canonicalRole', () => {
+  it('maps Gecko role names (RoleMap.inc) to ARIA roles', () => {
+    const cases = {
+      pushbutton: 'button',
+      'toggle button': 'button',
+      buttonmenu: 'button',
+      checkbutton: 'checkbox',
+      radiobutton: 'radio',
+      entry: 'textbox',
+      'password text': 'textbox',
+      combobox: 'combobox',
+      editcombobox: 'combobox',
+      'combobox list': 'listbox',
+      listbox: 'listbox',
+      'combobox option': 'option',
+      'listbox option': 'option',
+      'listbox rich option': 'option',
+      link: 'link',
+      switch: 'switch',
+      slider: 'slider',
+      spinbutton: 'spinbutton',
+      pagetab: 'tab',
+      menuitem: 'menuitem',
+      'check menu item': 'menuitem',
+      'radio menu item': 'menuitem',
+      outlineitem: 'treeitem',
+    };
+    for (const [gecko, aria] of Object.entries(cases)) {
+      expect(canonicalRole(gecko)).toBe(aria);
+    }
+  });
+
+  it('gives no role to containers and text', () => {
+    for (const gecko of ['text container', 'section', 'paragraph', 'text leaf', 'landmark', '']) {
+      expect(canonicalRole(gecko)).toBe('');
+    }
+  });
+
+  it('marks exactly the canonical control roles interactive', () => {
+    expect(isInteractiveRole('button')).toBe(true);
+    expect(isInteractiveRole('option')).toBe(true);
+    expect(isInteractiveRole('')).toBe(false);
+    expect(isInteractiveRole('pushbutton')).toBe(false); // Gecko name, not canonical
   });
 });
