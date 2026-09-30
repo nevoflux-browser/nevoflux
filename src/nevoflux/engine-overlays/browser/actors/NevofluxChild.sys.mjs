@@ -31,6 +31,7 @@ import {
   capVisibleText,
   domRoleKey,
   uniqueByNode,
+  shouldRetryA11yWalk,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -323,7 +324,7 @@ export class NevofluxChild extends JSWindowActorChild {
   //  Phase 5: Serialization (compact for LLM, refs for program)
   // =====================================================================
 
-  snapshot({ root, useA11y, domFallback, viewport_only, maxElements, keywords } = {}) {
+  async snapshot({ root, useA11y, domFallback, viewport_only, maxElements, keywords } = {}) {
     if (useA11y == null) useA11y = true;
     if (domFallback == null) domFallback = true;
     if (viewport_only == null) viewport_only = true;
@@ -346,13 +347,27 @@ export class NevofluxChild extends JSWindowActorChild {
 
     // === Phase 1: A11y Tree traversal ===
     if (useA11y && lazy.a11yService) {
-      try {
-        const accDoc = lazy.a11yService.getAccessibleFor(doc);
-        if (accDoc) {
-          this._walkA11yTree(accDoc, a11yResults, seenNodes, win, []);
+      for (let attempt = 0; attempt < 2; attempt++) {
+        a11yResults = [];
+        seenNodes.clear();
+        try {
+          const accDoc = lazy.a11yService.getAccessibleFor(doc);
+          if (accDoc) {
+            this._walkA11yTree(accDoc, a11yResults, seenNodes, win, []);
+          }
+        } catch (e) {
+          console.warn('[NevofluxChild.snapshot] A11y traversal failed:', e.message);
         }
-      } catch (e) {
-        console.warn('[NevofluxChild.snapshot] A11y traversal failed:', e.message);
+        const again = shouldRetryA11yWalk({
+          a11yCount: a11yResults.length,
+          hasBody: !!doc.body,
+          retried: attempt > 0,
+        });
+        if (!again) {
+          break;
+        }
+        // The accessible tree of a fresh page is built lazily; give it a moment.
+        await this._nextFrames(win, 3, 150);
       }
     }
 

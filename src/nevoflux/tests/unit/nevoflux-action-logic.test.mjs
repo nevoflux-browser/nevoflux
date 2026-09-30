@@ -30,6 +30,7 @@ import {
   capVisibleText,
   domRoleKey,
   uniqueByNode,
+  shouldRetryA11yWalk,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -465,5 +466,18 @@ describe('uniqueByNode', () => {
       { node: n1, k: 3 },
     ]);
     expect(out.map((e) => e.k)).toEqual([1, 2]);
+  });
+});
+
+describe('shouldRetryA11yWalk', () => {
+  // J20 run: every page's first snapshot was all `?tag`, later ones had real
+  // roles — Gecko had not built the accessible tree yet.
+  it('retries once when a page with a body gave no accessible controls', () => {
+    expect(shouldRetryA11yWalk({ a11yCount: 0, hasBody: true, retried: false })).toBe(true);
+  });
+  it('not after a retry, not when controls were found, not without a body', () => {
+    expect(shouldRetryA11yWalk({ a11yCount: 0, hasBody: true, retried: true })).toBe(false);
+    expect(shouldRetryA11yWalk({ a11yCount: 3, hasBody: true, retried: false })).toBe(false);
+    expect(shouldRetryA11yWalk({ a11yCount: 0, hasBody: false, retried: false })).toBe(false);
   });
 });

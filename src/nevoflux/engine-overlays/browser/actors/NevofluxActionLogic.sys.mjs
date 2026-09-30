@@ -430,3 +430,12 @@ export function uniqueByNode(entries) {
     return true;
   });
 }
+
+/**
+ * Walk the a11y tree again after a short wait? Gecko builds a page's
+ * accessible tree lazily, so the first walk of a fresh page finds nothing
+ * and every control would print as `?tag`.
+ */
+export function shouldRetryA11yWalk({ a11yCount, hasBody, retried }) {
+  return a11yCount === 0 && hasBody && !retried;
+}
