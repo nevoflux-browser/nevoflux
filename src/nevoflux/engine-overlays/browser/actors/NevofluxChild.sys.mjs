@@ -32,6 +32,7 @@ import {
   domRoleKey,
   uniqueByNode,
   shouldRetryA11yWalk,
+  refNodeIsLive,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -1262,8 +1263,15 @@ export class NevofluxChild extends JSWindowActorChild {
       for (const [x, y] of points) {
         if (x < 0 || y < 0 || x >= vw || y >= vh) continue;
         try {
-          const topEl = doc.elementFromPoint(x, y);
-          if (topEl && (el.node === topEl || el.node.contains(topEl) || topEl.contains(el.node))) {
+          // Through shadow roots: elementFromPoint stops at the host, and
+          // Node.contains does not cross a shadow boundary.
+          const topEl = this._deepElementFromPoint(doc, x, y);
+          if (
+            topEl &&
+            (el.node === topEl ||
+              this._composedContains(el.node, topEl) ||
+              this._composedContains(topEl, el.node))
+          ) {
             hits++;
           }
         } catch {}
@@ -2385,7 +2393,7 @@ export class NevofluxChild extends JSWindowActorChild {
     const id = normalizeRefId(ref);
     const found = this._refs?.lookup(id) ?? { error: 'unknown' };
     const node = found.node;
-    if (!node || !node.isConnected) {
+    if (!refNodeIsLive(node)) {
       return {
         success: false,
         error: {

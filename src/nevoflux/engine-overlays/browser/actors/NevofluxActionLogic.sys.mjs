@@ -439,3 +439,12 @@ export function uniqueByNode(entries) {
 export function shouldRetryA11yWalk({ a11yCount, hasBody, retried }) {
   return a11yCount === 0 && hasBody && !retried;
 }
+
+/**
+ * Whether the node behind an id can still be acted on: connected, and its
+ * document still shown. A node of an iframe document that navigated away
+ * stays isConnected (its root is the old Document) but has no window.
+ */
+export function refNodeIsLive(node) {
+  return Boolean(node && node.isConnected && node.ownerDocument?.defaultView);
+}

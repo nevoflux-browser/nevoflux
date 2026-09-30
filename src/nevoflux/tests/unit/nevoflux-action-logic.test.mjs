@@ -31,6 +31,7 @@ import {
   domRoleKey,
   uniqueByNode,
   shouldRetryA11yWalk,
+  refNodeIsLive,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -479,5 +480,31 @@ describe('shouldRetryA11yWalk', () => {
     expect(shouldRetryA11yWalk({ a11yCount: 0, hasBody: true, retried: true })).toBe(false);
     expect(shouldRetryA11yWalk({ a11yCount: 3, hasBody: true, retried: false })).toBe(false);
     expect(shouldRetryA11yWalk({ a11yCount: 0, hasBody: false, retried: false })).toBe(false);
+  });
+});
+
+describe('refNodeIsLive', () => {
+  // A node of an iframe document that navigated away stays isConnected
+  // (its root is the old Document) but has no window any more.
+  it('needs the node connected and its document still shown', () => {
+    expect(refNodeIsLive({ isConnected: true, ownerDocument: { defaultView: {} } })).toBe(true);
+    expect(refNodeIsLive({ isConnected: false, ownerDocument: { defaultView: {} } })).toBe(false);
+    expect(refNodeIsLive({ isConnected: true, ownerDocument: { defaultView: null } })).toBe(false);
+    expect(refNodeIsLive(null)).toBe(false);
+  });
+});
+
+describe('snapshot occlusion sampling', () => {
+  // elementFromPoint stops at a shadow host and Node.contains does not cross
+  // shadow roots, so shadow-DOM controls were all dropped as "occluded".
+  it('hit-tests through shadow roots', () => {
+    const src = readFileSync(
+      new URL('../../engine-overlays/browser/actors/NevofluxChild.sys.mjs', import.meta.url),
+      'utf8'
+    );
+    const start = src.indexOf('  _filterOccluded(elements, doc) {');
+    const body = src.slice(start, src.indexOf('  _deduplicateNested(', start));
+    expect(body.includes('this._deepElementFromPoint(doc, x, y)')).toBe(true);
+    expect(body.includes('el.node.contains(topEl)')).toBe(false);
   });
 });
