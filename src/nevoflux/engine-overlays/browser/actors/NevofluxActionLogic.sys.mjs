@@ -373,8 +373,12 @@ export function selectPlan(options, wanted) {
   return { index };
 }
 
-export function waitAfterClick() {
-  return null;
+/** How long to wait after a click before the next observation (§4.5 等待). */
+export function waitAfterClick({ role, hasPopup, expanded }) {
+  const opensList =
+    (role === 'combobox' && expanded !== 'true') ||
+    ['listbox', 'menu', 'true'].includes(String(hasPopup));
+  return opensList ? { forOptions: true, maxMs: 200 } : { frames: 2, maxMs: 50 };
 }
 
 export function capVisibleText() {

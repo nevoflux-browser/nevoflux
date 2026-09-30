@@ -406,3 +406,22 @@ describe('selectOptionEntries', () => {
     expect(r.more).toBe(274);
   });
 });
+
+describe('waitAfterClick', () => {
+  it('waits up to 200 ms for options after opening a combobox or popup', () => {
+    expect(waitAfterClick({ role: 'combobox', hasPopup: null, expanded: 'false' })).toEqual({
+      forOptions: true,
+      maxMs: 200,
+    });
+    expect(waitAfterClick({ role: 'button', hasPopup: 'listbox', expanded: null }).forOptions).toBe(
+      true
+    );
+  });
+  it('otherwise 2 frames, at most 50 ms', () => {
+    expect(waitAfterClick({ role: 'button', hasPopup: null, expanded: null })).toEqual({
+      frames: 2,
+      maxMs: 50,
+    });
+    expect(waitAfterClick({ role: 'combobox', hasPopup: null, expanded: 'true' }).frames).toBe(2);
+  });
+});

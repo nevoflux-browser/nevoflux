@@ -27,6 +27,7 @@ import {
   fillTargetProblem,
   selectPlan,
   selectOptionEntries,
+  waitAfterClick,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -2356,7 +2357,21 @@ export class NevofluxChild extends JSWindowActorChild {
       if (node.tagName === 'OPTION') {
         return this._selectOption(node);
       }
-      return this.click({ selector: node, ...options });
+      const plan = waitAfterClick({
+        role: before?.role,
+        hasPopup: node.getAttribute('aria-haspopup'),
+        expanded: node.getAttribute('aria-expanded'),
+      });
+      const result = await this.click({ selector: node, ...options });
+      if (result.success !== false) {
+        const win = node.ownerDocument.defaultView;
+        if (plan.forOptions) {
+          await this._waitForOptions(node.ownerDocument, win, plan.maxMs);
+        } else {
+          await this._nextFrames(win, plan.frames, plan.maxMs);
+        }
+      }
+      return result;
     }
     if (action === 'fill' || action === 'type') {
       const problem = fillTargetProblem({
@@ -2394,6 +2409,18 @@ export class NevofluxChild extends JSWindowActorChild {
       success: false,
       error: { code: 5002, message: `Unknown ref action: ${action}`, recoverable: false },
     };
+  }
+
+  /** Resolve once a visible option is on the page, or after `maxMs`. */
+  async _waitForOptions(doc, win, maxMs) {
+    const deadline = Date.now() + maxMs;
+    while (Date.now() < deadline) {
+      const opt = this._deepQuerySelector('[role="option"], [role="menuitem"]', doc);
+      if (opt && opt.getBoundingClientRect().height > 0) {
+        return;
+      }
+      await this._nextFrames(win, 1, 25);
+    }
   }
 
   /** Choose an <option> the way a user's pick does: selection + input/change. */
