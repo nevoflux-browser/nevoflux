@@ -12,11 +12,7 @@ import { makeHeader } from '../content/recorder-logic.mjs';
 import { createAgentStatusMachine } from './agent-status-machine.mjs';
 import { promptFor } from './avatar-prompt-policy.mjs';
 import { checkWebSession } from './web-session.mjs';
-import {
-  afterCandidateClick,
-  mayUseCoordinateFallback,
-  mayResendAfterInjection,
-} from './click-policy.mjs';
+import { mayResendAfterInjection } from './click-policy.mjs';
 import {
   NetworkCapture,
   redactUrl,
@@ -6126,32 +6122,11 @@ async function executeFillRichTextViaApi(tabId, params) {
   }
 }
 
-// Store element refs from snapshot for later use by click_by_id, fill_by_id, etc.
-// Key: tabId, Value: { refs: {element_id -> ref}, timestamp }
-//
-// MERGE STRATEGY: New snapshot refs are merged INTO existing refs rather than
-// replacing them. This prevents rapid auto-snapshots (e.g. Kimi framework
-// appending "Current page state" to every tool response) from invalidating
-// element IDs between the AI reading the tree and issuing a click command.
-// Each ref entry carries its own `_ts` (timestamp) for per-entry expiry.
-const snapshotRefs = new Map();
-
-// Per-entry max age: entries older than this are pruned on access
-const REF_ENTRY_MAX_AGE_MS = 60000; // 60 seconds
-// Full cleanup threshold
-const SNAPSHOT_MAX_AGE_MS = 300000; // 5 minutes
-
-function cleanupOldSnapshots() {
-  const now = Date.now();
-  for (const [tabId, data] of snapshotRefs) {
-    if (now - data.timestamp > SNAPSHOT_MAX_AGE_MS) {
-      snapshotRefs.delete(tabId);
-    }
-  }
-}
-
 /**
  * Get page snapshot via browser.nevoflux.snapshot()
+ *
+ * Element ids (eN) are resolved by the actor that issued them
+ * (browser.nevoflux.actOnRef), so nothing is stored here.
  */
 async function executeSnapshotViaApi(tabId, params) {
   if (!isNevofluxApiAvailable()) {
@@ -6165,72 +6140,11 @@ async function executeSnapshotViaApi(tabId, params) {
   try {
     // Remove tab_id from params as it's passed separately
     const { tab_id: _tab_id, ...options } = params || {};
-    console.log(
-      `[NevoFlux] Calling browser.nevoflux.snapshot(${tabId}, ${JSON.stringify(options)})`
-    );
     const result = await browser.nevoflux.snapshot(tabId, options);
-    console.log(`[NevoFlux] Snapshot result:`, result);
 
     if (result.error) {
       return { success: false, error: result.error };
     }
-
-    // Store refs for later use by click_by_id, fill_by_id, etc.
-    // Convert refs keys from "e1", "e2" to numeric 1, 2 for compatibility
-    const numericRefs = {};
-    if (result.refs) {
-      for (const [key, value] of Object.entries(result.refs)) {
-        // Convert "e1" -> 1, "e2" -> 2, etc.
-        const numericId = parseInt(key.replace(/^e/, ''), 10);
-        if (!isNaN(numericId)) {
-          numericRefs[numericId] = value;
-        }
-      }
-    }
-
-    // Merge new refs into existing refs instead of replacing.
-    // New entries overwrite old ones with the same ID; old entries that
-    // aren't in the new snapshot are kept (with their original timestamp)
-    // until they expire via REF_ENTRY_MAX_AGE_MS.
-    const now = Date.now();
-    const existing = snapshotRefs.get(tabId);
-    const mergedRefs = {};
-
-    // Carry forward non-expired old entries
-    if (existing?.refs) {
-      for (const [id, ref] of Object.entries(existing.refs)) {
-        if (now - (ref._ts || existing.timestamp) < REF_ENTRY_MAX_AGE_MS) {
-          mergedRefs[id] = ref;
-        }
-      }
-    }
-
-    // Overlay new entries (always fresher, overwrite old)
-    for (const [id, ref] of Object.entries(numericRefs)) {
-      mergedRefs[id] = { ...ref, _ts: now };
-    }
-
-    snapshotRefs.set(tabId, {
-      refs: mergedRefs,
-      timestamp: now,
-    });
-
-    // Cleanup old snapshots periodically
-    cleanupOldSnapshots();
-
-    console.log(
-      `[NevoFlux] Stored ${Object.keys(numericRefs).length} new + ${Object.keys(mergedRefs).length - Object.keys(numericRefs).length} carried-over = ${Object.keys(mergedRefs).length} total refs for tab ${tabId}`
-    );
-    console.log(
-      `[NevoFlux] First 5 elements:`,
-      Object.entries(numericRefs)
-        .slice(0, 5)
-        .map(([k, v]) => {
-          const sel = v.selectors?.[0]?.value || v.selector || 'no-selector';
-          return `${k}: ${sel.substring(0, 50)}`;
-        })
-        .join('; ')
-    );
 
     return {
       success: true,
@@ -6256,300 +6170,31 @@ async function executeSnapshotViaApi(tabId, params) {
 }
 
 /**
- * Get element selector from element ID (stored from snapshot result)
- * @param {number} tabId - Tab ID
- * @param {number} elementId - Element ID from snapshot
- * @param {boolean} getChildren - If true, return array of child selectors (parent first, then children)
- * @returns {string|string[]|null} CSS selector, array of selectors, or null if not found
- */
-async function getElementSelector(tabId, elementId, getChildren = false) {
-  // Look up from stored snapshot refs
-  const tabData = snapshotRefs.get(tabId);
-
-  // Normalize elementId: strip "e" prefix if present (e.g., "e34" -> 34)
-  let normalizedId = elementId;
-  if (typeof elementId === 'string' && elementId.startsWith('e')) {
-    normalizedId = parseInt(elementId.substring(1), 10);
-  } else if (typeof elementId === 'string') {
-    normalizedId = parseInt(elementId, 10);
-  }
-
-  console.log(
-    `[NevoFlux] getElementSelector called: tabId=${tabId}, elementId=${elementId} (normalized: ${normalizedId}), getChildren=${getChildren}`
-  );
-  console.log(`[NevoFlux] snapshotRefs has keys:`, Array.from(snapshotRefs.keys()));
-
-  if (!tabData) {
-    console.warn(`[NevoFlux] No snapshot data for tab ${tabId}. Take a snapshot first.`);
-    return null;
-  }
-
-  console.log(
-    `[NevoFlux] tabData.timestamp:`,
-    tabData.timestamp,
-    `(${(Date.now() - tabData.timestamp) / 1000}s ago)`
-  );
-  console.log(`[NevoFlux] tabData.refs has ${Object.keys(tabData.refs).length} elements`);
-  console.log(
-    `[NevoFlux] Available element IDs (first 20):`,
-    Object.keys(tabData.refs).slice(0, 20).join(', ')
-  );
-
-  const elementRef = tabData.refs[normalizedId];
-
-  if (!elementRef) {
-    console.warn(
-      `[NevoFlux] Element ID ${elementId} (normalized: ${normalizedId}) not found in snapshot refs (merged).`
-    );
-    // Log nearby IDs to help debug
-    const allIds = Object.keys(tabData.refs)
-      .map(Number)
-      .sort((a, b) => a - b);
-    const nearbyIds = allIds.filter((id) => Math.abs(id - normalizedId) <= 5);
-    console.warn(`[NevoFlux] Nearby IDs: ${nearbyIds.join(', ')}`);
-    return null;
-  }
-
-  console.log(
-    `[NevoFlux] Found element ${elementId} (normalized: ${normalizedId}):`,
-    JSON.stringify(elementRef).substring(0, 300)
-  );
-
-  // Extract best CSS selector from the selectors array (new format)
-  // Also supports legacy single-selector format for backward compatibility
-  function getBestCssSelector(ref) {
-    // New format: selectors array
-    if (ref.selectors && Array.isArray(ref.selectors)) {
-      // Prefer CSS selectors in priority order (skip a11y: locators for CSS-based operations)
-      for (const s of ref.selectors) {
-        if (s.type === 'css') return s.value;
-      }
-      // Fallback: return first selector value regardless of type
-      return ref.selectors[0]?.value || null;
-    }
-    // Legacy format: single selector string
-    return ref.selector || null;
-  }
-
-  // If getChildren is true, return array with parent and all direct children
-  if (getChildren) {
-    const parentSelector = getBestCssSelector(elementRef);
-    const allRefs = Object.entries(tabData.refs);
-
-    // Find direct children by checking CSS path relationship
-    const childRefs = allRefs.filter(([_id, ref]) => {
-      const sel = getBestCssSelector(ref);
-      if (!sel || sel === parentSelector) return false;
-      if (!sel.startsWith(parentSelector)) return false;
-      const afterParent = sel.substring(parentSelector.length);
-      return afterParent.startsWith('>') && !afterParent.substring(1).includes('>');
-    });
-
-    childRefs.sort((a, b) => Number(a[0]) - Number(b[0]));
-
-    const selectors = [];
-    for (const [_id, ref] of childRefs) {
-      selectors.push(getBestCssSelector(ref));
-    }
-    selectors.push(parentSelector);
-
-    console.log(
-      `[NevoFlux] Returning ${selectors.length} selectors (${childRefs.length} children + 1 parent)`
-    );
-    return selectors;
-  }
-
-  return getBestCssSelector(elementRef);
-}
-
-/**
- * Normalize an element ID to its numeric form.
- * Handles "e34" -> 34, "34" -> 34, and passthrough for numbers.
- */
-function normalizeElementId(elementId) {
-  if (typeof elementId === 'string' && elementId.startsWith('e')) {
-    return parseInt(elementId.substring(1), 10);
-  }
-  if (typeof elementId === 'string') {
-    return parseInt(elementId, 10);
-  }
-  return elementId;
-}
-
-/**
- * Try a coordinate-based click fallback using stored rect from snapshotRefs.
- * Returns a success result object or null if fallback not possible / not effective.
- */
-async function tryCoordinateClickFallback(tabId, element_id) {
-  const normalizedId = normalizeElementId(element_id);
-  const tabData = snapshotRefs.get(tabId);
-  const elemRef = tabData?.refs?.[normalizedId];
-  const elemRect = elemRef?.rect;
-
-  if (!elemRef) {
-    console.log(
-      `[NevoFlux] Coordinate fallback: element ${element_id} (normalized: ${normalizedId}) not in refs`
-    );
-    return null;
-  }
-  if (!elemRect) {
-    console.log(
-      `[NevoFlux] Coordinate fallback: element ${element_id} has no rect. Ref keys: ${Object.keys(elemRef).join(',')}`
-    );
-    return null;
-  }
-  if (elemRect.width <= 0 || elemRect.height <= 0) {
-    console.log(
-      `[NevoFlux] Coordinate fallback: element ${element_id} has zero-size rect: ${JSON.stringify(elemRect)}`
-    );
-    return null;
-  }
-
-  const centerX = elemRect.x + elemRect.width / 2;
-  const centerY = elemRect.y + elemRect.height / 2;
-  console.log(
-    `[NevoFlux] Trying coordinate click at (${centerX}, ${centerY}) for element ${element_id}, rect=${JSON.stringify(elemRect)}`
-  );
-
-  try {
-    const coordResult = await browser.nevoflux.clickAtCoordinates(tabId, centerX, centerY);
-    if (coordResult.success !== false) {
-      console.log(
-        `[NevoFlux] Coordinate click for element ${element_id}: effective=${coordResult.effective}`
-      );
-      return {
-        success: true,
-        result: {
-          element_id,
-          clicked: true,
-          method: 'coordinate_click',
-          ...coordResult,
-        },
-      };
-    }
-  } catch (coordErr) {
-    console.log('[NevoFlux] Coordinate click fallback failed:', coordErr.message);
-  }
-  return null;
-}
-
-/**
- * Click element by ID via browser.nevoflux.click() - uses trusted mouse events
- * Falls back to content script if API is not available or fails
+ * Click element by snapshot id: the actor resolves the id to its node.
+ * Falls back to content script only if the API is not available.
  */
 async function executeClickByIdViaApi(tabId, params, timeout_ms) {
   const { element_id } = params;
-
   if (!element_id) {
     return {
       success: false,
       error: { code: -1, message: 'element_id required', recoverable: false },
     };
   }
-
-  // Fallback to content script if API not available
   if (!isNevofluxApiAvailable()) {
-    console.log('[NevoFlux] browser.nevoflux not available, using content script for click_by_id');
     return await executeInContentScript(tabId, 'click_by_id', params, timeout_ms);
   }
-
   try {
-    // Get selectors: parent element + all direct children
-    const selectors = await getElementSelector(tabId, element_id, true);
-
-    if (!selectors || selectors.length === 0) {
-      // No selectors found — try coordinate click using stored rect from snapshot
-      const coordFallback = await tryCoordinateClickFallback(tabId, element_id);
-      if (coordFallback) return coordFallback;
-
-      return {
-        success: false,
-        error: {
-          code: -1,
-          message: `Element ID ${element_id} not found. Take a new snapshot first.`,
-          recoverable: true,
-        },
-      };
-    }
-
-    // Handle both single selector (string) and multiple selectors (array)
-    // Filter out null/empty selectors (e.g. ?cursor/?tag elements with no CSS selector)
-    const rawList = Array.isArray(selectors) ? selectors : [selectors];
-    const selectorList = rawList.filter((s) => s != null && s !== '');
-
-    // If all selectors were null/empty, go straight to coordinate fallback
-    if (selectorList.length === 0) {
-      console.log(
-        `[NevoFlux] Element ${element_id} found in refs but has no CSS selectors, trying coordinate click`
-      );
-      const coordFallback = await tryCoordinateClickFallback(tabId, element_id);
-      if (coordFallback) return coordFallback;
-
-      return {
-        success: false,
-        error: {
-          code: -1,
-          message: `Element ID ${element_id} has no CSS selector and coordinate click failed.`,
-          recoverable: true,
-        },
-      };
-    }
-
-    console.log(
-      `[NevoFlux] Trying to click element ${element_id}, ${selectorList.length} candidate(s)`
-    );
-
-    // Try candidates until one click is sent (or may have been); that click
-    // is final.
-    let lastError = null;
-    const refused = [];
-    for (let i = 0; i < selectorList.length; i++) {
-      const selector = selectorList[i];
-      let result;
-      try {
-        result = await browser.nevoflux.click(tabId, selector);
-      } catch (clickError) {
-        result = { success: false, error: { message: clickError.message || String(clickError) } };
-      }
-      if (afterCandidateClick(result) === 'next') {
-        lastError = result?.error || { message: 'Click returned success=false' };
-        refused.push(result);
-        continue;
-      }
-      if (result.success === false) {
-        // Covered, or it may have been sent: report as is, never click again.
-        return { success: false, error: result.error };
-      }
-      return {
-        success: true,
-        result: {
-          element_id,
-          selector,
-          clicked: true,
-          method: 'nevoflux_api',
-          attempt: i + 1,
-          ...result,
-        },
-      };
-    }
-
-    // No candidate was found at all: the stored-rect coordinate click is the
-    // first click, not a second one.
-    if (mayUseCoordinateFallback(refused)) {
-      const coordFallback = await tryCoordinateClickFallback(tabId, element_id);
-      if (coordFallback) return coordFallback;
+    const result = await browser.nevoflux.actOnRef(tabId, 'click', String(element_id), {});
+    if (result.success === false) {
+      return { success: false, error: result.error };
     }
     return {
-      success: false,
-      error: {
-        code: -1,
-        message: `Could not click element ${element_id}. Last error: ${lastError?.message || 'unknown'}. Take a new snapshot.`,
-        recoverable: true,
-      },
+      success: true,
+      result: { element_id, clicked: true, method: 'nevoflux_ref', ...result },
     };
   } catch (error) {
-    // Not a content-script retry: the click may already have been sent.
-    console.error('[NevoFlux] nevoflux.click failed:', error.message);
+    // Not retried: the click may already have been sent.
     return {
       success: false,
       error: { code: -1, message: `Click failed: ${error.message}`, recoverable: true },
@@ -6558,173 +6203,85 @@ async function executeClickByIdViaApi(tabId, params, timeout_ms) {
 }
 
 /**
- * Fill element by ID via browser.nevoflux.fill() + keyPress for Enter
- * Falls back to content script if API is not available or fails
+ * Fill element by snapshot id (+ optional Enter). A <select> is filled with
+ * an option's label or value. No click first: fill focuses the node itself.
  */
 async function executeFillByIdViaApi(tabId, params, timeout_ms) {
   const { element_id, value, press_enter = false } = params;
-
-  console.log(
-    `[NevoFlux] executeFillByIdViaApi: element_id=${element_id}, value=${value?.substring(0, 20)}, press_enter=${press_enter}`
-  );
-
   if (!element_id || value === undefined) {
     return {
       success: false,
       error: { code: -1, message: 'element_id and value required', recoverable: false },
     };
   }
-
-  // Fallback to content script if API not available
   if (!isNevofluxApiAvailable()) {
-    console.log('[NevoFlux] browser.nevoflux not available, using content script for fill_by_id');
     return await executeInContentScript(tabId, 'fill_by_id', params, timeout_ms);
   }
-
   try {
-    // Get selector from element ID
-    console.log(`[NevoFlux] Getting selector for element_id=${element_id}`);
-    const selector = await getElementSelector(tabId, element_id);
-    console.log(`[NevoFlux] Got selector: ${selector}`);
-
-    if (!selector) {
-      return {
-        success: false,
-        error: {
-          code: -1,
-          message: `Element ID ${element_id} not found. Take a new snapshot first.`,
-          recoverable: true,
-        },
-      };
-    }
-
-    console.log(
-      `[NevoFlux] Filling element ${element_id} via browser.nevoflux.fill('${selector}', '${value.substring(0, 20)}...')`
-    );
-
-    // Click to focus first
-    console.log(`[NevoFlux] Step 1: Clicking to focus...`);
-    const clickResult = await browser.nevoflux.click(tabId, selector);
-    console.log(`[NevoFlux] Click result:`, clickResult);
-    await new Promise((r) => setTimeout(r, 100));
-
-    // Clear and fill
-    console.log(`[NevoFlux] Step 2: Clearing...`);
-    const clearResult = await browser.nevoflux.clear(tabId, selector);
-    console.log(`[NevoFlux] Clear result:`, clearResult);
-
-    console.log(`[NevoFlux] Step 3: Filling...`);
-    const result = await browser.nevoflux.fill(tabId, selector, value);
-    console.log(`[NevoFlux] Fill result:`, result);
-
+    const result = await browser.nevoflux.actOnRef(tabId, 'fill', String(element_id), {
+      text: value,
+    });
     if (result.success === false) {
-      return result;
+      return { success: false, error: result.error };
     }
-
-    // Press Enter if requested - uses trusted keyboard events
     if (press_enter) {
-      await new Promise((r) => setTimeout(r, 100));
-      // Focus again in case it was lost
-      console.log(`[NevoFlux] Step 4: Re-focusing...`);
-      const focusResult = await browser.nevoflux.focus(tabId, selector);
-      console.log(`[NevoFlux] Focus result:`, focusResult);
-      await new Promise((r) => setTimeout(r, 50));
-
-      console.log(`[NevoFlux] Step 5: Pressing Enter...`);
-      const enterResult = await browser.nevoflux.keyPress(tabId, 'Enter');
-      console.log(`[NevoFlux] Enter result:`, enterResult);
+      await browser.nevoflux.keyPress(tabId, 'Enter');
     }
-
     return {
       success: true,
       result: {
         element_id,
-        selector,
         filled: value,
         enter_pressed: press_enter,
-        method: 'nevoflux_api',
+        method: 'nevoflux_ref',
+        ...result,
       },
     };
   } catch (error) {
-    console.error('[NevoFlux] nevoflux.fill failed at some step:', error.message, error.stack);
-    // Fallback to content script
-    return await executeInContentScript(tabId, 'fill_by_id', params, timeout_ms);
+    return {
+      success: false,
+      error: { code: -1, message: `Fill failed: ${error.message}`, recoverable: true },
+    };
   }
 }
 
 /**
- * Type text into element by ID via browser.nevoflux.type() - uses trusted keyboard events
- * Falls back to content script if API is not available or fails
+ * Type text into element by snapshot id (+ optional Enter).
  */
 async function executeTypeByIdViaApi(tabId, params, timeout_ms) {
   const { element_id, text, press_enter = false } = params;
-
   if (!element_id || text === undefined) {
     return {
       success: false,
       error: { code: -1, message: 'element_id and text required', recoverable: false },
     };
   }
-
-  // Fallback to content script if API not available
   if (!isNevofluxApiAvailable()) {
-    console.log('[NevoFlux] browser.nevoflux not available, using content script for type_by_id');
     return await executeInContentScript(tabId, 'type_by_id', params, timeout_ms);
   }
-
   try {
-    // Get selector from element ID
-    const selector = await getElementSelector(tabId, element_id);
-
-    if (!selector) {
-      return {
-        success: false,
-        error: {
-          code: -1,
-          message: `Element ID ${element_id} not found. Take a new snapshot first.`,
-          recoverable: true,
-        },
-      };
-    }
-
-    console.log(
-      `[NevoFlux] Typing into element ${element_id} via browser.nevoflux.type('${selector}', '${text.substring(0, 20)}...')`
-    );
-
-    // Click to focus first
-    await browser.nevoflux.click(tabId, selector);
-    await new Promise((r) => setTimeout(r, 100));
-
-    // Type text character by character - uses trusted keyboard events
-    const result = await browser.nevoflux.type(tabId, selector, text);
-
+    const result = await browser.nevoflux.actOnRef(tabId, 'type', String(element_id), { text });
     if (result.success === false) {
-      return result;
+      return { success: false, error: result.error };
     }
-
-    // Press Enter if requested
     if (press_enter) {
-      await new Promise((r) => setTimeout(r, 100));
-      // Focus again in case it was lost
-      await browser.nevoflux.focus(tabId, selector);
-      await new Promise((r) => setTimeout(r, 50));
       await browser.nevoflux.keyPress(tabId, 'Enter');
     }
-
     return {
       success: true,
       result: {
         element_id,
-        selector,
         typed: text,
         enter_pressed: press_enter,
-        method: 'nevoflux_api',
+        method: 'nevoflux_ref',
+        ...result,
       },
     };
   } catch (error) {
-    console.error('[NevoFlux] nevoflux.type failed:', error.message);
-    // Fallback to content script
-    return await executeInContentScript(tabId, 'type_by_id', params, timeout_ms);
+    return {
+      success: false,
+      error: { code: -1, message: `Type failed: ${error.message}`, recoverable: true },
+    };
   }
 }
 

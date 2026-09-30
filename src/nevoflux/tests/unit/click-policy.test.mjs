@@ -3,59 +3,21 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from './test-runner.mjs';
+import { readFileSync } from 'node:fs';
 import {
-  afterCandidateClick,
-  mayUseCoordinateFallback,
   MUTATING_ACTIONS,
   mayResendAfterInjection,
 } from '../../extensions/nevoflux-agent/background/click-policy.mjs';
 
-describe('afterCandidateClick', () => {
-  it('stops after any click that was sent, seen effect or not', () => {
-    expect(afterCandidateClick({ success: true, effective: true, effect: 'observed' })).toBe(
-      'done'
-    );
-    expect(afterCandidateClick({ success: true, effective: false, effect: 'none_observed' })).toBe(
-      'done'
-    );
-  });
-
-  it('stops on a covered target: every candidate sits under the same cover', () => {
-    expect(afterCandidateClick({ success: false, error: { code: 1003, message: 'covered' } })).toBe(
-      'done'
-    );
-  });
-
-  it('tries the next candidate only when this one was refused before any press', () => {
-    expect(afterCandidateClick({ success: false, error: { code: 1001 } })).toBe('next');
-    expect(afterCandidateClick({ success: false, error: { code: 1002 } })).toBe('next');
-  });
-
-  it('stops when it cannot tell whether the click went out', () => {
-    // 5001: the actor threw after the press, or navigation tore it down
-    // mid-query — the click may well have been sent.
-    expect(afterCandidateClick({ success: false, error: { code: 5001, message: 'x' } })).toBe(
-      'done'
-    );
-    expect(afterCandidateClick({ success: false, error: { message: 'thrown' } })).toBe('done');
-    expect(afterCandidateClick(undefined)).toBe('done');
-  });
-});
-
-describe('mayUseCoordinateFallback', () => {
-  it('only when every candidate was not found', () => {
-    const notFound = { success: false, error: { code: 1001 } };
-    expect(mayUseCoordinateFallback([notFound, notFound])).toBe(true);
-  });
-
-  it('never after a hidden/offscreen refusal, a cover, or a maybe-sent click', () => {
-    const notFound = { success: false, error: { code: 1001 } };
-    expect(mayUseCoordinateFallback([notFound, { success: false, error: { code: 1002 } }])).toBe(
-      false
-    );
-    expect(mayUseCoordinateFallback([{ success: false, error: { code: 1003 } }])).toBe(false);
-    expect(mayUseCoordinateFallback([{ success: false, error: { code: 5001 } }])).toBe(false);
-    expect(mayUseCoordinateFallback([])).toBe(false);
+describe('background by-id actions', () => {
+  const bg = readFileSync(
+    new URL('../../extensions/nevoflux-agent/background/background.js', import.meta.url),
+    'utf8'
+  );
+  it('forward the id to the actor instead of resolving a selector', () => {
+    expect(bg.includes('getElementSelector(')).toBe(false);
+    expect(bg.includes('tryCoordinateClickFallback(')).toBe(false);
+    expect((bg.match(/browser\.nevoflux\.actOnRef\(/g) || []).length).toBeGreaterThanOrEqual(3);
   });
 });
 
