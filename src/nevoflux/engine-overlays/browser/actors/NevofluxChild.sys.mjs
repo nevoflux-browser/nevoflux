@@ -28,6 +28,7 @@ import {
   selectPlan,
   selectOptionEntries,
   waitAfterClick,
+  capVisibleText,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -1686,11 +1687,49 @@ export class NevofluxChild extends JSWindowActorChild {
       lines.push('');
     }
 
+    const text = this._visibleText(
+      doc,
+      win,
+      elements.map((e) => e.node)
+    );
+    if (text) {
+      lines.push('## text');
+      lines.push(text);
+      lines.push('');
+    }
+
     if (truncatedCount > 0) {
       lines.push(`(+${truncatedCount} more elements truncated)`);
     }
 
     return lines.join('\n');
+  }
+
+  /**
+   * Text visible in the viewport that no listed element already names —
+   * status lines, prices, messages the model otherwise reads via eval_js.
+   * Never form-control contents (values of password/file inputs stay out).
+   */
+  _visibleText(doc, win, listedNodes) {
+    const chunks = [];
+    const root = doc.body || doc.documentElement;
+    if (!root) {
+      return '';
+    }
+    const walker = doc.createTreeWalker(root, win.NodeFilter.SHOW_TEXT);
+    let n = 0;
+    for (let t = walker.nextNode(); t && n < 3000; t = walker.nextNode(), n++) {
+      const p = t.parentElement;
+      if (!p || !t.textContent.trim()) continue;
+      if (p.closest('script, style, noscript, template, input, textarea, select, option')) continue;
+      if (listedNodes.some((ln) => ln === p || ln.contains?.(p))) continue;
+      const r = p.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0 || r.bottom < 0 || r.top > win.innerHeight) continue;
+      const cs = win.getComputedStyle(p);
+      if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+      chunks.push(t.textContent);
+    }
+    return capVisibleText(chunks);
   }
 
   _elementToCompactLine(el, win) {

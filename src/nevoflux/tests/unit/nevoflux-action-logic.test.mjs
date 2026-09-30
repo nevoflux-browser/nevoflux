@@ -425,3 +425,16 @@ describe('waitAfterClick', () => {
     expect(waitAfterClick({ role: 'combobox', hasPopup: null, expanded: 'true' }).frames).toBe(2);
   });
 });
+
+describe('capVisibleText', () => {
+  it('collapses whitespace and drops repeats', () => {
+    expect(capVisibleText(['  Order\n placed ', 'Order placed', 'Total: $12'])).toBe(
+      'Order placed\nTotal: $12'
+    );
+  });
+  it('cuts at the cap and says how much was left out', () => {
+    const out = capVisibleText(['a'.repeat(1000), 'b'.repeat(1000)], 1500);
+    expect(out.length).toBeLessThan(1530);
+    expect(out).toContain('…(+');
+  });
+});

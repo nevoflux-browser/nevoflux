@@ -381,8 +381,19 @@ export function waitAfterClick({ role, hasPopup, expanded }) {
   return opensList ? { forOptions: true, maxMs: 200 } : { frames: 2, maxMs: 50 };
 }
 
-export function capVisibleText() {
-  return null;
+/** The viewport's visible text for the snapshot, bounded (§4.5 快照). */
+export function capVisibleText(chunks, cap = 1500) {
+  const seen = new Set();
+  const lines = [];
+  for (const c of chunks) {
+    const t = String(c).replace(/\s+/g, ' ').trim();
+    if (t && !seen.has(t)) {
+      seen.add(t);
+      lines.push(t);
+    }
+  }
+  const all = lines.join('\n');
+  return all.length > cap ? `${all.slice(0, cap)} …(+${all.length - cap} chars)` : all;
 }
 
 /** Which options of a select the snapshot lists: the first `cap`, plus the selected one. */
