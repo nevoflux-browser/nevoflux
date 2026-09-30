@@ -23,6 +23,8 @@ import {
   staleReason,
   refMissingMessage,
   staleMessage,
+  fillTargetProblem,
+  selectPlan,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -345,5 +347,39 @@ describe('actor source', () => {
   );
   it('never writes data-ai-id into the page', () => {
     expect(src.includes("setAttribute('data-ai-id'")).toBe(false);
+  });
+});
+
+describe('fillTargetProblem', () => {
+  it('allows text fields, contenteditable and selects', () => {
+    expect(fillTargetProblem({ tagName: 'INPUT', type: 'email' })).toBeNull();
+    expect(fillTargetProblem({ tagName: 'DIV', isContentEditable: true })).toBeNull();
+    expect(fillTargetProblem({ tagName: 'SELECT' })).toBeNull();
+  });
+
+  it('refuses checkboxes, radios and buttons with what to do instead', () => {
+    expect(fillTargetProblem({ tagName: 'INPUT', type: 'checkbox', role: 'checkbox' })).toContain(
+      'click it'
+    );
+    expect(fillTargetProblem({ tagName: 'BUTTON', role: 'button' })).toContain('click it');
+    expect(fillTargetProblem({ tagName: 'DIV', role: '' })).toContain('not a text field');
+  });
+});
+
+describe('selectPlan', () => {
+  const opts = [
+    { label: 'Small', value: 'S', disabled: false },
+    { label: 'Extra large', value: 'XL', disabled: false },
+    { label: 'Gone', value: 'G', disabled: true },
+  ];
+  it('matches label or value, case-insensitively', () => {
+    expect(selectPlan(opts, 'extra large')).toEqual({ index: 1 });
+    expect(selectPlan(opts, 'S')).toEqual({ index: 0 });
+  });
+  it('refuses a disabled or missing option and lists what exists', () => {
+    expect(selectPlan(opts, 'Gone').error).toContain('disabled');
+    const miss = selectPlan(opts, 'Medium').error;
+    expect(miss).toContain('Small');
+    expect(miss).toContain('Extra large');
   });
 });

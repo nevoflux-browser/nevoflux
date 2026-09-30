@@ -330,3 +330,45 @@ export function refMissingMessage(id, error) {
 export function staleMessage(id, reason) {
   return `Element ${id} changed since the snapshot (${reason}); nothing was done. Take a new snapshot.`;
 }
+
+/**
+ * Why `el` cannot be filled with text, or null. A <select> can: its value is
+ * chosen by option label or value (selectPlan). Toggles and buttons are
+ * clicked, never given a `.value` behind the page's back.
+ */
+export function fillTargetProblem({ tagName, type, isContentEditable, role }) {
+  if (String(tagName).toUpperCase() === 'SELECT') {
+    return null;
+  }
+  if (isTextEditable({ tagName, type, isContentEditable })) {
+    return null;
+  }
+  const kind = role || String(type || tagName || 'element').toLowerCase();
+  if (
+    ['checkbox', 'radio', 'button', 'switch', 'link', 'option', 'tab', 'menuitem'].includes(kind)
+  ) {
+    return `This element is a ${kind}; click it instead of filling it.`;
+  }
+  return `This element (${kind}) is not a text field; nothing was typed.`;
+}
+
+/** Which option of a select to choose for `wanted` (label or value). */
+export function selectPlan(options, wanted) {
+  const w = String(wanted).trim().toLowerCase();
+  const index = options.findIndex(
+    (o) => o.label.trim().toLowerCase() === w || String(o.value).toLowerCase() === w
+  );
+  if (index === -1) {
+    const names = options
+      .slice(0, 25)
+      .map((o) => o.label)
+      .join(', ');
+    return {
+      error: `No option "${wanted}". Options: ${names}${options.length > 25 ? ', …' : ''}`,
+    };
+  }
+  if (options[index].disabled) {
+    return { error: `Option "${options[index].label}" is disabled.` };
+  }
+  return { index };
+}

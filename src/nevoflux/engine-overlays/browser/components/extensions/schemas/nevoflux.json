@@ -1549,6 +1549,37 @@
         }
       },
       {
+        "name": "actOnRef",
+        "type": "function",
+        "async": "promise",
+        "description": "Act on the element behind a snapshot id (eN): click, fill or type. The actor resolves the id to its node.",
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer",
+            "optional": true
+          },
+          {
+            "name": "action",
+            "type": "string",
+            "enum": ["click", "fill", "type"]
+          },
+          {
+            "name": "ref",
+            "type": "string"
+          },
+          {
+            "name": "params",
+            "type": "object",
+            "optional": true,
+            "additionalProperties": true
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
+      },
+      {
         "name": "type",
         "type": "function",
         "async": "promise",

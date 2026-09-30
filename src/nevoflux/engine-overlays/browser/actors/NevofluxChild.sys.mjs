@@ -21,6 +21,11 @@ import {
   isInteractiveRole,
   RefRegistry,
   normalizeRefId,
+  staleReason,
+  refMissingMessage,
+  staleMessage,
+  fillTargetProblem,
+  selectPlan,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -231,6 +236,7 @@ export class NevofluxChild extends JSWindowActorChild {
       exists: () => this.exists(safeParams),
       click: () => this.click(safeParams),
       clickAtCoordinates: () => this.clickAtCoordinates(safeParams),
+      actOnRef: () => this.actOnRef(safeParams),
       type: () => this.type(safeParams),
       fill: () => this.fill(safeParams),
       waitForSelector: () => this.waitForSelector(safeParams),
@@ -1843,6 +1849,11 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   _deepQuerySelector(selector, doc = this.currentDoc) {
+    // actOnRef passes the resolved node itself; the selector-based methods
+    // then act on exactly that node.
+    if (selector && typeof selector === 'object' && selector.nodeType === 1) {
+      return selector.isConnected ? selector : null;
+    }
     if (!doc || !selector) {
       return null;
     }
@@ -2276,6 +2287,108 @@ export class NevofluxChild extends JSWindowActorChild {
         : {}),
     };
   }
+  /**
+   * Act on the element behind a snapshot id: exactly that node, and only if
+   * it is still what the snapshot showed. The id → node map lives here, so
+   * no selector is re-resolved and nothing else can be hit.
+   */
+  async actOnRef({ action, ref, text, ...options }) {
+    const id = normalizeRefId(ref);
+    const found = this._refs?.lookup(id) ?? { error: 'unknown' };
+    const node = found.node;
+    if (!node || !node.isConnected) {
+      return {
+        success: false,
+        error: {
+          code: 1001,
+          message: refMissingMessage(id, node ? 'gone' : found.error),
+          recoverable: true,
+        },
+      };
+    }
+    const before = this._refs.fingerprintOf(id);
+    const reason = staleReason(before, this._fingerprint(node));
+    if (reason) {
+      return {
+        success: false,
+        error: { code: 1004, message: staleMessage(id, reason), recoverable: true },
+      };
+    }
+
+    if (action === 'click') {
+      if (node.tagName === 'OPTION') {
+        return this._selectOption(node);
+      }
+      return this.click({ selector: node, ...options });
+    }
+    if (action === 'fill' || action === 'type') {
+      const problem = fillTargetProblem({
+        tagName: node.tagName,
+        type: node.type,
+        isContentEditable: node.isContentEditable,
+        role: before?.role,
+      });
+      if (problem) {
+        return {
+          success: false,
+          error: { code: 1005, message: `${id}: ${problem}`, recoverable: true },
+        };
+      }
+      if (node.tagName === 'SELECT') {
+        const opts = Array.from(node.options, (o) => ({
+          label: o.label || o.text,
+          value: o.value,
+          disabled: o.disabled,
+        }));
+        const plan = selectPlan(opts, text);
+        if (plan.error) {
+          return {
+            success: false,
+            error: { code: 1005, message: `${id}: ${plan.error}`, recoverable: true },
+          };
+        }
+        return this._selectOption(node.options[plan.index]);
+      }
+      return action === 'fill'
+        ? this.fill({ selector: node, text })
+        : this.type({ selector: node, text });
+    }
+    return {
+      success: false,
+      error: { code: 5002, message: `Unknown ref action: ${action}`, recoverable: false },
+    };
+  }
+
+  /** Choose an <option> the way a user's pick does: selection + input/change. */
+  _selectOption(option) {
+    const select = option.closest('select');
+    if (!select || option.disabled || select.disabled) {
+      return {
+        success: false,
+        error: {
+          code: 1005,
+          message: 'That option cannot be chosen (disabled).',
+          recoverable: true,
+        },
+      };
+    }
+    const win = select.ownerDocument.defaultView;
+    if (select.multiple) {
+      option.selected = !option.selected;
+    } else {
+      select.selectedIndex = option.index;
+    }
+    select.dispatchEvent(new win.Event('input', { bubbles: true }));
+    select.dispatchEvent(new win.Event('change', { bubbles: true }));
+    return {
+      success: true,
+      effective: true,
+      effect: 'observed',
+      clickMethod: 'select_option',
+      selected: { label: option.label || option.text, value: option.value },
+    };
+  }
+
   /**
    * Click at viewport coordinates using trusted sendMouseEvent.
    * Used as fallback when CSS selector resolution fails (e.g., cross-origin iframes).

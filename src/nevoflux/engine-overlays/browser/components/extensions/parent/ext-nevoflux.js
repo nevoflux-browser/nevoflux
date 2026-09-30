@@ -443,6 +443,15 @@ this.nevoflux = class extends ExtensionAPI {
           return self.executeInTabWithRestore(resolvedTabId, extension, 'fill', { selector, text });
         },
 
+        async actOnRef(tabId, action, ref, params = {}) {
+          const resolvedTabId = tabId ?? (await self.getActiveTabId(extension));
+          return self.executeInTabWithRestore(resolvedTabId, extension, 'actOnRef', {
+            ...params,
+            action,
+            ref,
+          });
+        },
+
         async probe(tabId, selector, options = {}) {
           if (!selector || typeof selector !== 'string') {
             return {
