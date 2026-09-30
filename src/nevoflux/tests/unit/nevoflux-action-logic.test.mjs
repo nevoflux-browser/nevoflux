@@ -36,6 +36,7 @@ import {
   isUniqueRoleName,
   withinListed,
   checkMark,
+  domLabel,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -582,5 +583,22 @@ describe('checkbox and radio state in snapshot lines', () => {
     expect(checkMark({ role: 'radio', checked: false })).toBe('☐');
     expect(checkMark({ role: 'switch', checked: true })).toBe('✓');
     expect(checkMark({ role: 'button', checked: false })).toBe('');
+  });
+});
+
+describe('label in the staleness fingerprint', () => {
+  // A recycled list row or a live suggestion list keeps the node but shows
+  // other text ("Paris" → "Parma"): acting on it would pick the wrong thing.
+  it('domLabel: aria-label, else the first 40 chars of text; never field contents', () => {
+    expect(domLabel({ ariaLabel: 'Close', text: 'x' })).toBe('Close');
+    expect(domLabel({ ariaLabel: null, text: '  Paris,\n France ' })).toBe('Paris, France');
+    expect(domLabel({ ariaLabel: null, text: 'y'.repeat(60) })).toBe('y'.repeat(40));
+    expect(domLabel({ ariaLabel: null, text: 'typed secret', editable: true })).toBe('');
+  });
+
+  it('staleReason names a changed label', () => {
+    const fp = { url: 'u', role: 'li', context: '', label: 'Paris' };
+    expect(staleReason(fp, { ...fp, label: 'Parma' })).toContain('Parma');
+    expect(staleReason(fp, { ...fp })).toBeNull();
   });
 });

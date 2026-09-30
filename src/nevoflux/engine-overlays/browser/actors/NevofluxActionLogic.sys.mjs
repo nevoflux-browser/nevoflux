@@ -320,6 +320,9 @@ export function staleReason(before, now) {
   if (before.context !== now.context) {
     return `it moved into ${now.context || 'a different part of the page'}`;
   }
+  if ((before.label ?? '') !== (now.label ?? '')) {
+    return `it now reads "${now.label}"`;
+  }
   return null;
 }
 
@@ -484,4 +487,22 @@ export function checkMark({ role, checked }) {
     return '';
   }
   return checked ? '✓' : '☐';
+}
+
+/**
+ * The visible label the staleness fingerprint compares: aria-label, else the
+ * first 40 characters of text. Never the contents of a field the agent
+ * types into (editable) — its own typing would make every id stale.
+ */
+export function domLabel({ ariaLabel, text, editable }) {
+  if (ariaLabel) {
+    return String(ariaLabel).trim();
+  }
+  if (editable) {
+    return '';
+  }
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40);
 }

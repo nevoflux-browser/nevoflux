@@ -37,6 +37,7 @@ import {
   isUniqueRoleName,
   withinListed,
   checkMark,
+  domLabel,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -1622,6 +1623,15 @@ export class NevofluxChild extends JSWindowActorChild {
         type: node.type,
       }),
       context: this._contextKey(node),
+      label: domLabel({
+        ariaLabel: node.getAttribute?.('aria-label'),
+        text: node.textContent,
+        editable: isTextEditable({
+          tagName: node.tagName,
+          type: node.type,
+          isContentEditable: node.isContentEditable,
+        }),
+      }),
     };
   }
 
