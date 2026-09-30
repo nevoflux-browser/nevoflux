@@ -19,6 +19,8 @@ import {
   shouldRescrollAndRepick,
   canonicalRole,
   isInteractiveRole,
+  RefRegistry,
+  normalizeRefId,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -371,14 +373,13 @@ export class NevofluxChild extends JSWindowActorChild {
       elements = kwElements.concat(nonKwElements.slice(0, remainingSlots));
     }
 
-    // === Phase 5 (before Phase 4): Clear old IDs and assign new ones ===
-    this._clearPreviousAiIds(doc);
-    let uid = 0;
+    // === Phase 5 (before Phase 4): ids from the registry ===
+    // A node keeps its id across snapshots; nothing is written into the page.
+    this._refs ??= new RefRegistry();
+    this._refs.sweep((node) => node.isConnected);
     for (const el of elements) {
-      el.id = `e${uid++}`;
-      try {
-        el.node.setAttribute('data-ai-id', el.id);
-      } catch {}
+      el.id = this._refs.idFor(el.node);
+      this._refs.remember(el.id, this._fingerprint(el.node));
     }
 
     // === Phase 4: Selector generation ===
@@ -1390,15 +1391,6 @@ export class NevofluxChild extends JSWindowActorChild {
       selectors.push({ type: 'css', strategy: 'css', value: cssPath });
     }
 
-    // Last resort: data-ai-id attribute (always unique, set during Phase 5)
-    // Ensures every element has at least one usable CSS selector.
-    if (selectors.length === 0 || !selectors.some((s) => s.type === 'css')) {
-      const aiId = node.getAttribute('data-ai-id');
-      if (aiId) {
-        selectors.push({ type: 'css', strategy: 'ai-id', value: `[data-ai-id="${aiId}"]` });
-      }
-    }
-
     return selectors;
   }
 
@@ -1464,13 +1456,6 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   // ── Phase 5: Serialization ──
-
-  _clearPreviousAiIds(doc) {
-    try {
-      const old = doc.querySelectorAll('[data-ai-id]');
-      for (const el of old) el.removeAttribute('data-ai-id');
-    } catch {}
-  }
 
   _markDuplicateNames(elements) {
     const groups = new Map();
@@ -1540,6 +1525,45 @@ export class NevofluxChild extends JSWindowActorChild {
       }
     }
     return null;
+  }
+
+  /**
+   * What an id's element must still be when the model acts on it. The role
+   * is recomputed from the node the same way at snapshot and at act time
+   * (a11y role if Gecko has one, else the ARIA/tag name) — never copied
+   * from the snapshot entry, or a change could not be seen.
+   */
+  _fingerprint(node) {
+    return {
+      url: node.ownerDocument?.URL || '',
+      role: this._stableRoleOf(node),
+      context: this._contextKey(node),
+    };
+  }
+
+  _stableRoleOf(node) {
+    try {
+      const acc = lazy.a11yService?.getAccessibleFor(node);
+      const role = acc ? this._roleOf(acc) : '';
+      if (role) {
+        return role;
+      }
+    } catch {}
+    return (node.getAttribute?.('role') || node.tagName || '').toLowerCase();
+  }
+
+  /** The form, dialog or table row an element sits in, as a short key. */
+  _contextKey(node) {
+    const ctx = node.closest?.(
+      'form, dialog, [role="dialog"], [role="alertdialog"], tr, [role="row"]'
+    );
+    if (!ctx) {
+      return '';
+    }
+    const tag = ctx.tagName.toLowerCase();
+    const id = ctx.id ? `#${ctx.id}` : '';
+    const name = ctx.getAttribute('name') || ctx.getAttribute('aria-label') || '';
+    return `${tag}${id}${name ? ` "${name.slice(0, 30)}"` : ''}`;
   }
 
   _serializeCompact(elements, doc, win, truncatedCount, modalScrollInfo = null) {
@@ -1973,12 +1997,9 @@ export class NevofluxChild extends JSWindowActorChild {
 
   // ── Resolve element by snapshot ID (used by act operations) ──
 
-  resolveSnapshotElement(id, doc) {
-    // 1. Direct data-ai-id lookup (O(1)) — shadow-piercing so snapshot refs
-    //    captured inside open shadow roots remain resolvable by clickById/input.
-    const direct = this._deepQuerySelector(`[data-ai-id="${id}"]`, doc);
-    if (direct) return direct;
-    return null;
+  resolveSnapshotElement(id) {
+    const found = this._refs?.lookup(normalizeRefId(id));
+    return found?.node ?? null;
   }
 
   async screenshot({ fullPage = false, type = 'jpeg', quality = 60, maxWidth = 1280 }) {

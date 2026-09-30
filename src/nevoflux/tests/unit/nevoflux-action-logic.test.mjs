@@ -335,3 +335,15 @@ describe('staleReason', () => {
     expect(staleMessage('e3', 'the page changed')).toContain('new snapshot');
   });
 });
+
+import { readFileSync } from 'node:fs';
+
+describe('actor source', () => {
+  const src = readFileSync(
+    new URL('../../engine-overlays/browser/actors/NevofluxChild.sys.mjs', import.meta.url),
+    'utf8'
+  );
+  it('never writes data-ai-id into the page', () => {
+    expect(src.includes("setAttribute('data-ai-id'")).toBe(false);
+  });
+});
