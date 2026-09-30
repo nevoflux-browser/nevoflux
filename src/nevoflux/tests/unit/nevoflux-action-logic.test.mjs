@@ -19,6 +19,10 @@ import {
   shouldRescrollAndRepick,
   canonicalRole,
   isInteractiveRole,
+  RefRegistry,
+  staleReason,
+  refMissingMessage,
+  staleMessage,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -271,5 +275,63 @@ describe('canonicalRole', () => {
     expect(isInteractiveRole('option')).toBe(true);
     expect(isInteractiveRole('')).toBe(false);
     expect(isInteractiveRole('pushbutton')).toBe(false); // Gecko name, not canonical
+  });
+});
+
+describe('RefRegistry', () => {
+  it('gives a node the same id in every snapshot, and new nodes new ids', () => {
+    const reg = new RefRegistry();
+    const a = { n: 'a' };
+    const b = { n: 'b' };
+    expect(reg.idFor(a)).toBe('e0');
+    expect(reg.idFor(b)).toBe('e1');
+    expect(reg.idFor(a)).toBe('e0');
+  });
+
+  it('resolves ids in any spelling to the node', () => {
+    const reg = new RefRegistry();
+    const a = {};
+    reg.idFor(a);
+    for (const id of ['e0', '0', 0]) {
+      expect(reg.lookup(id).node).toBe(a);
+    }
+  });
+
+  it('says unknown for ids it never gave, gone for swept nodes', () => {
+    const reg = new RefRegistry();
+    const a = {};
+    reg.idFor(a);
+    expect(reg.lookup('e7')).toEqual({ error: 'unknown' });
+    reg.sweep(() => false);
+    expect(reg.lookup('e0')).toEqual({ error: 'gone' });
+  });
+
+  it('keeps the fingerprint remembered for an id', () => {
+    const reg = new RefRegistry();
+    const id = reg.idFor({});
+    reg.remember(id, { url: 'u', role: 'button', context: '' });
+    expect(reg.fingerprintOf(id)).toEqual({ url: 'u', role: 'button', context: '' });
+    expect(reg.fingerprintOf('e99')).toBeNull();
+  });
+});
+
+describe('staleReason', () => {
+  const fp = { url: 'https://a/x', role: 'button', context: 'form#checkout' };
+
+  it('is null when url, role and context are unchanged', () => {
+    expect(staleReason(fp, { ...fp })).toBeNull();
+    expect(staleReason(null, fp)).toBeNull(); // nothing remembered: no check
+  });
+
+  it('names what changed', () => {
+    expect(staleReason(fp, { ...fp, url: 'https://a/y' })).toContain('page changed');
+    expect(staleReason(fp, { ...fp, role: 'link' })).toContain('now a link');
+    expect(staleReason(fp, { ...fp, context: 'dialog#confirm' })).toContain('dialog#confirm');
+  });
+
+  it('messages tell the model to take a new snapshot', () => {
+    expect(refMissingMessage('e3', 'gone')).toContain('no longer on the page');
+    expect(refMissingMessage('e3', 'unknown')).toContain('new snapshot');
+    expect(staleMessage('e3', 'the page changed')).toContain('new snapshot');
   });
 });

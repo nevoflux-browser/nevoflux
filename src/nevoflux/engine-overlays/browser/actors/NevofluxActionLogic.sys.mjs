@@ -238,3 +238,95 @@ export function canonicalRole(geckoName) {
 export function isInteractiveRole(role) {
   return INTERACTIVE.has(role);
 }
+
+/** 'e12', '12' or 12 → 'e12'. */
+export function normalizeRefId(id) {
+  const s = String(id).trim();
+  return s.startsWith('e') ? s : `e${s}`;
+}
+
+/**
+ * Element identity for one document: a node keeps its id for as long as the
+ * document lives (ids are never reused), and an id resolves to that exact
+ * node — never to whatever now matches a selector. Holds nodes weakly.
+ */
+export class RefRegistry {
+  constructor() {
+    this._next = 0;
+    this._ids = new WeakMap();
+    this._nodes = new Map();
+    this._fingerprints = new Map();
+  }
+
+  idFor(node) {
+    let id = this._ids.get(node);
+    if (!id) {
+      id = `e${this._next++}`;
+      this._ids.set(node, id);
+    }
+    this._nodes.set(id, new WeakRef(node));
+    return id;
+  }
+
+  lookup(id) {
+    const key = normalizeRefId(id);
+    const ref = this._nodes.get(key);
+    if (!ref) {
+      // Issued before and swept since → gone; never issued → unknown.
+      return Number(key.slice(1)) < this._next ? { error: 'gone' } : { error: 'unknown' };
+    }
+    const node = ref.deref();
+    return node ? { node } : { error: 'gone' };
+  }
+
+  remember(id, fingerprint) {
+    this._fingerprints.set(normalizeRefId(id), fingerprint);
+  }
+
+  fingerprintOf(id) {
+    return this._fingerprints.get(normalizeRefId(id)) ?? null;
+  }
+
+  /** Drop nodes that are gone (collected, or `isAlive` says detached). */
+  sweep(isAlive) {
+    for (const [id, ref] of this._nodes) {
+      const node = ref.deref();
+      if (!node || !isAlive(node)) {
+        this._nodes.delete(id);
+        this._fingerprints.delete(id);
+      }
+    }
+  }
+}
+
+/**
+ * Why the element behind an id is not the one the snapshot showed, or null.
+ * Compares what the model relied on — the document, what the element is, and
+ * the form/dialog/row it sits in. Scroll position and field values are left
+ * out: the agent's own typing and scrolling change them on purpose.
+ */
+export function staleReason(before, now) {
+  if (!before) {
+    return null;
+  }
+  if (before.url !== now.url) {
+    return 'the page changed';
+  }
+  if (before.role !== now.role) {
+    return `it is now a ${now.role || 'different element'}`;
+  }
+  if (before.context !== now.context) {
+    return `it moved into ${now.context || 'a different part of the page'}`;
+  }
+  return null;
+}
+
+export function refMissingMessage(id, error) {
+  return error === 'gone'
+    ? `Element ${id} is no longer on the page; nothing was done. Take a new snapshot.`
+    : `Element ${id} is not in any snapshot of this page; nothing was done. Take a new snapshot.`;
+}
+
+export function staleMessage(id, reason) {
+  return `Element ${id} changed since the snapshot (${reason}); nothing was done. Take a new snapshot.`;
+}
