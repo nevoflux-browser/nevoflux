@@ -6499,8 +6499,10 @@ async function executeClickByIdViaApi(tabId, params, timeout_ms) {
       `[NevoFlux] Trying to click element ${element_id}, ${selectorList.length} candidate(s)`
     );
 
-    // Try candidates until one click is sent; that click is final.
+    // Try candidates until one click is sent (or may have been); that click
+    // is final.
     let lastError = null;
+    const refused = [];
     for (let i = 0; i < selectorList.length; i++) {
       const selector = selectorList[i];
       let result;
@@ -6511,10 +6513,11 @@ async function executeClickByIdViaApi(tabId, params, timeout_ms) {
       }
       if (afterCandidateClick(result) === 'next') {
         lastError = result?.error || { message: 'Click returned success=false' };
+        refused.push(result);
         continue;
       }
       if (result.success === false) {
-        // Covered: report the refusal as is; the message says what to do.
+        // Covered, or it may have been sent: report as is, never click again.
         return { success: false, error: result.error };
       }
       return {
@@ -6530,9 +6533,9 @@ async function executeClickByIdViaApi(tabId, params, timeout_ms) {
       };
     }
 
-    // No candidate could be clicked: the stored-rect coordinate click is the
+    // No candidate was found at all: the stored-rect coordinate click is the
     // first click, not a second one.
-    if (mayUseCoordinateFallback({ anyClickSent: false, covered: false })) {
+    if (mayUseCoordinateFallback(refused)) {
       const coordFallback = await tryCoordinateClickFallback(tabId, element_id);
       if (coordFallback) return coordFallback;
     }
