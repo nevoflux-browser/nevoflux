@@ -715,3 +715,38 @@ describe('refActionMethod', () => {
     expect(src.slice(start, start + 700).includes('refFromSelector(selector)')).toBe(true);
   });
 });
+
+describe('J20-B minors: fill targets', () => {
+  it('fills range and color inputs, tells submit/reset/image/link to be clicked', () => {
+    expect(fillTargetProblem({ tagName: 'INPUT', type: 'range' })).toBeNull();
+    expect(fillTargetProblem({ tagName: 'INPUT', type: 'color' })).toBeNull();
+    for (const type of ['submit', 'reset', 'image']) {
+      expect(fillTargetProblem({ tagName: 'INPUT', type, role: `input:${type}` })).toContain(
+        'click it'
+      );
+    }
+    expect(fillTargetProblem({ tagName: 'A', role: 'a' })).toContain('click it');
+  });
+  it('a textbox/combobox wrapper is filled through its inner editable', () => {
+    expect(fillTargetProblem({ tagName: 'DIV', role: 'textbox' })).toBe('USE_INNER_EDITABLE');
+    expect(fillTargetProblem({ tagName: 'DIV', role: 'combobox' })).toBe('USE_INNER_EDITABLE');
+  });
+});
+
+describe('J20-B minors: selectPlan', () => {
+  it('a label match wins over an earlier value match', () => {
+    const opts = [
+      { label: 'Ireland', value: 'Georgia', disabled: false },
+      { label: 'Georgia', value: 'GE', disabled: false },
+    ];
+    expect(selectPlan(opts, 'Georgia')).toEqual({ index: 1 });
+  });
+  it('a miss lists close matches first', () => {
+    const opts = ['Austria', 'Belgium', 'Australia'].map((l) => ({
+      label: l,
+      value: l,
+      disabled: false,
+    }));
+    expect(selectPlan(opts, 'austr').error).toContain('Austria, Australia');
+  });
+});

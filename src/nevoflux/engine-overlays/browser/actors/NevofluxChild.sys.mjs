@@ -437,13 +437,14 @@ export class NevofluxChild extends JSWindowActorChild {
           inferred: false,
           signal: null,
           optionOf: el,
+          keywordMatch: el.keywordMatch,
         });
       }
       if (more > 0) {
         el.moreOptions = more;
       }
     }
-    elements = expanded;
+    elements = uniqueByNode(expanded);
 
     // === Phase 5 (before Phase 4): ids from the registry ===
     // A node keeps its id across snapshots; nothing is written into the page.
@@ -1584,6 +1585,7 @@ export class NevofluxChild extends JSWindowActorChild {
   _markDuplicateNames(elements) {
     const groups = new Map();
     for (const el of elements) {
+      if (el.optionOf) continue; // disambiguated by its select
       if (!el.name) continue;
       const key = `${el.inferred ? '?' : ''}${el.role}:${el.name}`;
       if (!groups.has(key)) groups.set(key, []);
@@ -2556,12 +2558,16 @@ export class NevofluxChild extends JSWindowActorChild {
       });
       const result = await this.click({ selector: node, ...options });
       if (result.success !== false) {
-        const win = node.ownerDocument.defaultView;
-        if (plan.forOptions) {
-          await this._waitForOptions(node.ownerDocument, win, plan.maxMs);
-        } else {
-          await this._nextFrames(win, plan.frames, plan.maxMs);
-        }
+        // The click was sent; a wait that fails (the frame went away) must
+        // not turn it into an error the agent would retry.
+        try {
+          const win = node.ownerDocument.defaultView;
+          if (plan.forOptions) {
+            await this._waitForOptions(node.ownerDocument, win, plan.maxMs, node);
+          } else {
+            await this._nextFrames(win, plan.frames, plan.maxMs);
+          }
+        } catch {}
       }
       return result;
     }
@@ -2572,14 +2578,29 @@ export class NevofluxChild extends JSWindowActorChild {
         isContentEditable: node.isContentEditable,
         role: (before?.role || '').replace(/^input:/, ''),
       });
-      if (problem) {
+      let target = node;
+      if (problem === 'USE_INNER_EDITABLE') {
+        target =
+          this._findInnermostEditable(node) ||
+          node.querySelector?.('input, textarea, [contenteditable]');
+        if (!target) {
+          return {
+            success: false,
+            error: {
+              code: 1005,
+              message: `${id}: no editable field inside this ${before?.role}.`,
+              recoverable: true,
+            },
+          };
+        }
+      } else if (problem) {
         return {
           success: false,
           error: { code: 1005, message: `${id}: ${problem}`, recoverable: true },
         };
       }
-      if (node.tagName === 'SELECT') {
-        const opts = Array.from(node.options, (o) => ({
+      if (target.tagName === 'SELECT') {
+        const opts = Array.from(target.options, (o) => ({
           label: o.label || o.text,
           value: o.value,
           disabled: o.disabled,
@@ -2591,11 +2612,11 @@ export class NevofluxChild extends JSWindowActorChild {
             error: { code: 1005, message: `${id}: ${plan.error}`, recoverable: true },
           };
         }
-        return this._selectOption(node.options[plan.index]);
+        return this._selectOption(target.options[plan.index], { mode: 'set' });
       }
       return action === 'fill'
-        ? this.fill({ selector: node, text })
-        : this.type({ selector: node, text });
+        ? this.fill({ selector: target, text })
+        : this.type({ selector: target, text });
     }
     const method = refActionMethod(action);
     if (method) {
@@ -2608,11 +2629,18 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   /** Resolve once a visible option is on the page, or after `maxMs`. */
-  async _waitForOptions(doc, win, maxMs) {
+  async _waitForOptions(doc, win, maxMs, trigger) {
+    const popupId = trigger?.getAttribute?.('aria-controls') || trigger?.getAttribute?.('aria-owns');
+    const scope = (popupId && doc.getElementById(popupId)) || doc;
+    const sel = '[role="option"], [role="menuitem"]';
+    const before = scope.querySelectorAll?.(sel).length ?? 0;
     const deadline = Date.now() + maxMs;
     while (Date.now() < deadline) {
-      const opt = this._deepQuerySelector('[role="option"], [role="menuitem"]', doc);
-      if (opt && opt.getBoundingClientRect().height > 0) {
+      const all = scope.querySelectorAll?.(sel) ?? [];
+      const visible = Array.from(all).some((o) => o.getBoundingClientRect().height > 0);
+      // A named popup: any visible option in it. Otherwise only options that
+      // appeared after the click count (a nav bar's menuitems do not).
+      if (visible && (popupId || all.length > before)) {
         return;
       }
       await this._nextFrames(win, 1, 25);
@@ -2620,7 +2648,7 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   /** Choose an <option> the way a user's pick does: selection + input/change. */
-  _selectOption(option) {
+  _selectOption(option, { mode = 'toggle' } = {}) {
     const select = option.closest('select');
     if (!select || option.disabled || select.disabled) {
       return {
@@ -2633,8 +2661,20 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
     const win = select.ownerDocument.defaultView;
+    const already = select.multiple
+      ? option.selected && mode === 'set'
+      : select.selectedIndex === option.index;
+    if (already) {
+      return {
+        success: true,
+        effective: false,
+        effect: 'none_observed',
+        clickMethod: 'select_option',
+        selected: { label: option.label || option.text, value: option.value },
+      };
+    }
     if (select.multiple) {
-      option.selected = !option.selected;
+      option.selected = mode === 'set' ? true : !option.selected;
     } else {
       select.selectedIndex = option.index;
     }

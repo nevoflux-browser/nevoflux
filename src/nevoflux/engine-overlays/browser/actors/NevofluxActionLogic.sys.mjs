@@ -342,15 +342,39 @@ export function staleMessage(id, reason) {
  * clicked, never given a `.value` behind the page's back.
  */
 export function fillTargetProblem({ tagName, type, isContentEditable, role }) {
-  if (String(tagName).toUpperCase() === 'SELECT') {
+  const tag = String(tagName).toUpperCase();
+  const t = String(type || '').toLowerCase();
+  if (tag === 'SELECT') {
+    return null;
+  }
+  if (tag === 'INPUT' && (t === 'range' || t === 'color')) {
     return null;
   }
   if (isTextEditable({ tagName, type, isContentEditable })) {
     return null;
   }
-  const kind = role || String(type || tagName || 'element').toLowerCase();
+  const kind = String(role || t || tagName || 'element')
+    .toLowerCase()
+    .replace(/^input:/, '');
+  // A textbox/combobox wrapper around the real field: fill that field.
+  if (['textbox', 'combobox', 'searchbox'].includes(kind)) {
+    return 'USE_INNER_EDITABLE';
+  }
   if (
-    ['checkbox', 'radio', 'button', 'switch', 'link', 'option', 'tab', 'menuitem'].includes(kind)
+    [
+      'checkbox',
+      'radio',
+      'button',
+      'switch',
+      'link',
+      'a',
+      'option',
+      'tab',
+      'menuitem',
+      'submit',
+      'reset',
+      'image',
+    ].includes(kind)
   ) {
     return `This element is a ${kind}; click it instead of filling it.`;
   }
@@ -360,14 +384,15 @@ export function fillTargetProblem({ tagName, type, isContentEditable, role }) {
 /** Which option of a select to choose for `wanted` (label or value). */
 export function selectPlan(options, wanted) {
   const w = String(wanted).trim().toLowerCase();
-  const index = options.findIndex(
-    (o) => o.label.trim().toLowerCase() === w || String(o.value).toLowerCase() === w
-  );
+  // A label match wins: an earlier option's value can equal a later label.
+  let index = options.findIndex((o) => o.label.trim().toLowerCase() === w);
   if (index === -1) {
-    const names = options
-      .slice(0, 25)
-      .map((o) => o.label)
-      .join(', ');
+    index = options.findIndex((o) => String(o.value).toLowerCase() === w);
+  }
+  if (index === -1) {
+    const close = options.filter((o) => o.label.toLowerCase().includes(w)).map((o) => o.label);
+    const rest = options.map((o) => o.label).filter((label) => !close.includes(label));
+    const names = [...close, ...rest].slice(0, 25).join(', ');
     return {
       error: `No option "${wanted}". Options: ${names}${options.length > 25 ? ', …' : ''}`,
     };
