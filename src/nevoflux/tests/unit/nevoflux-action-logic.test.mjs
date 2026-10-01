@@ -37,6 +37,10 @@ import {
   withinListed,
   checkMark,
   domLabel,
+  frameChainOffset,
+  translateRect,
+  refFromSelector,
+  normalizeRefId,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -600,5 +604,45 @@ describe('label in the staleness fingerprint', () => {
     const fp = { url: 'u', role: 'li', context: '', label: 'Paris' };
     expect(staleReason(fp, { ...fp, label: 'Parma' })).toContain('Parma');
     expect(staleReason(fp, { ...fp })).toBeNull();
+  });
+});
+
+describe('frame geometry', () => {
+  it('sums the content-box offsets of every enclosing frame', () => {
+    const inner = { left: 10, top: 20, clientLeft: 1, clientTop: 2 };
+    const outer = { left: 100, top: 200, clientLeft: 3, clientTop: 4 };
+    expect(frameChainOffset([])).toEqual({ x: 0, y: 0 });
+    expect(frameChainOffset([inner])).toEqual({ x: 11, y: 22 });
+    expect(frameChainOffset([inner, outer])).toEqual({ x: 114, y: 226 });
+  });
+
+  it('moves a rect by an offset', () => {
+    const r = translateRect({ x: 5, y: 6, width: 10, height: 20 }, { x: 100, y: 200 });
+    expect(r).toEqual({
+      x: 105,
+      y: 206,
+      width: 10,
+      height: 20,
+      left: 105,
+      top: 206,
+      right: 115,
+      bottom: 226,
+    });
+  });
+});
+
+describe('ref selectors', () => {
+  it('reads an id out of a ref: selector and nothing else', () => {
+    expect(refFromSelector('ref:e12')).toBe('e12');
+    expect(refFromSelector('ref:12')).toBe('e12');
+    expect(refFromSelector('#ref')).toBeNull();
+    expect(refFromSelector('button.ref:hover')).toBeNull();
+    expect(refFromSelector(null)).toBeNull();
+  });
+
+  it('normalizes ids in any spelling the model writes', () => {
+    for (const id of ['e12', 'E12', '[e12]', ' e12 ', '12', 12]) {
+      expect(normalizeRefId(id)).toBe('e12');
+    }
   });
 });

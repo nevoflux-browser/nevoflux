@@ -241,10 +241,10 @@ export function isInteractiveRole(role) {
   return INTERACTIVE.has(role);
 }
 
-/** 'e12', '12' or 12 → 'e12'. */
+/** 'e12', 'E12', '[e12]', '12' or 12 → 'e12'. */
 export function normalizeRefId(id) {
-  const s = String(id).trim();
-  return s.startsWith('e') ? s : `e${s}`;
+  const digits = String(id).match(/\d+/);
+  return digits ? `e${digits[0]}` : `e${String(id).trim()}`;
 }
 
 /**
@@ -505,4 +505,47 @@ export function domLabel({ ariaLabel, text, editable }) {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 40);
+}
+
+/**
+ * Offset from a frame document's viewport to the top viewport: the sum, over
+ * every enclosing <iframe> (innermost first), of its rect in its own document
+ * plus its border (clientLeft/Top).
+ */
+export function frameChainOffset(frames) {
+  let x = 0;
+  let y = 0;
+  for (const f of frames) {
+    x += f.left + (f.clientLeft || 0);
+    y += f.top + (f.clientTop || 0);
+  }
+  return { x, y };
+}
+
+/** A rect moved by `off`, with every DOMRect-like field filled in. */
+export function translateRect(rect, off) {
+  const x = rect.x + off.x;
+  const y = rect.y + off.y;
+  return {
+    x,
+    y,
+    width: rect.width,
+    height: rect.height,
+    left: x,
+    top: y,
+    right: x + rect.width,
+    bottom: y + rect.height,
+  };
+}
+
+/**
+ * The id carried by a reserved `ref:` selector (how the daemon's
+ * selector-based tools pass an element id), or null for a real selector.
+ */
+export function refFromSelector(selector) {
+  if (typeof selector !== 'string') {
+    return null;
+  }
+  const m = selector.match(/^ref:\s*(e?\d+)\s*$/i);
+  return m ? normalizeRefId(m[1]) : null;
 }
