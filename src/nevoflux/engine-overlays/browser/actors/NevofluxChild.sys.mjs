@@ -41,6 +41,8 @@ import {
   frameChainOffset,
   translateRect,
   targetContext,
+  refFromSelector,
+  refActionMethod,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -2076,6 +2078,13 @@ export class NevofluxChild extends JSWindowActorChild {
     if (selector && typeof selector === 'object' && selector.nodeType === 1) {
       return selector.isConnected ? selector : null;
     }
+    // A ref: selector (an id carried through selector-based tools) resolves
+    // through the registry — never as CSS.
+    const refId = refFromSelector(selector);
+    if (refId) {
+      const node = this._refs?.lookup(refId)?.node;
+      return node && refNodeIsLive(node) ? node : null;
+    }
     if (!doc || !selector) {
       return null;
     }
@@ -2587,6 +2596,10 @@ export class NevofluxChild extends JSWindowActorChild {
       return action === 'fill'
         ? this.fill({ selector: node, text })
         : this.type({ selector: node, text });
+    }
+    const method = refActionMethod(action);
+    if (method) {
+      return this[method]({ ...options, text, selector: node });
     }
     return {
       success: false,
@@ -6532,7 +6545,7 @@ export class NevofluxChild extends JSWindowActorChild {
   // ========== Probe ==========
 
   probe({ selector }) {
-    if (!selector || typeof selector !== 'string') {
+    if (!selector || (typeof selector !== 'string' && selector.nodeType !== 1)) {
       return {
         success: false,
         error: { code: 1007, message: 'selector required', recoverable: false },
@@ -6575,7 +6588,13 @@ export class NevofluxChild extends JSWindowActorChild {
 
     // If the element itself is the cE host, search for deeper innermost editable
     const innermostEl = isCE ? this._findInnermostEditable(cEHost) : null;
-    const innermostSelector = innermostEl ? this._generatePathSelector(innermostEl) : null;
+    // Probed by id: hand back the inner editable as an id too, so the
+    // strategy engine's follow-up (FillRichText / Paste) stays on refs.
+    const innermostSelector = innermostEl
+      ? typeof selector === 'string'
+        ? this._generatePathSelector(innermostEl)
+        : `ref:${(this._refs ??= new RefRegistry()).idFor(innermostEl)}`
+      : null;
 
     // Framework detection
     const framework = this._detectEditorFramework(el);

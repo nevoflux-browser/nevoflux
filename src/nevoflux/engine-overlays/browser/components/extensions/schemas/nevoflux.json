@@ -1562,7 +1562,7 @@
           {
             "name": "action",
             "type": "string",
-            "enum": ["click", "fill", "type"]
+            "enum": ["click", "fill", "type", "probe", "paste", "fillRichText", "getText", "waitFor", "uploadFile"]
           },
           {
             "name": "ref",

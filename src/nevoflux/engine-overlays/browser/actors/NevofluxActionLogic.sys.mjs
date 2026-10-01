@@ -558,3 +558,17 @@ export function targetContext(selector, fallback) {
   }
   return fallback;
 }
+
+const REF_METHODS = {
+  probe: 'probe',
+  paste: 'paste',
+  fillRichText: 'fillRichText',
+  getText: 'getText',
+  waitFor: 'waitForSelector',
+  uploadFile: 'uploadFile',
+};
+
+/** The actor method behind a by-id action other than click/fill/type. */
+export function refActionMethod(action) {
+  return REF_METHODS[action] ?? null;
+}

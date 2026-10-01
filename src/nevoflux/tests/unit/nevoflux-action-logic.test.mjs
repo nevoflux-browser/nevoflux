@@ -42,6 +42,7 @@ import {
   refFromSelector,
   normalizeRefId,
   targetContext,
+  refActionMethod,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -691,5 +692,26 @@ describe('actions on a node', () => {
       expect(start >= 0).toBe(true);
       expect(src.slice(start, start + 900).includes('this._contextFor(selector)')).toBe(true);
     }
+  });
+});
+
+describe('refActionMethod', () => {
+  it('maps every by-id action to the actor method that runs it', () => {
+    expect(refActionMethod('probe')).toBe('probe');
+    expect(refActionMethod('paste')).toBe('paste');
+    expect(refActionMethod('fillRichText')).toBe('fillRichText');
+    expect(refActionMethod('getText')).toBe('getText');
+    expect(refActionMethod('waitFor')).toBe('waitForSelector');
+    expect(refActionMethod('uploadFile')).toBe('uploadFile');
+    expect(refActionMethod('eval')).toBeNull();
+  });
+
+  it('_deepQuerySelector resolves ref: selectors through the registry', () => {
+    const src = readFileSync(
+      new URL('../../engine-overlays/browser/actors/NevofluxChild.sys.mjs', import.meta.url),
+      'utf8'
+    );
+    const start = src.indexOf('  _deepQuerySelector(selector');
+    expect(src.slice(start, start + 700).includes('refFromSelector(selector)')).toBe(true);
   });
 });
