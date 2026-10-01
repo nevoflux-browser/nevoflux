@@ -38,6 +38,8 @@ import {
   withinListed,
   checkMark,
   domLabel,
+  frameChainOffset,
+  translateRect,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -646,13 +648,13 @@ export class NevofluxChild extends JSWindowActorChild {
     if (!doc) return extras;
     const promotedAncestors = new Set(); // Track ancestors already captured via child promotion
 
-    const walk = (node) => {
+    const walk = (node, off = { x: 0, y: 0 }) => {
       if (!node || node.nodeType !== 1) return;
 
       // Viewport pruning (first, all nodes — can skip subtree)
       let rect;
       try {
-        rect = node.getBoundingClientRect();
+        rect = translateRect(node.getBoundingClientRect(), off);
       } catch {
         return;
       }
@@ -680,22 +682,27 @@ export class NevofluxChild extends JSWindowActorChild {
             }
           }
           if (hasUnknown) {
-            for (const child of nodeShadow.children) walk(child);
+            for (const child of nodeShadow.children) walk(child, off);
           }
         } catch {}
       }
 
       // Same-origin iframe
+      // Same-origin iframe: walk its document with the frame's offset added
+      // (rect is already in top coordinates, so offsets accumulate).
       if (node.tagName === 'IFRAME') {
         try {
           const body = node.contentDocument?.body;
-          if (body) walk(body);
+          if (body) {
+            walk(body, { x: rect.left + node.clientLeft, y: rect.top + node.clientTop });
+          }
         } catch {} // Cross-origin: silent skip
       }
 
       // Gap-fill detection (only for A11y-uncovered nodes)
       if (!seenNodes.has(node)) {
-        let signal = this._detectInteractiveSignal(node, win);
+        // A frame node's styles are read from its own window.
+        let signal = this._detectInteractiveSignal(node, node.ownerDocument?.defaultView || win);
         if (signal && rect.width > 0 && rect.height > 0) {
           let captureNode = node;
           let captureRect = rect;
@@ -713,7 +720,7 @@ export class NevofluxChild extends JSWindowActorChild {
                 captureNode = ancestor;
                 signal = 'tag';
                 try {
-                  captureRect = ancestor.getBoundingClientRect();
+                  captureRect = translateRect(ancestor.getBoundingClientRect(), off);
                 } catch {}
               }
             }
@@ -740,7 +747,7 @@ export class NevofluxChild extends JSWindowActorChild {
         }
       }
 
-      for (const child of node.children) walk(child);
+      for (const child of node.children) walk(child, off);
     };
 
     walk(root);
@@ -1235,6 +1242,32 @@ export class NevofluxChild extends JSWindowActorChild {
     return elements.filter((el) => {
       const rect = el.viewportRect;
 
+      // A node in a same-origin frame: hit-test in its own document with its
+      // own coordinates, and require the frame itself to be visible here.
+      if (el.node.ownerDocument !== doc) {
+        const fdoc = el.node.ownerDocument;
+        const fwin = fdoc?.defaultView;
+        if (!fwin) return false;
+        const r = el.node.getBoundingClientRect();
+        const cx = r.left + r.width / 2;
+        const cy = r.top + r.height / 2;
+        if (cx < 0 || cy < 0 || cx >= fwin.innerWidth || cy >= fwin.innerHeight) return false;
+        const hit = this._deepElementFromPoint(fdoc, cx, cy);
+        if (
+          !hit ||
+          !(
+            hit === el.node ||
+            this._composedContains(el.node, hit) ||
+            this._composedContains(hit, el.node)
+          )
+        ) {
+          return false;
+        }
+        const off = this._frameOffsetOf(el.node);
+        const top = this._deepElementFromPoint(doc, cx + off.x, cy + off.y);
+        return Boolean(top) && top.tagName === 'IFRAME';
+      }
+
       // ── Modal shortcut ──
       if (hasActiveModal) {
         // Shadow-including membership: the editor lives inside the dialog's
@@ -1383,6 +1416,11 @@ export class NevofluxChild extends JSWindowActorChild {
 
   _generateSelectors(el, doc, docAcc) {
     const node = el.node;
+    // A node in a same-origin frame: any CSS selector would be resolved in the
+    // top document. It is reached by id (actOnRef) only.
+    if (node.ownerDocument !== doc) {
+      return [];
+    }
     const selectors = [];
 
     // A11y elements: try a11y: locator protocol first
@@ -1633,6 +1671,25 @@ export class NevofluxChild extends JSWindowActorChild {
         }),
       }),
     };
+  }
+
+  /** Offset from `node`'s document viewport to the top viewport (0,0 at top level). */
+  _frameOffsetOf(node) {
+    const frames = [];
+    let win = node.ownerDocument?.defaultView;
+    for (let depth = 0; win && depth < 8; depth++) {
+      const frameEl = win.frameElement;
+      if (!frameEl) break;
+      const r = frameEl.getBoundingClientRect();
+      frames.push({
+        left: r.left,
+        top: r.top,
+        clientLeft: frameEl.clientLeft,
+        clientTop: frameEl.clientTop,
+      });
+      win = frameEl.ownerDocument?.defaultView;
+    }
+    return frameChainOffset(frames);
   }
 
   /** The form, dialog or table row an element sits in, as a short key. */

@@ -646,3 +646,23 @@ describe('ref selectors', () => {
     }
   });
 });
+
+describe('iframe controls in snapshots', () => {
+  const src = readFileSync(
+    new URL('../../engine-overlays/browser/actors/NevofluxChild.sys.mjs', import.meta.url),
+    'utf8'
+  );
+  const body = (name) => {
+    const start = src.indexOf(`  ${name}(`);
+    return src.slice(start, src.indexOf('\n  }\n', start));
+  };
+  it('occlusion hit-tests a frame node in its own document', () => {
+    expect(body('_filterOccluded').includes('el.node.ownerDocument !== doc')).toBe(true);
+  });
+  it('the DOM scan translates frame rects to top coordinates', () => {
+    expect(body('_domPatchScan').includes('translateRect(')).toBe(true);
+  });
+  it('frame nodes get no selectors that would resolve in the wrong document', () => {
+    expect(body('_generateSelectors').includes('node.ownerDocument !== doc')).toBe(true);
+  });
+});
