@@ -43,6 +43,7 @@ import {
   normalizeRefId,
   targetContext,
   refActionMethod,
+  dropNamedText,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -567,7 +568,7 @@ describe('snapshot visible text', () => {
       new URL('../../engine-overlays/browser/actors/NevofluxChild.sys.mjs', import.meta.url),
       'utf8'
     );
-    const start = src.indexOf('  _visibleText(doc, win, listedNodes) {');
+    const start = src.indexOf('  _visibleText(doc, win, listedNodes');
     const body = src.slice(start, src.indexOf('\n  }\n', start));
     expect(body.includes('FILTER_REJECT')).toBe(true);
     expect(body.includes('listedNodes.some(')).toBe(false);
@@ -748,5 +749,13 @@ describe('J20-B minors: selectPlan', () => {
       disabled: false,
     }));
     expect(selectPlan(opts, 'austr').error).toContain('Austria, Australia');
+  });
+});
+
+describe('dropNamedText', () => {
+  it('drops visible text that a listed element already names', () => {
+    expect(dropNamedText(['Gift wrap', 'Order placed', ' Size '], ['Gift wrap', 'Size'])).toEqual([
+      'Order placed',
+    ]);
   });
 });

@@ -597,3 +597,10 @@ const REF_METHODS = {
 export function refActionMethod(action) {
   return REF_METHODS[action] ?? null;
 }
+
+/** Visible-text chunks minus those equal to a listed element's name. */
+export function dropNamedText(chunks, names) {
+  const norm = (t) => String(t).replace(/\s+/g, ' ').trim();
+  const named = new Set(names.map(norm).filter(Boolean));
+  return chunks.filter((c) => !named.has(norm(c)));
+}

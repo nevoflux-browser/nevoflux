@@ -43,6 +43,7 @@ import {
   targetContext,
   refFromSelector,
   refActionMethod,
+  dropNamedText,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -364,7 +365,7 @@ export class NevofluxChild extends JSWindowActorChild {
         try {
           const accDoc = lazy.a11yService.getAccessibleFor(doc);
           if (accDoc) {
-            this._walkA11yTree(accDoc, a11yResults, seenNodes, win, []);
+            this._walkA11yTree(accDoc, a11yResults, seenNodes, win);
           }
         } catch (e) {
           console.warn('[NevofluxChild.snapshot] A11y traversal failed:', e.message);
@@ -539,7 +540,7 @@ export class NevofluxChild extends JSWindowActorChild {
 
   // ── Phase 1: A11y Tree Traversal ──
 
-  _walkA11yTree(acc, results, seenNodes, win, landmarkStack) {
+  _walkA11yTree(acc, results, seenNodes, win) {
     // Step 1: Viewport pruning (can skip entire subtree)
     const bx = {},
       by = {},
@@ -603,7 +604,7 @@ export class NevofluxChild extends JSWindowActorChild {
     for (let i = 0; i < count; i++) {
       try {
         const child = acc.getChildAt(i);
-        if (child) this._walkA11yTree(child, results, seenNodes, win, landmarkStack);
+        if (child) this._walkA11yTree(child, results, seenNodes, win);
       } catch {}
     }
 
@@ -1806,7 +1807,8 @@ export class NevofluxChild extends JSWindowActorChild {
     const text = this._visibleText(
       doc,
       win,
-      elements.map((e) => e.node)
+      elements.map((e) => e.node),
+      elements.map((e) => e.name).filter(Boolean)
     );
     if (text) {
       lines.push('## text');
@@ -1826,7 +1828,7 @@ export class NevofluxChild extends JSWindowActorChild {
    * status lines, prices, messages the model otherwise reads via eval_js.
    * Never form-control contents (values of password/file inputs stay out).
    */
-  _visibleText(doc, win, listedNodes) {
+  _visibleText(doc, win, listedNodes, listedNames = []) {
     const chunks = [];
     const root = doc.body || doc.documentElement;
     if (!root) {
@@ -1868,7 +1870,7 @@ export class NevofluxChild extends JSWindowActorChild {
       if (cs.visibility === 'hidden' || cs.display === 'none') continue;
       chunks.push(t.textContent);
     }
-    return capVisibleText(chunks);
+    return capVisibleText(dropNamedText(chunks, listedNames));
   }
 
   _elementToCompactLine(el, win) {
@@ -2033,7 +2035,7 @@ export class NevofluxChild extends JSWindowActorChild {
   // render editors inside web components (e.g. LinkedIn's post composer — a
   // contenteditable/.ql-editor living in an open shadowRoot) are therefore
   // invisible to every selector-resolution path: probe, click, input, type,
-  // waitForSelector and the data-ai-id snapshot lookup all silently return
+  // waitForSelector and the shadow-DOM lookups all silently return
   // "not found". These helpers try the fast light-DOM query first, then
   // breadth-first descend every shadowRoot (open AND closed, via
   // _shadowRootOf) and retry the selector inside each one.
@@ -2237,13 +2239,6 @@ export class NevofluxChild extends JSWindowActorChild {
     } catch {
       return false;
     }
-  }
-
-  // ── Resolve element by snapshot ID (used by act operations) ──
-
-  resolveSnapshotElement(id) {
-    const found = this._refs?.lookup(normalizeRefId(id));
-    return found?.node ?? null;
   }
 
   async screenshot({ fullPage = false, type = 'jpeg', quality = 60, maxWidth = 1280 }) {
