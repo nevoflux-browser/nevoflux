@@ -31,6 +31,7 @@ import {
   domRoleKey,
   uniqueByNode,
   shouldRetryA11yWalk,
+  a11yBoundsToViewport,
   refNodeIsLive,
   tallyRoleNames,
   isUniqueRoleName,
@@ -796,5 +797,37 @@ describe('clicks on frame nodes check the top page', () => {
   });
   it('getText reads through readableText', () => {
     expect(body('getText').includes('readableText(')).toBe(true);
+  });
+});
+
+describe('a11yBoundsToViewport', () => {
+  // J20 rerun at 125% display scaling: getBounds() is in device pixels but
+  // mozInnerScreenX/Y are CSS pixels, so the two top contacts of a list were
+  // hit-tested 24px+ too low and dropped as "occluded".
+  it('converts device-pixel screen bounds to CSS viewport coordinates', () => {
+    const r = a11yBoundsToViewport(
+      { x: 1125, y: 400, width: 250, height: 25 },
+      { innerScreenX: 800, innerScreenY: 300, devicePixelRatio: 1.25 }
+    );
+    expect(r).toEqual({ x: 100, y: 20, width: 200, height: 20 });
+  });
+  it('is the plain offset at ratio 1, and treats a missing ratio as 1', () => {
+    const b = { x: 900, y: 320, width: 50, height: 10 };
+    const want = { x: 100, y: 20, width: 50, height: 10 };
+    expect(a11yBoundsToViewport(b, { innerScreenX: 800, innerScreenY: 300, devicePixelRatio: 1 })).toEqual(want);
+    expect(a11yBoundsToViewport(b, { innerScreenX: 800, innerScreenY: 300 })).toEqual(want);
+  });
+});
+
+describe('a11y walk uses a11yBoundsToViewport (source guard)', () => {
+  it('_walkA11yTree converts through devicePixelRatio', () => {
+    const src = readFileSync(
+      new URL('../../engine-overlays/browser/actors/NevofluxChild.sys.mjs', import.meta.url),
+      'utf8'
+    );
+    const at = src.indexOf('_walkA11yTree(acc, results, seenNodes, win) {');
+    const seg = src.slice(at, at + 800);
+    expect(seg.includes('a11yBoundsToViewport(')).toBe(true);
+    expect(seg.includes('devicePixelRatio')).toBe(true);
   });
 });

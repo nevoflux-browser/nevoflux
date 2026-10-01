@@ -619,3 +619,19 @@ export function readableText({ tagName, type, value, textContent }) {
   }
   return textContent || '';
 }
+
+/**
+ * An accessible's getBounds() box (screen, device pixels) in CSS pixels
+ * relative to the window's viewport. mozInnerScreenX/Y are CSS pixels, so the
+ * bounds are scaled down first — at 125% display scaling the raw difference
+ * puts every point a quarter too far down and right.
+ */
+export function a11yBoundsToViewport(bounds, { innerScreenX, innerScreenY, devicePixelRatio }) {
+  const dpr = devicePixelRatio > 0 ? devicePixelRatio : 1;
+  return {
+    x: bounds.x / dpr - innerScreenX,
+    y: bounds.y / dpr - innerScreenY,
+    width: bounds.width / dpr,
+    height: bounds.height / dpr,
+  };
+}

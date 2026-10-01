@@ -32,6 +32,7 @@ import {
   domRoleKey,
   uniqueByNode,
   shouldRetryA11yWalk,
+  a11yBoundsToViewport,
   refNodeIsLive,
   tallyRoleNames,
   isUniqueRoleName,
@@ -561,12 +562,14 @@ export class NevofluxChild extends JSWindowActorChild {
     } catch {
       return;
     }
-    const vr = {
-      x: bx.value - win.mozInnerScreenX,
-      y: by.value - win.mozInnerScreenY,
-      width: bw.value,
-      height: bh.value,
-    };
+    const vr = a11yBoundsToViewport(
+      { x: bx.value, y: by.value, width: bw.value, height: bh.value },
+      {
+        innerScreenX: win.mozInnerScreenX,
+        innerScreenY: win.mozInnerScreenY,
+        devicePixelRatio: win.devicePixelRatio,
+      }
+    );
     if (
       vr.y + vr.height < 0 ||
       vr.y > win.innerHeight ||
