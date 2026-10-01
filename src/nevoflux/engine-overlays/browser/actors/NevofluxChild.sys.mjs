@@ -40,6 +40,7 @@ import {
   domLabel,
   frameChainOffset,
   translateRect,
+  targetContext,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -1673,6 +1674,17 @@ export class NevofluxChild extends JSWindowActorChild {
     };
   }
 
+  /**
+   * Where an action on `selector` happens: a node's own document and window
+   * (an iframe node acts in its frame), else the current frame context.
+   */
+  _contextFor(selector) {
+    return targetContext(selector, {
+      doc: this.currentDoc || this.doc,
+      win: this.currentWin || this.contentWindow,
+    });
+  }
+
   /** Offset from `node`'s document viewport to the top viewport (0,0 at top level). */
   _frameOffsetOf(node) {
     const frames = [];
@@ -2321,8 +2333,7 @@ export class NevofluxChild extends JSWindowActorChild {
   // ========== Interaction ==========
 
   async click({ selector, button = 'left', clickCount = 1, delay = 0, force = false }) {
-    const doc = this.currentDoc;
-    const win = this.currentWin;
+    const { doc, win } = this._contextFor(selector);
     if (!doc) {
       return {
         success: false,
@@ -2409,7 +2420,7 @@ export class NevofluxChild extends JSWindowActorChild {
     const clickPoint = pick.point;
     const rect = targetEl.getBoundingClientRect();
     const buttonCode = { left: 0, middle: 1, right: 2 }[button] || 0;
-    const domUtils = this._getWindowUtils();
+    const domUtils = this._getWindowUtils(win);
 
     // 5. Send the click once. A lower tier runs only if the one above sent
     //    nothing; an unseen effect is reported, never "fixed" by a 2nd click.
@@ -2688,8 +2699,7 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   type({ selector, text }) {
-    const doc = this.currentDoc || this.doc;
-    const win = this.currentWin || this.contentWindow;
+    const { doc, win } = this._contextFor(selector);
     if (!doc || !win) {
       return { success: false, error: { code: 5001, message: 'No document or window available', recoverable: false } };
     }
@@ -2739,7 +2749,7 @@ export class NevofluxChild extends JSWindowActorChild {
   }
 
   fill({ selector, text }) {
-    const doc = this.currentDoc || this.doc;
+    const { doc, win } = this._contextFor(selector);
     if (!doc) {
       return {
         success: false,
@@ -2761,7 +2771,6 @@ export class NevofluxChild extends JSWindowActorChild {
     // which omits the typeof check — see type() for rationale (the undefined
     // value regression test requires the looser check).
     const isStandardInput = (tag === 'input' || tag === 'textarea') && typeof el.value === 'string';
-    const win = this.currentWin || this.contentWindow;
 
     if (isStandardInput) {
       try {
@@ -2790,8 +2799,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const doc = this.currentDoc || this.doc;
-    const win = this.currentWin || this.contentWindow;
+    const { doc, win } = this._contextFor(selector);
     if (!doc || !win) {
       return {
         success: false,
@@ -2902,8 +2910,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const doc = this.currentDoc || this.doc;
-    const win = this.currentWin || this.contentWindow;
+    const { doc, win } = this._contextFor(selector);
     if (!doc || !win) {
       return {
         success: false,
@@ -2992,7 +2999,8 @@ export class NevofluxChild extends JSWindowActorChild {
    * Constructs File in content realm so the page's JS sees it.
    */
   async uploadFile({ selector, fileUrl, fileName, mimeType }) {
-    const el = this._deepQuerySelector(selector, this.doc);
+    const { doc, win } = this._contextFor(selector);
+    const el = this._deepQuerySelector(selector, doc);
     if (!el) {
       return {
         success: false,
@@ -3061,7 +3069,6 @@ export class NevofluxChild extends JSWindowActorChild {
     }
 
     // Dispatch change + input events to notify the page.
-    const win = this.contentWindow;
     el.dispatchEvent(new win.Event('change', { bubbles: true }));
     el.dispatchEvent(new win.Event('input', { bubbles: true }));
 
@@ -3106,7 +3113,16 @@ export class NevofluxChild extends JSWindowActorChild {
   // ========== Keyboard Control ==========
 
   // Helper to get windowUtils - try multiple access paths
-  _getWindowUtils() {
+  _getWindowUtils(win) {
+    // A node in a same-origin frame is clicked with its frame's own utils,
+    // whose coordinates are relative to that frame.
+    if (win && win !== this.contentWindow) {
+      try {
+        if (win.windowUtils) {
+          return win.windowUtils;
+        }
+      } catch {}
+    }
     // Try browsingContext first (preferred in JSWindowActorChild)
     try {
       const utils = this.browsingContext?.window?.windowUtils;
@@ -6523,8 +6539,7 @@ export class NevofluxChild extends JSWindowActorChild {
       };
     }
 
-    const doc = this.currentDoc || this.doc;
-    const win = this.currentWin || this.contentWindow;
+    const { doc, win } = this._contextFor(selector);
     if (!doc || !win) {
       return {
         success: false,

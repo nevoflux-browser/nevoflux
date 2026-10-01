@@ -549,3 +549,12 @@ export function refFromSelector(selector) {
   const m = selector.match(/^ref:\s*(e?\d+)\s*$/i);
   return m ? normalizeRefId(m[1]) : null;
 }
+
+/** The document and window an action on `selector` happens in. */
+export function targetContext(selector, fallback) {
+  if (selector && typeof selector === 'object' && selector.nodeType === 1) {
+    const doc = selector.ownerDocument;
+    return { doc, win: doc?.defaultView };
+  }
+  return fallback;
+}

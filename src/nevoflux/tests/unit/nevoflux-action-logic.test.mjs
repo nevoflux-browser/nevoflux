@@ -41,6 +41,7 @@ import {
   translateRect,
   refFromSelector,
   normalizeRefId,
+  targetContext,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -664,5 +665,31 @@ describe('iframe controls in snapshots', () => {
   });
   it('frame nodes get no selectors that would resolve in the wrong document', () => {
     expect(body('_generateSelectors').includes('node.ownerDocument !== doc')).toBe(true);
+  });
+});
+
+describe('targetContext', () => {
+  it("acts in a node's own document and window", () => {
+    const fwin = { name: 'frame' };
+    const fdoc = { defaultView: fwin };
+    const node = { nodeType: 1, ownerDocument: fdoc };
+    const fallback = { doc: { top: true }, win: { top: true } };
+    expect(targetContext(node, fallback)).toEqual({ doc: fdoc, win: fwin });
+    expect(targetContext('#x', fallback)).toEqual(fallback);
+  });
+});
+
+describe('actions on a node', () => {
+  it('click, probe, paste, fillRichText and uploadFile take doc/win from the target', () => {
+    const src = readFileSync(
+      new URL('../../engine-overlays/browser/actors/NevofluxChild.sys.mjs', import.meta.url),
+      'utf8'
+    );
+    for (const m of ['click({', 'probe({', 'paste({', 'fillRichText({', 'uploadFile(']) {
+      let start = src.indexOf(`  ${m}`);
+      if (start < 0) start = src.indexOf(`  async ${m}`);
+      expect(start >= 0).toBe(true);
+      expect(src.slice(start, start + 900).includes('this._contextFor(selector)')).toBe(true);
+    }
   });
 });
