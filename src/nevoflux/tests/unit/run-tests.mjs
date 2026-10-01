@@ -24,6 +24,7 @@ import './custom-provider-logic.test.mjs';
 import './local-inference-logic.test.mjs';
 import './nevoflux-action-logic.test.mjs';
 import './click-policy.test.mjs';
+import './ref-routing.test.mjs';
 
 // Run all tests
 const results = await runner.run();

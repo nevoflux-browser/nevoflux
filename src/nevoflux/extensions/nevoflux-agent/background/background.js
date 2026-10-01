@@ -13,6 +13,7 @@ import { createAgentStatusMachine } from './agent-status-machine.mjs';
 import { promptFor } from './avatar-prompt-policy.mjs';
 import { checkWebSession } from './web-session.mjs';
 import { mayResendAfterInjection } from './click-policy.mjs';
+import { refRoute, fillValue } from './ref-routing.mjs';
 import {
   NetworkCapture,
   redactUrl,
@@ -5020,10 +5021,14 @@ async function executeClickViaApi(tabId, params) {
   }
 
   try {
-    const result = await browser.nevoflux.click(tabId, selector, {
-      button,
-      clickCount: click_count,
-    });
+    // 'ref:eN' (an id through a selector tool): the actor resolves it.
+    const ref = refRoute(selector);
+    const result = ref
+      ? await browser.nevoflux.actOnRef(tabId, 'click', ref, { button, clickCount: click_count })
+      : await browser.nevoflux.click(tabId, selector, {
+          button,
+          clickCount: click_count,
+        });
     return result.success !== undefined ? result : { success: true, result };
   } catch (error) {
     console.error(
@@ -5068,7 +5073,9 @@ async function executeTypeViaApi(tabId, params) {
  * Falls back to content script if API is not available
  */
 async function executeFillViaApi(tabId, params) {
-  const { selector, value } = params;
+  const { selector } = params;
+  // browser_input's NativeFill sends `text`, other callers `value`.
+  const value = fillValue(params);
   if (!selector || value === undefined) {
     return {
       success: false,
@@ -5081,7 +5088,10 @@ async function executeFillViaApi(tabId, params) {
   }
 
   try {
-    const result = await browser.nevoflux.fill(tabId, selector, value);
+    const ref = refRoute(selector);
+    const result = ref
+      ? await browser.nevoflux.actOnRef(tabId, 'fill', ref, { text: value })
+      : await browser.nevoflux.fill(tabId, selector, value);
     return result.success !== undefined ? result : { success: true, result };
   } catch (error) {
     console.error(
@@ -5100,7 +5110,13 @@ async function executeGetContentViaApi(tabId, params) {
 
   try {
     if (selector) {
-      const text = await browser.nevoflux.getText(tabId, selector);
+      const ref = refRoute(selector);
+      const text = ref
+        ? await browser.nevoflux.actOnRef(tabId, 'getText', ref, {})
+        : await browser.nevoflux.getText(tabId, selector);
+      if (text && typeof text === 'object' && text.success === false) {
+        return text;
+      }
       return { success: true, result: { selector, text } };
     } else {
       // Get full page snapshot — route through executeSnapshotViaApi
@@ -5934,10 +5950,13 @@ async function executeWaitForViaApi(tabId, params, timeout_ms) {
   }
 
   try {
-    const result = await browser.nevoflux.waitForSelector(tabId, selector, {
-      timeout: timeout_ms,
-      state,
-    });
+    const ref = refRoute(selector);
+    const result = ref
+      ? await browser.nevoflux.actOnRef(tabId, 'waitFor', ref, { timeout: timeout_ms, state })
+      : await browser.nevoflux.waitForSelector(tabId, selector, {
+          timeout: timeout_ms,
+          state,
+        });
     return result.success !== undefined ? result : { success: true, result };
   } catch (error) {
     return { success: false, error: { code: -1, message: error.message, recoverable: true } };
@@ -6041,7 +6060,10 @@ async function executeProbeViaApi(tabId, params) {
   }
 
   try {
-    const result = await browser.nevoflux.probe(tabId, selector);
+    const ref = refRoute(selector);
+    const result = ref
+      ? await browser.nevoflux.actOnRef(tabId, 'probe', ref, {})
+      : await browser.nevoflux.probe(tabId, selector);
     return result.success !== undefined ? result : { success: true, result };
   } catch (error) {
     return {
@@ -6066,7 +6088,10 @@ async function executePasteViaApi(tabId, params) {
   }
 
   try {
-    const result = await browser.nevoflux.paste(tabId, selector, text);
+    const ref = refRoute(selector);
+    const result = ref
+      ? await browser.nevoflux.actOnRef(tabId, 'paste', ref, { text })
+      : await browser.nevoflux.paste(tabId, selector, text);
     return result.success !== undefined ? result : { success: true, result };
   } catch (error) {
     return {
@@ -6085,13 +6110,20 @@ async function executeUploadFileViaApi(tabId, params) {
     return { success: false, error: { code: -1, message: 'selector and fileUrl required', recoverable: false } };
   }
   try {
-    const result = await browser.nevoflux.uploadFile(
-      tabId,
-      selector,
-      fileUrl,
-      fileName || 'upload',
-      mimeType || 'application/octet-stream'
-    );
+    const ref = refRoute(selector);
+    const result = ref
+      ? await browser.nevoflux.actOnRef(tabId, 'uploadFile', ref, {
+          fileUrl,
+          fileName: fileName || 'upload',
+          mimeType: mimeType || 'application/octet-stream',
+        })
+      : await browser.nevoflux.uploadFile(
+          tabId,
+          selector,
+          fileUrl,
+          fileName || 'upload',
+          mimeType || 'application/octet-stream'
+        );
     return result.success !== undefined ? result : { success: true, result };
   } catch (error) {
     return { success: false, error: { code: -1, message: error.message, recoverable: true } };
@@ -6112,7 +6144,10 @@ async function executeFillRichTextViaApi(tabId, params) {
   }
 
   try {
-    const result = await browser.nevoflux.fillRichText(tabId, selector, text);
+    const ref = refRoute(selector);
+    const result = ref
+      ? await browser.nevoflux.actOnRef(tabId, 'fillRichText', ref, { text })
+      : await browser.nevoflux.fillRichText(tabId, selector, text);
     return result.success !== undefined ? result : { success: true, result };
   } catch (error) {
     return {
