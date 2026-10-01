@@ -604,3 +604,18 @@ export function dropNamedText(chunks, names) {
   const named = new Set(names.map(norm).filter(Boolean));
   return chunks.filter((c) => !named.has(norm(c)));
 }
+
+/**
+ * The text an element reads back as: a form control's value (a password's
+ * never — get_content shows this to the model), else its text content.
+ */
+export function readableText({ tagName, type, value, textContent }) {
+  const tag = String(tagName || '').toUpperCase();
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+    if (tag === 'INPUT' && String(type || '').toLowerCase() === 'password') {
+      return '';
+    }
+    return typeof value === 'string' ? value : '';
+  }
+  return textContent || '';
+}

@@ -44,6 +44,7 @@ import {
   refFromSelector,
   refActionMethod,
   dropNamedText,
+  readableText,
 } from 'resource:///actors/NevofluxActionLogic.sys.mjs';
 
 // Lazy getter for accessibility service
@@ -314,7 +315,16 @@ export class NevofluxChild extends JSWindowActorChild {
 
   getText({ selector }) {
     const el = this._deepQuerySelector(selector, this.currentDoc);
-    return el?.textContent || '';
+    if (!el) {
+      return '';
+    }
+    // A form control reads back as its value (browser_input's verifier).
+    return readableText({
+      tagName: el.tagName,
+      type: el.type,
+      value: el.value,
+      textContent: el.textContent,
+    });
   }
 
   getHtml({ selector }) {
@@ -1270,7 +1280,8 @@ export class NevofluxChild extends JSWindowActorChild {
         }
         const off = this._frameOffsetOf(el.node);
         const top = this._deepElementFromPoint(doc, cx + off.x, cy + off.y);
-        return Boolean(top) && top.tagName === 'IFRAME';
+        // The target's own frame — not some other iframe (an ad) over it.
+        return Boolean(top) && top === this._outermostFrameElement(el.node);
       }
 
       // ── Modal shortcut ──
@@ -1688,6 +1699,19 @@ export class NevofluxChild extends JSWindowActorChild {
       doc: this.currentDoc || this.doc,
       win: this.currentWin || this.contentWindow,
     });
+  }
+
+  /** The <iframe> in the top document that (transitively) holds `node`, or null. */
+  _outermostFrameElement(node) {
+    let frameEl = null;
+    let win = node.ownerDocument?.defaultView;
+    for (let depth = 0; win && depth < 8; depth++) {
+      const f = win.frameElement;
+      if (!f) break;
+      frameEl = f;
+      win = f.ownerDocument?.defaultView;
+    }
+    return frameEl;
   }
 
   /** Offset from `node`'s document viewport to the top viewport (0,0 at top level). */
@@ -3824,7 +3848,31 @@ export class NevofluxChild extends JSWindowActorChild {
       return { occluder: this._describeOccluder(hit) };
     });
     const pick = classifyClickPoints(hits);
-    return pick.kind === 'target' ? { kind: 'target', point: points[pick.index] } : pick;
+    if (pick.kind !== 'target') {
+      return pick;
+    }
+    const point = points[pick.index];
+    // A node in a same-origin frame: the click is dispatched through the top
+    // page, so the translated point must be on screen and on the frame itself
+    // (a top-level overlay over the frame would take the click).
+    const frameEl = this._outermostFrameElement(el);
+    if (frameEl) {
+      const topDoc = frameEl.ownerDocument;
+      const topWin = topDoc?.defaultView;
+      const off = this._frameOffsetOf(el);
+      const tp = { x: point.x + off.x, y: point.y + off.y };
+      if (!topWin || !pointInViewport(tp, topWin.innerWidth, topWin.innerHeight)) {
+        return { kind: 'offscreen' };
+      }
+      const hit = this._deepElementFromPoint(topDoc, tp.x, tp.y);
+      if (!hit) {
+        return { kind: 'offscreen' };
+      }
+      if (hit !== frameEl) {
+        return { kind: 'covered', occluder: this._describeOccluder(hit) };
+      }
+    }
+    return { kind: 'target', point };
   }
 
   /** Wait for `n` animation frames, but never longer than `capMs`. */

@@ -44,6 +44,7 @@ import {
   targetContext,
   refActionMethod,
   dropNamedText,
+  readableText,
 } from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 
 describe('snapshotValue', () => {
@@ -757,5 +758,43 @@ describe('dropNamedText', () => {
     expect(dropNamedText(['Gift wrap', 'Order placed', ' Size '], ['Gift wrap', 'Size'])).toEqual([
       'Order placed',
     ]);
+  });
+});
+
+describe('readableText', () => {
+  // browser_input verifies by reading the field back; textContent of an
+  // <input> is always '', so every plain-field fill reported failure.
+  it('reads form controls by value and other elements by text', () => {
+    expect(readableText({ tagName: 'INPUT', type: 'text', value: 'Alice', textContent: '' })).toBe(
+      'Alice'
+    );
+    expect(readableText({ tagName: 'TEXTAREA', value: 'hi', textContent: '' })).toBe('hi');
+    expect(readableText({ tagName: 'SELECT', value: 'XL', textContent: 'S M L XL' })).toBe('XL');
+    expect(readableText({ tagName: 'DIV', textContent: 'Saved' })).toBe('Saved');
+  });
+  it('never reads a password field back', () => {
+    expect(readableText({ tagName: 'INPUT', type: 'password', value: 'hunter2', textContent: '' })).toBe(
+      ''
+    );
+  });
+});
+
+describe('clicks on frame nodes check the top page', () => {
+  const src = readFileSync(
+    new URL('../../engine-overlays/browser/actors/NevofluxChild.sys.mjs', import.meta.url),
+    'utf8'
+  );
+  const body = (name) => {
+    const start = src.indexOf(`  ${name}(`);
+    return src.slice(start, src.indexOf('\n  }\n', start));
+  };
+  it('the click point is hit-tested in the top document too', () => {
+    expect(body('_pickClickPoint').includes('this._outermostFrameElement(')).toBe(true);
+  });
+  it('occlusion requires the target frame itself at the point', () => {
+    expect(body('_filterOccluded').includes('this._outermostFrameElement(')).toBe(true);
+  });
+  it('getText reads through readableText', () => {
+    expect(body('getText').includes('readableText(')).toBe(true);
   });
 });
