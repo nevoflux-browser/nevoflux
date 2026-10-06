@@ -300,19 +300,20 @@ const Settings = {
     // 1. On/off and the provider note.
     const main = this._createGroup('Jev');
     const enabled = this._jevToggle('Use Jev', data.enabled, async (input) => {
-      if (input.checked) {
-        const acked = this._getNestedValue(this._settings, 'jev.noticeAck') === true;
-        if (L.needsNotice({ enabling: true, acked })) {
-          const ok = await this._confirmJevNotice();
-          if (!ok) {
-            input.checked = false;
-            return;
-          }
-          this._setNestedValue(this._settings, 'jev.noticeAck', true);
-          this._scheduleSave();
-        }
+      const acked = this._getNestedValue(this._settings, 'jev.noticeAck') === true;
+      const r = await L.applyToggle({
+        want: input.checked,
+        needsConfirm: L.needsNotice({ enabling: true, acked }),
+        confirm: () => this._confirmJevNotice(),
+        save: (v) => this._jevSet({ enabled: v }),
+        reload: () => this._jevReload(),
+        read: (d) => d.enabled,
+      });
+      input.checked = r.checked;
+      if (r.acked) {
+        this._setNestedValue(this._settings, 'jev.noticeAck', true);
+        this._scheduleSave();
       }
-      this._jevSet({ enabled: input.checked });
     });
     enabled.querySelector('input').id = 'jev-enabled';
     main.appendChild(enabled);
@@ -437,9 +438,17 @@ const Settings = {
     // 3. Decision points.
     const points = this._createGroup('Decision points');
     for (const p of L.POINTS) {
-      const row = this._jevToggle(p.label, Boolean(data.points?.[p.key]), (input) =>
-        this._jevSet({ points: { [p.key]: input.checked } })
-      );
+      const row = this._jevToggle(p.label, Boolean(data.points?.[p.key]), async (input) => {
+        const r = await L.applyToggle({
+          want: input.checked,
+          needsConfirm: false,
+          confirm: async () => true,
+          save: (v) => this._jevSet({ points: { [p.key]: v } }),
+          reload: () => this._jevReload(),
+          read: (d) => d.points?.[p.key],
+        });
+        input.checked = r.checked;
+      });
       if (p.hint) {
         const hint = document.createElement('span');
         hint.className = 'jev-point-hint';
@@ -509,19 +518,31 @@ const Settings = {
     return row;
   },
 
-  /** Save a change; the response refreshes what the daemon normalised. */
+  /**
+   * Save a change; the response refreshes what the daemon normalised.
+   * Resolves true when the daemon saved it.
+   */
   async _jevSet(changes) {
     const params = this._jevLogic.buildSetParams(changes);
     if (!Object.keys(params).length) {
-      return;
+      return true;
     }
     try {
       const data = await this._sendAgentCommand('jev.set', params);
       this._jevApply(data);
       this._jevStatus('Saved', false);
+      return true;
     } catch (e) {
       this._jevStatus(e?.message || String(e), true);
+      return false;
     }
+  },
+
+  /** The daemon's current `[jev]`, painted onto the section. */
+  async _jevReload() {
+    const data = await this._sendAgentCommand('jev.get', {});
+    this._jevApply(data);
+    return data;
   },
 
   /** Reflect `jev.get`/`jev.set` data, never over a field being typed in. */

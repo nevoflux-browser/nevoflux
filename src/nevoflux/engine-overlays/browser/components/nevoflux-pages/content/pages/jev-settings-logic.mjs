@@ -113,3 +113,30 @@ export function formatTest(result) {
 export function validTimeout(n) {
   return Number.isInteger(n) && n >= 100 && n <= 10000;
 }
+
+/**
+ * A switch the user flipped: confirm the notice when it is needed, save the
+ * value the user chose (captured before any wait, so a repaint during the
+ * notice cannot change it), and when the save fails show what the daemon
+ * really has — a toggle must never claim Jev is off while it is still on.
+ *
+ * `save(value)` resolves true on success; `reload()` resolves the daemon's
+ * data (`jev.get`); `read(data)` picks this switch's value from it.
+ * Resolves `{ checked, acked }`: the state to show, and whether the notice
+ * was confirmed now.
+ */
+export async function applyToggle({ want, needsConfirm, confirm, save, reload, read }) {
+  const asks = Boolean(needsConfirm && want);
+  if (asks && !(await confirm())) {
+    return { checked: false, acked: false };
+  }
+  if (await save(want)) {
+    return { checked: want, acked: asks };
+  }
+  try {
+    const data = await reload();
+    return { checked: Boolean(read(data)), acked: asks };
+  } catch {
+    return { checked: !want, acked: asks };
+  }
+}

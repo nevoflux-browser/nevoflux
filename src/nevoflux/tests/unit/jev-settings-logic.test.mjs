@@ -20,6 +20,7 @@ import {
   buildSetParams,
   formatTest,
   validTimeout,
+  applyToggle,
 } from '../../engine-overlays/browser/components/nevoflux-pages/content/pages/jev-settings-logic.mjs';
 
 describe('jev settings logic', () => {
@@ -80,5 +81,73 @@ describe('jev settings logic', () => {
     expect(validTimeout(99)).toBe(false);
     expect(validTimeout(10001)).toBe(false);
     expect(validTimeout(800.5)).toBe(false);
+  });
+
+  it('a failed save shows what the daemon really has', async () => {
+    // Turning Jev off fails (daemon restarting): the toggle must not claim
+    // it is off while page content keeps flowing.
+    const r = await applyToggle({
+      want: false,
+      needsConfirm: false,
+      confirm: async () => true,
+      save: async () => false,
+      reload: async () => ({ enabled: true }),
+      read: (d) => d.enabled,
+    });
+    expect(r.checked).toBe(true);
+  });
+
+  it('turn on saves on, even if the page changed under the notice', async () => {
+    const sent = [];
+    let checkbox = true;
+    const r = await applyToggle({
+      want: checkbox,
+      needsConfirm: true,
+      confirm: async () => {
+        checkbox = false; // another save's response repainted the toggle meanwhile
+        return true;
+      },
+      save: async (v) => {
+        sent.push(v);
+        return true;
+      },
+      reload: async () => ({ enabled: false }),
+      read: (d) => d.enabled,
+    });
+    expect(sent).toEqual([true]);
+    expect(r.checked).toBe(true);
+    expect(r.acked).toBe(true);
+  });
+
+  it('cancelling the notice saves nothing and stays off', async () => {
+    const sent = [];
+    const r = await applyToggle({
+      want: true,
+      needsConfirm: true,
+      confirm: async () => false,
+      save: async (v) => {
+        sent.push(v);
+        return true;
+      },
+      reload: async () => ({ enabled: false }),
+      read: (d) => d.enabled,
+    });
+    expect(sent).toEqual([]);
+    expect(r.checked).toBe(false);
+    expect(r.acked).toBe(false);
+  });
+
+  it('when even the reload fails, the toggle shows the old state', async () => {
+    const r = await applyToggle({
+      want: true,
+      needsConfirm: false,
+      confirm: async () => true,
+      save: async () => false,
+      reload: async () => {
+        throw new Error('daemon down');
+      },
+      read: (d) => d.enabled,
+    });
+    expect(r.checked).toBe(false);
   });
 });
