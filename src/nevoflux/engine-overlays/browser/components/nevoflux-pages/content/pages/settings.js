@@ -127,6 +127,7 @@ const Settings = {
 
     container.appendChild(this._renderGeneralSection());
     container.appendChild(this._renderLLMSection());
+    container.appendChild(this._renderJevSection());
     container.appendChild(this._renderSoulsSection());
     container.appendChild(this._renderMcpSection());
     container.appendChild(this._renderCanvasToolsSection());
@@ -254,6 +255,381 @@ const Settings = {
       );
     }
     return this._localLogic;
+  },
+
+  // ── Jev Section (design v1.6 §5.9) ──────────────────────
+
+  /** Lazily load the DOM-free Jev logic (see jev-settings-logic.mjs). */
+  async _ensureJevLogic() {
+    if (!this._jevLogic) {
+      this._jevLogic = await import(
+        'chrome://nevoflux/content/pages/jev-settings-logic.mjs'
+      );
+    }
+    return this._jevLogic;
+  },
+
+  _renderJevSection() {
+    const section = this._createSection('jev', 'Jev');
+    const intro = document.createElement('p');
+    intro.className = 'section-desc';
+    intro.textContent =
+      'Jev (TypeSafe System One) decides which tools, skills and context the ' +
+      'agent sees. You bring your own key; Jev is billed by TypeSafe.';
+    section.appendChild(intro);
+    const body = document.createElement('div');
+    body.id = 'jev-body';
+    body.textContent = 'Loading…';
+    section.appendChild(body);
+    this._jevLoad(body);
+    return section;
+  },
+
+  async _jevLoad(body) {
+    let data;
+    try {
+      await this._ensureJevLogic();
+      data = await this._sendAgentCommand('jev.get', {});
+    } catch (e) {
+      body.textContent = 'Jev settings are unavailable: ' + (e?.message || e);
+      return;
+    }
+    const L = this._jevLogic;
+    body.textContent = '';
+
+    // 1. On/off and the provider note.
+    const main = this._createGroup('Jev');
+    const enabled = this._jevToggle('Use Jev', data.enabled, async (input) => {
+      if (input.checked) {
+        const acked = this._getNestedValue(this._settings, 'jev.noticeAck') === true;
+        if (L.needsNotice({ enabling: true, acked })) {
+          const ok = await this._confirmJevNotice();
+          if (!ok) {
+            input.checked = false;
+            return;
+          }
+          this._setNestedValue(this._settings, 'jev.noticeAck', true);
+          this._scheduleSave();
+        }
+      }
+      this._jevSet({ enabled: input.checked });
+    });
+    enabled.querySelector('input').id = 'jev-enabled';
+    main.appendChild(enabled);
+    const scope = document.createElement('p');
+    scope.id = 'jev-scope';
+    scope.className = 'jev-hint';
+    main.appendChild(scope);
+    body.appendChild(main);
+
+    // 2. Connection.
+    const conn = this._createGroup('Connection');
+    const endpoint = document.createElement('input');
+    endpoint.type = 'url';
+    endpoint.id = 'jev-endpoint';
+    endpoint.value = data.endpoint || '';
+    endpoint.spellcheck = false;
+    let endpointTimer = null;
+    endpoint.addEventListener('input', () => {
+      clearTimeout(endpointTimer);
+      endpointTimer = setTimeout(() => this._jevSet({ endpoint: endpoint.value.trim() }), 500);
+    });
+    conn.appendChild(this._localRow('Endpoint', endpoint));
+
+    const key = document.createElement('input');
+    key.type = 'password';
+    key.id = 'jev-key';
+    key.autocomplete = 'off';
+    key.addEventListener('change', () => {
+      if (key.value.trim()) {
+        this._jevSet({ api_key: key.value }).then(() => {
+          key.value = '';
+        });
+      }
+    });
+    const showKey = document.createElement('button');
+    showKey.type = 'button';
+    showKey.className = 'mcp-btn-secondary';
+    showKey.textContent = 'Show';
+    showKey.addEventListener('click', () => {
+      key.type = key.type === 'password' ? 'text' : 'password';
+      showKey.textContent = key.type === 'password' ? 'Show' : 'Hide';
+    });
+    const clearKey = document.createElement('button');
+    clearKey.type = 'button';
+    clearKey.id = 'jev-clear-key';
+    clearKey.className = 'mcp-btn-secondary';
+    clearKey.textContent = 'Clear';
+    clearKey.addEventListener('click', () => this._jevSet({ clear_key: true }));
+    const keyBox = document.createElement('div');
+    keyBox.className = 'jev-actions';
+    keyBox.append(key, showKey, clearKey);
+    conn.appendChild(this._localRow('API key', keyBox));
+
+    const timeout = document.createElement('input');
+    timeout.type = 'number';
+    timeout.id = 'jev-timeout';
+    timeout.min = '100';
+    timeout.max = '10000';
+    timeout.step = '100';
+    timeout.value = String(data.timeout_ms);
+    timeout.addEventListener('change', () => {
+      const ms = Number(timeout.value);
+      if (L.validTimeout(ms)) {
+        this._jevSet({ timeout_ms: ms });
+      } else {
+        this._jevStatus('Timeout must be a whole number from 100 to 10000 ms.', true);
+      }
+    });
+    conn.appendChild(this._localRow('Timeout (ms)', timeout));
+
+    const testBtn = document.createElement('button');
+    testBtn.type = 'button';
+    testBtn.id = 'jev-test';
+    testBtn.className = 'mcp-btn-primary';
+    testBtn.textContent = 'Test connection';
+    const testStatus = document.createElement('div');
+    testStatus.id = 'jev-test-status';
+    testStatus.className = 'llm-modal-status';
+    testStatus.setAttribute('role', 'status');
+    const useSuggested = document.createElement('button');
+    useSuggested.type = 'button';
+    useSuggested.className = 'mcp-btn-secondary';
+    useSuggested.hidden = true;
+    // One listener for every test run: it applies the latest suggestion.
+    useSuggested.addEventListener('click', () => {
+      const ms = Number(useSuggested.dataset.ms);
+      timeout.value = String(ms);
+      this._jevSet({ timeout_ms: ms });
+      useSuggested.hidden = true;
+    });
+    testBtn.addEventListener('click', async () => {
+      testBtn.disabled = true;
+      testBtn.textContent = 'Testing…';
+      testStatus.className = 'llm-modal-status';
+      testStatus.textContent = '';
+      useSuggested.hidden = true;
+      try {
+        const params = { endpoint: endpoint.value.trim() };
+        if (key.value.trim()) {
+          params.api_key = key.value.trim();
+        }
+        const r = await this._sendAgentCommand('jev.test', params, 40000);
+        testStatus.className = 'llm-modal-status success';
+        testStatus.textContent = L.formatTest(r);
+        useSuggested.textContent = `Use ${r.suggested_timeout_ms} ms`;
+        useSuggested.dataset.ms = String(r.suggested_timeout_ms);
+        useSuggested.hidden = false;
+      } catch (e) {
+        testStatus.className = 'llm-modal-status error';
+        testStatus.textContent = e?.message || String(e);
+      } finally {
+        testBtn.disabled = false;
+        testBtn.textContent = 'Test connection';
+      }
+    });
+    const testRow = document.createElement('div');
+    testRow.className = 'jev-actions';
+    testRow.append(testBtn, useSuggested);
+    conn.append(testRow, testStatus);
+    body.appendChild(conn);
+
+    // 3. Decision points.
+    const points = this._createGroup('Decision points');
+    for (const p of L.POINTS) {
+      const row = this._jevToggle(p.label, Boolean(data.points?.[p.key]), (input) =>
+        this._jevSet({ points: { [p.key]: input.checked } })
+      );
+      if (p.hint) {
+        const hint = document.createElement('span');
+        hint.className = 'jev-point-hint';
+        hint.textContent = p.hint;
+        row.querySelector('label').appendChild(hint);
+      }
+      points.appendChild(row);
+    }
+    body.appendChild(points);
+
+    // 4. Sensitive sites.
+    const sites = this._createGroup('Sensitive sites');
+    const desc = document.createElement('p');
+    desc.className = 'section-desc';
+    desc.textContent =
+      'On these sites only the domain and title are sent to Jev, never page ' +
+      'text or tool results. One domain per line; subdomains are included.';
+    sites.appendChild(desc);
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+    const builtin = data.builtin_sensitive_domains || [];
+    summary.textContent = `Built-in list (${builtin.length} sites, plus local and intranet addresses)`;
+    const pre = document.createElement('pre');
+    pre.className = 'jev-builtin';
+    pre.textContent =
+      builtin.join('\n') +
+      '\n\nIntranet suffixes: ' + (data.intranet_suffixes || []).join(', ') +
+      '\nPrivate, loopback and single-label hosts are always sensitive.';
+    details.append(summary, pre);
+    sites.appendChild(details);
+    const domains = document.createElement('textarea');
+    domains.id = 'jev-domains';
+    domains.rows = 6;
+    domains.spellcheck = false;
+    domains.value = L.domainsText(data.sensitive_domains);
+    domains.addEventListener('change', () => this._jevSet({ domains_text: domains.value }));
+    sites.appendChild(domains);
+    body.appendChild(sites);
+
+    const status = document.createElement('div');
+    status.id = 'jev-status';
+    status.className = 'llm-modal-status';
+    status.setAttribute('role', 'status');
+    body.appendChild(status);
+
+    this._jevApply(data);
+  },
+
+  /** A toggle row wired to `onChange(input)` rather than a `data-key`. */
+  _jevToggle(label, checked, onChange) {
+    const row = document.createElement('div');
+    row.className = 'toggle-row';
+    const lbl = document.createElement('label');
+    lbl.textContent = label;
+    row.appendChild(lbl);
+    const toggle = document.createElement('label');
+    toggle.className = 'mcp-toggle';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = checked;
+    input.setAttribute('aria-label', label);
+    input.addEventListener('change', () => onChange(input));
+    const slider = document.createElement('span');
+    slider.className = 'mcp-toggle-slider';
+    toggle.append(input, slider);
+    row.appendChild(toggle);
+    return row;
+  },
+
+  /** Save a change; the response refreshes what the daemon normalised. */
+  async _jevSet(changes) {
+    const params = this._jevLogic.buildSetParams(changes);
+    if (!Object.keys(params).length) {
+      return;
+    }
+    try {
+      const data = await this._sendAgentCommand('jev.set', params);
+      this._jevApply(data);
+      this._jevStatus('Saved', false);
+    } catch (e) {
+      this._jevStatus(e?.message || String(e), true);
+    }
+  },
+
+  /** Reflect `jev.get`/`jev.set` data, never over a field being typed in. */
+  _jevApply(data) {
+    const L = this._jevLogic;
+    const active = document.activeElement;
+    const scope = document.getElementById('jev-scope');
+    if (scope) {
+      const hint = L.scopeHint({ scope: data.scope, permissions: data.points?.permissions });
+      scope.textContent = hint || '';
+      scope.hidden = !hint;
+    }
+    const key = document.getElementById('jev-key');
+    if (key) {
+      key.placeholder = L.keyPlaceholder(data);
+    }
+    const clear = document.getElementById('jev-clear-key');
+    if (clear) {
+      clear.hidden = !data.has_api_key;
+    }
+    const domains = document.getElementById('jev-domains');
+    if (domains && domains !== active) {
+      domains.value = L.domainsText(data.sensitive_domains);
+    }
+    const enabled = document.getElementById('jev-enabled');
+    if (enabled) {
+      enabled.checked = Boolean(data.enabled);
+    }
+  },
+
+  _jevStatus(text, isError) {
+    const el = document.getElementById('jev-status');
+    if (!el) {
+      return;
+    }
+    el.className = isError ? 'llm-modal-status error' : 'llm-modal-status success';
+    el.textContent = text;
+    clearTimeout(this._jevStatusTimer);
+    if (!isError) {
+      this._jevStatusTimer = setTimeout(() => {
+        el.textContent = '';
+        el.className = 'llm-modal-status';
+      }, 2000);
+    }
+  },
+
+  /** The first-enable notice (spec §5.8); every dismissal resolves false. */
+  async _confirmJevNotice() {
+    const L = this._jevLogic;
+    return new Promise((resolve) => {
+      const modal = document.createElement('div');
+      modal.className = 'llm-modal show';
+      modal.setAttribute('role', 'dialog');
+      modal.setAttribute('aria-modal', 'true');
+      modal.setAttribute('aria-labelledby', 'jev-notice-title');
+
+      const content = document.createElement('div');
+      content.className = 'llm-modal-content';
+      const header = document.createElement('div');
+      header.className = 'llm-modal-header';
+      const title = document.createElement('h2');
+      title.id = 'jev-notice-title';
+      title.textContent = 'Turn on Jev?';
+      header.appendChild(title);
+      content.appendChild(header);
+
+      const warn = document.createElement('div');
+      warn.className = 'llm-tos-warning';
+      warn.textContent =
+        L.NOTICE_TEXT + ' You can review and add to the sensitive-site list below.';
+      content.appendChild(warn);
+
+      const actions = document.createElement('div');
+      actions.className = 'mcp-modal-actions';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'mcp-btn-secondary';
+      cancelBtn.textContent = 'Cancel';
+      const okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.className = 'mcp-btn-primary';
+      okBtn.textContent = 'Turn on';
+      actions.append(cancelBtn, okBtn);
+      content.appendChild(actions);
+
+      const finish = (value) => {
+        document.removeEventListener('keydown', onKey, true);
+        modal.remove();
+        resolve(value);
+      };
+      const onKey = (e) => {
+        if (e.key === 'Escape') {
+          finish(false);
+        }
+      };
+      document.addEventListener('keydown', onKey, true);
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          finish(false);
+        }
+      });
+      cancelBtn.addEventListener('click', () => finish(false));
+      okBtn.addEventListener('click', () => finish(true));
+
+      modal.appendChild(content);
+      document.body.appendChild(modal);
+      setTimeout(() => cancelBtn.focus(), 50);
+    });
   },
 
   _renderLLMSection() {

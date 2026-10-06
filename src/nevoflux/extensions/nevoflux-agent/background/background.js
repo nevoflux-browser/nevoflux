@@ -747,6 +747,9 @@ const AGENT_COMMAND_TIMEOUT_MS = {
   'local.install': 30000,
   'local.set_default': 15000,
   'local.set_config': 15000,
+  // Three pings at up to 10 s each: the 30 s default would race the daemon's
+  // own worst case and report a timeout for a test that was about to answer.
+  'jev.test': 40000,
 };
 const DEFAULT_AGENT_COMMAND_TIMEOUT_MS = 30000;
 function agentCommandTimeoutMs(command) {

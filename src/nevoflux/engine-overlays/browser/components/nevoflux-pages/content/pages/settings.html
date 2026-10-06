@@ -1990,13 +1990,44 @@
       gap: var(--nevoflux-space-sm);
       margin-top: var(--nevoflux-space-md);
     }
-  </style>
+  
+    /* ── Jev section (design v1.6 §5.9) ── */
+    .jev-hint {
+      margin: var(--zen-space-sm, 8px) 0;
+      padding: var(--zen-space-sm, 8px) var(--zen-space-md, 12px);
+      border-left: 3px solid var(--zen-primary-color);
+      background: color-mix(in srgb, var(--zen-primary-color) 8%, transparent);
+      border-radius: var(--zen-border-radius, 6px);
+    }
+    .jev-point-hint {
+      margin-left: var(--zen-space-sm, 8px);
+      opacity: 0.7;
+      font-size: var(--zen-font-size-sm, 12px);
+    }
+    .jev-builtin {
+      max-height: 180px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font-size: var(--zen-font-size-sm, 12px);
+    }
+    #jev-domains {
+      width: 100%;
+      font-family: monospace;
+    }
+    .jev-actions {
+      display: flex;
+      gap: var(--zen-space-sm, 8px);
+      align-items: center;
+      flex-wrap: wrap;
+    }
+</style>
 </head>
 <body>
   <nav class="settings-nav" id="settings-nav">
     <h1>Settings</h1>
     <a href="#" data-section="general">General</a>
     <a href="#" data-section="llm">AI Models</a>
+    <a href="#" data-section="jev">Jev</a>
     <a href="#" data-section="space-souls">Space Souls</a>
     <a href="#" data-section="mcp">MCP Servers</a>
     <a href="#" data-section="canvas-tools">Canvas Tools</a>
