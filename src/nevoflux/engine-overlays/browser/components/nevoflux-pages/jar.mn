@@ -22,6 +22,7 @@ nevoflux.jar:
     content/nevoflux/pages/pack-ui-logic.mjs         (content/pages/pack-ui-logic.mjs)
     content/nevoflux/pages/custom-provider-logic.mjs (content/pages/custom-provider-logic.mjs)
     content/nevoflux/pages/local-inference-logic.mjs (content/pages/local-inference-logic.mjs)
+    content/nevoflux/pages/jev-settings-logic.mjs (content/pages/jev-settings-logic.mjs)
     content/nevoflux/pages/pack-install.html         (content/pages/pack-install.html)
     content/nevoflux/pages/pack-install.js           (content/pages/pack-install.js)
     content/nevoflux/pages/virtual-fs.js             (content/pages/virtual-fs.js)

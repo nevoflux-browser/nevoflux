@@ -22,6 +22,7 @@ import './theme-color.test.mjs';
 import './web-session.test.mjs';
 import './custom-provider-logic.test.mjs';
 import './local-inference-logic.test.mjs';
+import './jev-settings-logic.test.mjs';
 import './nevoflux-action-logic.test.mjs';
 import './click-policy.test.mjs';
 import './ref-routing.test.mjs';
