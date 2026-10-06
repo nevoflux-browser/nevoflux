@@ -915,6 +915,13 @@ body {
   color: var(--nevo-text-muted);
 }
 
+/* Jev fell back on most of the reply's requests: a plain-text warning in the
+   stats row, readable in both themes. */
+.usage-jev-notice {
+  margin-right: var(--nevo-space-sm);
+  color: var(--nevo-warning, var(--nevo-text-secondary));
+}
+
 .usage-stats:focus-visible {
   outline: 2px solid var(--nevo-primary);
   outline-offset: 2px;

@@ -2503,6 +2503,7 @@ mod usage_frame_tests {
     fn usage(calls: u32) -> TurnUsage {
         TurnUsage {
             main: UsageBucket {
+                fallbacks: 0,
                 input: 100,
                 output: 20,
                 calls,

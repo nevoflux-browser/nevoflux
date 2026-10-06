@@ -10,6 +10,10 @@
 
 use shared_protocol::chat::TurnUsage;
 
+/// Said when most of a reply's Jev requests fell back (spec §5.8).
+pub const JEV_UNAVAILABLE: &str =
+    "Jev was unavailable for most of this reply; local rules were used.";
+
 /// Below this the generation window is too short to mean anything: a call that
 /// emits all its tool-call arguments in one chunk has a window near zero and
 /// would read as tens of thousands of tokens per second.
@@ -125,6 +129,31 @@ pub fn summary_line(usage: &TurnUsage) -> String {
     out
 }
 
+/// The Jev line of the hover detail, or `None` when Jev did not run. Jev is
+/// billed by TypeSafe on the user's own key, so its cost is shown apart.
+pub fn jev_line(usage: &TurnUsage) -> Option<String> {
+    let j = usage.jev.as_ref()?;
+    let mut line = format!("Jev     {} requests", j.calls);
+    if j.fallbacks > 0 {
+        line.push_str(&format!(" · {} fell back", j.fallbacks));
+    }
+    line.push_str(&format!(
+        " · in {} / out {} tokens (billed by TypeSafe)",
+        exact(j.input),
+        exact(j.output)
+    ));
+    Some(line)
+}
+
+/// More than half of the reply's Jev requests fell back to local rules
+/// (spec §5.8): the sidebar says so.
+pub fn jev_unavailable(usage: &TurnUsage) -> bool {
+    usage
+        .jev
+        .as_ref()
+        .is_some_and(|j| j.fallbacks * 2 > j.calls + j.fallbacks)
+}
+
 /// The hover detail, one line per entry.
 pub fn detail_lines(usage: &TurnUsage) -> Vec<String> {
     let mut lines = Vec::new();
@@ -178,6 +207,13 @@ pub fn detail_lines(usage: &TurnUsage) -> Vec<String> {
         lines.push(format!("Model   {model}"));
     }
 
+    if let Some(jev) = jev_line(usage) {
+        lines.push(jev);
+    }
+    if jev_unavailable(usage) {
+        lines.push(JEV_UNAVAILABLE.into());
+    }
+
     if is_estimated(usage) {
         lines.push("Provider reported no usage — values are estimated".into());
         if usage.external_agent {
@@ -195,7 +231,9 @@ mod tests {
 
     fn usage() -> TurnUsage {
         TurnUsage {
+            jev: None,
             main: UsageBucket {
+                fallbacks: 0,
                 input: 8329,
                 output: 646,
                 calls: 5,
@@ -278,6 +316,7 @@ mod tests {
     fn summary_line_adds_subagent_totals() {
         let u = TurnUsage {
             subagent: Some(UsageBucket {
+                fallbacks: 0,
                 input: 4102,
                 output: 210,
                 calls: 3,
@@ -328,6 +367,7 @@ mod tests {
         assert!(is_estimated(&main_estimated));
         let sub_estimated = TurnUsage {
             subagent: Some(UsageBucket {
+                fallbacks: 0,
                 input: 1,
                 output: 1,
                 calls: 1,
@@ -378,6 +418,47 @@ mod tests {
         assert!(
             lines.iter().any(|l| l.contains("system prompt")),
             "says the input estimate misses the agent's own overhead: {lines:?}"
+        );
+    }
+
+    fn with_jev(calls: u32, fallbacks: u32) -> TurnUsage {
+        let mut u = usage();
+        u.jev = Some(UsageBucket {
+            input: 2978,
+            output: 284,
+            calls,
+            fallbacks,
+            ..Default::default()
+        });
+        u
+    }
+
+    #[test]
+    fn a_reply_without_jev_has_no_jev_line() {
+        assert_eq!(jev_line(&usage()), None);
+        assert!(!detail_lines(&usage()).iter().any(|l| l.starts_with("Jev")));
+        assert!(!jev_unavailable(&usage()));
+    }
+
+    #[test]
+    fn the_jev_line_names_requests_tokens_and_the_payer() {
+        let line = jev_line(&with_jev(4, 0)).unwrap();
+        assert_eq!(
+            line,
+            "Jev     4 requests · in 2,978 / out 284 tokens (billed by TypeSafe)"
+        );
+        assert!(detail_lines(&with_jev(4, 0)).contains(&line));
+    }
+
+    #[test]
+    fn a_mostly_fallen_back_reply_shows_the_notice() {
+        assert!(jev_unavailable(&with_jev(1, 3)));
+        assert!(!jev_unavailable(&with_jev(3, 1)));
+        assert!(!jev_unavailable(&with_jev(2, 2)), "half is not more than half");
+        assert!(jev_unavailable(&with_jev(0, 1)));
+        assert_eq!(
+            jev_line(&with_jev(1, 3)).unwrap(),
+            "Jev     1 requests · 3 fell back · in 2,978 / out 284 tokens (billed by TypeSafe)"
         );
     }
 }

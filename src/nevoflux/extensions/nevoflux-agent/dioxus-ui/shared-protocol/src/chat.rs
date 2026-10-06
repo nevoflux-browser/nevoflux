@@ -273,6 +273,10 @@ pub struct BrowserToolError {
 // =============================================================================
 
 /// Skip `false` when serializing.
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
 fn is_false(b: &bool) -> bool {
     !*b
 }
@@ -292,6 +296,10 @@ pub struct UsageBucket {
     /// True when at least one call's numbers came from estimation.
     #[serde(default, skip_serializing_if = "is_false")]
     pub estimated: bool,
+    /// Requests that failed and fell back to local rules (the Jev bucket
+    /// only).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub fallbacks: u32,
 }
 
 /// Token usage snapshot for one assistant reply.
@@ -326,6 +334,10 @@ pub struct TurnUsage {
     /// separated from its internal tool execution and tok/s is hidden.
     #[serde(default, skip_serializing_if = "is_false")]
     pub external_agent: bool,
+    /// Jev (decision oracle) requests, absent when none ran. `calls` counts
+    /// requests; the tokens are billed by TypeSafe, not the LLM provider.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jev: Option<UsageBucket>,
 }
 
 /// Stream chunk for streaming responses (matches nevoflux-agent protocol)
@@ -1156,6 +1168,23 @@ pub type OutputMessage = ChatMessage;
 mod tests {
     use super::*;
     use crate::common::RequesterType;
+
+    #[test]
+    fn old_usage_without_jev_still_parses() {
+        let u: TurnUsage =
+            serde_json::from_str(r#"{"main":{"input":1,"output":2,"calls":1}}"#).unwrap();
+        assert_eq!(u.jev, None);
+        let u: TurnUsage = serde_json::from_str(
+            r#"{"main":{"input":1,"output":2,"calls":1},"jev":{"input":5,"output":1,"calls":2}}"#,
+        )
+        .unwrap();
+        assert_eq!(u.jev.unwrap().fallbacks, 0);
+        let u: TurnUsage = serde_json::from_str(
+            r#"{"main":{"input":1,"output":2,"calls":1},"jev":{"input":0,"output":0,"calls":0,"fallbacks":3}}"#,
+        )
+        .unwrap();
+        assert_eq!(u.jev.unwrap().fallbacks, 3);
+    }
 
     // =========================================================================
     // Direction Tests

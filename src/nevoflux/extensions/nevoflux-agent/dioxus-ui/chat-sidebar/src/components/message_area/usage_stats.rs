@@ -4,7 +4,9 @@
 
 //! Token stats shown at the right end of an assistant message's toolbar.
 
-use super::usage_format::{detail_lines, is_estimated, summary_line, summary_segments, StatSegment};
+use super::usage_format::{
+    detail_lines, is_estimated, jev_unavailable, summary_line, summary_segments, StatSegment,
+};
 use dioxus::prelude::*;
 use shared_protocol::chat::TurnUsage;
 
@@ -19,6 +21,7 @@ pub fn UsageStats(usage: TurnUsage) -> Element {
     let segments = summary_segments(&usage);
     let lines = detail_lines(&usage);
     let estimated = is_estimated(&usage);
+    let jev_down = jev_unavailable(&usage);
     // Stable for the life of this component instance, so focus does not
     // re-point the description at a different element on every render.
     let detail_id = use_hook(|| {
@@ -38,6 +41,13 @@ pub fn UsageStats(usage: TurnUsage) -> Element {
             aria_describedby: "{detail_id}",
             aria_label: "{aria}",
 
+            // Most of this reply's Jev requests fell back: said plainly here,
+            // in full in the detail below (spec §5.8).
+            if jev_down {
+                span { class: "usage-jev-notice", aria_hidden: "true",
+                    "Jev unavailable · local rules used"
+                }
+            }
             if estimated {
                 span { class: "usage-estimated", aria_hidden: "true", "≈" }
             }
