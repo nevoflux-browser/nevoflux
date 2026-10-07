@@ -1548,6 +1548,15 @@ pub async fn remote_pair() -> Result<(String, String), String> {
     Ok((s("control_channel_id"), s("pairing_code")))
 }
 
+/// `remote.pair_agent` — pair an AI agent with this machine (design §4.1).
+///
+/// Returns the four-line block the person pastes into the agent. Like the
+/// device code, it is shown once: the daemon keeps the derived key, not the code.
+pub async fn remote_pair_agent() -> Result<String, String> {
+    let d = system_command("remote.pair_agent", serde_json::json!({})).await?;
+    crate::messaging::agent_pair::block_from(&d)
+}
+
 /// `remote.pairings` — what can reach this machine.
 ///
 /// Carries no secrets: this answers "which devices are paired", which needs

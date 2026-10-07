@@ -33,6 +33,9 @@ pub struct Device {
     pub label: Option<String>,
     pub created_at: i64,
     pub can_be_woken: bool,
+    /// An AI agent rather than a phone. Agents are reached over their own MCP
+    /// channel and are never woken, so the wake state is not shown for them.
+    pub is_agent: bool,
 }
 
 /// Read the daemon's rows into something the rest of this module can hold.
@@ -52,6 +55,7 @@ pub fn read_rows(rows: &[serde_json::Value]) -> Vec<Device> {
                     .get("can_be_woken")
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false),
+                is_agent: r.get("kind").and_then(|v| v.as_str()) == Some("agent"),
             })
         })
         .collect()
@@ -74,11 +78,22 @@ fn when(created_at: i64, now_secs: i64) -> String {
 /// thing `/unpair` can be given.
 pub fn compose_list(devices: &[Device], now_secs: i64) -> String {
     if devices.is_empty() {
-        return "Nothing is paired with this machine.\n\nRun `/pair-device` to add a phone."
+        return "Nothing is paired with this machine.\n\n\
+                Run `/pair-device` to add a phone, or `/pair-agent` to add an AI agent."
             .to_string();
     }
     let mut out = String::from("Paired with this machine:\n\n");
     for d in devices {
+        if d.is_agent {
+            let name = d.label.clone().unwrap_or_else(|| "AI agent".into());
+            out.push_str(&format!(
+                "- **{name}** · `{}` · paired {}
+",
+                d.handle,
+                when(d.created_at, now_secs)
+            ));
+            continue;
+        }
         let name = d.label.clone().unwrap_or_else(|| "unnamed device".into());
         // The wake state is worth a word: a device that cannot be woken is one
         // whose notifications quietly stopped, which is the failure this whole
@@ -196,6 +211,7 @@ pub async fn unpair(mut messages: Signal<Vec<Message>>, typed: String) {
                 label,
                 created_at: 0,
                 can_be_woken: false,
+                is_agent: false,
             };
             messages
                 .write()
@@ -224,6 +240,7 @@ mod tests {
             label: label.map(str::to_string),
             created_at: 0,
             can_be_woken: false,
+            is_agent: false,
         }
     }
 
@@ -299,5 +316,31 @@ mod tests {
         let text = compose_revoked(&dev("3c12b59a", Some("Pixel")));
         assert!(text.contains("Pixel"));
         assert!(text.to_lowercase().contains("push subscription"));
+    }
+
+    #[test]
+    fn rows_without_kind_read_as_devices() {
+        let rows = vec![serde_json::json!({"control_channel_id": "abcdef0123", "created_at": 0})];
+        assert!(!read_rows(&rows)[0].is_agent);
+    }
+
+    #[test]
+    fn an_agent_row_says_agent_and_not_wake_state() {
+        let rows = vec![serde_json::json!({
+            "control_channel_id": "abcdef0123", "created_at": 0, "kind": "agent"
+        })];
+        let devices = read_rows(&rows);
+        assert!(devices[0].is_agent);
+        let text = compose_list(&devices, 0);
+        assert!(text.contains("AI agent"));
+        assert!(!text.contains("woken"), "wake state means nothing for an agent: {text}");
+        assert!(text.contains("`abcdef01`"), "the handle still survives for /unpair");
+    }
+
+    #[test]
+    fn the_empty_list_mentions_both_ways_to_pair() {
+        let text = compose_list(&[], 0);
+        assert!(text.contains("/pair-device"));
+        assert!(text.contains("/pair-agent"));
     }
 }
