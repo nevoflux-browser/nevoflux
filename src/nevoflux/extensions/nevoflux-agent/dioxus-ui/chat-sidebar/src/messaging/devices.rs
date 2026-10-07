@@ -140,6 +140,13 @@ pub fn resolve<'a>(devices: &'a [Device], typed: &str) -> Result<&'a Device, Str
 
 /// What is said once a device is gone.
 pub fn compose_revoked(d: &Device) -> String {
+    if d.is_agent {
+        return format!(
+            "✅ **AI agent** `{}` is unpaired: its channel is closed and its key deleted. It \
+can no longer reach this machine.",
+            d.handle
+        );
+    }
     let name = d.label.clone().unwrap_or_else(|| "That device".into());
     format!(
         "✅ **{name}** (`{}`) can no longer reach this machine.\n\n\
@@ -210,7 +217,7 @@ pub async fn unpair(mut messages: Signal<Vec<Message>>, typed: String) {
                 label,
                 created_at: 0,
                 can_be_woken: false,
-                is_agent: false,
+                is_agent: target.is_agent,
             };
             messages
                 .write()
@@ -315,6 +322,20 @@ mod tests {
         let text = compose_revoked(&dev("3c12b59a", Some("Pixel")));
         assert!(text.contains("Pixel"));
         assert!(text.to_lowercase().contains("push subscription"));
+    }
+
+    #[test]
+    fn revoking_an_agent_uses_agent_wording() {
+        let mut a = dev("abcdef01", None);
+        a.is_agent = true;
+        let text = compose_revoked(&a);
+        assert!(text.contains("**AI agent** `abcdef01`"), "{text}");
+        assert!(text.contains("key deleted"));
+        assert!(!text.to_lowercase().contains("push subscription"));
+        assert!(!text.to_lowercase().contains("phone"));
+        for l in text.split('\n') {
+            assert!(!l.starts_with("    "), "{l:?}");
+        }
     }
 
     #[test]

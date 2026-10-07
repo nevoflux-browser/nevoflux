@@ -32,13 +32,13 @@ pub fn compose_agent_pairing_message(block: &str) -> String {
     let intro = "✅ An AI agent can now be paired with this machine.";
     let copy = "Copy this whole block and paste it into the agent (for example, tell Muse \
 \"install the NevoFlux client and pair with this\"):";
-    let approve = "The agent will then ask you to approve it at **nevoflux.app/device** with \
-your NevoFlux account.";
-    let limit = "Once browser tools are enabled for agents (in a later update), it will act \
-within the current execution tier and answer its own approval prompts — pair only an agent \
-you trust.";
-    let after = "The code is shown once. See it later with `/devices`; take it back with \
-`/unpair <id>`.";
+    let approve = "Approving at **nevoflux.app/device** signs the agent in to your NevoFlux \
+account.";
+    let limit = "Whoever runs the agent gets the same reach it does: once browser tools are \
+enabled for agents (in a later update), it will act in this browser within the current \
+execution tier and answer its own approval prompts. Pair only an agent you trust.";
+    let after = "The code is shown once — copy the block now. `/devices` lists this pairing; \
+`/unpair <id>` takes it back.";
     format!("{intro}\n\n{copy}\n\n```\n{block}```\n\n{approve}\n\n{limit} {after}")
 }
 
@@ -107,9 +107,15 @@ mod tests {
     fn the_message_says_what_handing_it_over_means() {
         let text = compose_agent_pairing_message(BLOCK);
         assert!(text.contains("nevoflux.app/device"), "points at the approval step");
-        assert!(text.contains("/devices"), "says how to see it later");
+        assert!(text.contains("/devices"), "says where the pairing is listed");
         assert!(text.contains("/unpair"), "says how to take it back");
-        assert!(text.to_lowercase().contains("execution tier"), "states the limit");
+        let lower = text.to_lowercase();
+        assert!(lower.contains("execution tier"), "states the limit");
+        assert!(lower.contains("approval prompts"), "says it answers its own prompts");
+        assert!(lower.contains("trust"), "asks for trust");
+        assert!(lower.contains("whoever runs the agent"), "names the operator");
+        assert!(!lower.contains("see it later"), "the code cannot be seen later");
+        assert!(lower.contains("copy the block now"), "tells them to copy now");
     }
 
     #[test]
