@@ -764,6 +764,22 @@ pub fn TextInput(disabled: bool) -> Element {
             return;
         }
 
+        // /pair-agent: pair an AI agent. Handled here, like /pair-device, so it
+        // never reaches the daemon as a chat turn.
+        if text.trim() == "/pair-agent" {
+            input_text.set(String::new());
+            rows.set(1);
+            show_tab_selector.set(false);
+            attached_files.set(Vec::new());
+
+            ctx.messages.write().push(Message::user(&text));
+            let messages = ctx.messages;
+            wasm_bindgen_futures::spawn_local(async move {
+                crate::messaging::agent_pair::run(messages).await;
+            });
+            return;
+        }
+
         input_text.set(String::new());
         rows.set(1);
         show_tab_selector.set(false);

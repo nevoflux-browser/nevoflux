@@ -2177,6 +2177,12 @@ fn with_builtin_commands(mut skills: Vec<SkillItem>) -> Vec<SkillItem> {
             "pair-device",
             "Pair a phone with this machine, so it keeps working after a restart",
         ),
+        // An AI agent pairs differently from a phone: one MCP channel, and a
+        // block pasted into the agent instead of a code typed on a screen.
+        (
+            "pair-agent",
+            "Pair an AI agent (such as Muse) with this machine",
+        ),
         // A pairing outlives restarts by design, so revoking one has to be
         // reachable — a phone that is lost or sold otherwise keeps its way in.
         ("devices", "List the devices paired with this machine"),
@@ -2574,5 +2580,20 @@ mod usage_metadata_tests {
             "metadata": {"container": "default"}
         });
         assert!(usage_from_metadata(msg_json.get("metadata")).is_none());
+    }
+}
+
+#[cfg(test)]
+mod builtin_menu_tests {
+    use super::*;
+
+    #[test]
+    fn pair_agent_is_offered_in_the_menu() {
+        let names: Vec<String> = with_builtin_commands(Vec::new())
+            .into_iter()
+            .map(|s| s.name)
+            .collect();
+        assert!(names.contains(&"pair-agent".to_string()));
+        assert!(names.contains(&"pair-device".to_string()));
     }
 }
