@@ -24,27 +24,29 @@ pub fn block_from(data: &serde_json::Value) -> Result<String, String> {
 }
 
 /// What the sidebar says once the agent pairing exists.
+///
+/// Built from one string per paragraph joined with explicit `\n`, so every line
+/// starts at column 0: the sidebar renders CommonMark, where a fence indented
+/// four columns is an indented code block, not a fence.
 pub fn compose_agent_pairing_message(block: &str) -> String {
-    format!(
-        "✅ An AI agent can now be paired with this machine.
-
-         Copy this whole block and paste it into the agent (for example, tell Muse          \"install the NevoFlux client and pair with this\"):
-
-         ```
-{block}```
-
-         The agent will then ask you to approve it at **nevoflux.app/device** with          your NevoFlux account.
-
-         Once connected it can use this browser within the current execution tier,          and it answers its own approval prompts — pair only an agent you trust.          The code is shown once. See it later with `/devices`; take it back with          `/unpair <id>`."
-    )
+    let intro = "✅ An AI agent can now be paired with this machine.";
+    let copy = "Copy this whole block and paste it into the agent (for example, tell Muse \
+\"install the NevoFlux client and pair with this\"):";
+    let approve = "The agent will then ask you to approve it at **nevoflux.app/device** with \
+your NevoFlux account.";
+    let limit = "Once browser tools are enabled for agents (in a later update), it will act \
+within the current execution tier and answer its own approval prompts — pair only an agent \
+you trust.";
+    let after = "The code is shown once. See it later with `/devices`; take it back with \
+`/unpair <id>`.";
+    format!("{intro}\n\n{copy}\n\n```\n{block}```\n\n{approve}\n\n{limit} {after}")
 }
 
 /// What the sidebar says when pairing did not happen.
 pub fn compose_agent_pairing_failure(reason: &str) -> String {
     format!(
-        "Could not pair an agent: {reason}
-
-         If this says the command is unknown, the NevoFlux agent on this machine          needs an update."
+        "Could not pair an agent: {reason}\n\n\
+If this says the command is unknown, the NevoFlux agent on this machine needs an update."
     )
 }
 
@@ -69,6 +71,36 @@ mod tests {
         let start = text.find("```\n").expect("opens a code block") + 4;
         let end = text[start..].find("```").expect("closes it") + start;
         assert_eq!(&text[start..end], BLOCK, "copied verbatim, nothing added inside");
+    }
+
+    #[test]
+    fn the_fence_is_a_real_fence_and_nothing_is_indented_into_code() {
+        // In CommonMark a fence indented 4+ columns is an indented code block,
+        // and stray indentation anywhere turns prose into code.
+        let text = compose_agent_pairing_message(BLOCK);
+        let lines: Vec<&str> = text.split('\n').collect();
+        let fences: Vec<usize> = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| l.trim() == "```")
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(fences.len(), 2, "exactly one fenced block: {text}");
+        assert_eq!(lines[fences[0]], "```", "opening fence at column 0");
+        assert_eq!(lines[fences[1]], "```", "closing fence at column 0");
+        for (i, l) in lines.iter().enumerate() {
+            if i > fences[0] && i < fences[1] {
+                continue;
+            }
+            assert!(
+                !l.starts_with("    ") && !l.starts_with('\t'),
+                "line {i} is indented: {l:?}"
+            );
+        }
+        let failure = compose_agent_pairing_failure("x");
+        for l in failure.split('\n') {
+            assert!(!l.starts_with("    ") && !l.starts_with('\t'), "{l:?}");
+        }
     }
 
     #[test]

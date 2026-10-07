@@ -87,8 +87,7 @@ pub fn compose_list(devices: &[Device], now_secs: i64) -> String {
         if d.is_agent {
             let name = d.label.clone().unwrap_or_else(|| "AI agent".into());
             out.push_str(&format!(
-                "- **{name}** · `{}` · paired {}
-",
+                "- **{name}** · `{}` · paired {}\n",
                 d.handle,
                 when(d.created_at, now_secs)
             ));
