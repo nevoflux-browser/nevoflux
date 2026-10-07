@@ -9,6 +9,7 @@
 //! copy carries exactly its four lines — the agent reads them by prefix — and
 //! never into a link, because the code in it derives the channel key.
 
+use crate::messaging::signin::needs_sign_in;
 use crate::state::Message;
 use dioxus::prelude::*;
 
@@ -44,6 +45,9 @@ execution tier and answer its own approval prompts. Pair only an agent you trust
 
 /// What the sidebar says when pairing did not happen.
 pub fn compose_agent_pairing_failure(reason: &str) -> String {
+    if needs_sign_in(reason) {
+        return "Could not pair an agent: this machine is not signed in to NevoFlux (the sign-in may have expired).\n\nRun `/remote-control` to sign in, then run `/pair-agent` again.".to_string();
+    }
     format!(
         "Could not pair an agent: {reason}\n\n\
 If this says the command is unknown, the NevoFlux agent on this machine needs an update."
@@ -123,6 +127,23 @@ mod tests {
         let text = compose_agent_pairing_failure("unknown command: remote.pair_agent");
         assert!(text.contains("unknown command: remote.pair_agent"));
         assert!(text.to_lowercase().contains("update"), "suggests the likely fix");
+    }
+
+    #[test]
+    fn a_missing_sign_in_says_to_sign_in_again() {
+        for reason in [
+            "log in first",
+            "Invalid request: no JWT in set-auth-jwt header or token body",
+        ] {
+            let text = compose_agent_pairing_failure(reason);
+            assert!(text.contains("/remote-control"), "{text}");
+            assert!(text.contains("/pair-agent"), "{text}");
+            assert!(text.contains("not signed in"), "{text}");
+            assert!(!text.to_lowercase().contains("needs an update"), "{text}");
+            for l in text.split('\n') {
+                assert!(!l.starts_with("    "), "{l:?}");
+            }
+        }
     }
 
     #[test]

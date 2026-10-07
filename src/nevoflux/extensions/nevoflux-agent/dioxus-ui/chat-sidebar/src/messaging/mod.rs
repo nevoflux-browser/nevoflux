@@ -14,6 +14,7 @@ pub mod device_pair;
 pub mod devices;
 mod handler;
 mod sender;
+pub mod signin;
 
 pub use browser_tools::execute_browser_tool;
 pub use handler::init_message_listener;

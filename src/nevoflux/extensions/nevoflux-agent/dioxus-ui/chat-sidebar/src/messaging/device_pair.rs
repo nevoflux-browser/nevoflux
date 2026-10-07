@@ -21,6 +21,7 @@
 //! connect block to a pipe and cannot show a picture, so a QR would serve
 //! exactly one of the two callers — and has no business in the code they share.
 
+use crate::messaging::signin::needs_sign_in;
 use crate::state::Message;
 use base64::Engine;
 use dioxus::prelude::*;
@@ -79,6 +80,14 @@ pub fn compose_pairing_message(link: &str, code: &str, qr: Option<&str>) -> Stri
     )
 }
 
+/// What the sidebar says when pairing did not happen.
+pub fn compose_pairing_failure(reason: &str) -> String {
+    if needs_sign_in(reason) {
+        return "Could not pair this machine: it is not signed in to NevoFlux (the sign-in may have expired).\n\nRun `/remote-control` to sign in, then run `/pair-device` again.".to_string();
+    }
+    format!("Could not pair this machine: {reason}")
+}
+
 /// Run the pairing flow and report it into the transcript.
 pub async fn run(mut messages: Signal<Vec<Message>>) {
     match crate::messaging::remote_pair().await {
@@ -94,9 +103,9 @@ pub async fn run(mut messages: Signal<Vec<Message>>) {
                 )));
         }
         Err(e) => {
-            messages.write().push(Message::assistant_markdown(format!(
-                "Could not pair this machine: {e}"
-            )));
+            messages
+                .write()
+                .push(Message::assistant_markdown(compose_pairing_failure(&e)));
         }
     }
 }
@@ -104,6 +113,28 @@ pub async fn run(mut messages: Signal<Vec<Message>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_missing_sign_in_says_to_sign_in_again() {
+        for reason in [
+            "log in first",
+            "Invalid request: no JWT in set-auth-jwt header or token body",
+        ] {
+            let text = compose_pairing_failure(reason);
+            assert!(text.contains("/remote-control"), "{text}");
+            assert!(text.contains("/pair-device"), "{text}");
+            assert!(text.contains("not signed in"), "{text}");
+            for l in text.split('\n') {
+                assert!(!l.starts_with("    "), "{l:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn any_other_failure_keeps_its_reason() {
+        let text = compose_pairing_failure("network down");
+        assert_eq!(text, "Could not pair this machine: network down");
+    }
 
     #[test]
     fn the_qr_carries_the_link_and_not_the_code() {
