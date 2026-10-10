@@ -14,7 +14,7 @@ import { promptFor } from './avatar-prompt-policy.mjs';
 import { checkWebSession } from './web-session.mjs';
 import { mayResendAfterInjection } from './click-policy.mjs';
 import { refRoute, fillValue } from './ref-routing.mjs';
-import { isAgentRequest, agentTabRefusal, agentRequestIsTabless, agentTabUrlAllowed, agentActivateTabRefusal, newTabActive } from './agent-route.mjs';
+import { isAgentRequest, agentTabRefusal, agentRequestIsTabless, agentTabUrlAllowed, agentActivateTabRefusal, newTabActive, agentPrivateTabRefusal, agentWindowId, agentNoWindowRefusal, withoutPrivateWindowTabs } from './agent-route.mjs';
 import {
   NetworkCapture,
   redactUrl,
@@ -4289,12 +4289,17 @@ async function executeBrowserTool(request, caller = 'unknown') {
         error: { code: -1, message: e?.message || String(e), recoverable: false },
       };
     }
+    // Private windows are the person's alone.
+    const privateRefusal = agentPrivateTabRefusal(action, agentTab);
+    if (privateRefusal) {
+      return { success: false, error: privateRefusal };
+    }
     if (!agentTabUrlAllowed(agentTab?.url)) {
       return {
         success: false,
         error: {
           code: -1,
-          message: `agent request '${action}' targets a tab showing a page the agent may not use`,
+          message: `agent request '${action}' targets a tab showing a page the agent may not use; open a new tab with browser_navigate new_tab:true`,
           recoverable: false,
         },
       };
@@ -4334,7 +4339,20 @@ async function executeBrowserTool(request, caller = 'unknown') {
     switch (action) {
       // Navigation
       case 'navigate': {
-        const navResult = await executeNavigateViaApi(targetTabId, params);
+        // An agent's new tab opens in a normal, non-private window, never in
+        // whatever window happens to be focused (it may be private).
+        let newTabWindowId;
+        if (isAgentRequest(request) && params?.new_tab === true) {
+          const [lastFocused, windows] = await Promise.all([
+            browser.windows.getLastFocused().catch(() => null),
+            browser.windows.getAll({ windowTypes: ['normal'] }),
+          ]);
+          newTabWindowId = agentWindowId(lastFocused, windows);
+          if (newTabWindowId === null) {
+            return { success: false, error: agentNoWindowRefusal(action) };
+          }
+        }
+        const navResult = await executeNavigateViaApi(targetTabId, params, newTabWindowId);
         // A panel may drive what it opened, so record the tab it just created.
         if (caller === 'bridge' && navResult?.success && navResult.result?.new_tab) {
           rememberCanvasTab(request.artifact_id, navResult.result.tab_id);
@@ -4513,9 +4531,15 @@ async function executeBrowserTool(request, caller = 'unknown') {
 
       // Tab management
       case 'list_tabs':
+        if (isAgentRequest(request)) {
+          return await agentListing((windowId) => executeListTabs(params, windowId));
+        }
         return await executeListTabs(params);
 
       case 'query_tabs':
+        if (isAgentRequest(request)) {
+          return await agentListing(() => executeQueryTabs(params));
+        }
         return await executeQueryTabs(params);
 
       // Alias: get_elements → snapshot
@@ -4958,7 +4982,7 @@ function isNevofluxApiAvailable() {
 /**
  * Navigate to a URL via browser.nevoflux.open()
  */
-async function executeNavigateViaApi(tabId, params) {
+async function executeNavigateViaApi(tabId, params, windowId) {
   const { url, new_tab: newTab } = params;
   if (!url) {
     return { success: false, error: { code: -1, message: 'URL required', recoverable: false } };
@@ -4980,7 +5004,12 @@ async function executeNavigateViaApi(tabId, params) {
       // Open in a new tab instead of navigating the current one. An agent's
       // tab opens in the background (`background: true`) so the person's tab
       // keeps focus. Variant A is the default pending spike S1.
-      const tab = await browser.tabs.create({ url, active: newTabActive(params) });
+      // `windowId`, when given, is the window an agent's tab must open in.
+      const createProps = { url, active: newTabActive(params) };
+      if (windowId !== undefined && windowId !== null) {
+        createProps.windowId = windowId;
+      }
+      const tab = await browser.tabs.create(createProps);
       targetTabId = tab.id;
     } else {
       const result = await browser.nevoflux.open(tabId, url);
@@ -6590,14 +6619,14 @@ async function executeCacheFile(params) {
  * @param {string} [params.scope] - "all" | "space" | "folder" | "live_folder"
  * @param {string} [params.scope_id] - Optional space uuid / folder id / live-folder id.
  */
-async function executeListTabs(params) {
+async function executeListTabs(params, windowId) {
   const scope = params?.scope;
   const scopeId = params?.scope_id;
   try {
     // Try privileged API first — it's the only path that can resolve Zen
     // scope/space/folder/live-folder metadata.
     if (isNevofluxApiAvailable()) {
-      const tabs = await browser.nevoflux.listTabs(undefined, scope, scopeId);
+      const tabs = await browser.nevoflux.listTabs(windowId ?? undefined, scope, scopeId);
       if (Array.isArray(tabs)) {
         return { success: true, result: { tabs } };
       }
@@ -6632,6 +6661,28 @@ async function executeListTabs(params) {
       error: { code: -1, message: error.message || String(error), recoverable: true },
     };
   }
+}
+
+/**
+ * A tab listing for a paired agent, without private-window tabs. The
+ * privileged listing covers one window (the top one by default, which may be
+ * private), so `list` is handed a non-private normal window to list; the
+ * result is filtered by window either way.
+ */
+async function agentListing(list) {
+  const [lastFocused, windows] = await Promise.all([
+    browser.windows.getLastFocused().catch(() => null),
+    browser.windows.getAll({ windowTypes: ['normal'] }),
+  ]);
+  const windowId = agentWindowId(lastFocused, windows);
+  if (windowId === null) {
+    return { success: true, result: { tabs: [] } };
+  }
+  const listed = await list(windowId);
+  if (listed?.success && Array.isArray(listed.result?.tabs)) {
+    listed.result.tabs = withoutPrivateWindowTabs(listed.result.tabs, windows);
+  }
+  return listed;
 }
 
 /**

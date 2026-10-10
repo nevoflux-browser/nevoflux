@@ -102,7 +102,7 @@ pub fn tier_from(data: &serde_json::Value) -> Result<String, String> {
 pub fn what_it_allows(tier: &str) -> &'static str {
     match tier {
         "read-only" => {
-            "it can open any web page and read any of your open tabs, including ones where you are signed in (mail, banking), and it can see which tabs you have open. It cannot click or type: those calls are refused."
+            "it can open any web page, in a new tab or in one of yours (replacing the page that was there), and read any of your open tabs, including ones where you are signed in (mail, banking), and it can see which tabs you have open. It cannot click or type: those calls are refused."
         }
         "browser-auto" => {
             "it can also click, type, fill, scroll, press keys and switch tabs on any page, including signed-in ones. That means anything you could do there: submitting forms, sending messages, buying things, deleting data."
@@ -111,7 +111,7 @@ pub fn what_it_allows(tier: &str) -> &'static str {
             "the same as `browser-auto` for an agent. This tier exists for the local sidebar and adds nothing over the agent channel."
         }
         "full-auto" => {
-            "it can also upload files from this computer to a page. This is the only tier where the agent can send your local files to a website, and the agent chooses which file goes where."
+            "it can also upload files from your NevoFlux workspace folder to a page. This is the only tier where the agent can send your local files to a website, and the agent chooses which file goes where."
         }
         _ => "",
     }
@@ -313,6 +313,10 @@ mod tests {
         assert!(what_it_allows("full-auto").contains("only tier"));
         assert!(what_it_allows("full-auto").contains("chooses which file"));
         assert!(what_it_allows("full-auto").contains("upload"));
+        assert!(what_it_allows("read-only").contains("yours"));
+        assert!(what_it_allows("read-only").contains("replacing"));
+        assert!(what_it_allows("full-auto").contains("NevoFlux workspace folder"));
+        assert!(!what_it_allows("full-auto").contains("this computer"));
         for t in TIERS {
             not_indented(what_it_allows(t));
         }

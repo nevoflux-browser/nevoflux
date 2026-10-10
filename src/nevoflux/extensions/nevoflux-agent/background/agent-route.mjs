@@ -115,3 +115,59 @@ export function agentActivateTabRefusal(request) {
 export function newTabActive(params) {
   return params?.background !== true;
 }
+
+/**
+ * Why an agent may not act on `tab`, when it is in a private window, or null.
+ * Private windows are the person's alone. The message must never read like
+ * a closed tab, or the daemon would forget the tab instead of refusing.
+ */
+export function agentPrivateTabRefusal(action, tab) {
+  if (tab?.incognito !== true) {
+    return null;
+  }
+  return {
+    code: -1,
+    message: `agent request '${action}' targets a private-window tab; agents may not use private windows`,
+    recoverable: false,
+  };
+}
+
+function isAgentWindow(win) {
+  return !!win && win.type === 'normal' && win.incognito !== true && win.id !== undefined;
+}
+
+/**
+ * The window an agent's new tab opens in: the last-focused window when it is
+ * a normal, non-private one, otherwise the first such window open, otherwise
+ * null (only private windows are open).
+ */
+export function agentWindowId(lastFocused, windows) {
+  if (isAgentWindow(lastFocused)) {
+    return lastFocused.id;
+  }
+  const found = (Array.isArray(windows) ? windows : []).find(isAgentWindow);
+  return found ? found.id : null;
+}
+
+/** The refusal when an agent's new tab has no non-private window to open in. */
+export function agentNoWindowRefusal(action) {
+  return {
+    code: -1,
+    message: `agent request '${action}' needs a normal browser window for its new tab, but only private windows are open; agents may not use private windows`,
+    recoverable: false,
+  };
+}
+
+/**
+ * A tab listing without the tabs in private windows (by the listed windowId)
+ * or marked incognito. Anything that is not a list passes through.
+ */
+export function withoutPrivateWindowTabs(tabs, windows) {
+  if (!Array.isArray(tabs)) {
+    return tabs;
+  }
+  const privateIds = new Set(
+    (Array.isArray(windows) ? windows : []).filter((w) => w?.incognito === true).map((w) => w.id)
+  );
+  return tabs.filter((t) => t?.incognito !== true && !privateIds.has(t?.windowId));
+}

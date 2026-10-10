@@ -12,6 +12,10 @@ import {
   agentTabUrlAllowed,
   agentActivateTabRefusal,
   newTabActive,
+  agentPrivateTabRefusal,
+  agentWindowId,
+  agentNoWindowRefusal,
+  withoutPrivateWindowTabs,
 } from '../../extensions/nevoflux-agent/background/agent-route.mjs';
 
 // Normalised so the source-level checks below do not depend on checkout line endings.
@@ -223,7 +227,8 @@ describe('newTabActive', () => {
   it('executeNavigateViaApi creates new tabs through it', () => {
     const fnStart = bg.indexOf('async function executeNavigateViaApi(');
     const fn = bg.slice(fnStart, bg.indexOf('\n}\n', fnStart));
-    expect(fn.includes('browser.tabs.create({ url, active: newTabActive(params) })')).toBe(true);
+    expect(fn.includes('const createProps = { url, active: newTabActive(params) };')).toBe(true);
+    expect(fn.includes('browser.tabs.create(createProps)')).toBe(true);
     expect(fn.includes('browser.tabs.create({ url, active: true })')).toBe(false);
   });
 });
@@ -248,6 +253,130 @@ describe('agentTabUrlAllowed', () => {
     ]) {
       expect(agentTabUrlAllowed(url)).toBe(false);
     }
+  });
+});
+
+// The daemon turns these into tab_closed (agent_backend.rs is_tab_gone); a
+// private-window refusal must not be mistaken for a closed tab.
+function looksTabGone(message) {
+  const m = message.toLowerCase();
+  return (
+    m.startsWith('3001:') ||
+    m.includes('tab not found') ||
+    m.includes('invalid tab id') ||
+    m.includes('no tab with id')
+  );
+}
+
+describe('agentPrivateTabRefusal', () => {
+  it('refuses a tab in a private window, naming the action', () => {
+    const r = agentPrivateTabRefusal('click', { id: 7, incognito: true });
+    expect(r.code).toBe(-1);
+    expect(r.recoverable).toBe(false);
+    expect(r.message).toBe(
+      "agent request 'click' targets a private-window tab; agents may not use private windows"
+    );
+    expect(looksTabGone(r.message)).toBe(false);
+  });
+
+  it('lets a normal tab through', () => {
+    expect(agentPrivateTabRefusal('click', { id: 7, incognito: false })).toBe(null);
+    expect(agentPrivateTabRefusal('click', { id: 7 })).toBe(null);
+    expect(agentPrivateTabRefusal('click', undefined)).toBe(null);
+  });
+});
+
+describe('agentWindowId', () => {
+  const normal = (id, incognito = false) => ({ id, type: 'normal', incognito });
+
+  it('uses the last-focused window when it is a normal, non-private one', () => {
+    expect(agentWindowId(normal(2), [normal(1), normal(2)])).toBe(2);
+  });
+
+  it('skips a private last-focused window for a non-private one', () => {
+    expect(agentWindowId(normal(3, true), [normal(3, true), normal(1)])).toBe(1);
+  });
+
+  it('skips non-normal and private windows in the list', () => {
+    const popup = { id: 4, type: 'popup', incognito: false };
+    expect(agentWindowId(popup, [popup, normal(5, true), normal(6)])).toBe(6);
+  });
+
+  it('has nothing when only private windows are open', () => {
+    expect(agentWindowId(normal(3, true), [normal(3, true)])).toBe(null);
+    expect(agentWindowId(undefined, [])).toBe(null);
+    expect(agentWindowId(null, undefined)).toBe(null);
+  });
+});
+
+describe('agentNoWindowRefusal', () => {
+  it('says why, is final, and is not a closed tab', () => {
+    const r = agentNoWindowRefusal('navigate');
+    expect(r.code).toBe(-1);
+    expect(r.recoverable).toBe(false);
+    expect(r.message.includes("agent request 'navigate'")).toBe(true);
+    expect(r.message.includes('private windows')).toBe(true);
+    expect(looksTabGone(r.message)).toBe(false);
+  });
+});
+
+describe('withoutPrivateWindowTabs', () => {
+  const windows = [
+    { id: 1, incognito: false },
+    { id: 2, incognito: true },
+  ];
+
+  it('drops tabs in private windows and tabs marked incognito', () => {
+    const tabs = [
+      { id: 10, windowId: 1 },
+      { id: 11, windowId: 2 },
+      { id: 12, windowId: 1, incognito: true },
+      { id: 13, windowId: 9 },
+    ];
+    expect(withoutPrivateWindowTabs(tabs, windows).map((t) => t.id)).toEqual([10, 13]);
+  });
+
+  it('passes through anything that is not a list', () => {
+    expect(withoutPrivateWindowTabs(undefined, windows)).toBe(undefined);
+    expect(withoutPrivateWindowTabs([{ id: 1, windowId: 2 }], undefined)).toEqual([
+      { id: 1, windowId: 2 },
+    ]);
+  });
+});
+
+describe('background.js keeps agents out of private windows', () => {
+  it('refuses an agent request whose target tab is private', () => {
+    const fn = executeBrowserToolSource();
+    const head = fn.slice(0, fn.indexOf('switch (action)'));
+    const get = head.indexOf('agentTab = await browser.tabs.get(targetTabId)');
+    const check = head.indexOf('agentPrivateTabRefusal(action, agentTab)');
+    expect(get).toBeGreaterThan(0);
+    expect(check).toBeGreaterThan(get);
+  });
+
+  it("opens an agent's new tab in a non-private normal window, or refuses", () => {
+    const fn = executeBrowserToolSource();
+    const nav = fn.slice(fn.indexOf("case 'navigate'"), fn.indexOf("case 'activateTab'"));
+    expect(nav.includes("browser.windows.getAll({ windowTypes: ['normal'] })")).toBe(true);
+    expect(nav.includes('browser.windows.getLastFocused()')).toBe(true);
+    expect(nav.includes('agentWindowId(')).toBe(true);
+    expect(nav.includes('agentNoWindowRefusal(action)')).toBe(true);
+    expect(bg.includes('const tab = await browser.tabs.create(createProps);')).toBe(true);
+    expect(bg.includes('createProps.windowId = windowId;')).toBe(true);
+  });
+
+  it('lists only non-private tabs to an agent', () => {
+    const fn = executeBrowserToolSource();
+    const list = fn.slice(fn.indexOf("case 'list_tabs'"), fn.indexOf('// Alias: get_elements'));
+    expect(list.includes('isAgentRequest(request)')).toBe(true);
+    // Both list_tabs and query_tabs go through agentListing for agents.
+    expect((list.match(/agentListing\(/g) || []).length).toBe(2);
+    const start = bg.indexOf('async function agentListing(');
+    const helper = bg.slice(start, bg.indexOf('\n}\n', start));
+    expect(start).toBeGreaterThan(0);
+    expect(helper.includes('agentWindowId(lastFocused, windows)')).toBe(true);
+    expect(helper.includes('withoutPrivateWindowTabs(listed.result.tabs, windows)')).toBe(true);
+    expect(bg.includes('browser.nevoflux.listTabs(windowId ?? undefined, scope, scopeId)')).toBe(true);
   });
 });
 
@@ -289,6 +418,8 @@ describe('background.js routing of agent requests', () => {
     expect(check).toBeGreaterThan(fallback);
     expect(head.includes('browser.tabs.get(targetTabId)')).toBe(true);
     expect(head.includes('targets a tab showing a page the agent may not use')).toBe(true);
+    // An agent stuck on an internal page is told how to get out.
+    expect(head.includes('; open a new tab with browser_navigate new_tab:true')).toBe(true);
     expect(head.includes('isAgentRequest(request) && !agentRequestIsTabless(request)')).toBe(true);
   });
 
