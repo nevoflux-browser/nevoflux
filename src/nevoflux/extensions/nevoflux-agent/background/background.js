@@ -14,7 +14,7 @@ import { promptFor } from './avatar-prompt-policy.mjs';
 import { checkWebSession } from './web-session.mjs';
 import { mayResendAfterInjection } from './click-policy.mjs';
 import { refRoute, fillValue } from './ref-routing.mjs';
-import { isAgentRequest, agentTabRefusal, agentRequestIsTabless, agentTabUrlAllowed } from './agent-route.mjs';
+import { isAgentRequest, agentTabRefusal, agentRequestIsTabless, agentTabUrlAllowed, agentActivateTabRefusal, newTabActive } from './agent-route.mjs';
 import {
   NetworkCapture,
   redactUrl,
@@ -4343,6 +4343,14 @@ async function executeBrowserTool(request, caller = 'unknown') {
       }
 
       case 'activateTab':
+        if (isAgentRequest(request)) {
+          // Act on the tab the URL check looked at, never on params.tab_id.
+          const activateRefusal = agentActivateTabRefusal(request);
+          if (activateRefusal) {
+            return { success: false, error: activateRefusal };
+          }
+          return await executeActivateTabViaApi(targetTabId, {});
+        }
         return await executeActivateTabViaApi(targetTabId, params);
 
       case 'go_back':
@@ -4969,8 +4977,10 @@ async function executeNavigateViaApi(tabId, params) {
     // Use activate_tab explicitly if a deliberate tab switch is wanted.
 
     if (newTab) {
-      // Open in a new tab instead of navigating the current one.
-      const tab = await browser.tabs.create({ url, active: true });
+      // Open in a new tab instead of navigating the current one. An agent's
+      // tab opens in the background (`background: true`) so the person's tab
+      // keeps focus. Variant A is the default pending spike S1.
+      const tab = await browser.tabs.create({ url, active: newTabActive(params) });
       targetTabId = tab.id;
     } else {
       const result = await browser.nevoflux.open(tabId, url);

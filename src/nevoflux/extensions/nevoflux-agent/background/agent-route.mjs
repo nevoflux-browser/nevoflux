@@ -85,3 +85,33 @@ export function agentTabUrlAllowed(url) {
   const scheme = match[1].toLowerCase();
   return scheme === 'http' || scheme === 'https';
 }
+
+/**
+ * Why an agent's activate_tab may not run as sent, or null when it may.
+ * The tab the URL check looked at is request.tab_id; activating any other
+ * tab named in params.tab_id would skip that check, so it is refused.
+ */
+export function agentActivateTabRefusal(request) {
+  if (!isAgentRequest(request)) {
+    return null;
+  }
+  const named = request.params?.tab_id;
+  if (named === undefined || named === null || named === request.tab_id) {
+    return null;
+  }
+  return {
+    code: -1,
+    message: "agent request 'activateTab' names a different tab than the one it was checked against",
+    recoverable: false,
+  };
+}
+
+/**
+ * Whether navigate's new tab should be the active one. An agent's tab is
+ * opened with `background: true` so the person's tab keeps focus (M2a §3.4,
+ * Variant A, the default pending spike S1); every other caller keeps the
+ * old behaviour.
+ */
+export function newTabActive(params) {
+  return params?.background !== true;
+}
