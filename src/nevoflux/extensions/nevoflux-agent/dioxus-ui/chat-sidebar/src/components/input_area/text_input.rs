@@ -748,6 +748,29 @@ pub fn TextInput(disabled: bool) -> Element {
             return;
         }
 
+        // /agent-tier <id> <tier>: set what one paired AI agent may do. Bare
+        // `/agent-tier` is caught too, so it answers with the usage rather than
+        // going to the model as a chat turn about tiers.
+        if text.trim() == "/agent-tier" || text.trim().starts_with("/agent-tier ") {
+            let rest = text
+                .trim()
+                .strip_prefix("/agent-tier")
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            input_text.set(String::new());
+            rows.set(1);
+            show_tab_selector.set(false);
+            attached_files.set(Vec::new());
+
+            ctx.messages.write().push(Message::user(&text));
+            let messages = ctx.messages;
+            wasm_bindgen_futures::spawn_local(async move {
+                crate::messaging::agent_tier::run(messages, rest).await;
+            });
+            return;
+        }
+
         // /pair-device: the durable counterpart to /remote-control. Handled
         // here for the same reason that one is — it never reaches the daemon as
         // a chat turn.

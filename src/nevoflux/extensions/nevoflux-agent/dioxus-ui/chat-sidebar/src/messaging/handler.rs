@@ -2189,6 +2189,12 @@ fn with_builtin_commands(mut skills: Vec<SkillItem>) -> Vec<SkillItem> {
         // reachable — a phone that is lost or sold otherwise keeps its way in.
         ("devices", "List the devices paired with this machine"),
         ("unpair", "Revoke one paired device, by the id `/devices` shows"),
+        // Each agent pairing has its own tier and starts at read-only, so
+        // raising it has to be findable from the same menu.
+        (
+            "agent-tier",
+            "Set what a paired AI agent may do: /agent-tier <id> <tier>",
+        ),
     ];
     for (name, description) in BUILTINS {
         if !skills.iter().any(|s| s.name == *name) {
@@ -2597,5 +2603,15 @@ mod builtin_menu_tests {
             .collect();
         assert!(names.contains(&"pair-agent".to_string()));
         assert!(names.contains(&"pair-device".to_string()));
+    }
+
+    #[test]
+    fn agent_tier_is_offered_in_the_menu() {
+        let items = with_builtin_commands(Vec::new());
+        let item = items
+            .iter()
+            .find(|s| s.name == "agent-tier")
+            .expect("agent-tier in the menu");
+        assert!(item.description.contains("<id> <tier>"), "{}", item.description);
     }
 }
