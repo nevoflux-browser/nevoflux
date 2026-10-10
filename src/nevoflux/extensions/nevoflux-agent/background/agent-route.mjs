@@ -1,0 +1,87 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/**
+ * Browser tool requests from a paired AI agent's channel (M2a §3.4).
+ *
+ * The daemon decides what an agent may do and which tab it acts on; it marks
+ * those requests `origin: "agent"`. This module holds the extension's rules
+ * for them, kept pure so Node can test them:
+ *  - they run in the background script, not the sidebar (see background.js);
+ *  - they never fall back to the active tab, because the active tab is the
+ *    one the person is using;
+ *  - the tab they act on must be showing a web page (or about:blank), never
+ *    an internal, local-file or extension page.
+ */
+
+export const AGENT_ORIGIN = 'agent';
+
+/** Whether a browser_tool_request payload came from an agent channel. */
+export function isAgentRequest(request) {
+  return request?.origin === AGENT_ORIGIN;
+}
+
+/** Agent actions that need no target tab. */
+const AGENT_TABLESS_ACTIONS = new Set(['list_tabs', 'query_tabs']);
+
+/**
+ * Whether an agent request acts without a target tab: tab listing, or
+ * navigating into a new tab.
+ */
+export function agentRequestIsTabless(request) {
+  const action = request?.action;
+  if (AGENT_TABLESS_ACTIONS.has(action)) {
+    return true;
+  }
+  return action === 'navigate' && request.params?.new_tab === true;
+}
+
+/**
+ * Why an agent request may not run as sent, or null when it may.
+ *
+ * Only one thing is checked: an agent request that names no tab. The daemon
+ * always resolves one (the agent's own tab, or an explicit tab_id) except
+ * for "navigate into a new tab" and tab listing. Anything else without a tab
+ * would reach the active-tab fallback in executeBrowserTool and act on the
+ * person's page, so it is refused instead. Only a positive integer counts
+ * as a tab_id; 0, negatives, strings and fractions are treated as missing.
+ */
+export function agentTabRefusal(request) {
+  if (!isAgentRequest(request)) {
+    return null;
+  }
+  const tabId = request.tab_id;
+  if (Number.isInteger(tabId) && tabId > 0) {
+    return null;
+  }
+  if (agentRequestIsTabless(request)) {
+    return null;
+  }
+  return {
+    code: -1,
+    message: `agent request '${request.action}' has no tab_id; refusing to act on the active tab`,
+    recoverable: false,
+  };
+}
+
+/**
+ * Whether an agent may act on a tab showing `url`: http(s) pages and exactly
+ * about:blank (where a new tab starts). Everything else (about: pages,
+ * file:, extension and nevoflux: pages, javascript:/data: URLs, or no URL
+ * at all) is off limits.
+ */
+export function agentTabUrlAllowed(url) {
+  if (typeof url !== 'string') {
+    return false;
+  }
+  if (url === 'about:blank') {
+    return true;
+  }
+  const match = /^([a-z][a-z0-9+.-]*):/i.exec(url);
+  if (!match) {
+    return false;
+  }
+  const scheme = match[1].toLowerCase();
+  return scheme === 'http' || scheme === 'https';
+}

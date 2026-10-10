@@ -14,6 +14,7 @@ import { promptFor } from './avatar-prompt-policy.mjs';
 import { checkWebSession } from './web-session.mjs';
 import { mayResendAfterInjection } from './click-policy.mjs';
 import { refRoute, fillValue } from './ref-routing.mjs';
+import { isAgentRequest, agentTabRefusal, agentRequestIsTabless, agentTabUrlAllowed } from './agent-route.mjs';
 import {
   NetworkCapture,
   redactUrl,
@@ -2245,7 +2246,11 @@ class ChannelManager {
       // self-contained (Actor API + content-script fallback), so this is safe
       // for the core actions (navigate/click/type/get_content/screenshot/
       // snapshot/eval_js) as well as the DIRECT_ACTIONS set.
-      if (DIRECT_ACTIONS.has(action) || globalThis.__nf_headless === true) {
+      //
+      // A paired AI agent's calls (origin "agent", M2a §3.4) take the same
+      // path: the daemon already decided tier, tab and approval, and they must
+      // work with the sidebar closed.
+      if (DIRECT_ACTIONS.has(action) || globalThis.__nf_headless === true || isAgentRequest(payload)) {
         console.log(`[NevoFlux] Handling ${action} directly (bypassing sidebar)`);
         executeBrowserTool(payload, 'direct')
           .then((toolResult) => {
@@ -4207,6 +4212,14 @@ async function getActiveCanvasHint() {
 async function executeBrowserTool(request, caller = 'unknown') {
   const { action, params, tab_id, timeout_ms = 30000 } = request;
 
+  // A paired agent's call names its tab (the daemon resolves it, M2a §3.2).
+  // Without one, the active-tab fallback below would act on whatever the
+  // person is looking at, so it is refused instead.
+  const agentRefusal = agentTabRefusal(request);
+  if (agentRefusal) {
+    return { success: false, error: agentRefusal };
+  }
+
   // Actions that don't require an active tab
   const TAB_INDEPENDENT_ACTIONS = new Set([
     'ask_user',
@@ -4229,7 +4242,7 @@ async function executeBrowserTool(request, caller = 'unknown') {
 
   // Get target tab (skip for tab-independent actions)
   let targetTabId = tab_id;
-  if (!targetTabId && !TAB_INDEPENDENT_ACTIONS.has(action)) {
+  if (!targetTabId && !TAB_INDEPENDENT_ACTIONS.has(action) && !isAgentRequest(request)) {
     targetTabId = await getActiveTabId();
     if (!targetTabId) {
       // For navigate without explicit new_tab, try to find any web tab
@@ -4258,6 +4271,33 @@ async function executeBrowserTool(request, caller = 'unknown') {
           },
         };
       }
+    }
+  }
+
+  // A paired agent may only act on a tab showing a web page or about:blank,
+  // never on an internal, local-file or extension page (M2a C-A2). Listing
+  // tabs and navigating into a new tab touch no existing tab, so they skip
+  // this. A failed lookup passes Firefox's message through unchanged so the
+  // daemon still reports a closed tab as tab_closed.
+  if (isAgentRequest(request) && !agentRequestIsTabless(request)) {
+    let agentTab;
+    try {
+      agentTab = await browser.tabs.get(targetTabId);
+    } catch (e) {
+      return {
+        success: false,
+        error: { code: -1, message: e?.message || String(e), recoverable: false },
+      };
+    }
+    if (!agentTabUrlAllowed(agentTab?.url)) {
+      return {
+        success: false,
+        error: {
+          code: -1,
+          message: `agent request '${action}' targets a tab showing a page the agent may not use`,
+          recoverable: false,
+        },
+      };
     }
   }
 
