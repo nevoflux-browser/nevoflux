@@ -599,6 +599,13 @@ pub struct BrowserToolRequestPayload {
     pub params: serde_json::Value,
     #[serde(default = "default_browser_timeout")]
     pub timeout_ms: u64,
+    /// Who asked. `Some("agent")` for a call from a paired AI agent's channel
+    /// (M2a §3.4): background.js runs those itself rather than handing them to
+    /// this sidebar, so they work with the sidebar closed. Absent for the
+    /// sidebar's own chat. Hand-synced with the daemon's
+    /// `crates/protocol/src/chat.rs` `BrowserToolRequest.origin`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
 }
 
 fn default_browser_timeout() -> u64 {
@@ -1387,6 +1394,7 @@ mod tests {
             action: BrowserToolAction::Click,
             params: serde_json::json!({}),
             timeout_ms: 30000,
+            origin: None,
         });
         assert_eq!(msg.direction(), MessageDirection::ToSidebar);
     }
@@ -1596,6 +1604,7 @@ mod tests {
             action: BrowserToolAction::Navigate,
             params: serde_json::json!({"url": "https://example.com"}),
             timeout_ms: 30000,
+            origin: None,
         });
         assert_eq!(msg.session_id(), Some("test-session"));
     }
@@ -1838,6 +1847,7 @@ mod tests {
             action: BrowserToolAction::Click,
             params: serde_json::json!({"selector": "#btn"}),
             timeout_ms: 30000,
+            origin: None,
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("browser_tool_request"));
@@ -1914,6 +1924,7 @@ mod tests {
             action: BrowserToolAction::Navigate,
             params: serde_json::json!({"url": "https://example.com"}),
             timeout_ms: 15000,
+            origin: None,
         });
         let json = serde_json::to_string(&original).unwrap();
         let parsed: ChatMessage = serde_json::from_str(&json).unwrap();
@@ -2178,5 +2189,40 @@ mod turn_usage_tests {
         let payload: StreamChunkPayload =
             serde_json::from_str(r#"{"content": "hi", "done": true}"#).unwrap();
         assert!(payload.usage.is_none());
+    }
+}
+
+#[cfg(test)]
+mod origin_tests {
+    use super::*;
+
+    #[test]
+    fn an_agent_request_carries_its_origin_through_a_round_trip() {
+        let json = r#"{"type":"browser_tool_request","payload":{"request_id":"r1","session_id":"agent-abcdef01","tab_id":null,"action":"navigate","params":{"url":"https://example.com","new_tab":true,"background":true},"timeout_ms":30000,"origin":"agent"}}"#;
+        let parsed: ChatMessage = serde_json::from_str(json).unwrap();
+        match parsed {
+            ChatMessage::BrowserToolRequest(p) => {
+                assert_eq!(p.origin.as_deref(), Some("agent"));
+                let back = serde_json::to_value(&p).unwrap();
+                assert_eq!(back["origin"], "agent");
+            }
+            _ => panic!("Wrong variant"),
+        }
+    }
+
+    #[test]
+    fn a_native_request_has_no_origin_on_the_wire() {
+        // Absent, not null: background.js tests `origin === "agent"`, and an
+        // older daemon never sends the field at all.
+        let json = r#"{"type":"browser_tool_request","payload":{"request_id":"r2","session_id":"s","action":"click","params":{}}}"#;
+        let parsed: ChatMessage = serde_json::from_str(json).unwrap();
+        match parsed {
+            ChatMessage::BrowserToolRequest(p) => {
+                assert!(p.origin.is_none());
+                let back = serde_json::to_value(&p).unwrap();
+                assert!(back.get("origin").is_none(), "{back}");
+            }
+            _ => panic!("Wrong variant"),
+        }
     }
 }

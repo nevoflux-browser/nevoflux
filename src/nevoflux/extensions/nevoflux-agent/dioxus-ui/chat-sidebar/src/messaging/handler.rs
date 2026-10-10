@@ -225,6 +225,7 @@ fn handle_browser_tool_request(payload: BrowserToolRequestPayload) {
     let params = payload.params.clone();
     let tab_id = payload.tab_id;
     let timeout_ms = payload.timeout_ms;
+    let origin = payload.origin.clone();
 
     tracing::debug!("Spawning async task for browser tool...");
 
@@ -239,6 +240,7 @@ fn handle_browser_tool_request(payload: BrowserToolRequestPayload) {
             params,
             tab_id,
             timeout_ms,
+            origin,
         };
 
         execute_browser_tool_and_respond(payload, request_id, session_id).await;

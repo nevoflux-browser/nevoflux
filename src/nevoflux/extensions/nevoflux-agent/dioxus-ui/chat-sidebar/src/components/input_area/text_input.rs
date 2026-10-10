@@ -459,6 +459,7 @@ pub fn TextInput(disabled: bool) -> Element {
                 action: BrowserToolAction::Screenshot,
                 params: serde_json::json!({}),
                 timeout_ms: 10000,
+                origin: None,
             };
 
             match crate::messaging::exec_browser_tool(request).await {
