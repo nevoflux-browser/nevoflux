@@ -1582,6 +1582,20 @@ pub async fn remote_unpair(control_channel_id: &str) -> Result<bool, String> {
     Ok(d.get("removed").and_then(|v| v.as_bool()).unwrap_or(false))
 }
 
+/// `remote.agent_set_tier` — set one agent pairing's execution tier (M2a §2.6).
+///
+/// Takes the full channel id, like [`remote_unpair`]: the short id the person
+/// typed is resolved against `remote.pairings` first. Returns the tier the
+/// daemon now holds, which is what the sidebar reports — not what was asked.
+pub async fn remote_agent_set_tier(control_channel_id: &str, tier: &str) -> Result<String, String> {
+    let d = system_command(
+        "remote.agent_set_tier",
+        serde_json::json!({ "control_channel_id": control_channel_id, "tier": tier }),
+    )
+    .await?;
+    crate::messaging::agent_tier::tier_from(&d)
+}
+
 /// `schedule.list` — full authoritative snapshot of all schedules.
 /// Returns them deserialized straight into [`ScheduleJobState`].
 pub async fn schedule_list() -> Result<Vec<ScheduleJobState>, String> {

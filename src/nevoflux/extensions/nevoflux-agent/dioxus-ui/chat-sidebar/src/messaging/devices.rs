@@ -36,6 +36,13 @@ pub struct Device {
     /// An AI agent rather than a phone. Agents are reached over their own MCP
     /// channel and are never woken, so the wake state is not shown for them.
     pub is_agent: bool,
+    /// The full channel id. Only the handle is ever shown; this is what goes
+    /// back to the daemon (`/agent-tier`).
+    pub channel_id: String,
+    /// An agent's execution tier as the daemon reports it (M2a §2.6). `None`
+    /// for phones, and for agents on a daemon too old to report one — shown
+    /// as nothing rather than as a guess.
+    pub tier: Option<String>,
 }
 
 /// Read the daemon's rows into something the rest of this module can hold.
@@ -56,6 +63,12 @@ pub fn read_rows(rows: &[serde_json::Value]) -> Vec<Device> {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false),
                 is_agent: r.get("kind").and_then(|v| v.as_str()) == Some("agent"),
+                channel_id: id.to_string(),
+                tier: r
+                    .get("tier")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string),
             })
         })
         .collect()
@@ -86,8 +99,13 @@ pub fn compose_list(devices: &[Device], now_secs: i64) -> String {
     for d in devices {
         if d.is_agent {
             let name = d.label.clone().unwrap_or_else(|| "AI agent".into());
+            let tier = d
+                .tier
+                .as_deref()
+                .map(|t| format!(" · tier `{t}`"))
+                .unwrap_or_default();
             out.push_str(&format!(
-                "- **{name}** · `{}` · paired {}\n",
+                "- **{name}** · `{}` · paired {}{tier}\n",
                 d.handle,
                 when(d.created_at, now_secs)
             ));
@@ -109,6 +127,9 @@ pub fn compose_list(devices: &[Device], now_secs: i64) -> String {
         ));
     }
     out.push_str("\nTo revoke one: `/unpair <id>` — the short id above.");
+    if devices.iter().any(|d| d.is_agent) {
+        out.push_str("\n\nTo change what an agent may do: `/agent-tier <id> <tier>`.");
+    }
     out
 }
 
@@ -218,6 +239,8 @@ pub async fn unpair(mut messages: Signal<Vec<Message>>, typed: String) {
                 created_at: 0,
                 can_be_woken: false,
                 is_agent: target.is_agent,
+                channel_id: full.clone(),
+                tier: None,
             };
             messages
                 .write()
@@ -247,6 +270,8 @@ mod tests {
             created_at: 0,
             can_be_woken: false,
             is_agent: false,
+            channel_id: format!("{handle}-0000-0000-0000-000000000000"),
+            tier: None,
         }
     }
 
@@ -362,5 +387,39 @@ mod tests {
         let text = compose_list(&[], 0);
         assert!(text.contains("/pair-device"));
         assert!(text.contains("/pair-agent"));
+    }
+
+    #[test]
+    fn an_agent_row_shows_its_tier_and_how_to_change_it() {
+        let rows = vec![serde_json::json!({
+            "control_channel_id": "abcdef0123", "created_at": 0, "kind": "agent",
+            "tier": "browser-auto"
+        })];
+        let devices = read_rows(&rows);
+        assert_eq!(devices[0].tier.as_deref(), Some("browser-auto"));
+        assert_eq!(devices[0].channel_id, "abcdef0123", "the full id, for the daemon");
+        let text = compose_list(&devices, 0);
+        assert!(text.contains("tier `browser-auto`"), "{text}");
+        assert!(text.contains("/agent-tier <id> <tier>"), "{text}");
+        for l in text.split('\n') {
+            assert!(!l.starts_with("    "), "{l:?}");
+        }
+    }
+
+    #[test]
+    fn an_agent_row_from_an_older_daemon_shows_no_tier_rather_than_a_guess() {
+        let rows = vec![serde_json::json!({
+            "control_channel_id": "abcdef0123", "created_at": 0, "kind": "agent"
+        })];
+        let devices = read_rows(&rows);
+        assert!(devices[0].tier.is_none());
+        assert!(!compose_list(&devices, 0).contains("tier `"));
+    }
+
+    #[test]
+    fn a_list_of_phones_only_does_not_mention_agent_tiers() {
+        let text = compose_list(&[dev("3c12b59a", Some("Pixel"))], 0);
+        assert!(!text.contains("/agent-tier"), "{text}");
+        assert!(!text.contains("tier `"), "{text}");
     }
 }
