@@ -1596,6 +1596,31 @@ pub async fn remote_agent_set_tier(control_channel_id: &str, tier: &str) -> Resu
     crate::messaging::agent_tier::tier_from(&d)
 }
 
+/// `remote.agent_pause` — stop one agent pairing reconnecting until Resume
+/// (M2b §2.2). Local only: never in `PORTAL_QUERIES`, so a remote cannot send
+/// it. The bar does not change on success; the daemon's next status snapshot
+/// does (§3.3, no optimistic update).
+pub async fn remote_agent_pause(control_channel_id: &str) -> Result<(), String> {
+    let d = system_command(
+        "remote.agent_pause",
+        serde_json::json!({ "control_channel_id": control_channel_id }),
+    )
+    .await?;
+    crate::state::confirms_paused(&d, true)
+}
+
+/// `remote.agent_resume` — let a paused agent pairing connect again (M2b §2.2).
+/// Returns the daemon's `opened`: whether it is dialling the relay now.
+pub async fn remote_agent_resume(control_channel_id: &str) -> Result<bool, String> {
+    let d = system_command(
+        "remote.agent_resume",
+        serde_json::json!({ "control_channel_id": control_channel_id }),
+    )
+    .await?;
+    crate::state::confirms_paused(&d, false)?;
+    Ok(d.get("opened").and_then(|v| v.as_bool()).unwrap_or(false))
+}
+
 /// `schedule.list` — full authoritative snapshot of all schedules.
 /// Returns them deserialized straight into [`ScheduleJobState`].
 pub async fn schedule_list() -> Result<Vec<ScheduleJobState>, String> {

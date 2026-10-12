@@ -11,6 +11,9 @@
 
 use serde::Deserialize;
 
+/// The sticky EventBus topic the daemon publishes the snapshot on.
+pub const AGENT_STATUS_TOPIC: &str = "system:agent:status";
+
 /// Shown when a pairing has no label (the contract allows `label: null`).
 pub const DEFAULT_LABEL: &str = "Muse";
 
@@ -97,6 +100,27 @@ const TOOL_WORDS: [(&str, &str); 16] = [
     ("browser_wait_for", "waiting for the page"),
     ("browser_upload_file", "uploading a file"),
 ];
+
+/// The snapshot to hold after one more `system:agent:status` delivery, or
+/// `None` to keep the current one.
+///
+/// The bus keeps up to 100 sticky events per topic and replays them
+/// oldest-first, so a new subscriber gets several full snapshots in order.
+/// Each replaces the last entirely (never merged). One published before the
+/// snapshot already held is ignored, so an out-of-order replay cannot roll
+/// the bar back; a payload without `agents` is ignored too.
+pub fn next_paired_agents(
+    current: Option<&PairedAgentsSnapshot>,
+    payload: &serde_json::Value,
+    published_ms: u64,
+) -> Option<PairedAgentsSnapshot> {
+    if current.is_some_and(|c| published_ms < c.published_ms) {
+        return None;
+    }
+    let mut next = parse_paired_agents(payload)?;
+    next.published_ms = published_ms;
+    Some(next)
+}
 
 /// The short words for a tool, if it is one of the 16.
 pub fn tool_word(tool: &str) -> Option<&'static str> {
@@ -257,6 +281,54 @@ mod tests {
 
     fn snapshot(agents: serde_json::Value) -> PairedAgentsSnapshot {
         parse_paired_agents(&json!({ "agents": agents })).expect("agents array")
+    }
+
+    #[test]
+    fn the_status_topic_is_the_contract_topic() {
+        // Pinned to the contract's literal: the subscription and the handler
+        // branch both use the const, so a typo would silently show nothing.
+        assert_eq!(AGENT_STATUS_TOPIC, "system:agent:status");
+    }
+
+    #[test]
+    fn a_later_snapshot_replaces_the_earlier_one_entirely() {
+        // Sticky replay delivers several full snapshots oldest-first (the bus
+        // keeps up to 100 per topic). The last one is the truth; nothing from
+        // an earlier one survives, so c2 must be gone.
+        let first = json!({"agents": [
+            {"channel_id": "c1", "state": "connected", "since": 0},
+            {"channel_id": "c2", "state": "paused", "since": 0}
+        ]});
+        let second = json!({"agents": [
+            {"channel_id": "c1", "state": "paused", "since": 50}
+        ]});
+        let mut held: Option<PairedAgentsSnapshot> = None;
+        for (payload, ts) in [(&first, 1_000u64), (&second, 2_000u64)] {
+            if let Some(next) = next_paired_agents(held.as_ref(), payload, ts) {
+                held = Some(next);
+            }
+        }
+        let held = held.expect("a snapshot");
+        assert_eq!(held.agents.len(), 1, "an entry from the first snapshot survived");
+        assert_eq!(held.agents[0].channel_id, "c1");
+        assert_eq!(held.agents[0].state, "paused");
+        assert_eq!(held.published_ms, 2_000);
+    }
+
+    #[test]
+    fn an_older_or_malformed_delivery_keeps_the_current_snapshot() {
+        let current = next_paired_agents(
+            None,
+            &json!({"agents": [{"channel_id": "c1", "state": "paused", "since": 0}]}),
+            2_000,
+        )
+        .expect("first snapshot");
+        // A replayed snapshot published earlier than the one held.
+        assert!(next_paired_agents(Some(&current), &json!({"agents": []}), 1_000).is_none());
+        // No agents array at all.
+        assert!(next_paired_agents(Some(&current), &json!({"oops": true}), 3_000).is_none());
+        // Same timestamp: delivered later, so it wins.
+        assert!(next_paired_agents(Some(&current), &json!({"agents": []}), 2_000).is_some());
     }
 
     #[test]

@@ -363,6 +363,30 @@ fn handle_event_delivery(mut ctx: AppContext, delivery: shared_protocol::EventBu
         return;
     }
 
+    // system:agent:status — paired AI agents' live state (M2b §3). Sticky and
+    // always the full snapshot; replay delivers several oldest-first, and
+    // next_paired_agents keeps only the newest (never merges). Dedupe before
+    // touching any signal (see the schedule note above).
+    if topic == crate::state::AGENT_STATUS_TOPIC {
+        if !dedupe_event_id(&delivery.event.event_id) {
+            return;
+        }
+        let current = ctx.paired_agents.peek().clone();
+        let next = crate::state::next_paired_agents(
+            current.as_ref(),
+            &delivery.event.payload,
+            delivery.event.timestamp_ms,
+        );
+        match next {
+            Some(snapshot) => {
+                let mut ctx = ctx;
+                ctx.paired_agents.set(Some(snapshot));
+            }
+            None => tracing::debug!("[Sidebar] system:agent:status delivery older or malformed; kept current"),
+        }
+        return;
+    }
+
     if topic.contains(":notification") {
         let title = delivery.event.payload
             .get("title")

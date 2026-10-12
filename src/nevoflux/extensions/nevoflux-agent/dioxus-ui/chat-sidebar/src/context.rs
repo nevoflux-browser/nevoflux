@@ -132,6 +132,11 @@ pub struct AppContext {
     /// Drives the header badge. Sourced from `system:local:latch_changed`,
     /// which is sticky, so a sidebar opened mid-session still learns about it.
     pub local_on: Signal<bool>,
+    /// Paired AI agents' live state (M2b §3), from the sticky
+    /// `system:agent:status` snapshot. `None` until the first one arrives;
+    /// the status bar then shows nothing and `/devices` shows no presence.
+    /// (Not `agent_status`: that field is the native agent's own state.)
+    pub paired_agents: Signal<Option<crate::state::PairedAgentsSnapshot>>,
     /// Whether mock mode is enabled
     pub mock_enabled: bool,
 }
@@ -182,6 +187,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     let show_loops_panel = use_signal(|| parse_maximize_params().panel.as_deref() == Some("loops"));
     let schedule_snapshot = use_signal(|| None::<serde_json::Value>);
     let local_on = use_signal(|| false);
+    let paired_agents = use_signal(|| None::<crate::state::PairedAgentsSnapshot>);
     let mut first_run = use_signal(|| false);
     let mut has_configured_provider = use_signal(|| false);
     let mut setup_authoritative = use_signal(|| false);
@@ -228,6 +234,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         has_configured_provider,
         setup_authoritative,
         local_on,
+        paired_agents,
         mock_enabled,
     };
 
@@ -343,6 +350,19 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                         .await
                 {
                     tracing::warn!("EventBus subscribe to system:local:* failed: {}", e);
+                }
+
+                // `system:agent:status`, replay_sticky=TRUE (M2b §3.1). The
+                // snapshot is sticky and always complete, so a sidebar opened
+                // while Muse is connected or paused shows its row at once.
+                if let Err(e) = crate::messaging::send_events_subscribe(
+                    vec![crate::state::AGENT_STATUS_TOPIC.to_string()],
+                    true,
+                    16,
+                )
+                .await
+                {
+                    tracing::warn!("EventBus subscribe to system:agent:status failed: {}", e);
                 }
 
                 // Resolve window-session binding
