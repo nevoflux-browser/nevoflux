@@ -37,6 +37,7 @@
         content/browser/zen-styles/zen-branding.css                             (../../zen/common/styles/zen-branding.css)
         content/browser/zen-styles/zen-sidebar-notification.css                 (../../zen/common/styles/zen-sidebar-notification.css)
         content/browser/zen-styles/nevoflux-agent-avatar.css                   (../../zen/common/styles/nevoflux-agent-avatar.css)
+        content/browser/zen-styles/nevoflux-agent-touched.css                  (../../zen/common/styles/nevoflux-agent-touched.css)
 
         content/browser/zen-styles/zen-panels/bookmarks.css                     (../../zen/common/styles/zen-panels/bookmarks.css)
         content/browser/zen-styles/zen-panels/print.css                         (../../zen/common/styles/zen-panels/print.css)

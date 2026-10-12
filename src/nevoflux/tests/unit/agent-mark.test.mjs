@@ -188,3 +188,33 @@ describe('background.js marks agent tabs', () => {
     expect(fn.includes('await ')).toBe(false);
   });
 });
+
+describe('agent tab badge stylesheet', () => {
+  it('is registered in the jar and linked into the browser window', () => {
+    const jar = read('../../overlays/common/jar.inc.mn');
+    expect(
+      jar.includes(
+        'content/browser/zen-styles/nevoflux-agent-touched.css                  (../../zen/common/styles/nevoflux-agent-touched.css)'
+      )
+    ).toBe(true);
+    const assets = read('../../engine-overlays/browser/base/content/zen-assets.inc.xhtml');
+    expect(
+      assets.includes(
+        '<link rel="stylesheet" type="text/css" href="chrome://browser/content/zen-styles/nevoflux-agent-touched.css" />'
+      )
+    ).toBe(true);
+  });
+
+  it('draws on the icon stack without colliding with the sound indicator', () => {
+    const css = read('../../overlays/common/styles/nevoflux-agent-touched.css');
+    expect(css.includes('tab.tabbrowser-tab[nevoflux-agent-touched] .tab-icon-stack::before {')).toBe(true);
+    // ::after is Zen's sound-playing note; the dot must not take it over.
+    expect(css.includes('::after')).toBe(false);
+    expect(css.includes('grid-area: 1 / 1;')).toBe(true);
+    expect(css.includes('align-self: end;')).toBe(true);
+    expect(css.includes('justify-self: end;')).toBe(true);
+    expect(css.includes('var(--zen-primary-color)')).toBe(true);
+    // Zen variables only, so light and dark themes both follow the accent.
+    expect(/#[0-9a-fA-F]{3,8}\b/.test(css)).toBe(false);
+  });
+});

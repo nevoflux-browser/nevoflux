@@ -1,0 +1,31 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* A tab a paired AI agent opened or acted on (M2b §4.2): a dot on the
+ * favicon's bottom-right corner. The background script sets the attribute
+ * through browser.nevoflux.setTabAgentMark; it is not session-restored, so
+ * a restart clears every dot.
+ *
+ * Placement: Zen draws its "sound playing" note with a pseudo-element on the
+ * icon stack above the icon, and Firefox's sound/mute overlay sits at the
+ * icon's top-right, so this uses ::before and the bottom-right corner. The
+ * stack is a XUL <stack> (a one-cell grid); the dot joins that cell instead
+ * of being positioned, so it follows the icon wherever Zen moves the stack
+ * (pinned tabs, the collapsed vertical tab strip). */
+tab.tabbrowser-tab[nevoflux-agent-touched] .tab-icon-stack::before {
+  content: "";
+  grid-area: 1 / 1;
+  align-self: end;
+  justify-self: end;
+  width: 7px;
+  height: 7px;
+  margin-inline-end: -3px;
+  margin-block-end: -3px;
+  border-radius: 50%;
+  background-color: var(--zen-primary-color);
+  /* A ring in the tab strip's colour keeps the dot readable on any favicon. */
+  box-shadow: 0 0 0 1.5px var(--zen-colors-tertiary);
+  z-index: 1;
+  pointer-events: none;
+}
