@@ -43,6 +43,10 @@ pub struct Device {
     /// for phones, and for agents on a daemon too old to report one — shown
     /// as nothing rather than as a guess.
     pub tier: Option<String>,
+    /// An agent's live state from the sticky status snapshot (M2b §3.4):
+    /// `connected`, `paused` or `offline`. `None` for phones, and when the
+    /// sidebar has no snapshot yet — shown as nothing, not as offline.
+    pub presence: Option<&'static str>,
 }
 
 /// Read the daemon's rows into something the rest of this module can hold.
@@ -69,9 +73,23 @@ pub fn read_rows(rows: &[serde_json::Value]) -> Vec<Device> {
                     .and_then(|v| v.as_str())
                     .filter(|s| !s.is_empty())
                     .map(str::to_string),
+                presence: None,
             })
         })
         .collect()
+}
+
+/// Fill in each agent's live state from the status snapshot, if there is one.
+pub fn apply_presence(
+    devices: &mut [Device],
+    status: Option<&crate::state::PairedAgentsSnapshot>,
+) {
+    let Some(status) = status else {
+        return;
+    };
+    for d in devices.iter_mut().filter(|d| d.is_agent) {
+        d.presence = crate::state::presence_word(status, &d.channel_id);
+    }
 }
 
 /// How long ago, in the roughest terms that are still true.
@@ -104,8 +122,9 @@ pub fn compose_list(devices: &[Device], now_secs: i64) -> String {
                 .as_deref()
                 .map(|t| format!(" · tier `{t}`"))
                 .unwrap_or_default();
+            let presence = d.presence.map(|p| format!(" · {p}")).unwrap_or_default();
             out.push_str(&format!(
-                "- **{name}** · `{}` · paired {}{tier}\n",
+                "- **{name}** · `{}` · paired {}{tier}{presence}\n",
                 d.handle,
                 when(d.created_at, now_secs)
             ));
@@ -182,11 +201,15 @@ fn now_secs() -> i64 {
     (js_sys::Date::now() / 1000.0) as i64
 }
 
-/// Run `/devices`.
-pub async fn list(mut messages: Signal<Vec<Message>>) {
+/// Run `/devices`. `status` is the sidebar's latest agent status snapshot.
+pub async fn list(
+    mut messages: Signal<Vec<Message>>,
+    status: Option<crate::state::PairedAgentsSnapshot>,
+) {
     match crate::messaging::remote_pairings().await {
         Ok(rows) => {
-            let devices = read_rows(&rows);
+            let mut devices = read_rows(&rows);
+            apply_presence(&mut devices, status.as_ref());
             messages
                 .write()
                 .push(Message::assistant_markdown(compose_list(
@@ -241,6 +264,7 @@ pub async fn unpair(mut messages: Signal<Vec<Message>>, typed: String) {
                 is_agent: target.is_agent,
                 channel_id: full.clone(),
                 tier: None,
+                presence: None,
             };
             messages
                 .write()
@@ -272,7 +296,13 @@ mod tests {
             is_agent: false,
             channel_id: format!("{handle}-0000-0000-0000-000000000000"),
             tier: None,
+            presence: None,
         }
+    }
+
+    fn agents_status(entries: serde_json::Value) -> crate::state::PairedAgentsSnapshot {
+        crate::state::parse_paired_agents(&serde_json::json!({ "agents": entries }))
+            .expect("agents array")
     }
 
     #[test]
@@ -414,6 +444,58 @@ mod tests {
         let devices = read_rows(&rows);
         assert!(devices[0].tier.is_none());
         assert!(!compose_list(&devices, 0).contains("tier `"));
+    }
+
+    #[test]
+    fn an_agent_row_ends_with_its_live_state() {
+        let rows = vec![
+            serde_json::json!({"control_channel_id": "aaaa1111-0000", "created_at": 0,
+                               "kind": "agent", "tier": "read-only"}),
+            serde_json::json!({"control_channel_id": "bbbb2222-0000", "created_at": 0,
+                               "kind": "agent"}),
+            serde_json::json!({"control_channel_id": "cccc3333-0000", "created_at": 0,
+                               "kind": "agent"}),
+        ];
+        let status = agents_status(serde_json::json!([
+            {"channel_id": "aaaa1111-0000", "state": "connected", "since": 0},
+            {"channel_id": "bbbb2222-0000", "state": "paused", "since": 0},
+            {"channel_id": "cccc3333-0000", "state": "offline", "since": 0}
+        ]));
+        let mut devices = read_rows(&rows);
+        apply_presence(&mut devices, Some(&status));
+        let text = compose_list(&devices, 0);
+        let lines: Vec<&str> = text.lines().filter(|l| l.starts_with("- ")).collect();
+        assert!(lines[0].ends_with("tier `read-only` · connected"), "{text}");
+        assert!(lines[1].ends_with("· paused"), "{text}");
+        assert!(lines[2].ends_with("· offline"), "{text}");
+        for l in text.split('\n') {
+            assert!(!l.starts_with("    "), "{l:?}");
+        }
+    }
+
+    #[test]
+    fn no_snapshot_means_no_presence_rather_than_offline() {
+        let rows = vec![serde_json::json!({"control_channel_id": "aaaa1111-0000",
+                                           "created_at": 0, "kind": "agent"})];
+        let mut devices = read_rows(&rows);
+        apply_presence(&mut devices, None);
+        let text = compose_list(&devices, 0);
+        for w in ["connected", "paused", "offline"] {
+            assert!(!text.contains(&format!("· {w}")), "{text}");
+        }
+    }
+
+    #[test]
+    fn phones_never_get_a_presence() {
+        let rows = vec![serde_json::json!({"control_channel_id": "dddd4444-0000",
+                                           "created_at": 0, "kind": "device", "label": "Pixel"})];
+        let status = agents_status(serde_json::json!([
+            {"channel_id": "dddd4444-0000", "state": "connected", "since": 0}
+        ]));
+        let mut devices = read_rows(&rows);
+        apply_presence(&mut devices, Some(&status));
+        assert!(devices[0].presence.is_none());
+        assert!(compose_list(&devices, 0).contains("· cannot be woken\n"));
     }
 
     #[test]

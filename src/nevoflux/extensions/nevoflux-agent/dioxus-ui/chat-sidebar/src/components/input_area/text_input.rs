@@ -720,8 +720,11 @@ pub fn TextInput(disabled: bool) -> Element {
 
             ctx.messages.write().push(Message::user(&text));
             let messages = ctx.messages;
+            // Live agent state comes from the sticky status snapshot (M2b §3.4);
+            // before the first one there is none and rows show no state.
+            let status = ctx.paired_agents.read().clone();
             wasm_bindgen_futures::spawn_local(async move {
-                crate::messaging::devices::list(messages).await;
+                crate::messaging::devices::list(messages, status).await;
             });
             return;
         }
