@@ -14,6 +14,7 @@ import { promptFor } from './avatar-prompt-policy.mjs';
 import { checkWebSession } from './web-session.mjs';
 import { mayResendAfterInjection } from './click-policy.mjs';
 import { refRoute, fillValue } from './ref-routing.mjs';
+import { osNotificationContent, mayShowOsNotification } from './notify-gate.mjs';
 import { isAgentRequest, agentTabRefusal, agentRequestIsTabless, agentTabUrlAllowed, agentActivateTabRefusal, newTabActive, agentPrivateTabRefusal, agentWindowId, agentNoWindowRefusal, withoutPrivateWindowTabs, agentTabsToMark } from './agent-route.mjs';
 import {
   NetworkCapture,
@@ -441,10 +442,12 @@ const NOTIFY_EVENT_DEDUPE_CAP = 256;
 /**
  * Handle a delivered `ui:notification:agent` event routed to the
  * background-owned 'bg-notify' subscription. Fires an OS notification via
- * `browser.notifications.create` only when the notification came from the
- * `notify_user` tool AND no browser window is currently focused (mirroring the
- * avatar's "OS notification only when unfocused" gate). The in-app toast is
- * handled separately by the sidebar's own subscription.
+ * `browser.notifications.create` when notify-gate.mjs allows it:
+ * `notify_user` reminders only when no browser window is focused; paired-agent
+ * approval outcomes (`agent_approval`, M2b §5) also when the focused window's
+ * sidebar is closed, since the in-app toast lives in the sidebar (its own
+ * subscription renders it). Deduped by event_id first, so each event raises
+ * at most one notification.
  */
 async function handleUserNotification(event) {
   const eventId = event?.event_id;
@@ -457,33 +460,41 @@ async function handleUserNotification(event) {
   }
 
   const data = event?.payload || {};
-  if (data.source !== 'notify_user') return;
-  // `body` is the canonical toast/notification text (matches the sidebar
-  // renderer); tolerate `message` as a fallback.
-  const raw = typeof data.body === 'string' ? data.body : data.message;
-  const message = typeof raw === 'string' ? raw.trim() : '';
-  if (!message) return;
-  const title = typeof data.title === 'string' && data.title.trim() ? data.title.trim() : 'NevoFlux';
+  const content = osNotificationContent(data);
+  if (!content) return;
 
-  // Only surface an OS notification when the browser is unfocused; when a
-  // window is focused the sidebar toast already reaches the user.
-  let focused = true;
+  // Where the person is looking. No focused window: the browser is in the
+  // background. With one, an approval outcome still needs the OS when this
+  // extension's sidebar is closed in that window, because the toast lives in
+  // the sidebar. sidebarAction.isOpen is per window; minimising to the
+  // floating avatar really closes the sidebar, so it counts as closed.
+  let focusedWindowId = null;
   try {
-    focused = (await browser.windows.getLastFocused({})).focused;
+    const win = await browser.windows.getLastFocused({});
+    focusedWindowId = win.focused ? win.id : null;
   } catch (e) {
-    focused = false;
+    focusedWindowId = null;
   }
-  if (focused) return;
+  let sidebarOpen = true;
+  if (data.source === 'agent_approval' && focusedWindowId !== null) {
+    try {
+      sidebarOpen = await browser.sidebarAction.isOpen({ windowId: focusedWindowId });
+    } catch (e) {
+      // Unknown counts as closed: one extra notification beats a lost outcome.
+      sidebarOpen = false;
+    }
+  }
+  if (!mayShowOsNotification(data.source, focusedWindowId !== null, sidebarOpen)) return;
 
   try {
     browser.notifications.create(`nevoflux-notify-${eventId || Date.now()}`, {
       type: 'basic',
       iconUrl: browser.runtime.getURL('icons/icon-48.png'),
-      title,
-      message,
+      title: content.title,
+      message: content.message,
     });
   } catch (err) {
-    console.warn('[NevoFlux] notify_user OS notification failed:', err);
+    console.warn(`[NevoFlux] ${data.source} OS notification failed:`, err);
   }
 }
 

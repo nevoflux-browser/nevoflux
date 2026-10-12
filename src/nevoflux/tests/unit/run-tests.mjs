@@ -28,6 +28,7 @@ import './click-policy.test.mjs';
 import './ref-routing.test.mjs';
 import './agent-route.test.mjs';
 import './agent-mark.test.mjs';
+import './notify-gate.test.mjs';
 
 // Run all tests
 const results = await runner.run();
