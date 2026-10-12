@@ -122,6 +122,9 @@ fn SidebarContent() -> Element {
         // Connection status bar at the top (shows reconnecting/error states)
         ConnectionStatusBar {}
 
+        // Paired AI agents: state, pending approval, Pause/Resume/Unpair (M2b §3)
+        PairedAgentBar {}
+
         // Header with connection status and controls
         Header {}
 

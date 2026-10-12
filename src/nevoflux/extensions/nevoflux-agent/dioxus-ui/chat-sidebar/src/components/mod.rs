@@ -25,6 +25,7 @@ mod onboarding_screen;
 mod rail;
 mod event_bus_listener;
 pub mod connection_status_bar;
+pub mod paired_agent_bar;
 
 pub use header::Header;
 pub use message_area::{ActivityFeed, LiveToolFeed, MessageArea, MessageBubble, WelcomeScreen};
@@ -46,3 +47,4 @@ pub use onboarding_screen::OnboardingScreen;
 pub use rail::Rail;
 pub use event_bus_listener::EventBusListener;
 pub use connection_status_bar::ConnectionStatusBar;
+pub use paired_agent_bar::PairedAgentBar;

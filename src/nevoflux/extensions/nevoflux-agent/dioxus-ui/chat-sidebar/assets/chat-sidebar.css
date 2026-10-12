@@ -5048,6 +5048,76 @@ body {
   opacity: 0.7;
 }
 
+/* Paired AI agents (M2b §3): one row per connected or paused agent. */
+.paired-agent-bar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--nevo-border);
+}
+
+.paired-agent-row {
+  display: flex;
+  align-items: center;
+  gap: var(--nevo-space-xs);
+  padding: 4px var(--nevo-space-sm);
+  font-size: 12px;
+  color: var(--nevo-text);
+  background: color-mix(in srgb, var(--nevo-primary) 8%, transparent);
+}
+
+.paired-agent-row.paused {
+  background: color-mix(in srgb, var(--nevo-warning) 10%, transparent);
+}
+
+.paired-agent-icon {
+  flex-shrink: 0;
+}
+
+.paired-agent-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paired-agent-btn {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  background: none;
+  border: 1px solid currentColor;
+  border-radius: var(--nevo-radius-sm);
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: opacity var(--nevo-transition-fast);
+}
+
+.paired-agent-btn:hover:not(:disabled) {
+  opacity: 0.7;
+}
+
+.paired-agent-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.paired-agent-btn:focus-visible {
+  outline: 2px solid var(--nevo-border-focus);
+  outline-offset: 1px;
+}
+
+.paired-agent-btn.armed {
+  color: var(--nevo-error);
+}
+
+.paired-agent-error {
+  padding: 2px var(--nevo-space-sm) 4px;
+  font-size: 11px;
+  color: var(--nevo-error);
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .tool-chip__spinner {
