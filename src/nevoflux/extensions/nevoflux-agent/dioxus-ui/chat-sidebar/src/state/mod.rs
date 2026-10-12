@@ -18,6 +18,7 @@ mod file_picker;
 mod tools;
 pub mod render_job;
 mod schedule;
+pub mod paired_agents;
 
 pub use session::*;
 pub use message::*;
@@ -32,6 +33,11 @@ pub use file_picker::*;
 pub use tools::*;
 pub use render_job::RenderJobEntry;
 pub use schedule::ScheduleJobState;
+pub use paired_agents::{
+    bar_rows, command_error, confirms_paused, parse_paired_agents, presence_word,
+    rows_from_status, tool_word, unpair_click, unpair_label, AgentRow, PairedAgentsSnapshot,
+    ERROR_LINE_MS, UNPAIR_CONFIRM_MS,
+};
 
 /// Skill information for the skill selector
 #[derive(Debug, Clone, PartialEq)]
