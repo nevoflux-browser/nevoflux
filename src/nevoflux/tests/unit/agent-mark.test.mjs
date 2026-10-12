@@ -159,3 +159,32 @@ describe('setTabAgentMark experiment API', () => {
     expect(closing.attrs.size + detached.attrs.size).toBe(0);
   });
 });
+
+describe('background.js marks agent tabs', () => {
+  const bg = read('../../extensions/nevoflux-agent/background/background.js');
+
+  it('marking runs after a direct agent call settles and before the answer is sent', () => {
+    const start = bg.indexOf("executeBrowserTool(payload, 'direct')");
+    expect(start).toBeGreaterThan(0);
+    const thenBlock = bg.slice(start, bg.indexOf('.catch((err) =>', start));
+    const resolved = thenBlock.indexOf('if (toolResult?.resolvedElsewhere) return;');
+    const mark = thenBlock.indexOf('markAgentTabs(payload, toolResult);');
+    const send = thenBlock.indexOf('channelManager.sendToAgent({');
+    expect(resolved).toBeGreaterThan(0);
+    expect(mark).toBeGreaterThan(resolved);
+    expect(send).toBeGreaterThan(mark);
+    expect(bg.includes('withoutPrivateWindowTabs, agentTabsToMark } from')).toBe(true);
+  });
+
+  it('marking cannot throw into the answer', () => {
+    const fnStart = bg.indexOf('function markAgentTabs(request, toolResult) {');
+    expect(fnStart).toBeGreaterThan(0);
+    const fn = bg.slice(fnStart, bg.indexOf('\n}\n', fnStart));
+    expect(fn.includes("typeof browser.nevoflux?.setTabAgentMark !== 'function'")).toBe(true);
+    expect(fn.includes('agentTabsToMark(request, toolResult)')).toBe(true);
+    expect(fn.includes('.setTabAgentMark(tabId, true)')).toBe(true);
+    expect(fn.includes('.catch((err) =>')).toBe(true);
+    expect(fn.includes('try {')).toBe(true);
+    expect(fn.includes('await ')).toBe(false);
+  });
+});

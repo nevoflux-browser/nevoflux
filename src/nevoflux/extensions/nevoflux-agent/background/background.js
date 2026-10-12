@@ -14,7 +14,7 @@ import { promptFor } from './avatar-prompt-policy.mjs';
 import { checkWebSession } from './web-session.mjs';
 import { mayResendAfterInjection } from './click-policy.mjs';
 import { refRoute, fillValue } from './ref-routing.mjs';
-import { isAgentRequest, agentTabRefusal, agentRequestIsTabless, agentTabUrlAllowed, agentActivateTabRefusal, newTabActive, agentPrivateTabRefusal, agentWindowId, agentNoWindowRefusal, withoutPrivateWindowTabs } from './agent-route.mjs';
+import { isAgentRequest, agentTabRefusal, agentRequestIsTabless, agentTabUrlAllowed, agentActivateTabRefusal, newTabActive, agentPrivateTabRefusal, agentWindowId, agentNoWindowRefusal, withoutPrivateWindowTabs, agentTabsToMark } from './agent-route.mjs';
 import {
   NetworkCapture,
   redactUrl,
@@ -813,6 +813,27 @@ function rememberCanvasTab(artifactId, tabId) {
 browser.tabs.onRemoved.addListener((tabId) => {
   for (const owned of canvasOwnedTabs.values()) owned.delete(tabId);
 });
+
+/**
+ * Put the agent badge on the tabs a paired agent's successful call opened or
+ * acted on (M2b §4). Fire-and-forget: it runs inside the .then that answers
+ * the daemon, so it must never throw or wait — a badge that cannot be drawn
+ * (an older engine without the method, a tab closed in between) is not a
+ * reason to report the agent's call as failed. The mark stays until the tab
+ * closes or the browser restarts; pausing or unpairing does not clear it.
+ */
+function markAgentTabs(request, toolResult) {
+  if (typeof browser.nevoflux?.setTabAgentMark !== 'function') return;
+  try {
+    for (const tabId of agentTabsToMark(request, toolResult)) {
+      browser.nevoflux.setTabAgentMark(tabId, true).catch((err) => {
+        console.warn(`[NevoFlux] could not mark agent tab ${tabId}:`, err?.message || err);
+      });
+    }
+  } catch (err) {
+    console.warn('[NevoFlux] agent tab marking failed:', err?.message || err);
+  }
+}
 
 /**
  * Whether a Canvas panel may run this action, per the daemon's policy.
@@ -2258,6 +2279,9 @@ class ChannelManager {
             // and dropped its pending slot, so a second response would only
             // earn a "no pending request" warning.
             if (toolResult?.resolvedElsewhere) return;
+            // M2b §4.1: tabs a paired agent opened or touched carry its badge.
+            // agentTabsToMark returns nothing for native-chat calls.
+            markAgentTabs(payload, toolResult);
             channelManager.sendToAgent({
               type: MessageTypes.BROWSER_TOOL_RESPONSE,
               payload: {
