@@ -15,7 +15,7 @@
  *    an internal, local-file or extension page.
  */
 
-export const AGENT_ORIGIN = 'agent';
+export const AGENT_ORIGIN = "agent";
 
 /** Whether a browser_tool_request payload came from an agent channel. */
 export function isAgentRequest(request) {
@@ -23,7 +23,7 @@ export function isAgentRequest(request) {
 }
 
 /** Agent actions that need no target tab. */
-const AGENT_TABLESS_ACTIONS = new Set(['list_tabs', 'query_tabs']);
+const AGENT_TABLESS_ACTIONS = new Set(["list_tabs", "query_tabs"]);
 
 /**
  * Whether an agent request acts without a target tab: tab listing, or
@@ -34,7 +34,7 @@ export function agentRequestIsTabless(request) {
   if (AGENT_TABLESS_ACTIONS.has(action)) {
     return true;
   }
-  return action === 'navigate' && request.params?.new_tab === true;
+  return action === "navigate" && request.params?.new_tab === true;
 }
 
 /**
@@ -72,10 +72,10 @@ export function agentTabRefusal(request) {
  * at all) is off limits.
  */
 export function agentTabUrlAllowed(url) {
-  if (typeof url !== 'string') {
+  if (typeof url !== "string") {
     return false;
   }
-  if (url === 'about:blank') {
+  if (url === "about:blank") {
     return true;
   }
   const match = /^([a-z][a-z0-9+.-]*):/i.exec(url);
@@ -83,7 +83,7 @@ export function agentTabUrlAllowed(url) {
     return false;
   }
   const scheme = match[1].toLowerCase();
-  return scheme === 'http' || scheme === 'https';
+  return scheme === "http" || scheme === "https";
 }
 
 /**
@@ -101,7 +101,8 @@ export function agentActivateTabRefusal(request) {
   }
   return {
     code: -1,
-    message: "agent request 'activateTab' names a different tab than the one it was checked against",
+    message:
+      "agent request 'activateTab' names a different tab than the one it was checked against",
     recoverable: false,
   };
 }
@@ -133,7 +134,12 @@ export function agentPrivateTabRefusal(action, tab) {
 }
 
 function isAgentWindow(win) {
-  return !!win && win.type === 'normal' && win.incognito !== true && win.id !== undefined;
+  return (
+    !!win &&
+    win.type === "normal" &&
+    win.incognito !== true &&
+    win.id !== undefined
+  );
 }
 
 /**
@@ -167,7 +173,41 @@ export function withoutPrivateWindowTabs(tabs, windows) {
     return tabs;
   }
   const privateIds = new Set(
-    (Array.isArray(windows) ? windows : []).filter((w) => w?.incognito === true).map((w) => w.id)
+    (Array.isArray(windows) ? windows : [])
+      .filter((w) => w?.incognito === true)
+      .map((w) => w.id),
   );
-  return tabs.filter((t) => t?.incognito !== true && !privateIds.has(t?.windowId));
+  return tabs.filter(
+    (t) => t?.incognito !== true && !privateIds.has(t?.windowId),
+  );
+}
+
+/** Agent actions that only list tabs: listing every tab is not touching it. */
+const AGENT_UNMARKED_ACTIONS = new Set(["list_tabs", "query_tabs"]);
+
+/**
+ * Which tabs a paired agent's call touched, for the tab badge (M2b §4.1):
+ * the tab the call named, and the new tab browser_navigate opened. Nothing
+ * for a failed call, and nothing for listing tabs (that would badge every
+ * tab). Reading counts as touching (M2b B2). Positive integer ids only, each
+ * once.
+ */
+export function agentTabsToMark(request, toolResult) {
+  if (!isAgentRequest(request) || toolResult?.success !== true) {
+    return [];
+  }
+  if (AGENT_UNMARKED_ACTIONS.has(request.action)) {
+    return [];
+  }
+  const ids = [];
+  const add = (id) => {
+    if (Number.isInteger(id) && id > 0 && !ids.includes(id)) {
+      ids.push(id);
+    }
+  };
+  add(request.tab_id);
+  if (request.action === "navigate" && request.params?.new_tab === true) {
+    add(toolResult.result?.tab_id);
+  }
+  return ids;
 }
