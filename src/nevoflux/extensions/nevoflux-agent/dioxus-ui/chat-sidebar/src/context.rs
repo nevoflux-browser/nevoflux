@@ -358,7 +358,8 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
                 if let Err(e) = crate::messaging::send_events_subscribe(
                     vec![crate::state::AGENT_STATUS_TOPIC.to_string()],
                     true,
-                    16,
+                    // Daemon replays up to STICKY_MAX_PER_TOPIC = 100 events.
+                    crate::state::AGENT_STATUS_BUFFER,
                 )
                 .await
                 {

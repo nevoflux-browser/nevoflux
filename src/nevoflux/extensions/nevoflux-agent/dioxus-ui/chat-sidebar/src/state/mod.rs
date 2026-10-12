@@ -36,7 +36,7 @@ pub use schedule::ScheduleJobState;
 pub use paired_agents::{
     bar_rows, command_error, confirms_paused, parse_paired_agents, presence_word,
     rows_from_status, tool_word, unpair_click, unpair_label, AgentRow, PairedAgentsSnapshot,
-    next_paired_agents, AGENT_STATUS_TOPIC, ERROR_LINE_MS, UNPAIR_CONFIRM_MS,
+    next_paired_agents, AGENT_STATUS_BUFFER, AGENT_STATUS_TOPIC, ERROR_LINE_MS, UNPAIR_CONFIRM_MS,
 };
 
 /// Skill information for the skill selector

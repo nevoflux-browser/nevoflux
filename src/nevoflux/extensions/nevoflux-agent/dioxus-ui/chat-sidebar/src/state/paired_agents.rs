@@ -14,6 +14,12 @@ use serde::Deserialize;
 /// The sticky EventBus topic the daemon publishes the snapshot on.
 pub const AGENT_STATUS_TOPIC: &str = "system:agent:status";
 
+/// Subscribe buffer for `system:agent:status`. The daemon keeps up to
+/// `STICKY_MAX_PER_TOPIC` = 100 sticky events per topic and replays them
+/// oldest-first with `try_send`, dropping overflow; a smaller buffer could
+/// leave a newly opened sidebar holding a stale snapshot.
+pub const AGENT_STATUS_BUFFER: usize = 256;
+
 /// Shown when a pairing has no label (the contract allows `label: null`).
 pub const DEFAULT_LABEL: &str = "Muse";
 
@@ -22,6 +28,10 @@ pub const APPROVAL_TIMEOUT_SECS: i64 = 60;
 
 /// How long "Unpair" waits for its confirming second click.
 pub const UNPAIR_CONFIRM_MS: i64 = 3000;
+
+/// A second click sooner than this after arming is treated as a double-click
+/// and ignored: unpairing cannot be undone.
+pub const UNPAIR_MIN_GAP_MS: i64 = 400;
 
 /// How long a failed command's error line stays under its row.
 pub const ERROR_LINE_MS: u32 = 5000;
@@ -171,9 +181,9 @@ pub fn rows_from_status(snapshot: &PairedAgentsSnapshot, now: i64) -> Vec<AgentR
                     (Some(ap), _) => (
                         "⏳",
                         format!(
-                            "waiting for approval: {} · {} s left",
-                            ap.summary,
-                            seconds_left(ap.started_at, now)
+                            "waiting for approval · {} s left: {}",
+                            seconds_left(ap.started_at, now),
+                            ap.summary
                         ),
                         false,
                     ),
@@ -238,9 +248,17 @@ fn unpair_armed(armed_at: Option<i64>, now_ms: i64) -> bool {
 }
 
 /// A click on Unpair: returns the new armed time and whether to send now.
-/// The first click only arms; a second within 3 s sends; a later one arms
+/// The first click only arms; a second within 400 ms is ignored (double-click);
+/// one from 400 ms to 3 s sends; a later one arms
 /// again (§3.3). Unpairing cannot be undone, so nothing else sends.
 pub fn unpair_click(armed_at: Option<i64>, now_ms: i64) -> (Option<i64>, bool) {
+    if let Some(at) = armed_at {
+        let gap = now_ms - at;
+        if (0..UNPAIR_MIN_GAP_MS).contains(&gap) {
+            // Fast double-click: stay armed, neither send nor re-arm.
+            return (armed_at, false);
+        }
+    }
     if unpair_armed(armed_at, now_ms) {
         (None, true)
     } else {
@@ -410,15 +428,15 @@ mod tests {
         let at = |now: i64| rows_from_status(&s, now)[0].detail.clone();
         assert_eq!(
             at(1_000),
-            "waiting for approval: Click \"Submit\" on example.com · 60 s left"
+            "waiting for approval · 60 s left: Click \"Submit\" on example.com"
         );
         assert_eq!(
             at(1_018),
-            "waiting for approval: Click \"Submit\" on example.com · 42 s left"
+            "waiting for approval · 42 s left: Click \"Submit\" on example.com"
         );
-        assert!(at(1_090).ends_with("· 0 s left"), "{}", at(1_090));
+        assert!(at(1_090).starts_with("waiting for approval · 0 s left:"), "{}", at(1_090));
         // A sidebar clock behind the daemon's never shows more than the timeout.
-        assert!(at(900).ends_with("· 60 s left"), "{}", at(900));
+        assert!(at(900).starts_with("waiting for approval · 60 s left:"), "{}", at(900));
         assert_eq!(rows_from_status(&s, 1_018)[0].icon, "⏳");
     }
 
@@ -519,6 +537,23 @@ mod tests {
         assert!(send);
         assert_eq!(armed, None);
         assert_eq!(unpair_label(armed, 13_000), "Unpair");
+    }
+
+    #[test]
+    fn a_fast_double_click_neither_sends_nor_rearms() {
+        let (armed, _) = unpair_click(None, 10_000);
+        let (a2, send) = unpair_click(armed, 10_150);
+        assert_eq!((a2, send), (Some(10_000), false));
+        let (a3, send) = unpair_click(armed, 10_399);
+        assert_eq!((a3, send), (Some(10_000), false));
+        let (a4, send) = unpair_click(armed, 10_400);
+        assert_eq!((a4, send), (None, true));
+    }
+
+    #[test]
+    fn agent_status_buffer_holds_the_daemons_whole_sticky_replay() {
+        // Daemon STICKY_MAX_PER_TOPIC = 100.
+        assert!(AGENT_STATUS_BUFFER >= 100);
     }
 
     #[test]
