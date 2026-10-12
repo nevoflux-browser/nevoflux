@@ -1828,6 +1828,25 @@
         }
       },
       {
+        "name": "setTabAgentMark",
+        "type": "function",
+        "async": "promise",
+        "description": "Mark or unmark a tab a paired AI agent opened or acted on (M2b). Toggles the nevoflux-agent-touched attribute; a no-op for an unknown or closed tab.",
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer"
+          },
+          {
+            "name": "on",
+            "type": "boolean"
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
+      },
+      {
         "name": "getSpaces",
         "type": "function",
         "async": "promise",

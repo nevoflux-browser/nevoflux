@@ -1013,6 +1013,28 @@ this.nevoflux = class extends ExtensionAPI {
           }
         },
 
+        // ========== Agent mark (M2b §4.2) ==========
+
+        // Mark or unmark a tab a paired AI agent opened or acted on. The
+        // attribute drives the favicon badge (nevoflux-agent-touched.css).
+        // It is not registered with SessionStore, so a restart clears it,
+        // as the design wants. An unknown, closing or detached tab is a
+        // no-op: the agent's call already succeeded, and a badge that could
+        // not be drawn must not turn it into a failure.
+        async setTabAgentMark(tabId, on) {
+          let nativeTab = null;
+          try {
+            nativeTab = extension.tabManager.get(tabId)?.nativeTab ?? null;
+          } catch (e) {
+            nativeTab = null;
+          }
+          if (!nativeTab || nativeTab.closing || !nativeTab.isConnected) {
+            return { success: true };
+          }
+          nativeTab.toggleAttribute('nevoflux-agent-touched', on === true);
+          return { success: true };
+        },
+
         async getSpaces() {
           // Which Spaces exist, and which container each one uses. Settings needs
           // this to show "give this Space an assistant" in the user's own terms:
