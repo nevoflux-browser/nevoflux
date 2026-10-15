@@ -6,6 +6,7 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   NevofluxContentStore: 'resource:///modules/NevofluxContentStore.sys.mjs',
   NevofluxBridgeRouter: 'resource:///modules/NevofluxBridgeRouter.sys.mjs',
+  NevofluxBridgePolicy: 'resource:///modules/NevofluxBridgePolicy.sys.mjs',
 });
 
 export class NevofluxParent extends JSWindowActorParent {
@@ -94,6 +95,14 @@ export class NevofluxParent extends JSWindowActorParent {
   }
 
   async receiveMessage({ name, data }) {
+    const uri = this.manager?.documentURI?.spec ?? '';
+    const gate = lazy.NevofluxBridgePolicy.checkActorMessage(uri, name, data);
+    if (!gate.allow) {
+      console.warn(
+        `[NevofluxParent] refused ${name}${data?.type ? ` (${data.type})` : ''} from ${uri}: ${gate.reason}`
+      );
+      return { success: false, error: { code: 13003, message: gate.reason } };
+    }
     switch (name) {
       case 'dialogAccept':
         return this.acceptDialog(data?.text);

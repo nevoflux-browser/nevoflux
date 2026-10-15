@@ -275,13 +275,17 @@ if [ -f "${COMPONENTS_MOZBUILD}" ]; then
   fi
 fi
 
-# 8. Inject NevofluxBridgeRouter and NevofluxContentStore into browser/modules/moz.build EXTRA_JS_MODULES
-# NOTE: Must be inserted in alphabetical order (BridgeRouter before ContentStore)
+# 8. Inject NevofluxBridgePolicy, NevofluxBridgeRouter and NevofluxContentStore into browser/modules/moz.build EXTRA_JS_MODULES
+# NOTE: Must be inserted in alphabetical order (BridgePolicy, BridgeRouter, ContentStore)
 MODULES_MOZBUILD="${ENGINE_DIR}/browser/modules/moz.build"
 if [ -f "${MODULES_MOZBUILD}" ]; then
   if ! grep -q '"NevofluxBridgeRouter.sys.mjs"' "${MODULES_MOZBUILD}"; then
     echo "Adding NevofluxBridgeRouter to browser/modules/moz.build..."
     sedi 's/"LinksCache.sys.mjs",/"LinksCache.sys.mjs",\'$'\n''    "NevofluxBridgeRouter.sys.mjs",/' "${MODULES_MOZBUILD}"
+  fi
+  if ! grep -q '"NevofluxBridgePolicy.sys.mjs"' "${MODULES_MOZBUILD}"; then
+    echo "Adding NevofluxBridgePolicy to browser/modules/moz.build..."
+    sedi 's/"LinksCache.sys.mjs",/"LinksCache.sys.mjs",\'$'\n''    "NevofluxBridgePolicy.sys.mjs",/' "${MODULES_MOZBUILD}"
   fi
   if ! grep -q '"NevofluxContentStore.sys.mjs"' "${MODULES_MOZBUILD}"; then
     echo "Adding NevofluxContentStore to browser/modules/moz.build..."

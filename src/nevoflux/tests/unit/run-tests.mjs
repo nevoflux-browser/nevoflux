@@ -31,6 +31,7 @@ import './agent-mark.test.mjs';
 import './notify-gate.test.mjs';
 import './canvas-bridge-policy.test.mjs';
 import './canvas-command-gate.test.mjs';
+import './nevoflux-bridge-policy.test.mjs';
 
 // Run all tests
 const results = await runner.run();
