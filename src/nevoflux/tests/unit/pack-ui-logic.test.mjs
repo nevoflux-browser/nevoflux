@@ -397,6 +397,19 @@ describe('pack-ui-logic: summarizeInspect', () => {
     });
     expect(result.text).toContain('Canvas tools: plain.tool');
   });
+
+  it('lists the daemon commands a dashboard declares', () => {
+    const { text } = summarizeInspect({
+      pack: { name: 'okf', version: '1.0.0' },
+      components: { dashboard: 'okf-dashboard', dashboard_commands: ['schedule.run_now', 'brain.save_webpage'] },
+    });
+    expect(text).toContain('Dashboard commands: schedule.run_now, brain.save_webpage');
+  });
+
+  it('says nothing about commands when none are declared', () => {
+    const { text } = summarizeInspect({ pack: { name: 'p' }, components: { dashboard: 'p-dash' } });
+    expect(text.includes('Dashboard commands')).toBe(false);
+  });
 });
 
 describe('pack-ui-logic: packErrorMessage', () => {

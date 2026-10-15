@@ -7213,6 +7213,13 @@ const Settings = {
         lines.push(`Dashboard: ${comps.dashboard}`);
       }
 
+      const dashboardCommands = asArray(comps.dashboard_commands).filter(
+        (c) => typeof c === 'string' && c
+      );
+      if (dashboardCommands.length) {
+        lines.push(`Dashboard commands: ${dashboardCommands.join(', ')}`);
+      }
+
       if (comps.knowledge) {
         lines.push('Knowledge: yes');
       }
