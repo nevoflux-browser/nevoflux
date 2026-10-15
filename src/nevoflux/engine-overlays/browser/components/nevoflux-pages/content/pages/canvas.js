@@ -687,6 +687,9 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
       return;
     }
 
+    // Rules for what the artifact iframe may call (canvas-bridge-policy.mjs).
+    // Loaded once; a failed load fails every bridge call closed.
+    this._policyReady = import('chrome://nevoflux/content/pages/canvas-bridge-policy.mjs');
     this._setupToolbar();
     this._setupBridge();
     this._loadArtifact();
@@ -870,6 +873,12 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
   async _handleBridgeCall(method, args) {
     console.info('[Canvas] _handleBridgeCall:', method, JSON.stringify(args).substring(0, 200));
 
+    const policy = await this._policyReady;
+    if (!policy.isAllowedMethod(method)) {
+      throw new Error('Method not available to a canvas: ' + method);
+    }
+    args = args || {};
+
     // Wait briefly for NevofluxBridge if not yet injected (race with DOMDocElementInserted)
     let bridge = window.NevofluxBridge;
     if (!bridge) {
@@ -903,26 +912,14 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
         console.info('[Canvas] Calling bridge.callTool:', args.action);
         return bridge.callTool(args.action, args.params);
       case 'agent.chat': {
-        const chatMsg = args.message || args;
-        const msgStr = typeof chatMsg === 'string' ? chatMsg : JSON.stringify(chatMsg);
         const sessionId = args.sessionId || `cs_${crypto.randomUUID()}`;
-
-        console.info(
-          '[Canvas] Sending agent:chat via bridge, sessionId:',
-          sessionId,
-          'msg:',
-          msgStr.substring(0, 100)
-        );
+        const chatPayload = { ...policy.chatRequest(args), sessionId };
+        console.info('[Canvas] Sending agent:chat via bridge, sessionId:', sessionId);
 
         // Step 1: Subscribe FIRST — prevents race where agent responds before subscription exists
         await NevofluxPage.sendQuery('agent:subscribe', { sessionId });
 
         // Step 2: THEN send to background.js which forwards to agent
-        // Include attachments if provided (images, files, directories)
-        const chatPayload = { message: msgStr, sessionId };
-        if (args.attachments && args.attachments.length > 0) {
-          chatPayload.attachments = args.attachments;
-        }
         await NevofluxPage.sendQuery('bridge:request', {
           type: 'agent:chat',
           payload: chatPayload,
@@ -942,42 +939,71 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
         return { success: true };
       }
       case 'sidebar.send': {
-        const chatMsg = args.message || args;
-        const msgStr = typeof chatMsg === 'string' ? chatMsg : JSON.stringify(chatMsg);
-        console.info(
-          '[Canvas] Sending sidebar:sendMessage via bridge, msg:',
-          msgStr.substring(0, 100)
-        );
-        const res = await NevofluxPage.sendQuery('bridge:request', {
+        const message = policy.sidebarText(args, this._artifactId);
+        return NevofluxPage.sendQuery('bridge:request', {
           type: 'sidebar:sendMessage',
-          payload: { message: msgStr },
+          payload: { message },
         });
-        return res;
       }
-      case 'agent.sendCommand':
-        return bridge.agent.sendCommand(args.command, args.params);
+      case 'agent.sendCommand': {
+        const command = args.command;
+        if (typeof command !== 'string' || !command) {
+          throw new Error('sendCommand needs a command name');
+        }
+        if (policy.isForbiddenCommand(command)) {
+          throw new Error(`FORBIDDEN_COMMAND: \`${command}\` cannot be sent from a canvas`);
+        }
+        // background asks the daemon whether this panel may send it, then
+        // forwards it and hands back the daemon's answer.
+        const res = await NevofluxPage.sendQuery('bridge:request', {
+          type: 'canvas.command',
+          payload: { artifact_id: this._artifactId, command, params: args.params || {} },
+        });
+        return policy.unwrapBridgeResult(res, 'sendCommand');
+      }
       case 'sidebar.open':
         return NevofluxPage.sendQuery('bridge:request', {
           type: 'sidebar:open',
           payload: {},
         });
-      case 'sidebar.notify':
-        return bridge.sidebar.notify(args.type, args.data);
+      case 'sidebar.notify': {
+        const res = await NevofluxPage.sendQuery('bridge:request', {
+          type: 'canvas:notify',
+          payload: policy.notifyContent(args.type, args.data),
+        });
+        policy.unwrapBridgeResult(res, 'sidebar.notify');
+        return true;
+      }
       case 'storage.get': {
-        const res = await bridge.storage.get(args.key);
-        return res?.value ?? null;
+        const key = policy.appKey(this._artifactId, args.key);
+        const res = await bridge.storage.get(key);
+        if (res?.value !== undefined && res?.value !== null) return res.value;
+        // Data written before storage was namespaced: read the flat key once
+        // and move it into this canvas's namespace.
+        if (!policy.legacyKeyReadable(args.key)) return null;
+        const legacy = await bridge.storage.get(args.key);
+        const value = legacy?.value ?? null;
+        if (value !== null) await bridge.storage.set(key, value);
+        return value;
       }
       case 'storage.set': {
-        await bridge.storage.set(args.key, args.value);
+        await bridge.storage.set(policy.appKey(this._artifactId, args.key), args.value);
         return true;
       }
       case 'storage.delete': {
-        const res = await bridge.storage.delete(args.key);
+        const res = await bridge.storage.delete(policy.appKey(this._artifactId, args.key));
         return res?.success ?? false;
       }
       case 'storage.query': {
-        const res = await bridge.storage.query(args.prefix);
-        return res?.results ?? [];
+        const own = (await bridge.storage.query(policy.appPrefix(this._artifactId, args.prefix)))?.results ?? [];
+        const legacy = policy.legacyKeyReadable(args.prefix)
+          ? (await bridge.storage.query(args.prefix))?.results ?? []
+          : [];
+        const merged = policy.mergeQueryResults(this._artifactId, own, legacy);
+        for (const r of merged.toMigrate) {
+          await bridge.storage.set(policy.appKey(this._artifactId, r.key), r.value);
+        }
+        return merged.results;
       }
       case 'system.getInfo':
         return bridge.system.getInfo();
@@ -998,14 +1024,25 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
         // body they kept falling into it and were sent to the bridge as
         // `events.subscribe`, so the daemon never saw canvas_tool_invoke and
         // the caller waited forever for tool events that could not arrive.
-        const res = await NevofluxPage.sendQuery('bridge:request', {
-          type: method,
-          payload: args || {},
-        });
-        if (res && res.success === false) {
-          throw new Error(res.error?.message || 'Bridge request failed: ' + method);
+        const payload = policy.shareArgs(method, args, this._artifactId);
+        const forward = async (type, body) => {
+          const res = await NevofluxPage.sendQuery('bridge:request', { type, payload: body });
+          if (res && res.success === false) {
+            throw new Error(res.error?.message || 'Bridge request failed: ' + type);
+          }
+          return res?.data !== undefined ? res.data : res;
+        };
+        // A canvas may only change or list its own shares.
+        if (method === 'canvas.share.extend' || method === 'canvas.share.delete') {
+          const listed = await forward('canvas.share.list', {});
+          if (!policy.isOwnShare(listed, this._artifactId, payload.share_id)) {
+            throw new Error('NOT_OWN_SHARE: a canvas may only change its own shares');
+          }
         }
-        return res?.data !== undefined ? res.data : res;
+        const result = await forward(method, payload);
+        return method === 'canvas.share.list'
+          ? policy.ownShares(result, this._artifactId)
+          : result;
       }
 
       // ── EventBus ─────────────────────────────────────────
@@ -1048,6 +1085,9 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
       case 'events.publish':
       case 'events.history':
       case 'events.recover': {
+        if (method === 'events.publish' && policy.isReservedTopic(args.topic)) {
+          throw new Error('This topic is reserved: ' + args.topic);
+        }
         // Forward to background.js which has the bridge handler.
         // The actor returns { success, data } — unwrap so the SDK
         // caller sees the raw response payload directly.
