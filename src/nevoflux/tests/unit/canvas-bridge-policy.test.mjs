@@ -15,6 +15,8 @@ import {
   notifyContent,
   isReservedTopic,
   shareArgs,
+  ownShares,
+  isOwnShare,
   unwrapBridgeResult,
 } from '../../engine-overlays/browser/components/nevoflux-pages/content/pages/canvas-bridge-policy.mjs';
 
@@ -132,6 +134,23 @@ describe('canvas-bridge-policy: events and share', () => {
   it('a share always names the calling canvas', () => {
     expect(shareArgs('canvas.share', { artifact_id: 'someone-else', ttl_secs: 60 }, 'a1')).toEqual({ artifact_id: 'a1', ttl_secs: 60 });
     expect(shareArgs('canvas.share.list', { x: 1 }, 'a1')).toEqual({ x: 1 });
+  });
+  it('a share list shows only this canvas\'s shares', () => {
+    const shares = [
+      { artifact_id: 'a1', share_id: 's1' },
+      { artifact_id: 'b2', share_id: 's2' },
+    ];
+    expect(ownShares(shares, 'a1')).toEqual([{ artifact_id: 'a1', share_id: 's1' }]);
+    expect(ownShares({ shares, total: 2 }, 'a1')).toEqual({ shares: [{ artifact_id: 'a1', share_id: 's1' }], total: 2 });
+    expect(ownShares(null, 'a1')).toEqual([]);
+  });
+  it('extend and delete reach only this canvas\'s own shares', () => {
+    const list = { shares: [{ artifact_id: 'a1', share_id: 's1' }, { artifact_id: 'b2', share_id: 's2' }] };
+    expect(isOwnShare(list, 'a1', 's1')).toBe(true);
+    expect(isOwnShare(list, 'a1', 's2')).toBe(false);
+    expect(isOwnShare(list, 'a1', '')).toBe(false);
+    expect(isOwnShare(list, 'a1', undefined)).toBe(false);
+    expect(isOwnShare(undefined, 'a1', 's1')).toBe(false);
   });
 });
 

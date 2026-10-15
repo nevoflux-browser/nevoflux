@@ -198,6 +198,29 @@ export function shareArgs(method, args, artifactId) {
 }
 
 /**
+ * The shares in a canvas.share.list answer that belong to this canvas.
+ * Accepts the bare array or `{ shares: [...] }` and returns the same shape;
+ * anything else is treated as no shares.
+ */
+export function ownShares(listResult, artifactId) {
+  const mine = (list) =>
+    list.filter((s) => s && typeof s === 'object' && s.artifact_id === artifactId);
+  if (Array.isArray(listResult)) return mine(listResult);
+  if (listResult && typeof listResult === 'object' && Array.isArray(listResult.shares)) {
+    return { ...listResult, shares: mine(listResult.shares) };
+  }
+  return [];
+}
+
+/** Whether `shareId` names one of this canvas's own shares in a list answer. */
+export function isOwnShare(listResult, artifactId, shareId) {
+  if (typeof shareId !== 'string' || !shareId) return false;
+  const own = ownShares(listResult, artifactId);
+  const list = Array.isArray(own) ? own : own.shares;
+  return list.some((s) => s.share_id === shareId);
+}
+
+/**
  * Unwrap a bridge:request answer. The parent actor wraps background's result
  * ({success, data|error}) in its own {success, data}; either layer can fail.
  */
