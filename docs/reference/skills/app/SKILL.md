@@ -299,11 +299,11 @@ Publish and subscribe to events across sessions/canvases. Three delivery modes:
 - **sticky** — last value cached per topic, delivered to new subscribers immediately
 - **persistent** — written to SQLite (**`history()` not yet implemented** — daemon returns error)
 
-Topic format: colon-separated segments matching `[a-zA-Z0-9_-]{1,64}`, max 8 segments (e.g. `"ui:progress"`, `"ui:notification:done"`).
+Topic format: colon-separated segments matching `[a-zA-Z0-9_-]{1,64}`, max 8 segments (e.g. `"ui:progress"`, `"ui:progress:done"`).
 
 > **Canvas = Extension surface.** Canvas iframes communicate through the extension background script, so the daemon sees them as `Extension` — not `Wasm`. Use `ui:*` topics for your own app events. Topics starting with `ui:notification`, `ui:soul`, `ui:render` or `ui:tab` are reserved for the browser; publishing to them is refused.
 
-Wildcards in subscribe patterns: `*` matches one segment (e.g. `"ui:notification:*"` matches `"ui:notification:done"`). Wildcards are allowed **within the same prefix** you have permission for (e.g. Extension can subscribe to `ui:notification:*` but not `task:*`). Bare `*` or `**` (cross-prefix) is daemon-internal only.
+Wildcards in subscribe patterns: `*` matches one segment (e.g. `"ui:progress:*"` matches `"ui:progress:done"`). Wildcards are allowed **within the same prefix** you have permission for (e.g. Extension can subscribe to `ui:progress:*` but not `task:*`). Bare `*` or `**` (cross-prefix) is daemon-internal only.
 
 ```javascript
 // Subscribe (handler fires for every matching event)
@@ -316,7 +316,7 @@ const sub = await NevofluxSDK.events.subscribe(
 );
 // Wildcard subscribe (same prefix required):
 const notifSub = await NevofluxSDK.events.subscribe(
-  ['ui:notification:*'],             // matches ui:notification:done, ui:notification:error, etc.
+  ['ui:progress:*'],                 // matches ui:progress:done, ui:progress:error, etc.
   (event) => { console.log('notif:', event.payload); }
 );
 // Later:
@@ -344,7 +344,7 @@ Permission matrix (topic prefix → who can publish / subscribe):
 | `mcp:*`   | mcp server     | agent + daemon               |
 | `wasm:*`  | wasm plugin    | agent + daemon               |
 
-Wildcard subscribe (e.g. `ui:notification:*`) follows the same prefix rule — if you can subscribe to `ui:foo` exactly, you can also subscribe to `ui:*`. Bare `*` / `**` (no prefix) is daemon-internal only.
+Wildcard subscribe (e.g. `ui:progress:*`) follows the same prefix rule — if you can subscribe to `ui:foo` exactly, you can also subscribe to `ui:*`. Bare `*` / `**` (no prefix) is daemon-internal only.
 
 > **Known limitation:** `publish()` is fire-and-forget on the SDK side — permission errors from daemon are not surfaced to the caller (it always returns `{success: true}`). If a publish silently fails, check daemon logs.
 
@@ -1187,7 +1187,7 @@ Use for complex apps with multiple components and module imports. The canvas bun
 14. Image `data` must be **base64 encoded** (no `data:` URI prefix) — use `btoa()` or `FileReader.readAsDataURL()` then strip the prefix
 15. **Events topics** are colon-separated, `[a-zA-Z0-9_-]{1,64}` per segment, max 8 segments. Don't use dots: `"ui:progress"` not `"ui.progress"`
 16. **Events `replaySticky: true`** (default) fires handler once per matching sticky event immediately on subscribe — handle accordingly
-17. **Events are fire-and-forget on SDK side** — `publish()` always returns `{success: true}` even when daemon rejects it; `subscribe()` returns a subscription id even if permission was denied. Canvas = Extension identity, so it can only publish `ui:*` and subscribe to `ui:*`/`system:*` (exact or wildcard within prefix). Cross-prefix wildcards (`*`, `**`) are daemon-internal. If events don't arrive, check daemon logs for denials. `history()` is **not yet implemented** and returns an error. Publish to `ui:notification:*` → sidebar shows a toast automatically
+17. **Events are fire-and-forget on SDK side** — `publish()` returns `{success: true}` even when the daemon rejects it, except that publishing to a reserved topic throws; `subscribe()` returns a subscription id even if permission was denied. Canvas = Extension identity, so it can only publish `ui:*` and subscribe to `ui:*`/`system:*` (exact or wildcard within prefix). Cross-prefix wildcards (`*`, `**`) are daemon-internal. If events don't arrive, check daemon logs for denials. `history()` is **not yet implemented** and returns an error. To show the user a notification use `NevofluxSDK.sidebar.notify(title, message)`; `ui:notification*` topics are reserved and publishing to them is refused.
 18. **Canvas tool namespace is singular: `NevofluxSDK.tool` not `NevofluxSDK.tools`.** The plural form is `undefined` and `NevofluxSDK.tools.xxx()` throws `TypeError: Cannot read properties of undefined` — frequently silently caught by `try/catch` wrappers
 19. **`bash` is NOT a browser action.** `NevofluxSDK.callTool('bash', ...)` returns `Unknown action` error because `callTool` only dispatches browser operations (navigate/click/screenshot/web_fetch). For shell commands either (a) register `bash` (or a specific command) in canvas-tools TOML and use `tool.invoke()`, or (b) delegate via `agent.chat('run ...')`
 20. **Canvas tools** use snake_case in params but dotted names in tool name (e.g. `ffmpeg.trim` not `ffmpeg_trim`). Always call `tool.list()` first and verify the tool exists + is enabled before invoking — don't assume
