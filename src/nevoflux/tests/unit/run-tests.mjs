@@ -29,6 +29,7 @@ import './ref-routing.test.mjs';
 import './agent-route.test.mjs';
 import './agent-mark.test.mjs';
 import './notify-gate.test.mjs';
+import './canvas-bridge-policy.test.mjs';
 
 // Run all tests
 const results = await runner.run();

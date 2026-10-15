@@ -20,6 +20,7 @@ nevoflux.jar:
     content/nevoflux/pages/brain.html                (content/pages/brain.html)
     content/nevoflux/pages/brain.js                  (content/pages/brain.js)
     content/nevoflux/pages/pack-ui-logic.mjs         (content/pages/pack-ui-logic.mjs)
+    content/nevoflux/pages/canvas-bridge-policy.mjs  (content/pages/canvas-bridge-policy.mjs)
     content/nevoflux/pages/custom-provider-logic.mjs (content/pages/custom-provider-logic.mjs)
     content/nevoflux/pages/local-inference-logic.mjs (content/pages/local-inference-logic.mjs)
     content/nevoflux/pages/jev-settings-logic.mjs (content/pages/jev-settings-logic.mjs)
