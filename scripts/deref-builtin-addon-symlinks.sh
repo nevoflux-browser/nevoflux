@@ -1,6 +1,7 @@
 #!/bin/bash
 # Dereference symlinks in the built-in nevoflux-agent addon dir of a FLAT
 # (dev) build, replacing each link with a real copy of its target.
+# Also handles nevoflux:// page resources for the same reason.
 #
 # Why: in a flat dev build (`mach build` / `mach build faster`), mach's install
 # manifest stages chrome resources as symlinks back into the source tree. Gecko's
@@ -9,6 +10,8 @@
 # its `moz-extension://<uuid>/...` pages — does NOT follow NTFS symlinks on
 # Windows: it reads them as empty. The result is a blank sidebar (index.html
 # served as `<html><head></head><body></body></html>`, no script tag, no error).
+# Similarly, nevoflux:// pages load in a web content process that cannot follow
+# symlinks, causing the canvas page to stay at about:blank.
 #
 # Converting the addon's files to real copies makes the resource:// reader return
 # the real bytes. This only matters for flat dev builds; packaged builds bundle
@@ -22,29 +25,28 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/detect-objdir.sh"
 
-ADDON_DIR="$DIST_DIR/browser/chrome/browser/builtin-addons/nevoflux-agent"
-if [ ! -d "$ADDON_DIR" ]; then
-  # Packaged (omni) build or addon not staged yet — nothing to deref.
-  exit 0
-fi
-
-count=0
-# -L so we can stat the target; -type l finds the links themselves.
-while IFS= read -r link; do
-  [ -n "$link" ] || continue
-  target=$(readlink "$link" 2>/dev/null || true)
-  if [ -n "$target" ] && [ -e "$target" ]; then
-    # Portable replacement for GNU `cp --remove-destination` (absent in macOS
-    # BSD cp, which errors `illegal option -- -`): unlink the symlink first,
-    # then copy the real target over the now-free path. Same result on GNU/BSD.
-    rm -f "$link" && cp "$target" "$link"
-    count=$((count + 1))
-  else
-    echo "  WARN: broken symlink left as-is: $link -> $target" >&2
+deref_dir() {
+  local dir="$1"
+  [ -d "$dir" ] || return 0
+  local count=0 link target
+  while IFS= read -r link; do
+    [ -n "$link" ] || continue
+    target=$(readlink "$link" 2>/dev/null || true)
+    if [ -n "$target" ] && [ -e "$target" ]; then
+      rm -f "$link" && cp "$target" "$link"
+      count=$((count + 1))
+    else
+      echo "  WARN: broken symlink left as-is: $link -> $target" >&2
+    fi
+  done < <(find "$dir" -type l 2>/dev/null)
+  if [ "$count" -gt 0 ]; then
+    echo "deref-builtin-addon-symlinks: converted $count symlink(s) to real files in"
+    echo "  $dir"
   fi
-done < <(find "$ADDON_DIR" -type l 2>/dev/null)
+}
 
-if [ "$count" -gt 0 ]; then
-  echo "deref-builtin-addon-symlinks: converted $count symlink(s) to real files in"
-  echo "  $ADDON_DIR"
-fi
+# The built-in extension (resource://builtin-addons/ cannot read NTFS symlinks).
+deref_dir "$DIST_DIR/browser/chrome/browser/builtin-addons/nevoflux-agent"
+# nevoflux:// pages: the canvas page loads in a web content process, which
+# cannot follow a symlink out to engine/, so the tab stays at about:blank.
+deref_dir "$DIST_DIR/browser/chrome/nevoflux"
