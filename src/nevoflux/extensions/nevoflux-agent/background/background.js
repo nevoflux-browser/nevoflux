@@ -15,6 +15,7 @@ import { checkWebSession } from './web-session.mjs';
 import { mayResendAfterInjection } from './click-policy.mjs';
 import { refRoute, fillValue } from './ref-routing.mjs';
 import { osNotificationContent, mayShowOsNotification } from './notify-gate.mjs';
+import { commandVerdict } from './canvas-command-gate.mjs';
 import { isAgentRequest, agentTabRefusal, agentRequestIsTabless, agentTabUrlAllowed, agentActivateTabRefusal, newTabActive, agentPrivateTabRefusal, agentWindowId, agentNoWindowRefusal, withoutPrivateWindowTabs, agentTabsToMark } from './agent-route.mjs';
 import {
   NetworkCapture,
@@ -3070,6 +3071,55 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
           } catch (err) {
             result = { success: false, error: { code: -1, message: err.message } };
           }
+          break;
+        }
+
+        case 'canvas.command': {
+          // A canvas sending a daemon command (NevofluxSDK.agent.sendCommand).
+          // The daemon decides from the panel's pack declaration and the
+          // permanent deny list (M3-0 §4.1); only then is the command sent.
+          const { artifact_id: artifactId, command, params: commandParams } = payload || {};
+          const verdict = commandVerdict(
+            await askDaemon('canvas.policy_check', {
+              kind: 'command',
+              artifact_id: artifactId,
+              command,
+              command_params: commandParams || {},
+            })
+          );
+          if (!verdict.allow) {
+            result = {
+              success: false,
+              error: { code: -1, message: `${verdict.code}: ${verdict.message}` },
+            };
+            break;
+          }
+          const res = await askDaemon(command, commandParams || {});
+          result = res?.success
+            ? { success: true, data: res.data }
+            : {
+                success: false,
+                error: {
+                  code: -1,
+                  message:
+                    (typeof res?.error === 'string' ? res.error : res?.error?.message) ||
+                    `${command} failed`,
+                },
+              };
+          break;
+        }
+
+        case 'canvas:notify': {
+          // sidebar.notify from a canvas: a plain OS notification with the
+          // fixed title/message canvas.js built, never a raw sidebar message.
+          const { title, message } = payload || {};
+          await browser.notifications.create(`nevoflux-canvas-${Date.now()}`, {
+            type: 'basic',
+            iconUrl: browser.runtime.getURL('icons/icon-48.png'),
+            title: String(title || 'Canvas'),
+            message: String(message || ''),
+          });
+          result = { success: true };
           break;
         }
 
