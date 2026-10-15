@@ -159,7 +159,7 @@ await NevofluxSDK.storage.delete(key); // Remove key
 await NevofluxSDK.storage.query(prefix); // List keys by prefix
 ```
 
-Use app-specific key prefixes (e.g. `todo:items`, `dashboard:config`) to avoid collisions.
+Storage is private to this canvas: keys are stored under the canvas's own namespace, so two canvases never see each other's data and `query('')` lists only this canvas's keys. Keys starting with `config:`, `canvas:`, `session:` or `app:` are reserved and are not read from older data.
 
 ### Browser Tools (via callTool)
 
@@ -204,7 +204,7 @@ Full action reference: load auxiliary file `callTool-actions.md`.
 
 ### Agent (bidirectional AI interaction)
 
-`agent.chat()` sends a message to the AI agent and returns a Promise that resolves with the full response when the agent finishes. It supports streaming callbacks for real-time feedback and attachments (images, files, directories).
+`agent.chat()` sends a message to the AI agent and returns a Promise that resolves with the full response when the agent finishes. It supports streaming callbacks for real-time feedback and attachments (images).
 
 **Simple (await final result):**
 
@@ -222,22 +222,6 @@ const result = await NevofluxSDK.agent.chat('describe this image', {
     { name: 'photo.png', mime_type: 'image/png', data: base64String }
   ],
 });
-
-// Send local files or directories
-const result = await NevofluxSDK.agent.chat('analyze this codebase', {
-  attachments: [
-    { path: '/home/user/project', is_directory: true },
-    { path: '/home/user/data.csv' },
-  ],
-});
-
-// Mixed: images + files in one request
-const result = await NevofluxSDK.agent.chat('compare the screenshot with the source', {
-  attachments: [
-    { name: 'screenshot.png', mime_type: 'image/png', data: base64String },
-    { path: '/home/user/index.html' },
-  ],
-});
 ```
 
 Attachment types:
@@ -247,10 +231,8 @@ Attachment types:
 | `name`         | string  | Display name (for images)                      |
 | `mime_type`    | string  | MIME type, e.g. `"image/png"` (for images)     |
 | `data`         | string  | Base64 encoded content (for images)            |
-| `path`         | string  | Absolute file/directory path (for local files) |
-| `is_directory` | boolean | `true` if path is a directory (default: false) |
 
-Use `{ name, mime_type, data }` for images. Use `{ path }` or `{ path, is_directory: true }` for local files/directories.
+Only images (`{ name, mime_type, data }`) are attached. If you pass `{ path }` or `{ path, is_directory: true }`, the path is named in the message instead and the agent decides whether to read it with its file tools, under the user's agent execution setting.
 
 **Streaming (real-time callbacks):**
 
@@ -285,20 +267,22 @@ const r2 = await NevofluxSDK.agent.chat('now download the first one', {
 NevofluxSDK.agent.cancel(sessionId);
 ```
 
-**System commands:**
+**System commands (no model call, no tokens):**
 
 ```javascript
-await NevofluxSDK.agent.sendCommand(command, params);
+const info = await NevofluxSDK.agent.sendCommand('daemon.info', {});
 ```
 
-MCP tools are not directly callable. Use `agent.chat()` to ask the agent to invoke them.
+Returns the command's result. A generated canvas may send `daemon.info`, `skill.list` and `artifact.get` (its own artifact only). A pack dashboard may send exactly the commands it lists in `pack.toml` under `[components.dashboard] capabilities = { commands = [...] }`. Settings, pairing, account, storage and installer commands are never available to a canvas.
+
+To run browser actions or tools without a model call, use `NevofluxSDK.callTool(...)` and `NevofluxSDK.tool.invoke(...)`.
 
 ### Sidebar
 
 ```javascript
 await NevofluxSDK.sidebar.open(); // Open sidebar panel
-await NevofluxSDK.sidebar.send(message); // Send message to sidebar
-await NevofluxSDK.sidebar.notify(type, data); // Typed notification
+await NevofluxSDK.sidebar.send(message); // Send a text message (string, ≤ 4000 chars) to the chat, labelled with this canvas
+await NevofluxSDK.sidebar.notify(title, message); // Show a system notification
 ```
 
 ### System
@@ -317,7 +301,7 @@ Publish and subscribe to events across sessions/canvases. Three delivery modes:
 
 Topic format: colon-separated segments matching `[a-zA-Z0-9_-]{1,64}`, max 8 segments (e.g. `"ui:progress"`, `"ui:notification:done"`).
 
-> **Canvas = Extension surface.** Canvas iframes communicate through the extension background script, so the daemon sees them as `Extension` — not `Wasm`. Use `ui:*` topics for your own app events.
+> **Canvas = Extension surface.** Canvas iframes communicate through the extension background script, so the daemon sees them as `Extension` — not `Wasm`. Use `ui:*` topics for your own app events. Topics starting with `ui:notification`, `ui:soul`, `ui:render` or `ui:tab` are reserved for the browser; publishing to them is refused.
 
 Wildcards in subscribe patterns: `*` matches one segment (e.g. `"ui:notification:*"` matches `"ui:notification:done"`). Wildcards are allowed **within the same prefix** you have permission for (e.g. Extension can subscribe to `ui:notification:*` but not `task:*`). Bare `*` or `**` (cross-prefix) is daemon-internal only.
 
@@ -685,6 +669,8 @@ const extended = await NevofluxSDK.share.extend(shareId, 3600);
 // Delete (revokes access immediately)
 await NevofluxSDK.share.delete(shareId);
 ```
+
+`canvas.share.list` lists only this canvas's shares, and a canvas can extend or delete only its own shares.
 
 If the canvas page loads with URL params `mode=import&share_id=xxx`, `window._nevofluxImportShareId` is set — your app can detect this and prompt the user for the password.
 
@@ -1197,7 +1183,7 @@ Use for complex apps with multiple components and module imports. The canvas bun
 10. `agent.chat()` resolves only after the agent finishes — use `onStream` callback for real-time output
 11. Streaming callbacks (`onStream`, `onToolResult`, `onState`) are optional — omit for simple request-response
 12. Use `sessionId` from a previous result to continue a multi-turn conversation
-13. `agent.chat()` attachments: use `{ name, mime_type, data }` for base64 images, `{ path }` for local files, `{ path, is_directory: true }` for directories
+13. `agent.chat()` attachments: only `{ name, mime_type, data }` images are attached; paths are passed to the agent as text
 14. Image `data` must be **base64 encoded** (no `data:` URI prefix) — use `btoa()` or `FileReader.readAsDataURL()` then strip the prefix
 15. **Events topics** are colon-separated, `[a-zA-Z0-9_-]{1,64}` per segment, max 8 segments. Don't use dots: `"ui:progress"` not `"ui.progress"`
 16. **Events `replaySticky: true`** (default) fires handler once per matching sticky event immediately on subscribe — handle accordingly
