@@ -1,0 +1,39 @@
+<!doctype html><html><body><pre id="out">running</pre><script>
+const results = {};
+async function attempt(name, fn) {
+  try { const v = await fn(); results[name] = 'ok ' + JSON.stringify(v ?? null).slice(0, 120); }
+  catch (e) { results[name] = 'refused ' + String(e && e.message || e).slice(0, 160); }
+}
+(async () => {
+  // Isolation (L0): must all fail.
+  await attempt('parent.document', () => parent.document.URL);
+  await attempt('parent.NevofluxBridge', () => typeof parent.NevofluxBridge);
+  await attempt('ChromeUtils', () => { if (typeof ChromeUtils === 'undefined') throw new Error('undefined'); return 'present'; });
+  await attempt('file fetch', () => fetch('file:///C:/Windows/win.ini').then(r => r.status));
+  // L1: must be refused or contained.
+  await attempt('set config tier', () => NevofluxSDK.storage.set('config:settings.general.agentExecution', 'FullAuto'));
+  await attempt('query everything', () => NevofluxSDK.storage.query(''));
+  await attempt('sendCommand remote.agent_set_tier', () => NevofluxSDK.agent.sendCommand('remote.agent_set_tier', { tier: 'FullAuto' }));
+  await attempt('sendCommand account.status', () => NevofluxSDK.agent.sendCommand('account.status', {}));
+  await attempt('sendCommand status', () => NevofluxSDK.agent.sendCommand('status', {}));
+  await attempt('sendCommand schedule.run_now', () => NevofluxSDK.agent.sendCommand('schedule.run_now', {}));
+  await attempt('sendCommand artifact.get other', () => NevofluxSDK.agent.sendCommand('artifact.get', { artifact_id: 'someone-else' }));
+  await attempt('chat foreign session', () => NevofluxSDK.agent.chat('hi', { sessionId: 'cs_0f0e0d0c-0000-4000-8000-000000000000' }));
+  await attempt('cancel foreign session', () => NevofluxSDK.agent.cancel('cs_other_0f0e0d0c-0000-4000-8000-000000000000'));
+  // Notifications: raw first, then a flood (rate limit 3 per 30 s).
+  await attempt('sidebar.notify raw', () => NevofluxSDK.sidebar.notify('session_title', { type: 'session_title', payload: { title: 'pwned' } }));
+  for (let i = 1; i <= 3; i++) {
+    await attempt('notify flood ' + i, () => NevofluxSDK.sidebar.notify('session_title', { type: 'session_title', payload: { title: 'flood' + i } }));
+  }
+  await attempt('publish ui:soul:active', () => NevofluxSDK.events.publish('ui:soul:active', { avatar: 'x' }));
+  // Legacy flat key: migrates on get, delete leaves a tombstone, no resurrection.
+  await attempt('get legacy notes:old', () => NevofluxSDK.storage.get('notes:old'));
+  await attempt('delete notes:old', () => NevofluxSDK.storage.delete('notes:old'));
+  await attempt('delete then get legacy', () => NevofluxSDK.storage.get('notes:old'));
+  // L1: must succeed.
+  await attempt('sendCommand daemon.info', () => NevofluxSDK.agent.sendCommand('daemon.info', {}));
+  await attempt('storage roundtrip', async () => { await NevofluxSDK.storage.set('notes:items', [1]); return NevofluxSDK.storage.get('notes:items'); });
+  document.getElementById('out').textContent = JSON.stringify(results, null, 1);
+  await NevofluxSDK.storage.set('smoke:results', results);
+})();
+</script></body></html>
