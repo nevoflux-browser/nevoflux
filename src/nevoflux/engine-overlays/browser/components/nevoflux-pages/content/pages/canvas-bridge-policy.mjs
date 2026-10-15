@@ -82,6 +82,9 @@ function requireArtifactId(artifactId) {
   if (typeof artifactId !== 'string' || !artifactId) {
     throw new Error('this canvas has no artifact id');
   }
+  if (artifactId.includes(':')) {
+    throw new Error('an artifact id cannot contain ":"');
+  }
 }
 
 /** The ContentStore key a canvas's storage key lives under. */
@@ -107,26 +110,52 @@ export function legacyKeyReadable(key) {
   return typeof key === 'string' && key.length > 0 && !RESERVED_STORAGE_PREFIXES.some((p) => key.startsWith(p));
 }
 
+/** Value stored under a deleted key so the legacy flat key is not read again. */
+export const TOMBSTONE = Object.freeze({ __nevofluxDeleted: true });
+
+/** Whether a stored value is the deletion marker. */
+export function isTombstone(v) {
+  return !!v && typeof v === 'object' && v.__nevofluxDeleted === true;
+}
+
 /**
- * Combine a canvas's own query results with flat legacy ones.
- * Own entries win; legacy entries that are not shadowed are returned and
- * listed for migration into the namespace.
+ * What storage.get does with the value found under the namespaced key:
+ * 'value' (return it), 'deleted' (return null, never consult the legacy key)
+ * or 'legacy' (absent: try the flat key once and migrate it).
  */
-export function mergeQueryResults(artifactId, own, legacy) {
+export function storageGetPlan(nsValue) {
+  if (nsValue === undefined || nsValue === null) return 'legacy';
+  return isTombstone(nsValue) ? 'deleted' : 'value';
+}
+
+/**
+ * A canvas's own query rows with the namespace stripped and deleted keys
+ * dropped. Query never looks at flat legacy keys (spec section 4).
+ */
+export function ownQueryResults(artifactId, rows) {
   const base = appPrefix(artifactId, '');
-  const out = new Map();
-  for (const r of Array.isArray(own) ? own : []) {
-    if (r && typeof r.key === 'string' && r.key.startsWith(base)) {
-      out.set(r.key.slice(base.length), r.value);
+  const out = [];
+  for (const r of Array.isArray(rows) ? rows : []) {
+    if (r && typeof r.key === 'string' && r.key.startsWith(base) && !isTombstone(r.value)) {
+      out.push({ key: r.key.slice(base.length), value: r.value });
     }
   }
-  const toMigrate = [];
-  for (const r of Array.isArray(legacy) ? legacy : []) {
-    if (!r || !legacyKeyReadable(r.key) || out.has(r.key)) continue;
-    out.set(r.key, r.value);
-    toMigrate.push({ key: r.key, value: r.value });
-  }
-  return { results: [...out].map(([key, value]) => ({ key, value })), toMigrate };
+  return out;
+}
+
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+/** A session id bound to one canvas. */
+export function mintSessionId(artifactId, uuid) {
+  requireArtifactId(artifactId);
+  return `cs_${artifactId}_${uuid}`;
+}
+
+/** Whether `sessionId` was minted for this canvas (prefix, then exactly a UUID). */
+export function isOwnSession(artifactId, sessionId) {
+  if (typeof artifactId !== 'string' || !artifactId || typeof sessionId !== 'string') return false;
+  const prefix = `cs_${artifactId}_`;
+  return sessionId.startsWith(prefix) && UUID_RE.test(sessionId.slice(prefix.length));
 }
 
 /**
@@ -169,9 +198,15 @@ export function sidebarText(args, artifactId) {
   return `[Canvas ${artifactId}] ${raw}`;
 }
 
-/** The fixed-form notification sidebar.notify shows. */
-export function notifyContent(type, data) {
-  const title = (typeof type === 'string' && type ? type : 'Canvas').slice(0, 80);
+/**
+ * The fixed-form notification sidebar.notify shows. With a label the title
+ * names the canvas ("Canvas: <label>"), so the user can tell who is asking.
+ */
+export function notifyContent(type, data, label) {
+  const t = (typeof type === 'string' && type ? type : 'Canvas').slice(0, 80);
+  const l = typeof label === 'string' && label ? label.slice(0, 60) : '';
+  let title = t;
+  if (l) title = t === 'Canvas' ? `Canvas: ${l}` : `Canvas: ${l} — ${t}`;
   let message = '';
   if (typeof data === 'string') message = data;
   else if (data && typeof data === 'object') {

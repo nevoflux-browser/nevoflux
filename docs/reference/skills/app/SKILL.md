@@ -159,7 +159,7 @@ await NevofluxSDK.storage.delete(key); // Remove key
 await NevofluxSDK.storage.query(prefix); // List keys by prefix
 ```
 
-Storage is private to this canvas: keys are stored under the canvas's own namespace, so two canvases never see each other's data and `query('')` lists only this canvas's keys. Keys starting with `config:`, `canvas:`, `session:` or `app:` are reserved and are not read from older data.
+Storage is private to this canvas: keys are stored under the canvas's own namespace, so two canvases never see each other's data and `query('')` lists only this canvas's keys. Keys starting with `config:`, `canvas:`, `session:` or `app:` are reserved and are not read from older data. `query` lists only keys stored in this canvas's namespace; data from before namespacing is readable with `get` alone. Deleting a key (or setting it to null) keeps it deleted. Artifact ids cannot contain `:`.
 
 ### Browser Tools (via callTool)
 
@@ -264,7 +264,7 @@ const r2 = await NevofluxSDK.agent.chat('now download the first one', {
 **Cancel a running request:**
 
 ```javascript
-NevofluxSDK.agent.cancel(sessionId);
+NevofluxSDK.agent.cancel(sessionId); // only sessions this canvas started
 ```
 
 **System commands (no model call, no tokens):**
@@ -282,7 +282,7 @@ To run browser actions or tools without a model call, use `NevofluxSDK.callTool(
 ```javascript
 await NevofluxSDK.sidebar.open(); // Open sidebar panel
 await NevofluxSDK.sidebar.send(message); // Send a text message (string, ≤ 4000 chars) to the chat, labelled with this canvas
-await NevofluxSDK.sidebar.notify(title, message); // Show a system notification
+await NevofluxSDK.sidebar.notify(title, message); // Show a system notification titled with this canvas's name (max 3 per 30 s)
 ```
 
 ### System

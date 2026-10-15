@@ -16,6 +16,10 @@ import { mayResendAfterInjection } from './click-policy.mjs';
 import { refRoute, fillValue } from './ref-routing.mjs';
 import { osNotificationContent, mayShowOsNotification } from './notify-gate.mjs';
 import { commandVerdict } from './canvas-command-gate.mjs';
+import { allowCanvasNotify } from './canvas-notify-limit.mjs';
+
+// Recent canvas:notify times per artifact id (rolling rate limit).
+const canvasNotifyHistory = new Map();
 import { isAgentRequest, agentTabRefusal, agentRequestIsTabless, agentTabUrlAllowed, agentActivateTabRefusal, newTabActive, agentPrivateTabRefusal, agentWindowId, agentNoWindowRefusal, withoutPrivateWindowTabs, agentTabsToMark } from './agent-route.mjs';
 import {
   NetworkCapture,
@@ -3112,7 +3116,17 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
         case 'canvas:notify': {
           // sidebar.notify from a canvas: a plain OS notification with the
           // fixed title/message canvas.js built, never a raw sidebar message.
-          const { title, message } = payload || {};
+          const { title, message, artifact_id: notifyArtifactId } = payload || {};
+          if (!allowCanvasNotify(canvasNotifyHistory, notifyArtifactId, Date.now())) {
+            result = {
+              success: false,
+              error: {
+                code: 'RATE_LIMITED',
+                message: 'this canvas has sent too many notifications; try again shortly',
+              },
+            };
+            break;
+          }
           await browser.notifications.create(`nevoflux-canvas-${Date.now()}`, {
             type: 'basic',
             iconUrl: browser.runtime.getURL('icons/icon-48.png'),

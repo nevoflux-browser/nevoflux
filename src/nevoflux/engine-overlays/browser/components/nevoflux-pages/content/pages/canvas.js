@@ -912,7 +912,11 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
         console.info('[Canvas] Calling bridge.callTool:', args.action);
         return bridge.callTool(args.action, args.params);
       case 'agent.chat': {
-        const sessionId = args.sessionId || `cs_${crypto.randomUUID()}`;
+        if (args.sessionId && !policy.isOwnSession(this._artifactId, args.sessionId)) {
+          throw new Error('NOT_OWN_SESSION: a canvas may only use sessions it started');
+        }
+        const sessionId =
+          args.sessionId || policy.mintSessionId(this._artifactId, crypto.randomUUID());
         const chatPayload = { ...policy.chatRequest(args), sessionId };
         console.info('[Canvas] Sending agent:chat via bridge, sessionId:', sessionId);
 
@@ -930,6 +934,9 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
       case 'agent.cancel': {
         const { sessionId } = args;
         if (sessionId) {
+          if (!policy.isOwnSession(this._artifactId, sessionId)) {
+            throw new Error('NOT_OWN_SESSION: a canvas may only cancel sessions it started');
+          }
           NevofluxPage.sendMessage('agent:unsubscribe', { sessionId });
           await NevofluxPage.sendQuery('bridge:request', {
             type: 'agent:cancel',
@@ -969,7 +976,10 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
       case 'sidebar.notify': {
         const res = await NevofluxPage.sendQuery('bridge:request', {
           type: 'canvas:notify',
-          payload: policy.notifyContent(args.type, args.data),
+          payload: {
+            ...policy.notifyContent(args.type, args.data, this._artifact?.title || this._artifactId),
+            artifact_id: this._artifactId,
+          },
         });
         policy.unwrapBridgeResult(res, 'sidebar.notify');
         return true;
@@ -977,7 +987,9 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
       case 'storage.get': {
         const key = policy.appKey(this._artifactId, args.key);
         const res = await bridge.storage.get(key);
-        if (res?.value !== undefined && res?.value !== null) return res.value;
+        const plan = policy.storageGetPlan(res?.value);
+        if (plan === 'value') return res.value;
+        if (plan === 'deleted') return null;
         // Data written before storage was namespaced: read the flat key once
         // and move it into this canvas's namespace.
         if (!policy.legacyKeyReadable(args.key)) return null;
@@ -987,23 +999,20 @@ html, body { overflow: hidden; margin: 0; padding: 0; width: 100vw; height: 100v
         return value;
       }
       case 'storage.set': {
-        await bridge.storage.set(policy.appKey(this._artifactId, args.key), args.value);
+        // null/undefined is a delete; the tombstone stops the legacy flat key
+        // from being read back in.
+        const value = args.value === undefined || args.value === null ? policy.TOMBSTONE : args.value;
+        await bridge.storage.set(policy.appKey(this._artifactId, args.key), value);
         return true;
       }
       case 'storage.delete': {
-        const res = await bridge.storage.delete(policy.appKey(this._artifactId, args.key));
-        return res?.success ?? false;
+        await bridge.storage.set(policy.appKey(this._artifactId, args.key), policy.TOMBSTONE);
+        return true;
       }
       case 'storage.query': {
+        // Own namespace only; legacy flat keys are readable through get alone.
         const own = (await bridge.storage.query(policy.appPrefix(this._artifactId, args.prefix)))?.results ?? [];
-        const legacy = policy.legacyKeyReadable(args.prefix)
-          ? (await bridge.storage.query(args.prefix))?.results ?? []
-          : [];
-        const merged = policy.mergeQueryResults(this._artifactId, own, legacy);
-        for (const r of merged.toMigrate) {
-          await bridge.storage.set(policy.appKey(this._artifactId, r.key), r.value);
-        }
-        return merged.results;
+        return policy.ownQueryResults(this._artifactId, own);
       }
       case 'system.getInfo':
         return bridge.system.getInfo();

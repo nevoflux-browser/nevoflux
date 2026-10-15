@@ -9,7 +9,12 @@ import {
   appKey,
   appPrefix,
   legacyKeyReadable,
-  mergeQueryResults,
+  TOMBSTONE,
+  isTombstone,
+  storageGetPlan,
+  ownQueryResults,
+  mintSessionId,
+  isOwnSession,
   chatRequest,
   sidebarText,
   notifyContent,
@@ -63,23 +68,59 @@ describe('canvas-bridge-policy: storage', () => {
     expect(() => appKey('a1', 42)).toThrow();
     expect(() => appPrefix(null, 'x')).toThrow();
   });
+  it('refuses an artifact id containing a colon', () => {
+    expect(() => appKey('a:b', 'k')).toThrow();
+    expect(() => appPrefix('a:b', 'k')).toThrow();
+  });
   it('legacy fallback reads a non-reserved flat key', () => {
     expect(legacyKeyReadable('notes:items')).toBe(true);
     for (const k of ['config:settings', 'canvas:x', 'session:y', 'app:other:k', '', undefined]) {
       expect(legacyKeyReadable(k)).toBe(false);
     }
   });
-  it('legacy query never surfaces reserved keys', () => {
-    const own = [{ key: 'app:a1:notes:1', value: 1 }, { key: 'app:b2:notes:1', value: 'other app' }];
-    const legacy = [
-      { key: 'notes:1', value: 'old' },
-      { key: 'notes:2', value: 2 },
+  it('query returns own namespace only, stripped, without tombstones', () => {
+    const rows = [
+      { key: 'app:a1:notes:1', value: 1 },
+      { key: 'app:a1:gone', value: TOMBSTONE },
+      { key: 'app:b2:notes:1', value: 'other app' },
+      { key: 'notes:2', value: 'legacy' },
       { key: 'config:settings', value: 'secret' },
-      { key: 'canvas:x', value: 'artifact' },
     ];
-    const { results, toMigrate } = mergeQueryResults('a1', own, legacy);
-    expect(results).toEqual([{ key: 'notes:1', value: 1 }, { key: 'notes:2', value: 2 }]);
-    expect(toMigrate).toEqual([{ key: 'notes:2', value: 2 }]);
+    expect(ownQueryResults('a1', rows)).toEqual([{ key: 'notes:1', value: 1 }]);
+    expect(ownQueryResults('a1', undefined)).toEqual([]);
+  });
+  it('recognises the tombstone only', () => {
+    expect(isTombstone(TOMBSTONE)).toBe(true);
+    expect(isTombstone({ __nevofluxDeleted: true })).toBe(true);
+    for (const v of [null, undefined, 0, '', 'x', {}, { __nevofluxDeleted: false }, [], false]) {
+      expect(isTombstone(v)).toBe(false);
+    }
+  });
+  it('get after delete is deleted and does not consult legacy', () => {
+    expect(storageGetPlan(TOMBSTONE)).toBe('deleted');
+    expect(storageGetPlan(undefined)).toBe('legacy');
+    expect(storageGetPlan(null)).toBe('legacy');
+    expect(storageGetPlan(0)).toBe('value');
+    expect(storageGetPlan({ a: 1 })).toBe('value');
+  });
+});
+
+describe('canvas-bridge-policy: sessions', () => {
+  const U = '123e4567-e89b-12d3-a456-426614174000';
+  it('mints ids bound to the canvas', () => {
+    expect(mintSessionId('a1', U)).toBe(`cs_a1_${U}`);
+    expect(isOwnSession('a1', mintSessionId('a1', U))).toBe(true);
+    expect(isOwnSession('a1', `cs_a1_${U.toUpperCase()}`)).toBe(true);
+  });
+  it('refuses foreign, prefix-collision and malformed ids', () => {
+    expect(isOwnSession('a1', `cs_${U}`)).toBe(false);
+    expect(isOwnSession('a', `cs_a_b_${U}`)).toBe(false);
+    expect(isOwnSession('a_b', `cs_a_b_${U}`)).toBe(true);
+    expect(isOwnSession('a1', `cs_a2_${U}`)).toBe(false);
+    expect(isOwnSession('a1', `cs_a1_${U}x`)).toBe(false);
+    expect(isOwnSession('a1', 'cs_a1_')).toBe(false);
+    for (const v of [undefined, null, 42, {}, '']) expect(isOwnSession('a1', v)).toBe(false);
+    expect(isOwnSession('', `cs__${U}`)).toBe(false);
   });
 });
 
@@ -119,6 +160,11 @@ describe('canvas-bridge-policy: sidebar', () => {
     expect(notifyContent(undefined, { type: 'session_title', payload: {} })).toEqual({ title: 'Canvas', message: '' });
     expect(notifyContent('x'.repeat(200), 'y'.repeat(500)).title.length).toBe(80);
     expect(notifyContent('t', 'y'.repeat(500)).message.length).toBe(300);
+  });
+  it('notify title names the canvas when a label is given', () => {
+    expect(notifyContent(undefined, 'hi', 'Sales')).toEqual({ title: 'Canvas: Sales', message: 'hi' });
+    expect(notifyContent('Saved', 'hi', 'Sales').title).toBe('Canvas: Sales \u2014 Saved');
+    expect(notifyContent('t', 'x', 'l'.repeat(100)).title.length).toBeLessThan(100);
   });
 });
 
