@@ -111,3 +111,7 @@ export function checkActorMessage(uriSpec, name, data) {
   if (name === 'bridge:request') return checkBridgeRequest(page, data?.type, data?.payload);
   return ALLOW;
 }
+
+// NevofluxParent reaches this module through a lazy getter named after it
+// (ChromeUtils.defineESModuleGetters), which resolves this export by name.
+export const NevofluxBridgePolicy = Object.freeze({ pageOf, checkActorMessage });

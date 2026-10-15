@@ -3,7 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from './test-runner.mjs';
-import { pageOf, checkActorMessage } from '../../engine-overlays/browser/modules/NevofluxBridgePolicy.sys.mjs';
+import { pageOf, checkActorMessage, NevofluxBridgePolicy } from '../../engine-overlays/browser/modules/NevofluxBridgePolicy.sys.mjs';
+import { readFileSync } from 'node:fs';
 
 const CANVAS = 'nevoflux://canvas/abc';
 const SETTINGS = 'nevoflux://settings';
@@ -88,5 +89,16 @@ describe('checkActorMessage', () => {
     ok(checkActorMessage(CANVAS, 'canvas:capturePng', {}));
     ok(checkActorMessage('nevoflux://home', 'contentStore:query', { prefix: 'session:' }));
     no(checkActorMessage(CANVAS, 'bridge:request', req('')));
+  });
+});
+
+describe('NevofluxParent wiring', () => {
+  it('exports the object that the NevofluxParent lazy getter names', () => {
+    const parent = readFileSync(new URL('../../engine-overlays/browser/actors/NevofluxParent.sys.mjs', import.meta.url), 'utf8');
+    expect(parent).toContain("NevofluxBridgePolicy: 'resource:///modules/NevofluxBridgePolicy.sys.mjs'");
+    expect(parent).toContain('lazy.NevofluxBridgePolicy.checkActorMessage(');
+    expect(typeof NevofluxBridgePolicy.checkActorMessage).toBe('function');
+    expect(NevofluxBridgePolicy.checkActorMessage).toBe(checkActorMessage);
+    expect(NevofluxBridgePolicy.pageOf).toBe(pageOf);
   });
 });
