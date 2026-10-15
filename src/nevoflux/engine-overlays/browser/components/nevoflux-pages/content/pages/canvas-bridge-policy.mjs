@@ -68,6 +68,12 @@ const FORBIDDEN_COMMANDS = new Set([
   'session.delete',
   'session.clone',
   'file.pick',
+  'status',
+  'tabs.list',
+  'usage.export_calls',
+  'brain.share_create',
+  'brain.share_import_url',
+  'skill.reload',
 ]);
 
 /** Whether no canvas may send this daemon command, declared or not. */

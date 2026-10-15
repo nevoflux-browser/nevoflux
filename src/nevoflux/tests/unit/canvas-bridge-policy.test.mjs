@@ -44,7 +44,8 @@ describe('canvas-bridge-policy: commands', () => {
   it('forbids settings, pairing, accounts and the rest of the permanent list', () => {
     for (const c of ['config.llm.set', 'remote.agent_set_tier', 'account.status', 'content_store.set',
       'soul.write', 'local.install', 'kb.wizard.install_bun', 'mcp.add', 'pack.install', 'jev.set',
-      'models.download', 'session.delete', 'session.clone', 'file.pick']) {
+      'models.download', 'session.delete', 'session.clone', 'file.pick',
+      'status', 'tabs.list', 'usage.export_calls', 'brain.share_create', 'brain.share_import_url', 'skill.reload']) {
       expect(isForbiddenCommand(c)).toBe(true);
     }
   });
