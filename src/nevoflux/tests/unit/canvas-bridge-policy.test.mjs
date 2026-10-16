@@ -211,4 +211,12 @@ describe('canvas-bridge-policy: unwrapBridgeResult', () => {
     expect(() => unwrapBridgeResult({ success: true, data: { success: false, error: { message: 'FORBIDDEN_COMMAND: no' } } }, 'x')).toThrow();
     expect(() => unwrapBridgeResult(null, 'x')).toThrow();
   });
+  it('keeps a structured error code in the thrown message, once', () => {
+    const msg = (res) => { try { unwrapBridgeResult(res, 'x'); } catch (e) { return e.message; } return null; };
+    expect(msg({ success: false, error: { code: 'RATE_LIMITED', message: 'too many' } })).toBe('RATE_LIMITED: too many');
+    expect(msg({ success: true, data: { success: false, error: { code: 'RATE_LIMITED', message: 'too many' } } })).toBe('RATE_LIMITED: too many');
+    expect(msg({ success: false, error: { code: 'FORBIDDEN_COMMAND', message: 'FORBIDDEN_COMMAND: no' } })).toBe('FORBIDDEN_COMMAND: no');
+    expect(msg({ success: false, error: { code: 'RATE_LIMITED' } })).toBe('RATE_LIMITED: x failed');
+    expect(msg({ success: false, error: { message: 'refused' } })).toBe('refused');
+  });
 });

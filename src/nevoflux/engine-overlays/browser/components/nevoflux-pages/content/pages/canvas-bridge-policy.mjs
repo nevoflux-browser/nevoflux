@@ -265,13 +265,24 @@ export function isOwnShare(listResult, artifactId, shareId) {
  * Unwrap a bridge:request answer. The parent actor wraps background's result
  * ({success, data|error}) in its own {success, data}; either layer can fail.
  */
+// Canvas code tells refusals apart by the `CODE: ` prefix, so a structured
+// error code is folded into the message unless it already leads it.
+function bridgeError(error, label) {
+  const message = error?.message || `${label} failed`;
+  const code = error?.code;
+  if (typeof code === 'string' && code && !message.startsWith(`${code}:`)) {
+    return new Error(`${code}: ${message}`);
+  }
+  return new Error(message);
+}
+
 export function unwrapBridgeResult(res, label) {
   if (!res || res.success === false) {
-    throw new Error(res?.error?.message || `${label} failed`);
+    throw bridgeError(res?.error, label);
   }
   const inner = res.data;
   if (inner && typeof inner === 'object' && 'success' in inner) {
-    if (inner.success === false) throw new Error(inner.error?.message || `${label} failed`);
+    if (inner.success === false) throw bridgeError(inner.error, label);
     return inner.data;
   }
   return inner;
