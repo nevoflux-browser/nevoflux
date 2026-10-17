@@ -210,21 +210,19 @@ fn PairedAgentRow(row: AgentRow) -> Element {
             }
         }
         div { class: "paired-agent-setting",
-            label { class: "paired-agent-toggle",
-                input {
-                    r#type: "checkbox",
-                    role: "switch",
-                    checked: guarded,
-                    disabled: is_busy,
-                    aria_label: "{guarded_aria}",
-                    aria_describedby: "{guarded_id}",
-                    // The snapshot decides; undo the browser's own flip.
-                    onclick: move |evt: MouseEvent| {
-                        evt.prevent_default();
-                        set_guarded();
-                    },
-                }
-                "{GUARDED_TOGGLE_LABEL}"
+            // A switch button, not a checkbox: nothing flips on click, so what
+            // it shows is always the snapshot's. Enter and Space press it.
+            button {
+                class: "paired-agent-toggle",
+                r#type: "button",
+                role: "switch",
+                aria_checked: "{guarded}",
+                disabled: is_busy,
+                aria_label: "{guarded_aria}",
+                aria_describedby: "{guarded_id}",
+                onclick: move |_| set_guarded(),
+                span { class: "paired-agent-switch", aria_hidden: "true" }
+                span { "{GUARDED_TOGGLE_LABEL}" }
             }
             div { id: "{guarded_id}", class: "paired-agent-help", "{GUARDED_TOGGLE_HELP}" }
         }
@@ -392,5 +390,41 @@ pub fn TaskSessionBanner() -> Element {
             div { class: "task-session-banner", role: "status", "{text}" }
         },
         None => rsx! {},
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // The component has no render harness here, so its markup is checked in
+    // its source. Needles are split with concat! so this module does not
+    // match itself.
+    const SRC: &str = include_str!("paired_agent_bar.rs");
+
+    /// The "Let Muse approve sensitive actions" control, from its container
+    /// to the help line.
+    fn guarded_setting() -> &'static str {
+        let start = SRC.find(concat!("class: \"paired-agent-", "setting\"")).expect("setting");
+        let end = SRC[start..].find(concat!("id: \"{guarded", "_id}\"")).expect("help") + start;
+        &SRC[start..end]
+    }
+
+    #[test]
+    fn the_guarded_switch_is_an_aria_switch_button_showing_the_snapshot() {
+        let s = guarded_setting();
+        let button = s.find(concat!("button", " {")).expect("a button");
+        let rest = &s[button..];
+        assert!(rest.contains(concat!("role: \"", "switch\"")));
+        assert!(rest.contains(concat!("aria_checked: \"{", "guarded}\"")));
+        assert!(rest.contains(concat!("aria_label: \"{guarded", "_aria}\"")));
+        assert!(rest.contains(concat!("aria_describedby: \"{guarded", "_id}\"")));
+        assert!(rest.contains(concat!("\"{GUARDED_TOGGLE", "_LABEL}\"")));
+    }
+
+    #[test]
+    fn the_guarded_switch_has_no_native_checkbox_to_undo() {
+        let s = guarded_setting();
+        assert!(!s.contains(concat!("\"check", "box\"")));
+        assert!(!s.contains(concat!("checked", ": guarded")));
+        assert!(!SRC.contains(concat!("prevent", "_default")));
     }
 }
