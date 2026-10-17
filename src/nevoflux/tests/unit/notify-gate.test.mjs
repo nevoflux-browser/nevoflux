@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import {
   mayShowOsNotification,
   osNotificationContent,
+  needsSidebarCheck,
 } from '../../extensions/nevoflux-agent/background/notify-gate.mjs';
 
 describe('mayShowOsNotification', () => {
@@ -80,9 +81,10 @@ describe('background.js handleUserNotification', () => {
       new URL('../../extensions/nevoflux-agent/background/background.js', import.meta.url),
       'utf8'
     ).replace(/\r\n/g, '\n');
-    expect(bg.includes("import { osNotificationContent, mayShowOsNotification } from './notify-gate.mjs';")).toBe(
-      true
-    );
+    expect(
+      bg.includes("import { osNotificationContent, mayShowOsNotification, needsSidebarCheck } from './notify-gate.mjs';")
+    ).toBe(true);
+    expect(bg.includes('if (needsSidebarCheck(data.source) && focusedWindowId !== null) {')).toBe(true);
     const start = bg.indexOf('async function handleUserNotification(event) {');
     expect(start).toBeGreaterThan(0);
     const fn = bg.slice(start, bg.indexOf('\n}\n', start));
@@ -94,5 +96,41 @@ describe('background.js handleUserNotification', () => {
     const dedupe = fn.indexOf('notifySeenEventIds.includes(eventId)');
     expect(dedupe).toBeGreaterThan(0);
     expect(dedupe < fn.indexOf('osNotificationContent(data)')).toBe(true);
+  });
+});
+
+describe('agent_task notifications (M3 R24)', () => {
+  const task = {
+    event_id: 't-e1',
+    source: 'agent_task',
+    title: 'Task from Muse finished',
+    body: 'Generate a calculator Canvas',
+    outcome: 'done',
+    task_id: 'task-1',
+    session_id: 's-1',
+  };
+
+  it('a task outcome follows the approval rule', () => {
+    expect(mayShowOsNotification('agent_task', false, true)).toBe(true);
+    expect(mayShowOsNotification('agent_task', true, false)).toBe(true);
+    expect(mayShowOsNotification('agent_task', true, true)).toBe(false);
+  });
+
+  it('a task outcome shows its summary under its title', () => {
+    expect(osNotificationContent(task)).toEqual({
+      title: 'Task from Muse finished',
+      message: 'Generate a calculator Canvas',
+    });
+    expect(osNotificationContent({ ...task, body: '' })).toEqual({
+      title: 'Task from Muse finished',
+      message: 'Task from Muse finished',
+    });
+  });
+
+  it('only approval and task outcomes ask whether the sidebar is open', () => {
+    expect(needsSidebarCheck('agent_task')).toBe(true);
+    expect(needsSidebarCheck('agent_approval')).toBe(true);
+    expect(needsSidebarCheck('notify_user')).toBe(false);
+    expect(needsSidebarCheck(undefined)).toBe(false);
   });
 });

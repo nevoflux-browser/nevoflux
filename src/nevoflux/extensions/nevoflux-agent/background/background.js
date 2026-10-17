@@ -14,7 +14,7 @@ import { promptFor } from './avatar-prompt-policy.mjs';
 import { checkWebSession } from './web-session.mjs';
 import { mayResendAfterInjection } from './click-policy.mjs';
 import { refRoute, fillValue } from './ref-routing.mjs';
-import { osNotificationContent, mayShowOsNotification } from './notify-gate.mjs';
+import { osNotificationContent, mayShowOsNotification, needsSidebarCheck } from './notify-gate.mjs';
 import { commandVerdict } from './canvas-command-gate.mjs';
 import { allowCanvasNotify } from './canvas-notify-limit.mjs';
 import { recordSessionOrigin, isDelegated, askIsDelegated, askHoldMs, CanvasTabs, canvasOpenPlan, canvasChatSessionFor, applyStatusSnapshot, StatusSnapshotGate, SessionQueue } from './delegation.mjs';
@@ -510,7 +510,7 @@ async function handleUserNotification(event) {
     focusedWindowId = null;
   }
   let sidebarOpen = true;
-  if (data.source === 'agent_approval' && focusedWindowId !== null) {
+  if (needsSidebarCheck(data.source) && focusedWindowId !== null) {
     try {
       sidebarOpen = await browser.sidebarAction.isOpen({ windowId: focusedWindowId });
     } catch (e) {
