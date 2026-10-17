@@ -2268,7 +2268,7 @@ export class NevofluxChild extends JSWindowActorChild {
     }
   }
 
-  async screenshot({ fullPage = false, type = 'jpeg', quality = 60, maxWidth = 1280 }) {
+  async screenshot({ fullPage = false, type = 'jpeg', quality = 60, maxWidth = 1280, maxHeight = 0 }) {
     const win = this.contentWindow;
     const doc = this.document;
 
@@ -2310,6 +2310,19 @@ export class NevofluxChild extends JSWindowActorChild {
         outCtx.imageSmoothingEnabled = true;
         outCtx.imageSmoothingQuality = 'high';
         outCtx.drawImage(srcCanvas, 0, 0, outputWidth, outputHeight);
+      }
+
+      // Keep only the top maxHeight rows (0 = no limit). The task result
+      // screenshot (M3 §5) caps height at 2400 px; nothing else passes it.
+      if (maxHeight > 0 && outputHeight > maxHeight) {
+        const cropped = doc.createElement('canvas');
+        cropped.width = outputWidth;
+        cropped.height = maxHeight;
+        cropped
+          .getContext('2d')
+          .drawImage(outputCanvas, 0, 0, outputWidth, maxHeight, 0, 0, outputWidth, maxHeight);
+        outputCanvas = cropped;
+        outputHeight = maxHeight;
       }
 
       // Convert to data URL - default JPEG for much smaller size

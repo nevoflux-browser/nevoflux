@@ -1847,6 +1847,40 @@
         }
       },
       {
+        "name": "captureTaskScreenshot",
+        "type": "function",
+        "async": "promise",
+        "description": "One JPEG of a tab for a finished delegated task (M3). Never selects, activates or restores the tab; a Canvas tab is drawn from its preview frame. Fails with tab_closed, tab_discarded or capture_failed.",
+        "parameters": [
+          {
+            "name": "tabId",
+            "type": "integer"
+          },
+          {
+            "name": "options",
+            "type": "object",
+            "optional": true,
+            "properties": {
+              "quality": {
+                "type": "integer",
+                "optional": true
+              },
+              "maxWidth": {
+                "type": "integer",
+                "optional": true
+              },
+              "maxHeight": {
+                "type": "integer",
+                "optional": true
+              }
+            }
+          }
+        ],
+        "returns": {
+          "$ref": "ApiResult"
+        }
+      },
+      {
         "name": "getSpaces",
         "type": "function",
         "async": "promise",

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from './test-runner.mjs';
 import {
   SYSTEM_ORIGIN,
@@ -186,5 +187,139 @@ describe('canvasTabForArtifact', () => {
     expect(canvasTabForArtifact(tabs, 'zz')).toBeNull();
     expect(canvasTabForArtifact(tabs, '')).toBeNull();
     expect(canvasTabForArtifact(null, 'a1')).toBeNull();
+  });
+});
+
+const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const PARENT = '../../engine-overlays/browser/components/extensions/parent/ext-nevoflux.js';
+const SCHEMA = '../../engine-overlays/browser/components/extensions/schemas/nevoflux.json';
+const CHILD = '../../engine-overlays/browser/actors/NevofluxChild.sys.mjs';
+
+// The real method out of ext-nevoflux.js, run against fakes. The file is a
+// privileged parent script Node cannot load whole; this method only touches
+// `extension`, `self` and (on the Canvas path, not exercised here) ChromeUtils.
+function loadCaptureTaskScreenshot(extension, self) {
+  const src = read(PARENT);
+  const start = src.indexOf('        async captureTaskScreenshot(tabId, options) {');
+  if (start < 0) {
+    throw new Error('captureTaskScreenshot not found in ext-nevoflux.js');
+  }
+  const end = src.indexOf('\n        },\n', start);
+  const method = src.slice(start, end + '\n        }'.length);
+  // eslint-disable-next-line no-new-func
+  return new Function('extension', 'self', 'ChromeUtils', `return ({\n${method}\n}).captureTaskScreenshot;`)(
+    extension,
+    self,
+    {}
+  );
+}
+
+function fakeTab(url, extra = {}) {
+  return { closing: false, isConnected: true, linkedBrowser: { currentURI: { spec: url } }, ...extra };
+}
+
+function fakeWorld(tabs, childResult) {
+  const calls = { execute: [], restored: 0 };
+  const extension = {
+    tabManager: {
+      get(id) {
+        if (!tabs.has(id)) throw new Error(`Invalid tab ID: ${id}`);
+        return { nativeTab: tabs.get(id) };
+      },
+    },
+  };
+  const self = {
+    isTabDiscarded: (t) => t.discarded === true,
+    restoreTabIfNeeded: async () => {
+      calls.restored++;
+      return true;
+    },
+    executeInTabWithRestore: async (tabId, ext, action, params, options) => {
+      calls.execute.push({ tabId, action, params, options });
+      return childResult;
+    },
+  };
+  return { capture: loadCaptureTaskScreenshot(extension, self), calls };
+}
+
+describe('captureTaskScreenshot experiment API', () => {
+  it('the schema declares captureTaskScreenshot(tabId: integer, options?: object)', () => {
+    const ns = JSON.parse(read(SCHEMA)).find((n) => n.namespace === 'nevoflux');
+    const fn = ns.functions.find((f) => f.name === 'captureTaskScreenshot');
+    expect(fn === undefined).toBe(false);
+    expect(fn.async).toBe('promise');
+    expect(fn.parameters.map((p) => `${p.name}:${p.type}:${p.optional === true}`)).toEqual([
+      'tabId:integer:false',
+      'options:object:true',
+    ]);
+    expect(Object.keys(fn.parameters[1].properties)).toEqual(['quality', 'maxWidth', 'maxHeight']);
+  });
+
+  it('an unknown, closing or detached tab is tab_closed', async () => {
+    const { capture, calls } = fakeWorld(
+      new Map([
+        [8, fakeTab('https://a.example/', { closing: true })],
+        [9, fakeTab('https://b.example/', { isConnected: false })],
+      ]),
+      { success: true }
+    );
+    for (const id of [99, 8, 9]) {
+      expect(await capture(id, {})).toEqual({
+        success: false,
+        error: { code: -1, message: 'tab_closed', recoverable: false },
+      });
+    }
+    expect(calls.execute.length).toBe(0);
+  });
+
+  it('a discarded tab is reported, never restored or selected', async () => {
+    const { capture, calls } = fakeWorld(
+      new Map([[5, fakeTab('https://a.example/', { discarded: true })]]),
+      { success: true, data: 'QUJD', width: 1, height: 1 }
+    );
+    expect(await capture(5, { quality: 60 })).toEqual({
+      success: false,
+      error: { code: -1, message: 'tab_discarded', recoverable: false },
+    });
+    expect(calls.execute.length).toBe(0);
+    expect(calls.restored).toBe(0);
+  });
+
+  it('a web tab is drawn by the child, viewport only, with autoRestore off', async () => {
+    const { capture, calls } = fakeWorld(
+      new Map([[5, fakeTab('https://a.example/')]]),
+      { success: true, data: 'QUJD', width: 1280, height: 700, mimeType: 'image/jpeg' }
+    );
+    const res = await capture(5, { quality: 40, maxWidth: 1280, maxHeight: 2400 });
+    expect(res).toEqual({ success: true, data: 'QUJD', width: 1280, height: 700, tabKind: 'web' });
+    expect(calls.execute).toEqual([
+      {
+        tabId: 5,
+        action: 'screenshot',
+        params: { fullPage: false, type: 'jpeg', quality: 40, maxWidth: 1280, maxHeight: 2400 },
+        options: { autoRestore: false },
+      },
+    ]);
+  });
+
+  it('the child skipping a discarded tab (5008) is tab_discarded; anything else capture_failed', async () => {
+    const skipped = fakeWorld(new Map([[5, fakeTab('https://a.example/')]]), {
+      success: false,
+      error: { code: 5008, message: 'Tab is discarded; skipped to preserve focus' },
+    });
+    expect((await skipped.capture(5, {})).error).toEqual({ code: -1, message: 'tab_discarded', recoverable: false });
+    const broken = fakeWorld(new Map([[5, fakeTab('https://a.example/')]]), {
+      success: false,
+      error: { code: 5003, message: 'Screenshot failed: x' },
+    });
+    expect((await broken.capture(5, {})).error).toEqual({ code: -1, message: 'capture_failed', recoverable: false });
+  });
+
+  it('the child crops to maxHeight, keeping the top', () => {
+    const child = read(CHILD);
+    expect(
+      child.includes("async screenshot({ fullPage = false, type = 'jpeg', quality = 60, maxWidth = 1280, maxHeight = 0 }) {")
+    ).toBe(true);
+    expect(child.includes('if (maxHeight > 0 && outputHeight > maxHeight) {')).toBe(true);
   });
 });

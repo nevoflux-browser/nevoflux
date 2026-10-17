@@ -1035,6 +1035,92 @@ this.nevoflux = class extends ExtensionAPI {
           return { success: true };
         },
 
+        // ========== Task result screenshot (M3 §5, contract §7) ==========
+
+        // One JPEG of a tab for a finished delegated task. It never selects,
+        // activates or restores a tab: a discarded tab is reported, not woken
+        // (the restore fallback selects it and steals focus). A Canvas tab is
+        // drawn from its preview frame here in the parent, because that frame
+        // is out of process and the child's drawWindow paints it blank; a web
+        // tab uses the child's drawWindow, viewport only. Errors are
+        // tab_closed, tab_discarded or capture_failed; the caller owns the
+        // byte budget and too_large.
+        async captureTaskScreenshot(tabId, options) {
+          const opts = options || {};
+          const quality = Math.min(100, Math.max(1, Math.round(Number(opts.quality) || 60)));
+          const maxWidth = Math.min(4096, Math.max(1, Math.round(Number(opts.maxWidth) || 1280)));
+          const maxHeight = Math.min(4096, Math.max(1, Math.round(Number(opts.maxHeight) || 2400)));
+          const fail = (message) => ({ success: false, error: { code: -1, message, recoverable: false } });
+          let nativeTab = null;
+          try {
+            nativeTab = extension.tabManager.get(tabId)?.nativeTab ?? null;
+          } catch (e) {
+            nativeTab = null;
+          }
+          if (!nativeTab || nativeTab.closing || !nativeTab.isConnected) {
+            return fail('tab_closed');
+          }
+          if (self.isTabDiscarded(nativeTab)) {
+            return fail('tab_discarded');
+          }
+          const url = nativeTab.linkedBrowser?.currentURI?.spec || '';
+          if (!url.startsWith('nevoflux://canvas/')) {
+            const shot = await self.executeInTabWithRestore(
+              tabId,
+              extension,
+              'screenshot',
+              { fullPage: false, type: 'jpeg', quality, maxWidth, maxHeight },
+              { autoRestore: false }
+            );
+            if (!shot?.success) {
+              return fail(shot?.error?.code === 5008 ? 'tab_discarded' : 'capture_failed');
+            }
+            return { success: true, data: shot.data, width: shot.width, height: shot.height, tabKind: 'web' };
+          }
+          try {
+            const { setTimeout: later } = ChromeUtils.importESModule(
+              'resource://gre/modules/Timer.sys.mjs'
+            );
+            const frame = (nativeTab.linkedBrowser.browsingContext?.children || [])[0];
+            if (!frame) {
+              return fail('capture_failed');
+            }
+            // The preview frame's window global appears once it has loaded
+            // (usually well under a second); allow up to 3 s.
+            let wgp = frame.currentWindowGlobal;
+            for (let i = 0; i < 60 && !wgp; i++) {
+              await new Promise((resolve) => later(resolve, 50));
+              wgp = frame.currentWindowGlobal;
+            }
+            if (!wgp) {
+              return fail('capture_failed');
+            }
+            // A null rect draws the frame's visible viewport, which is what the
+            // person would see; a long page is not captured whole (spec §5).
+            const bitmap = await wgp.drawSnapshot(null, 1, 'rgb(255,255,255)');
+            if (!bitmap.width || !bitmap.height) {
+              return fail('capture_failed');
+            }
+            const scale = Math.min(1, maxWidth / bitmap.width);
+            const width = Math.max(1, Math.round(bitmap.width * scale));
+            const height = Math.max(1, Math.min(maxHeight, Math.round(bitmap.height * scale)));
+            const srcHeight = Math.min(bitmap.height, Math.round(height / scale));
+            const doc = nativeTab.ownerGlobal.document;
+            const canvas = doc.createElementNS('http://www.w3.org/1999/xhtml', 'html:canvas');
+            canvas.width = width;
+            canvas.height = height;
+            canvas.getContext('2d').drawImage(bitmap, 0, 0, bitmap.width, srcHeight, 0, 0, width, height);
+            if (typeof bitmap.close === 'function') {
+              bitmap.close();
+            }
+            const dataUrl = canvas.toDataURL('image/jpeg', quality / 100);
+            return { success: true, data: dataUrl.split(',')[1] || '', width, height, tabKind: 'canvas' };
+          } catch (e) {
+            console.warn('[ext-nevoflux] captureTaskScreenshot (canvas) failed:', e);
+            return fail('capture_failed');
+          }
+        },
+
         async getSpaces() {
           // Which Spaces exist, and which container each one uses. Settings needs
           // this to show "give this Space an assistant" in the user's own terms:
