@@ -501,6 +501,17 @@ pub fn task_command_reason(code: &str, message: &str) -> String {
     }
 }
 
+/// The accessible name of a control under an agent's row: its visible text
+/// plus the pairing label, so several agents' controls stay distinct.
+pub fn for_agent(name: &str, label: &str) -> String {
+    format!("{name} ({label})")
+}
+
+/// The accessible name of an agent's task approval line.
+pub fn approval_group_name(label: &str) -> String {
+    format!("{label} task approval")
+}
+
 impl AgentRow {
     /// Whether the row shows Pause / Resume. An offline row is there only
     /// for its task (B-F1): there is no connection to pause.
@@ -1131,5 +1142,15 @@ mod tests {
             command_error("answer", &task_command_reason("APPROVAL_NOT_FOUND", "x")),
             "Could not answer: it was already answered"
         );
+    }
+
+    #[test]
+    fn task_controls_name_their_agent_for_screen_readers() {
+        assert_eq!(for_agent("Stop task", "Muse at home"), "Stop task (Muse at home)");
+        assert_eq!(
+            for_agent(GUARDED_TOGGLE_LABEL, "Muse"),
+            "Let Muse approve sensitive actions (Muse)"
+        );
+        assert_eq!(approval_group_name("Work Muse"), "Work Muse task approval");
     }
 }

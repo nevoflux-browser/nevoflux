@@ -42,7 +42,7 @@ pub use session_badges::{
     SessionOrigin, SessionRuntime, SEEN_CAP, SEEN_KEY, WATCHED_GRACE_SECS,
 };
 pub use paired_agents::{
-    agent_label, bar_rows, command_error, confirms_guarded, confirms_paused, parse_paired_agents,
+    agent_label, approval_group_name, bar_rows, command_error, for_agent, confirms_guarded, confirms_paused, parse_paired_agents,
     presence_word, rows_from_status, task_banner, task_command_reason, task_for_session, task_line,
     tool_word,
     unpair_click, unpair_label, AgentRow, AgentTask, PairedAgentsSnapshot, TaskApproval,

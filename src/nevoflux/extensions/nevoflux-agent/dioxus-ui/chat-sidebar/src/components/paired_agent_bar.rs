@@ -18,7 +18,7 @@ use dioxus::prelude::*;
 
 use crate::context::{use_app_context, AppContext};
 use crate::state::{
-    bar_rows, command_error, task_banner, task_for_session, unpair_click, unpair_label, AgentRow,
+    approval_group_name, bar_rows, command_error, for_agent, task_banner, task_for_session, unpair_click, unpair_label, AgentRow,
     ConnectionState, TaskLine, ERROR_LINE_MS, GUARDED_TOGGLE_HELP, GUARDED_TOGGLE_LABEL,
     UNPAIR_CONFIRM_MS,
 };
@@ -183,6 +183,7 @@ fn PairedAgentRow(row: AgentRow) -> Element {
         }
     };
     let guarded_id = format!("guarded-help-{}", row.channel_id);
+    let guarded_aria = for_agent(GUARDED_TOGGLE_LABEL, &label);
 
     rsx! {
         div { class: "{row_class}",
@@ -214,8 +215,8 @@ fn PairedAgentRow(row: AgentRow) -> Element {
                     r#type: "checkbox",
                     role: "switch",
                     checked: guarded,
-                    aria_checked: if guarded { "true" } else { "false" },
                     disabled: is_busy,
+                    aria_label: "{guarded_aria}",
                     aria_describedby: "{guarded_id}",
                     // The snapshot decides; undo the browser's own flip.
                     onclick: move |evt: MouseEvent| {
@@ -231,7 +232,7 @@ fn PairedAgentRow(row: AgentRow) -> Element {
             div { class: "paired-agent-error", role: "alert", "{msg}" }
         })}
         {row.task.clone().map(|task| rsx! {
-            PairedAgentTask { task: task }
+            PairedAgentTask { task: task, label: label.clone() }
         })}
     }
 }
@@ -274,7 +275,7 @@ fn open_session(mut ctx: AppContext, session_id: String) {
 
 /// A delegated task under its agent's row (M3 §6.3, §6.4).
 #[component]
-fn PairedAgentTask(task: TaskLine) -> Element {
+fn PairedAgentTask(task: TaskLine, label: String) -> Element {
     let ctx = use_app_context();
     let mut busy = use_signal(|| false);
     let error = use_signal(|| None::<String>);
@@ -305,6 +306,11 @@ fn PairedAgentTask(task: TaskLine) -> Element {
     let session_id = task.session_id.clone();
     let approval = task.approval.clone();
     let approval_text = approval.as_ref().map(|a| a.text.clone()).unwrap_or_default();
+    // Several agents can each show these lines: every accessible name says
+    // whose task it is, while the visible copy stays exact.
+    let stop_aria = for_agent("Stop task", &label);
+    let view_aria = for_agent("View session", &label);
+    let group_aria = approval_group_name(&label);
 
     rsx! {
         div { class: "paired-agent-task",
@@ -312,34 +318,49 @@ fn PairedAgentTask(task: TaskLine) -> Element {
             button {
                 class: "paired-agent-btn",
                 disabled: is_busy,
+                aria_label: "{stop_aria}",
                 onclick: stop,
                 "Stop task"
+            }
+            // With an approval pending, View session sits on its line instead.
+            if approval.is_none() {
+                button {
+                    class: "paired-agent-btn",
+                    aria_label: "{view_aria}",
+                    onclick: {
+                        let session_id = session_id.clone();
+                        move |_| open_session(ctx, session_id.clone())
+                    },
+                    "View session"
+                }
             }
         }
         if let Some(approval) = approval {
             div {
                 class: "paired-agent-task approval",
                 role: "group",
-                aria_label: "Task approval",
+                aria_label: "{group_aria}",
                 span { class: "paired-agent-text", title: "{approval_text}", "{approval_text}" }
                 if let Some(hint) = approval.hint {
                     span { class: "paired-agent-hint", "{hint}" }
                 }
-                for (label, choice) in approval.buttons.clone() {
+                for (text, choice) in approval.buttons.clone() {
                     button {
                         key: "{choice}",
                         class: "paired-agent-btn",
                         disabled: is_busy,
+                        aria_label: for_agent(text, &label),
                         onclick: {
                             let task_id = task_id.clone();
                             let approval_id = approval.approval_id.clone();
                             move |_| answer_approval(busy, error, task_id.clone(), approval_id.clone(), choice)
                         },
-                        "{label}"
+                        "{text}"
                     }
                 }
                 button {
                     class: "paired-agent-btn",
+                    aria_label: "{view_aria}",
                     onclick: {
                         let session_id = session_id.clone();
                         move |_| open_session(ctx, session_id.clone())
