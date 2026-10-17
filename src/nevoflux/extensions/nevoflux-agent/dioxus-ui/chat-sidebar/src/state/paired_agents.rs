@@ -71,8 +71,18 @@ pub struct PairedAgentEntry {
     pub task: Option<AgentTask>,
     /// The person let this agent answer its tasks' must-approve approvals
     /// (M3 contract v1.2 R39). Absent (an older daemon) reads as off.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_bool")]
     pub muse_may_approve_guarded: bool,
+}
+
+fn lenient_bool<'de, D: Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(d)?;
+    Ok(value.and_then(|v| v.as_bool()).unwrap_or(false))
+}
+
+fn lenient_approval<'de, D: Deserializer<'de>>(d: D) -> Result<Option<TaskApproval>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(d)?;
+    Ok(value.and_then(|v| serde_json::from_value(v).ok()))
 }
 
 fn lenient_task<'de, D: Deserializer<'de>>(d: D) -> Result<Option<AgentTask>, D::Error> {
@@ -95,7 +105,7 @@ pub struct AgentTask {
     pub tool: Option<String>,
     #[serde(default)]
     pub started_at: i64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient_approval")]
     pub approval: Option<TaskApproval>,
 }
 
@@ -205,6 +215,8 @@ pub struct AgentRow {
     /// Everything after the bold label.
     pub detail: String,
     pub paused: bool,
+    /// An offline agent shown only for its running task (B-F1): no Pause.
+    pub offline: bool,
     /// The delegated task under the row (M3 §6.4), if one is running.
     pub task: Option<TaskLine>,
     /// What the "Let Muse approve sensitive actions" toggle shows (R39).
@@ -291,13 +303,12 @@ pub fn task_line(agent: &PairedAgentEntry) -> Option<TaskLine> {
     let approval = task.approval.as_ref().map(|ap| TaskApprovalLine {
         approval_id: ap.approval_id.clone(),
         text: format!("{label} task needs approval: {}", ap.summary),
-        buttons: ap
-            .choices
-            .iter()
-            // Contract v1.2 R39: never "Always allow" for a must-approve tool.
-            .filter(|c| !(ap.must_approve && c.as_str() == "allow_always"))
-            .filter_map(|c| choice_button(c))
-            .collect(),
+        buttons: if ap.must_approve {
+            // Contract v1.2 R39: only Allow / Deny, whatever `choices` say.
+            vec![("Allow", "allow"), ("Deny", "deny")]
+        } else {
+            ap.choices.iter().filter_map(|c| choice_button(c)).collect()
+        },
         hint: (ap.must_approve && agent.muse_may_approve_guarded).then_some(MUSE_MAY_ALSO_ANSWER),
     });
     Some(TaskLine {
@@ -359,8 +370,8 @@ pub fn rows_from_status(snapshot: &PairedAgentsSnapshot, now: i64) -> Vec<AgentR
         .agents
         .iter()
         .filter_map(|a| {
-            let (icon, detail, paused) = match a.state.as_str() {
-                "paused" => ("⏸", "paused".to_string(), true),
+            let (icon, detail, paused, offline) = match a.state.as_str() {
+                "paused" => ("⏸", "paused".to_string(), true, false),
                 "connected" => match (&a.approval, &a.tool) {
                     (Some(ap), _) => (
                         "⏳",
@@ -370,22 +381,25 @@ pub fn rows_from_status(snapshot: &PairedAgentsSnapshot, now: i64) -> Vec<AgentR
                             ap.summary
                         ),
                         false,
+                        false,
                     ),
                     (None, Some(tool)) => (
                         "●",
                         format!("working: {}", tool_word(tool).unwrap_or(tool.as_str())),
+                        false,
                         false,
                     ),
                     (None, None) => (
                         "●",
                         format!("connected · {}", connected_for(a.since, now)),
                         false,
+                        false,
                     ),
                 },
                 // B-F1: the daemon keeps running a delegated task while the
                 // agent is disconnected and publishes it on the offline entry,
                 // so such an entry still gets a row (for its task line).
-                _ if task_line(a).is_some() => ("○", "offline".to_string(), false),
+                _ if task_line(a).is_some() => ("○", "offline".to_string(), false, true),
                 _ => return None,
             };
             Some(AgentRow {
@@ -394,6 +408,7 @@ pub fn rows_from_status(snapshot: &PairedAgentsSnapshot, now: i64) -> Vec<AgentR
                 icon,
                 detail,
                 paused,
+                offline,
                 task: task_line(a),
                 muse_may_approve_guarded: a.muse_may_approve_guarded,
             })
@@ -966,6 +981,38 @@ mod tests {
     }
 
     #[test]
+    fn a_non_bool_guarded_flag_does_not_drop_the_agent() {
+        let s = snapshot(json!([
+            {"channel_id": "c1", "state": "connected", "since": 0, "muse_may_approve_guarded": null},
+            {"channel_id": "c2", "state": "connected", "since": 0, "muse_may_approve_guarded": "yes"}
+        ]));
+        assert_eq!(s.agents.len(), 2);
+        assert!(!s.agents[0].muse_may_approve_guarded && !s.agents[1].muse_may_approve_guarded);
+    }
+
+    #[test]
+    fn a_malformed_approval_keeps_the_task() {
+        for bad in [json!({"summary": "no id"}), json!({"approval_id": 7, "choices": "x"}), json!("oops")] {
+            let s = task_snapshot(json!({"id": "t1", "session_id": "s1", "summary": "X",
+                "state": "awaiting_approval", "approval": bad}));
+            let task = s.agents[0].task.as_ref().expect("the task survives");
+            assert!(task.approval.is_none());
+            assert!(task_line(&s.agents[0]).is_some());
+        }
+    }
+
+    #[test]
+    fn a_must_approve_line_is_always_allow_and_deny() {
+        for choices in [json!([]), json!(["later"]), json!(["deny"])] {
+            let s = task_snapshot(json!({"id": "t1", "session_id": "s1", "summary": "X",
+                "state": "awaiting_approval",
+                "approval": {"approval_id": "a1", "must_approve": true, "choices": choices}}));
+            let ap = task_line(&s.agents[0]).unwrap().approval.unwrap();
+            assert_eq!(ap.buttons, vec![("Allow", "allow"), ("Deny", "deny")]);
+        }
+    }
+
+    #[test]
     fn an_offline_agent_with_a_task_still_gets_a_row() {
         // B-F1: the daemon keeps running the task while Muse is disconnected
         // and publishes it on the offline entry.
@@ -982,6 +1029,9 @@ mod tests {
         assert_eq!(rows[0].detail, "offline");
         assert!(!rows[0].paused);
         assert_eq!(rows[0].task.as_ref().map(|t| t.task_id.as_str()), Some("t1"));
+        assert!(rows[0].offline);
+        let online = snapshot(json!([{"channel_id": "c", "state": "connected", "since": 0}]));
+        assert!(!rows_from_status(&online, 10)[0].offline);
     }
 
     #[test]
