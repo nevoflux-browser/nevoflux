@@ -18,7 +18,7 @@ import { osNotificationContent, mayShowOsNotification } from './notify-gate.mjs'
 import { commandVerdict } from './canvas-command-gate.mjs';
 import { allowCanvasNotify } from './canvas-notify-limit.mjs';
 import { recordSessionOrigin, isDelegated, askIsDelegated, askHoldMs, CanvasTabs, canvasOpenPlan, canvasChatSessionFor, applyStatusSnapshot, StatusSnapshotGate, SessionQueue } from './delegation.mjs';
-import { isSystemRequest, systemRequestRefusal, systemOriginRefusal, withoutOrigin, taskScreenshotOptions, captureWithinBudget, canvasTabForArtifact } from './task-screenshot.mjs';
+import { isSystemRequest, systemRequestRefusal, systemOriginRefusal, withoutOrigin, taskScreenshotOptions, captureWithinBudget, taskScreenshotTabId } from './task-screenshot.mjs';
 
 // Recent canvas:notify times per artifact id (rolling rate limit).
 const canvasNotifyHistory = new Map();
@@ -951,6 +951,7 @@ async function answerSystemRequest(request) {
   const refusal = systemRequestRefusal(request);
   let reply;
   if (refusal) {
+    console.warn(`[NevoFlux] system request '${request?.action}' refused: only the task_result screenshot exists`);
     reply = { success: false, error: refusal };
   } else {
     try {
@@ -973,18 +974,14 @@ async function answerSystemRequest(request) {
 }
 
 /**
- * The task screenshot: the named web tab, else this session's Canvas tab,
- * else the tab showing the artifact; JPEG within the contract budget.
+ * The task screenshot: the named web tab, or the tab showing the named
+ * artifact (taskScreenshotTabId); JPEG within the contract budget.
  */
 async function captureTaskResult(request) {
   const opts = taskScreenshotOptions(request.params);
-  let tabId = Number.isInteger(request.tab_id) && request.tab_id > 0 ? request.tab_id : null;
-  if (tabId === null) {
-    tabId = canvasTabs.tabFor(request.session_id);
-  }
-  if (tabId === null && request.params?.artifact_id) {
-    tabId = canvasTabForArtifact(await browser.tabs.query({}), request.params.artifact_id);
-  }
+  const webTarget = Number.isInteger(request.tab_id) && request.tab_id > 0;
+  const tabs = webTarget ? [] : await browser.tabs.query({});
+  const tabId = taskScreenshotTabId(request, canvasTabs.tabFor(request.session_id), tabs);
   if (tabId === null) {
     return { success: false, error: { code: -1, message: 'tab_closed', recoverable: false } };
   }
@@ -2439,7 +2436,9 @@ class ChannelManager {
       // The daemon's own request (origin "system", contract §7): the task
       // result screenshot. Answered here, before every other route.
       if (isSystemRequest(payload)) {
-        answerSystemRequest(payload);
+        answerSystemRequest(payload).catch((err) =>
+          console.error('[NevoFlux] system request answer failed:', err?.message || err)
+        );
         return;
       }
       const DIRECT_ACTIONS = new Set([

@@ -31,16 +31,15 @@ export function isSystemRequest(request) {
   return request?.origin === SYSTEM_ORIGIN;
 }
 
-/** Why a system request may not run, or null: only the task screenshot exists. */
+/**
+ * Why a system request may not run, or null: only the task screenshot
+ * exists. The answer is one of contract §7's four messages.
+ */
 export function systemRequestRefusal(request) {
   if (request?.action === 'screenshot' && request?.params?.purpose === 'task_result') {
     return null;
   }
-  return {
-    code: -1,
-    message: `system request '${request?.action}' is not supported; only the task_result screenshot is`,
-    recoverable: false,
-  };
+  return { code: -1, message: 'capture_failed', recoverable: false };
 }
 
 /** The refusal executeBrowserTool gives a system request from any caller. */
@@ -136,14 +135,47 @@ export async function captureWithinBudget(capture, opts) {
   return failure('too_large');
 }
 
+/** Whether a tab shows nevoflux://canvas/<artifactId> (a1 is not a10). */
+function showsArtifact(tab, artifactId) {
+  const url = `nevoflux://canvas/${artifactId}`;
+  return typeof tab?.url === 'string' && (tab.url === url || tab.url.startsWith(`${url}?`) || tab.url.startsWith(`${url}#`));
+}
+
 /** The id of the tab showing nevoflux://canvas/<artifactId>, or null. */
 export function canvasTabForArtifact(tabs, artifactId) {
   if (typeof artifactId !== 'string' || !artifactId) {
     return null;
   }
-  const url = `nevoflux://canvas/${artifactId}`;
-  const tab = (Array.isArray(tabs) ? tabs : []).find(
-    (t) => typeof t?.url === 'string' && (t.url === url || t.url.startsWith(`${url}?`) || t.url.startsWith(`${url}#`))
-  );
+  const tab = (Array.isArray(tabs) ? tabs : []).find((t) => showsArtifact(t, artifactId));
   return tab && Number.isInteger(tab.id) ? tab.id : null;
+}
+
+/**
+ * The tab a task screenshot captures, or null (answered tab_closed).
+ *
+ * A web target (`tab_id` > 0) is that tab. A Canvas target (`tab_id` null +
+ * `params.artifact_id`) is the tab showing that artifact; the session's Canvas
+ * tab only counts while it shows it, since a later Canvas of the same session
+ * replaces it and a picture of B must never stand in for A. A bad `tab_id`
+ * is no tab, never a fall-through to a Canvas.
+ */
+export function taskScreenshotTabId(request, sessionTabId, tabs) {
+  const tabId = request?.tab_id;
+  if (Number.isInteger(tabId) && tabId > 0) {
+    return tabId;
+  }
+  if (tabId !== null && tabId !== undefined) {
+    return null;
+  }
+  const artifactId = request?.params?.artifact_id;
+  if (typeof artifactId !== 'string' || !artifactId) {
+    return null;
+  }
+  const list = Array.isArray(tabs) ? tabs : [];
+  const shown = canvasTabForArtifact(list, artifactId);
+  if (shown !== null) {
+    return shown;
+  }
+  const sessionTab = list.find((t) => t?.id === sessionTabId);
+  return sessionTab && Number.isInteger(sessionTabId) && showsArtifact(sessionTab, artifactId) ? sessionTabId : null;
 }

@@ -17,6 +17,7 @@ import {
   screenshotError,
   captureWithinBudget,
   canvasTabForArtifact,
+  taskScreenshotTabId,
 } from '../../extensions/nevoflux-agent/background/task-screenshot.mjs';
 
 const shotRequest = (over = {}) => ({
@@ -60,8 +61,8 @@ describe('system requests', () => {
       shotRequest({ params: undefined }),
     ]) {
       const refusal = systemRequestRefusal(bad);
-      expect(refusal.code).toBe(-1);
-      expect(refusal.recoverable).toBe(false);
+      // Contract §7 knows four messages only.
+      expect(refusal).toEqual({ code: -1, message: 'capture_failed', recoverable: false });
     }
     expect(systemOriginRefusal('screenshot').recoverable).toBe(false);
   });
@@ -188,6 +189,60 @@ describe('canvasTabForArtifact', () => {
     expect(canvasTabForArtifact(tabs, 'zz')).toBeNull();
     expect(canvasTabForArtifact(tabs, '')).toBeNull();
     expect(canvasTabForArtifact(null, 'a1')).toBeNull();
+  });
+});
+
+describe('taskScreenshotTabId', () => {
+  const canvasReq = (artifactId, extra = {}) => ({
+    action: 'screenshot',
+    origin: 'system',
+    tab_id: null,
+    session_id: 's1',
+    params: { purpose: 'task_result', artifact_id: artifactId },
+    ...extra,
+  });
+
+  it('a web target is the named tab', () => {
+    const tabs = [{ id: 9, url: 'nevoflux://canvas/a1' }];
+    expect(taskScreenshotTabId({ tab_id: 41, params: {} }, 9, tabs)).toBe(41);
+  });
+
+  it('two Canvases in one session: the tab showing the named artifact wins over the session tab', () => {
+    // The task made A, then B replaced it in the session tab; A is open elsewhere.
+    const tabs = [
+      { id: 7, url: 'nevoflux://canvas/B' },
+      { id: 8, url: 'nevoflux://canvas/A' },
+    ];
+    expect(taskScreenshotTabId(canvasReq('A'), 7, tabs)).toBe(8);
+    expect(taskScreenshotTabId(canvasReq('B'), 7, tabs)).toBe(7);
+  });
+
+  it('the session tab showing another artifact is never a stand-in', () => {
+    const tabs = [{ id: 7, url: 'nevoflux://canvas/B' }];
+    expect(taskScreenshotTabId(canvasReq('A'), 7, tabs)).toBeNull();
+    // a1 is not a10.
+    const prefix = [{ id: 7, url: 'nevoflux://canvas/a10' }];
+    expect(taskScreenshotTabId(canvasReq('a1'), 7, prefix)).toBeNull();
+  });
+
+  it('the session tab counts when it shows the artifact', () => {
+    const tabs = [
+      { id: 3, url: 'https://example.com/' },
+      { id: 7, url: 'nevoflux://canvas/A#top' },
+    ];
+    expect(taskScreenshotTabId(canvasReq('A'), 7, tabs)).toBe(7);
+  });
+
+  it('no target, or a bad web tab id, is no tab (tab_closed), never a fall-through', () => {
+    const tabs = [{ id: 7, url: 'nevoflux://canvas/A' }];
+    expect(taskScreenshotTabId({ tab_id: null, params: { purpose: 'task_result' } }, 7, tabs)).toBeNull();
+    for (const bad of [0, -3, 1.5, '7']) {
+      expect(taskScreenshotTabId({ tab_id: bad, params: {} }, 7, tabs)).toBeNull();
+      expect(taskScreenshotTabId(canvasReq('A', { tab_id: bad }), 7, tabs)).toBeNull();
+    }
+    expect(taskScreenshotTabId(canvasReq(''), 7, tabs)).toBeNull();
+    expect(taskScreenshotTabId(canvasReq('A'), null, [])).toBeNull();
+    expect(taskScreenshotTabId(canvasReq('A'), null, null)).toBeNull();
   });
 });
 
@@ -568,7 +623,7 @@ describe('background.js system requests', () => {
   it('imports the system-request rules', () => {
     expect(
       bg.includes(
-        "import { isSystemRequest, systemRequestRefusal, systemOriginRefusal, withoutOrigin, taskScreenshotOptions, captureWithinBudget, canvasTabForArtifact } from './task-screenshot.mjs';"
+        "import { isSystemRequest, systemRequestRefusal, systemOriginRefusal, withoutOrigin, taskScreenshotOptions, captureWithinBudget, taskScreenshotTabId } from './task-screenshot.mjs';"
       )
     ).toBe(true);
   });
@@ -578,7 +633,7 @@ describe('background.js system requests', () => {
     expect(start).toBeGreaterThan(0);
     const block = bg.slice(start, bg.indexOf('const DIRECT_ACTIONS = new Set([', start));
     expect(block.includes('if (isSystemRequest(payload)) {')).toBe(true);
-    expect(block.includes('answerSystemRequest(payload);')).toBe(true);
+    expect(block.includes('answerSystemRequest(payload).catch(')).toBe(true);
     expect(block.includes('return;')).toBe(true);
   });
 
@@ -603,8 +658,9 @@ describe('background.js system requests', () => {
     expect(answer.includes('executeBrowserTool(')).toBe(false);
     expect(answer.includes('type: MessageTypes.BROWSER_TOOL_RESPONSE,')).toBe(true);
     const capture = fn('async function captureTaskResult(request) {');
-    expect(capture.includes('canvasTabs.tabFor(request.session_id)')).toBe(true);
-    expect(capture.includes('canvasTabForArtifact(await browser.tabs.query({}), request.params.artifact_id)')).toBe(true);
+    // Target selection is taskScreenshotTabId's (artifact first, tested above).
+    expect(capture.includes('taskScreenshotTabId(request, canvasTabs.tabFor(request.session_id), tabs)')).toBe(true);
+    expect(capture.includes('canvasTabForArtifact(')).toBe(false);
     expect(capture.includes('captureWithinBudget(')).toBe(true);
     expect(capture.includes('browser.nevoflux.captureTaskScreenshot(tabId,')).toBe(true);
     expect(capture.includes('executeBrowserTool(')).toBe(false);
