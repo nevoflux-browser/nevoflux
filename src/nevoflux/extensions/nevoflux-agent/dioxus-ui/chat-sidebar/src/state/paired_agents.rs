@@ -9,7 +9,7 @@
 //! about it is derived here, with no signals and no browser, so it runs under
 //! `cargo test --target x86_64-pc-windows-msvc`.
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 /// The sticky EventBus topic the daemon publishes the snapshot on.
 pub const AGENT_STATUS_TOPIC: &str = "system:agent:status";
@@ -65,6 +65,60 @@ pub struct PairedAgentEntry {
     pub tool: Option<String>,
     #[serde(default)]
     pub approval: Option<PendingApproval>,
+    /// The task this pairing delegated and NevoFlux is running (M3 contract
+    /// §4). A malformed one is dropped on its own: it must not hide the row.
+    #[serde(default, deserialize_with = "lenient_task")]
+    pub task: Option<AgentTask>,
+    /// The person let this agent answer its tasks' must-approve approvals
+    /// (M3 contract v1.2 R39). Absent (an older daemon) reads as off.
+    #[serde(default)]
+    pub muse_may_approve_guarded: bool,
+}
+
+fn lenient_task<'de, D: Deserializer<'de>>(d: D) -> Result<Option<AgentTask>, D::Error> {
+    let value = Option::<serde_json::Value>::deserialize(d)?;
+    Ok(value.and_then(|v| serde_json::from_value(v).ok()))
+}
+
+/// A delegated task a pairing is running (M3 contract §4).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct AgentTask {
+    pub id: String,
+    pub session_id: String,
+    /// The prompt's first line, already cut to 80 characters by the daemon.
+    #[serde(default)]
+    pub summary: String,
+    /// `running` | `awaiting_approval`; the daemon sends `task: null` once it ends.
+    #[serde(default)]
+    pub state: String,
+    #[serde(default)]
+    pub tool: Option<String>,
+    #[serde(default)]
+    pub started_at: i64,
+    #[serde(default)]
+    pub approval: Option<TaskApproval>,
+}
+
+/// The oldest approval a delegated task waits on.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct TaskApproval {
+    pub approval_id: String,
+    /// `tool` | `question` | `plan`.
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub summary: String,
+    /// What the desktop may answer: `allow`, `allow_always`, `deny` (§4).
+    #[serde(default)]
+    pub choices: Vec<String>,
+    #[serde(default)]
+    pub started_at: i64,
+    #[serde(default)]
+    pub expires_at: i64,
+    /// Raised by the must-approve list (contract v1.2 §4): `Allow` / `Deny`
+    /// only, whatever the daemon's `choices` say.
+    #[serde(default)]
+    pub must_approve: bool,
 }
 
 /// An approval the agent is waiting on.
@@ -151,6 +205,135 @@ pub struct AgentRow {
     /// Everything after the bold label.
     pub detail: String,
     pub paused: bool,
+    /// The delegated task under the row (M3 §6.4), if one is running.
+    pub task: Option<TaskLine>,
+    /// What the "Let Muse approve sensitive actions" toggle shows (R39).
+    pub muse_may_approve_guarded: bool,
+}
+
+/// The status-bar lines for a delegated task (contract §8).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaskLine {
+    pub task_id: String,
+    pub session_id: String,
+    /// `<label> task: <summary> · <tool>`.
+    pub text: String,
+    pub approval: Option<TaskApprovalLine>,
+}
+
+/// The approval line: what is asked and the buttons the desktop may press.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaskApprovalLine {
+    pub approval_id: String,
+    /// `<label> task needs approval: <summary>`.
+    pub text: String,
+    /// (button text, choice sent), in the daemon's order.
+    pub buttons: Vec<(&'static str, &'static str)>,
+    /// `Muse may also answer` on a must-approve approval while the pairing
+    /// lets the agent answer it (contract v1.2 R39).
+    pub hint: Option<&'static str>,
+}
+
+/// The toggle in the paired-agent row (contract v1.2 R39, exact copy).
+pub const GUARDED_TOGGLE_LABEL: &str = "Let Muse approve sensitive actions";
+pub const GUARDED_TOGGLE_HELP: &str = "Muse can approve scheduling, packs, model switching, screen sharing and prompt changes for its tasks. Off: only you can, here.";
+/// The hint on a must-approve approval line while the toggle is on.
+pub const MUSE_MAY_ALSO_ANSWER: &str = "Muse may also answer";
+
+/// Whether a `remote.agent_set_guarded_approval` answer confirms the state
+/// that was asked for.
+pub fn confirms_guarded(data: &serde_json::Value, want: bool) -> Result<(), String> {
+    match data.get("enabled").and_then(|v| v.as_bool()) {
+        Some(e) if e == want => Ok(()),
+        _ => Err(format!(
+            "the daemon did not confirm the setting is {}",
+            if want { "on" } else { "off" }
+        )),
+    }
+}
+
+/// The name the bar shows for a pairing: its label, or "Muse".
+pub fn agent_label(agent: &PairedAgentEntry) -> String {
+    agent
+        .label
+        .as_deref()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .unwrap_or(DEFAULT_LABEL)
+        .to_string()
+}
+
+fn choice_button(choice: &str) -> Option<(&'static str, &'static str)> {
+    match choice {
+        "allow" => Some(("Allow", "allow")),
+        "allow_always" => Some(("Always allow", "allow_always")),
+        "deny" => Some(("Deny", "deny")),
+        _ => None,
+    }
+}
+
+fn tool_text(tool: &str) -> &str {
+    tool_word(tool).unwrap_or(tool)
+}
+
+/// The task lines under an agent's row, or `None` when it runs no task.
+pub fn task_line(agent: &PairedAgentEntry) -> Option<TaskLine> {
+    let task = agent.task.as_ref()?;
+    if task.state != "running" && task.state != "awaiting_approval" {
+        return None;
+    }
+    let label = agent_label(agent);
+    let mut text = format!("{label} task: {}", task.summary);
+    if let Some(tool) = task.tool.as_deref().filter(|t| !t.is_empty()) {
+        text.push_str(" · ");
+        text.push_str(tool_text(tool));
+    }
+    let approval = task.approval.as_ref().map(|ap| TaskApprovalLine {
+        approval_id: ap.approval_id.clone(),
+        text: format!("{label} task needs approval: {}", ap.summary),
+        buttons: ap
+            .choices
+            .iter()
+            // Contract v1.2 R39: never "Always allow" for a must-approve tool.
+            .filter(|c| !(ap.must_approve && c.as_str() == "allow_always"))
+            .filter_map(|c| choice_button(c))
+            .collect(),
+        hint: (ap.must_approve && agent.muse_may_approve_guarded).then_some(MUSE_MAY_ALSO_ANSWER),
+    });
+    Some(TaskLine {
+        task_id: task.id.clone(),
+        session_id: task.session_id.clone(),
+        text,
+        approval,
+    })
+}
+
+/// The pairing and task running in `session_id`, if a delegated task is.
+pub fn task_for_session<'a>(
+    snapshot: Option<&'a PairedAgentsSnapshot>,
+    session_id: &str,
+) -> Option<(&'a PairedAgentEntry, &'a AgentTask)> {
+    if session_id.is_empty() {
+        return None;
+    }
+    snapshot?.agents.iter().find_map(|a| {
+        a.task
+            .as_ref()
+            .filter(|t| t.session_id == session_id)
+            .map(|t| (a, t))
+    })
+}
+
+/// The line over a conversation a paired agent is running (M3 §6.1).
+pub fn task_banner(agent: &PairedAgentEntry, task: &AgentTask) -> String {
+    let label = agent_label(agent);
+    if let Some(ap) = &task.approval {
+        return format!("{label} is waiting for approval: {}", ap.summary);
+    }
+    match task.tool.as_deref().filter(|t| !t.is_empty()) {
+        Some(tool) => format!("{label} is working on this task · {}", tool_text(tool)),
+        None => format!("{label} is working on this task"),
+    }
 }
 
 /// How long it has been connected, in the words the bar uses.
@@ -169,7 +352,8 @@ pub fn seconds_left(started_at: i64, now: i64) -> i64 {
 }
 
 /// The bar's rows: connected and paused agents, in the daemon's order.
-/// Offline agents, and states this build does not know, are not shown.
+/// Offline agents, and states this build does not know, are shown only while
+/// their entry carries a live delegated task.
 pub fn rows_from_status(snapshot: &PairedAgentsSnapshot, now: i64) -> Vec<AgentRow> {
     snapshot
         .agents
@@ -198,21 +382,20 @@ pub fn rows_from_status(snapshot: &PairedAgentsSnapshot, now: i64) -> Vec<AgentR
                         false,
                     ),
                 },
+                // B-F1: the daemon keeps running a delegated task while the
+                // agent is disconnected and publishes it on the offline entry,
+                // so such an entry still gets a row (for its task line).
+                _ if task_line(a).is_some() => ("○", "offline".to_string(), false),
                 _ => return None,
             };
-            let label = a
-                .label
-                .as_deref()
-                .map(str::trim)
-                .filter(|l| !l.is_empty())
-                .unwrap_or(DEFAULT_LABEL)
-                .to_string();
             Some(AgentRow {
                 channel_id: a.channel_id.clone(),
-                label,
+                label: agent_label(a),
                 icon,
                 detail,
                 paused,
+                task: task_line(a),
+                muse_may_approve_guarded: a.muse_may_approve_guarded,
             })
         })
         .collect()
@@ -593,5 +776,255 @@ mod tests {
         assert_eq!(presence_word(&s, "c3"), Some("offline"));
         assert_eq!(presence_word(&s, "c5"), Some("offline"));
         assert_eq!(presence_word(&s, "c4"), None);
+    }
+
+    fn task_snapshot(task: serde_json::Value) -> PairedAgentsSnapshot {
+        snapshot(json!([
+            {"channel_id": "c1", "label": null, "state": "connected", "since": 0, "task": task}
+        ]))
+    }
+
+    #[test]
+    fn parse_reads_a_task_and_its_approval() {
+        let s = task_snapshot(json!({
+            "id": "t1", "session_id": "s1", "summary": "Generate a calculator Canvas",
+            "state": "awaiting_approval", "tool": "canvas_render", "started_at": 1792000000,
+            "approval": {"approval_id": "a1", "kind": "tool", "summary": "Submit a form on example.com",
+                         "choices": ["allow", "allow_always", "deny"],
+                         "started_at": 1792000123, "expires_at": 1792001923}
+        }));
+        let task = s.agents[0].task.as_ref().expect("task");
+        assert_eq!(task.id, "t1");
+        assert_eq!(task.session_id, "s1");
+        assert_eq!(task.state, "awaiting_approval");
+        let ap = task.approval.as_ref().expect("approval");
+        assert_eq!(ap.choices, ["allow", "allow_always", "deny"]);
+        assert_eq!(ap.expires_at, 1792001923);
+    }
+
+    #[test]
+    fn a_malformed_task_does_not_hide_the_agent() {
+        let s = task_snapshot(json!({"summary": "no ids"}));
+        assert_eq!(s.agents.len(), 1, "the row must survive a bad task");
+        assert!(s.agents[0].task.is_none());
+        let none = task_snapshot(serde_json::Value::Null);
+        assert!(none.agents[0].task.is_none());
+    }
+
+    #[test]
+    fn a_running_task_reads_label_summary_and_tool() {
+        let s = task_snapshot(json!({
+            "id": "t1", "session_id": "s1", "summary": "Generate a calculator Canvas",
+            "state": "running", "tool": "browser_navigate", "started_at": 0, "approval": null
+        }));
+        let line = task_line(&s.agents[0]).expect("a line");
+        assert_eq!(line.text, "Muse task: Generate a calculator Canvas · opening a page");
+        assert_eq!(line.task_id, "t1");
+        assert_eq!(line.session_id, "s1");
+        assert!(line.approval.is_none());
+        // A tool outside the 16 is shown by its name; no tool, no separator.
+        let other = task_snapshot(json!({"id": "t1", "session_id": "s1", "summary": "X",
+            "state": "running", "tool": "canvas_render"}));
+        assert_eq!(task_line(&other.agents[0]).unwrap().text, "Muse task: X · canvas_render");
+        let idle = task_snapshot(json!({"id": "t1", "session_id": "s1", "summary": "X", "state": "running"}));
+        assert_eq!(task_line(&idle.agents[0]).unwrap().text, "Muse task: X");
+    }
+
+    #[test]
+    fn the_pairing_label_replaces_muse() {
+        let s = snapshot(json!([
+            {"channel_id": "c1", "label": "Muse at home", "state": "connected", "since": 0,
+             "task": {"id": "t1", "session_id": "s1", "summary": "X", "state": "running"}}
+        ]));
+        assert_eq!(task_line(&s.agents[0]).unwrap().text, "Muse at home task: X");
+        assert_eq!(agent_label(&s.agents[0]), "Muse at home");
+    }
+
+    #[test]
+    fn an_approval_offers_exactly_the_desktop_choices() {
+        let line = |choices: serde_json::Value| {
+            let s = task_snapshot(json!({"id": "t1", "session_id": "s1", "summary": "X",
+                "state": "awaiting_approval",
+                "approval": {"approval_id": "a1", "kind": "tool", "summary": "Click Submit",
+                             "choices": choices}}));
+            task_line(&s.agents[0]).unwrap().approval.expect("approval line")
+        };
+        let tool = line(json!(["allow", "allow_always", "deny"]));
+        assert_eq!(tool.text, "Muse task needs approval: Click Submit");
+        assert_eq!(tool.approval_id, "a1");
+        assert_eq!(
+            tool.buttons,
+            vec![("Allow", "allow"), ("Always allow", "allow_always"), ("Deny", "deny")]
+        );
+        // A question can only be denied from the desktop (R16); unknown choices are dropped.
+        assert_eq!(line(json!(["deny"])).buttons, vec![("Deny", "deny")]);
+        assert_eq!(line(json!(["allow", "later", "deny"])).buttons, vec![("Allow", "allow"), ("Deny", "deny")]);
+    }
+
+    #[test]
+    fn a_task_in_another_state_shows_no_line() {
+        let s = task_snapshot(json!({"id": "t1", "session_id": "s1", "summary": "X", "state": "done"}));
+        assert!(task_line(&s.agents[0]).is_none());
+        let rows = rows_from_status(&s, 10);
+        assert!(rows[0].task.is_none());
+    }
+
+    #[test]
+    fn the_row_carries_its_task_line() {
+        let s = task_snapshot(json!({"id": "t1", "session_id": "s1", "summary": "X", "state": "running"}));
+        let rows = rows_from_status(&s, 10);
+        assert_eq!(rows[0].task.as_ref().map(|t| t.task_id.as_str()), Some("t1"));
+    }
+
+    #[test]
+    fn task_for_session_finds_the_running_task() {
+        let s = snapshot(json!([
+            {"channel_id": "c1", "state": "connected", "since": 0},
+            {"channel_id": "c2", "label": "Work", "state": "connected", "since": 0,
+             "task": {"id": "t2", "session_id": "s2", "summary": "X", "state": "running"}}
+        ]));
+        let (agent, task) = task_for_session(Some(&s), "s2").expect("found");
+        assert_eq!(agent.channel_id, "c2");
+        assert_eq!(task.id, "t2");
+        assert!(task_for_session(Some(&s), "s1").is_none());
+        assert!(task_for_session(Some(&s), "").is_none());
+        assert!(task_for_session(None, "s2").is_none());
+    }
+
+    #[test]
+    fn the_banner_says_who_works_on_this_conversation() {
+        let s = task_snapshot(json!({"id": "t1", "session_id": "s1", "summary": "X",
+            "state": "running", "tool": "browser_click"}));
+        let (agent, task) = task_for_session(Some(&s), "s1").unwrap();
+        assert_eq!(task_banner(agent, task), "Muse is working on this task · clicking");
+        let waiting = task_snapshot(json!({"id": "t1", "session_id": "s1", "summary": "X",
+            "state": "awaiting_approval",
+            "approval": {"approval_id": "a1", "summary": "Click Submit", "choices": ["deny"]}}));
+        let (agent, task) = task_for_session(Some(&waiting), "s1").unwrap();
+        assert_eq!(task_banner(agent, task), "Muse is waiting for approval: Click Submit");
+        let quiet = task_snapshot(json!({"id": "t1", "session_id": "s1", "summary": "X", "state": "running"}));
+        let (agent, task) = task_for_session(Some(&quiet), "s1").unwrap();
+        assert_eq!(task_banner(agent, task), "Muse is working on this task");
+    }
+
+    #[test]
+    fn the_guarded_approval_toggle_reads_the_snapshot_and_defaults_off() {
+        let s = snapshot(json!([
+            {"channel_id": "c1", "state": "connected", "since": 0, "muse_may_approve_guarded": true},
+            {"channel_id": "c2", "state": "paused", "since": 0}
+        ]));
+        assert!(s.agents[0].muse_may_approve_guarded);
+        assert!(!s.agents[1].muse_may_approve_guarded, "no key (an older daemon) reads as off");
+        let rows = rows_from_status(&s, 10);
+        assert!(rows[0].muse_may_approve_guarded);
+        assert!(!rows[1].muse_may_approve_guarded);
+        assert_eq!(GUARDED_TOGGLE_LABEL, "Let Muse approve sensitive actions");
+        assert_eq!(
+            GUARDED_TOGGLE_HELP,
+            "Muse can approve scheduling, packs, model switching, screen sharing and prompt changes for its tasks. Off: only you can, here."
+        );
+    }
+
+    #[test]
+    fn a_must_approve_line_offers_allow_or_deny_and_hints_when_muse_may_answer() {
+        let line = |guarded: bool, choices: serde_json::Value| {
+            let s = snapshot(json!([{"channel_id": "c1", "label": "Muse at home", "state": "connected",
+                "since": 0, "muse_may_approve_guarded": guarded,
+                "task": {"id": "t1", "session_id": "s1", "summary": "X", "state": "awaiting_approval",
+                         "approval": {"approval_id": "a1", "kind": "tool", "must_approve": true,
+                                      "summary": "Run schedule_create", "choices": choices}}}]));
+            task_line(&s.agents[0]).unwrap().approval.expect("approval line")
+        };
+        let off = line(false, json!(["allow", "deny"]));
+        assert_eq!(off.buttons, vec![("Allow", "allow"), ("Deny", "deny")]);
+        assert_eq!(off.hint, None);
+        let on = line(true, json!(["allow", "deny"]));
+        assert_eq!(on.buttons, vec![("Allow", "allow"), ("Deny", "deny")]);
+        assert_eq!(on.hint, Some("Muse may also answer"), "exact, not relabelled");
+        // Never "Always allow" for these, even if a daemon offered it.
+        assert_eq!(
+            line(true, json!(["allow", "allow_always", "deny"])).buttons,
+            vec![("Allow", "allow"), ("Deny", "deny")]
+        );
+        // An ordinary approval gets no hint, toggle on or not.
+        let s = snapshot(json!([{"channel_id": "c1", "state": "connected", "since": 0,
+            "muse_may_approve_guarded": true,
+            "task": {"id": "t1", "session_id": "s1", "summary": "X", "state": "awaiting_approval",
+                     "approval": {"approval_id": "a2", "kind": "tool", "summary": "Click Submit",
+                                  "choices": ["allow", "allow_always", "deny"]}}}]));
+        let ordinary = task_line(&s.agents[0]).unwrap().approval.unwrap();
+        assert_eq!(ordinary.hint, None);
+        assert_eq!(ordinary.buttons.len(), 3);
+    }
+
+    #[test]
+    fn the_toggle_answer_must_confirm_the_state_asked_for() {
+        assert!(confirms_guarded(&json!({"enabled": true}), true).is_ok());
+        assert!(confirms_guarded(&json!({"enabled": false}), false).is_ok());
+        assert!(confirms_guarded(&json!({"enabled": false}), true).is_err());
+        assert!(confirms_guarded(&json!({}), true).is_err());
+    }
+
+    #[test]
+    fn an_offline_agent_with_a_task_still_gets_a_row() {
+        // B-F1: the daemon keeps running the task while Muse is disconnected
+        // and publishes it on the offline entry.
+        let s = snapshot(json!([
+            {"channel_id": "c1", "label": "Muse", "state": "offline", "since": 0,
+             "task": {"id": "t1", "session_id": "s1", "summary": "X", "state": "running"}},
+            {"channel_id": "c2", "state": "offline", "since": 0,
+             "task": {"id": "t2", "session_id": "s2", "summary": "Y", "state": "done"}},
+            {"channel_id": "c3", "state": "offline", "since": 0}
+        ]));
+        let rows = rows_from_status(&s, 10);
+        assert_eq!(rows.len(), 1, "only the offline entry with a live task");
+        assert_eq!(rows[0].channel_id, "c1");
+        assert_eq!(rows[0].detail, "offline");
+        assert!(!rows[0].paused);
+        assert_eq!(rows[0].task.as_ref().map(|t| t.task_id.as_str()), Some("t1"));
+    }
+
+    #[test]
+    fn the_task_tool_shows_the_short_word_for_every_m2_tool() {
+        for (name, word) in TOOL_WORDS {
+            let s = task_snapshot(json!({"id": "t1", "session_id": "s1", "summary": "X",
+                "state": "running", "tool": name}));
+            assert_eq!(task_line(&s.agents[0]).unwrap().text, format!("Muse task: X · {word}"));
+        }
+    }
+
+    #[test]
+    fn parse_reads_the_exact_shape_of_the_daemons_status_json() {
+        // Copied from the daemon: TaskRecord::status_json inside an entry built
+        // by agent_status.rs (muse_may_approve_guarded, since, tool, approval, task).
+        let s = parse_paired_agents(&json!({"agents": [{
+            "channel_id": "ctl-1", "label": "Muse at home", "state": "connected",
+            "muse_may_approve_guarded": true, "since": 1792000000,
+            "tool": "browser_click", "approval": null,
+            "task": {
+                "id": "task-9", "session_id": "sess-9", "summary": "Book a table",
+                "state": "awaiting_approval", "tool": "schedule_create",
+                "started_at": 1792000001,
+                "approval": {"approval_id": "ap-1", "kind": "tool",
+                             "summary": "Run schedule_create", "choices": ["allow", "deny"],
+                             "started_at": 1792000100, "expires_at": 1792001900,
+                             "must_approve": true}
+            }
+        }]})).unwrap();
+        let e = &s.agents[0];
+        assert!(e.muse_may_approve_guarded);
+        let t = e.task.as_ref().expect("task");
+        assert_eq!((t.id.as_str(), t.session_id.as_str(), t.tool.as_deref()), ("task-9", "sess-9", Some("schedule_create")));
+        assert_eq!(t.started_at, 1792000001);
+        let ap = t.approval.as_ref().unwrap();
+        assert!(ap.must_approve);
+        assert_eq!((ap.started_at, ap.expires_at), (1792000100, 1792001900));
+        let line = task_line(e).unwrap();
+        assert_eq!(line.approval.unwrap().hint, Some(MUSE_MAY_ALSO_ANSWER));
+        // A task: null entry (daemon shape when idle) parses with no task.
+        let idle = parse_paired_agents(&json!({"agents": [{"channel_id": "a", "label": null,
+            "state": "offline", "muse_may_approve_guarded": false, "since": 200,
+            "tool": null, "approval": null, "task": null}]})).unwrap();
+        assert!(idle.agents[0].task.is_none());
     }
 }
