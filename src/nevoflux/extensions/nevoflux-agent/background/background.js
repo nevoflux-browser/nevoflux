@@ -18,6 +18,7 @@ import { osNotificationContent, mayShowOsNotification } from './notify-gate.mjs'
 import { commandVerdict } from './canvas-command-gate.mjs';
 import { allowCanvasNotify } from './canvas-notify-limit.mjs';
 import { recordSessionOrigin, isDelegated, askIsDelegated, askHoldMs, CanvasTabs, canvasOpenPlan, canvasChatSessionFor, applyStatusSnapshot, StatusSnapshotGate, SessionQueue } from './delegation.mjs';
+import { isSystemRequest, systemRequestRefusal, systemOriginRefusal, withoutOrigin, taskScreenshotOptions, captureWithinBudget, canvasTabForArtifact } from './task-screenshot.mjs';
 
 // Recent canvas:notify times per artifact id (rolling rate limit).
 const canvasNotifyHistory = new Map();
@@ -937,6 +938,68 @@ async function openSessionCanvasTabNow(artifactId, sessionId) {
     console.error('[NevoFlux] Failed to open canvas tab:', e);
     return null;
   }
+}
+
+/**
+ * Answer the daemon's own request (contract §7): the screenshot of a
+ * delegated task's result. It runs here and never through executeBrowserTool:
+ * the agent tab rules (http/https only, no active-tab fallback) govern what
+ * an agent asks for, and this is the daemon looking at what the task made.
+ * Never selects, activates or restores a tab.
+ */
+async function answerSystemRequest(request) {
+  const refusal = systemRequestRefusal(request);
+  let reply;
+  if (refusal) {
+    reply = { success: false, error: refusal };
+  } else {
+    try {
+      reply = await captureTaskResult(request);
+    } catch (err) {
+      console.warn('[NevoFlux] task screenshot failed:', err?.message || err);
+      reply = { success: false, error: { code: -1, message: 'capture_failed', recoverable: false } };
+    }
+  }
+  channelManager.sendToAgent({
+    type: MessageTypes.BROWSER_TOOL_RESPONSE,
+    payload: {
+      request_id: request.request_id,
+      session_id: request.session_id,
+      success: reply.success,
+      result: reply.success ? reply.result : undefined,
+      error: reply.error || undefined,
+    },
+  });
+}
+
+/**
+ * The task screenshot: the named web tab, else this session's Canvas tab,
+ * else the tab showing the artifact; JPEG within the contract budget.
+ */
+async function captureTaskResult(request) {
+  const opts = taskScreenshotOptions(request.params);
+  let tabId = Number.isInteger(request.tab_id) && request.tab_id > 0 ? request.tab_id : null;
+  if (tabId === null) {
+    tabId = canvasTabs.tabFor(request.session_id);
+  }
+  if (tabId === null && request.params?.artifact_id) {
+    tabId = canvasTabForArtifact(await browser.tabs.query({}), request.params.artifact_id);
+  }
+  if (tabId === null) {
+    return { success: false, error: { code: -1, message: 'tab_closed', recoverable: false } };
+  }
+  if (typeof browser.nevoflux?.captureTaskScreenshot !== 'function') {
+    return { success: false, error: { code: -1, message: 'capture_failed', recoverable: false } };
+  }
+  return captureWithinBudget(
+    (quality) =>
+      browser.nevoflux.captureTaskScreenshot(tabId, {
+        quality,
+        maxWidth: opts.maxWidth,
+        maxHeight: opts.maxHeight,
+      }),
+    opts
+  );
 }
 
 /**
@@ -2373,6 +2436,12 @@ class ChannelManager {
     if (msgType === MessageTypes.BROWSER_TOOL_REQUEST) {
       const payload = message.payload;
       const action = payload?.action;
+      // The daemon's own request (origin "system", contract §7): the task
+      // result screenshot. Answered here, before every other route.
+      if (isSystemRequest(payload)) {
+        answerSystemRequest(payload);
+        return;
+      }
       const DIRECT_ACTIONS = new Set([
         'read_artifact',
         'edit_artifact',
@@ -3029,7 +3098,9 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onBridgeRequest)
     try {
       switch (type) {
         case 'exec_tool':
-          result = await executeBrowserTool(payload, 'bridge');
+          // A page never chooses an origin: "system" would take the task
+          // screenshot path and "agent" the agent rules (M3 contract §7).
+          result = await executeBrowserTool(withoutOrigin(payload), 'bridge');
           break;
 
         case 'send_to_agent': {
@@ -4418,6 +4489,12 @@ async function getActiveCanvasHint() {
  */
 async function executeBrowserTool(request, caller = 'unknown') {
   const { action, params, tab_id, timeout_ms = 30000 } = request;
+
+  // A system request has its own path that skips the agent tab rules; it
+  // must never run as an ordinary tool, whoever passes it in (M3 §7).
+  if (isSystemRequest(request)) {
+    return { success: false, error: systemOriginRefusal(action) };
+  }
 
   // A paired agent's call names its tab (the daemon resolves it, M2a §3.2).
   // Without one, the active-tab fallback below would act on whatever the

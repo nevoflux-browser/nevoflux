@@ -556,3 +556,57 @@ describe('NevofluxChild reports the Canvas preview frame', () => {
     expect(child.includes("doc?.getElementById('viewport')?.querySelector('iframe')")).toBe(true);
   });
 });
+
+describe('background.js system requests', () => {
+  const bg = read('../../extensions/nevoflux-agent/background/background.js');
+  const fn = (signature) => {
+    const start = bg.indexOf(signature);
+    expect(start).toBeGreaterThan(0);
+    return bg.slice(start, bg.indexOf('\n}\n', start));
+  };
+
+  it('imports the system-request rules', () => {
+    expect(
+      bg.includes(
+        "import { isSystemRequest, systemRequestRefusal, systemOriginRefusal, withoutOrigin, taskScreenshotOptions, captureWithinBudget, canvasTabForArtifact } from './task-screenshot.mjs';"
+      )
+    ).toBe(true);
+  });
+
+  it('a system request is answered before any other routing and never reaches the sidebar', () => {
+    const start = bg.indexOf('    if (msgType === MessageTypes.BROWSER_TOOL_REQUEST) {');
+    expect(start).toBeGreaterThan(0);
+    const block = bg.slice(start, bg.indexOf('const DIRECT_ACTIONS = new Set([', start));
+    expect(block.includes('if (isSystemRequest(payload)) {')).toBe(true);
+    expect(block.includes('answerSystemRequest(payload);')).toBe(true);
+    expect(block.includes('return;')).toBe(true);
+  });
+
+  it('executeBrowserTool refuses a system request from every caller', () => {
+    const body = fn('async function executeBrowserTool(request, caller = \'unknown\') {');
+    const guard = body.indexOf('if (isSystemRequest(request)) {');
+    expect(guard).toBeGreaterThan(0);
+    // First thing after reading the request: before the agent checks and the
+    // active-tab fallback.
+    expect(guard < body.indexOf('const agentRefusal = agentTabRefusal(request);')).toBe(true);
+    expect(body.includes('return { success: false, error: systemOriginRefusal(action) };')).toBe(true);
+  });
+
+  it('the canvas bridge strips the origin', () => {
+    expect(bg.includes("result = await executeBrowserTool(withoutOrigin(payload), 'bridge');")).toBe(true);
+    expect(bg.includes("result = await executeBrowserTool(payload, 'bridge');")).toBe(false);
+  });
+
+  it('the system path refuses other actions, never runs a browser tool, and keeps the budget', () => {
+    const answer = fn('async function answerSystemRequest(request) {');
+    expect(answer.includes('systemRequestRefusal(request)')).toBe(true);
+    expect(answer.includes('executeBrowserTool(')).toBe(false);
+    expect(answer.includes('type: MessageTypes.BROWSER_TOOL_RESPONSE,')).toBe(true);
+    const capture = fn('async function captureTaskResult(request) {');
+    expect(capture.includes('canvasTabs.tabFor(request.session_id)')).toBe(true);
+    expect(capture.includes('canvasTabForArtifact(await browser.tabs.query({}), request.params.artifact_id)')).toBe(true);
+    expect(capture.includes('captureWithinBudget(')).toBe(true);
+    expect(capture.includes('browser.nevoflux.captureTaskScreenshot(tabId,')).toBe(true);
+    expect(capture.includes('executeBrowserTool(')).toBe(false);
+  });
+});
