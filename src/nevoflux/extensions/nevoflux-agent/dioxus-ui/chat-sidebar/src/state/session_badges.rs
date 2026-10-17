@@ -8,12 +8,14 @@
 //! whether a turn runs in it (`runtime`). "Finished, unread" is the sidebar's
 //! own (contract R18): it remembers the `updated_at` each delegated session
 //! had when it was last on screen, in localStorage so the mark survives the
-//! sidebar being closed while the agent works. Everything but `load_seen` /
+//! sidebar being closed while the agent works. A session it holds no entry
+//! for is judged against the baseline: the time the map was first made, or
+//! the last entry forgotten past the cap. Everything but `load_seen` /
 //! `save_seen` is pure and tested natively.
 
 use std::collections::BTreeMap;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::paired_agents::{agent_label, PairedAgentsSnapshot, DEFAULT_LABEL};
 use super::SessionSummary;
@@ -24,8 +26,54 @@ pub const SEEN_KEY: &str = "nevoflux.sidebar.museSeen";
 /// At most this many sessions are remembered (the least recent go first).
 pub const SEEN_CAP: usize = 500;
 
-/// Session id -> the `updated_at` it had when last on screen.
-pub type SeenMap = BTreeMap<String, u64>;
+/// Session id -> the `updated_at` it had when last on screen, plus the
+/// baseline for sessions without an entry (all in seconds, like `updated_at`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeenMap {
+    /// A delegated session without an entry that has not moved on since
+    /// this counts as seen: older history pages the first load never listed,
+    /// and entries forgotten past [`SEEN_CAP`].
+    pub baseline: u64,
+    /// Session id -> `updated_at` when last on screen.
+    pub entries: BTreeMap<String, u64>,
+}
+
+impl SeenMap {
+    /// An empty map whose baseline is 0 (every finished session is new).
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn get(&self, id: &str) -> Option<&u64> {
+        self.entries.get(id)
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Forget the least recent entries past [`SEEN_CAP`]; the baseline rises
+    /// to what they held, so a forgotten session that has not moved on stays
+    /// read.
+    fn prune(&mut self) {
+        while self.entries.len() > SEEN_CAP {
+            let Some((id, at)) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, at)| **at)
+                .map(|(id, at)| (id.clone(), *at))
+            else {
+                break;
+            };
+            self.entries.remove(&id);
+            self.baseline = self.baseline.max(at);
+        }
+    }
+}
 
 /// Who started a session, when a paired agent did (contract §3).
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -115,12 +163,13 @@ pub fn parse_seen(raw: Option<&str>) -> Option<SeenMap> {
     serde_json::from_str(raw?).ok()
 }
 
-/// Remember `updated_at` for `id` (never moves backwards).
+/// Remember `updated_at` for `id` (never moves backwards; keeps the cap).
 pub fn mark_seen(seen: &mut SeenMap, id: &str, updated_at: u64) {
-    let entry = seen.entry(id.to_string()).or_insert(0);
+    let entry = seen.entries.entry(id.to_string()).or_insert(0);
     if updated_at > *entry {
         *entry = updated_at;
     }
+    seen.prune();
 }
 
 /// How far past a watched turn's end its closing writes may still move
@@ -138,26 +187,35 @@ pub fn mark_watched_end(seen: &mut SeenMap, id: &str, now_secs: u64) {
     }
 }
 
-/// The map after a list load: with no stored map, every listed delegated
-/// session counts as seen (a baseline, so old ones do not all light up); the
-/// conversation on screen is always seen.
-pub fn reconcile_seen(seen: Option<SeenMap>, sessions: &[SessionSummary], current: &str) -> SeenMap {
-    let baseline = seen.is_none();
-    let mut seen = seen.unwrap_or_default();
-    for s in sessions.iter().filter(|s| s.origin.is_some()) {
-        if baseline || s.id == current {
-            mark_seen(&mut seen, &s.id, s.updated_at);
-        }
+/// The conversation on screen changed from `outgoing` to `incoming`: the
+/// one left counts as read up to now (plus the grace for its closing writes).
+/// Returns whether anything was marked.
+pub fn leave_session(seen: &mut SeenMap, outgoing: &str, incoming: &str, now_secs: u64) -> bool {
+    if outgoing.is_empty() || outgoing == incoming {
+        return false;
     }
-    while seen.len() > SEEN_CAP {
-        let oldest = seen.iter().min_by_key(|(_, at)| **at).map(|(id, _)| id.clone());
-        match oldest {
-            Some(id) => {
-                seen.remove(&id);
-            }
-            None => break,
-        }
+    mark_watched_end(seen, outgoing, now_secs);
+    true
+}
+
+/// The map after a list load. With no stored map a new one starts whose
+/// baseline is now (or the newest listed session, if later), so every
+/// delegated session not moved on since counts as seen, on this page and on
+/// later ones; the conversation on screen is always seen.
+pub fn reconcile_seen(
+    seen: Option<SeenMap>,
+    sessions: &[SessionSummary],
+    current: &str,
+    now_secs: u64,
+) -> SeenMap {
+    let mut seen = seen.unwrap_or_else(|| SeenMap {
+        baseline: sessions.iter().map(|s| s.updated_at).fold(now_secs, u64::max),
+        entries: BTreeMap::new(),
+    });
+    for s in sessions.iter().filter(|s| s.origin.is_some() && s.id == current) {
+        mark_seen(&mut seen, &s.id, s.updated_at);
     }
+    seen.prune();
     seen
 }
 
@@ -166,7 +224,7 @@ pub fn is_unread(session: &SessionSummary, seen: &SeenMap, current: &str) -> boo
     session.origin.is_some()
         && session.id != current
         && session.runtime.is_none()
-        && seen.get(&session.id).map_or(true, |&at| session.updated_at > at)
+        && session.updated_at > seen.get(&session.id).copied().unwrap_or(seen.baseline)
 }
 
 /// The stored seen map (wasm only; `None` when absent or unreadable).
@@ -252,16 +310,18 @@ mod tests {
     #[test]
     fn the_first_load_takes_every_delegated_session_as_seen() {
         let list = [summary("a", 100, true, None), summary("b", 200, true, None), summary("u", 300, false, None)];
-        let seen = reconcile_seen(None, &list, "x");
-        assert_eq!(seen.get("a"), Some(&100));
-        assert_eq!(seen.get("b"), Some(&200));
-        assert!(seen.get("u").is_none(), "the person's own sessions are not tracked");
+        let seen = reconcile_seen(None, &list, "x", 1_000);
+        assert_eq!(seen.baseline, 1_000, "the baseline is when the map was made");
+        assert!(seen.is_empty(), "the baseline covers them; no entry per session");
+        // A clock behind the newest listed session does not light it up.
+        let skewed = reconcile_seen(None, &list, "x", 250);
+        assert_eq!(skewed.baseline, 300);
         assert!(list.iter().all(|s| !is_unread(s, &seen, "x")));
     }
 
     #[test]
     fn a_new_delegated_session_is_unread_once_it_finishes() {
-        let seen = reconcile_seen(Some(SeenMap::new()), &[], "x");
+        let seen = reconcile_seen(Some(SeenMap::new()), &[], "x", 400);
         let running = summary("t", 500, true, Some(SessionRuntime::Running));
         assert!(!is_unread(&running, &seen, "x"), "running is not finished");
         let done = summary("t", 520, true, None);
@@ -286,7 +346,7 @@ mod tests {
     #[test]
     fn the_conversation_on_screen_is_never_unread() {
         let list = [summary("t", 520, true, None)];
-        let seen = reconcile_seen(Some(SeenMap::new()), &list, "t");
+        let seen = reconcile_seen(Some(SeenMap::new()), &list, "t", 400);
         assert_eq!(seen.get("t"), Some(&520));
         assert!(!is_unread(&list[0], &seen, "t"));
     }
@@ -296,11 +356,11 @@ mod tests {
         // The list refreshed at done still says "running" (updated_at 1000)
         // while the person watches; the daemon closes the task a second later.
         let refreshed = [summary("t", 1000, true, Some(SessionRuntime::Running))];
-        let mut seen = reconcile_seen(Some(SeenMap::new()), &refreshed, "t");
+        let mut seen = reconcile_seen(Some(SeenMap::new()), &refreshed, "t", 1000);
         mark_watched_end(&mut seen, "t", 1000);
         // Later, from another conversation, the closed task has moved on a bit.
         let closed = summary("t", 1001, true, None);
-        let seen = reconcile_seen(Some(seen), std::slice::from_ref(&closed), "x");
+        let seen = reconcile_seen(Some(seen), std::slice::from_ref(&closed), "x", 1001);
         assert!(!is_unread(&closed, &seen, "x"), "watched, so read");
         // A follow-up task finishing later is new again.
         assert!(is_unread(&summary("t", 1000 + WATCHED_GRACE_SECS + 60, true, None), &seen, "x"));
@@ -326,7 +386,7 @@ mod tests {
         assert!(parse_seen(Some("{not json")).is_none());
         assert!(parse_seen(None).is_none());
         let list = [summary("a", 100, true, None)];
-        let seen = reconcile_seen(parse_seen(Some("{not json")), &list, "x");
+        let seen = reconcile_seen(parse_seen(Some("{not json")), &list, "x", 1_000);
         assert!(!is_unread(&list[0], &seen, "x"));
     }
 
@@ -336,9 +396,46 @@ mod tests {
         for i in 0..(SEEN_CAP as u64 + 3) {
             mark_seen(&mut seen, &format!("s{i}"), 1000 + i);
         }
-        let seen = reconcile_seen(Some(seen), &[], "x");
+        assert_eq!(seen.len(), SEEN_CAP, "marking prunes as it goes");
+        let seen = reconcile_seen(Some(seen), &[], "x", 5_000);
         assert_eq!(seen.len(), SEEN_CAP);
         assert!(seen.get("s0").is_none());
         assert!(seen.get(&format!("s{}", SEEN_CAP + 2)).is_some());
+        // Forgotten is not unread: the evicted session has not moved on.
+        assert!(!is_unread(&summary("s0", 1000, true, None), &seen, "x"));
+        assert!(!is_unread(&summary("s2", 1002, true, None), &seen, "x"));
+        // It moving on later still shows.
+        assert!(is_unread(&summary("s0", 1000 + SEEN_CAP as u64 + 10, true, None), &seen, "x"));
+    }
+
+    #[test]
+    fn older_delegated_sessions_on_later_pages_are_not_finished() {
+        // The first page sets the baseline; load-more brings older sessions
+        // the baseline never listed.
+        let page1 = [summary("a", 4_000, true, None)];
+        let seen = reconcile_seen(None, &page1, "x", 5_000);
+        let page2 = [summary("old1", 300, true, None), summary("old2", 4_999, true, None)];
+        let seen = reconcile_seen(Some(seen), &page2, "x", 5_010);
+        assert!(page2.iter().all(|s| !is_unread(s, &seen, "x")));
+        // A delegated session that finished after the baseline is new.
+        assert!(is_unread(&summary("n", 5_001, true, None), &seen, "x"));
+        // The baseline survives a reload.
+        let reloaded = parse_seen(Some(&serde_json::to_string(&seen).unwrap())).unwrap();
+        assert!(!is_unread(&page2[0], &reloaded, "x"));
+        assert!(is_unread(&summary("n", 5_001, true, None), &reloaded, "x"));
+    }
+
+    #[test]
+    fn leaving_a_conversation_marks_it_read() {
+        let mut seen = reconcile_seen(Some(SeenMap::new()), &[], "x", 1_000);
+        // The person opened Muse's session t, chatted in it, and moved on.
+        assert!(leave_session(&mut seen, "t", "s-b", 2_000));
+        let later = summary("t", 2_001, true, None);
+        assert!(!is_unread(&later, &seen, "s-b"), "read up to when it was left");
+        assert!(is_unread(&summary("t", 2_000 + WATCHED_GRACE_SECS + 60, true, None), &seen, "s-b"));
+        // No change, no outgoing session: nothing to mark.
+        assert!(!leave_session(&mut seen, "s-b", "s-b", 3_000));
+        assert!(!leave_session(&mut seen, "", "s-b", 3_000));
+        assert!(seen.get("s-b").is_none());
     }
 }

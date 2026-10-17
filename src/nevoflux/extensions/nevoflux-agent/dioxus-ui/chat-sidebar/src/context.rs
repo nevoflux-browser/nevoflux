@@ -251,6 +251,38 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     // Provide context to children
     use_context_provider(|| ctx);
 
+    // The conversation on screen changed (history row, welcome screen, new
+    // chat, any path): the one left counts as read, so a Muse session the
+    // person opened and chatted in does not come back as "Finished" (M3 §6.2).
+    let mut screen_session = use_signal(String::new);
+    use_effect(move || {
+        let incoming = ctx.session.read().id.clone();
+        let outgoing = screen_session.peek().clone();
+        if outgoing == incoming {
+            return;
+        }
+        // Only delegated sessions are tracked; one not in the list may be.
+        let tracked = ctx
+            .history
+            .peek()
+            .sessions
+            .iter()
+            .find(|s| s.id == outgoing)
+            .map_or(true, |s| s.origin.is_some());
+        if tracked {
+            let now_secs = (js_sys::Date::now() / 1000.0) as u64;
+            let mut muse_seen = ctx.muse_seen;
+            muse_seen.with_mut(|seen| {
+                if let Some(seen) = seen.as_mut() {
+                    if crate::state::leave_session(seen, &outgoing, &incoming, now_secs) {
+                        crate::state::save_seen(seen);
+                    }
+                }
+            });
+        }
+        screen_session.set(incoming);
+    });
+
     // Initialize messaging on mount
     use_effect(move || {
         if mock_enabled {

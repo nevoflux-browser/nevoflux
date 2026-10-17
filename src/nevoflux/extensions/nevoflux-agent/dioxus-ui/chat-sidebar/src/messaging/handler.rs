@@ -1907,7 +1907,8 @@ fn handle_session_list_response(mut ctx: AppContext, data: serde_json::Value) {
         // Which delegated conversations moved on since they were last on screen (M3 §6.2).
         {
             let current = ctx.session.peek().id.clone();
-            let next = crate::state::reconcile_seen(ctx.muse_seen.peek().clone(), &sessions, &current);
+            let now_secs = (js_sys::Date::now() / 1000.0) as u64;
+            let next = crate::state::reconcile_seen(ctx.muse_seen.peek().clone(), &sessions, &current, now_secs);
             crate::state::save_seen(&next);
             ctx.muse_seen.set(Some(next));
         }

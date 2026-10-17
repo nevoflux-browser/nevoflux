@@ -37,7 +37,7 @@ pub use render_job::RenderJobEntry;
 pub use schedule::ScheduleJobState;
 pub use session_route::{SessionRouting, StreamRoute};
 pub use session_badges::{
-    is_unread, load_seen, mark_seen, mark_watched_end, origin_label, parse_origin,
+    is_unread, leave_session, load_seen, mark_seen, mark_watched_end, origin_label, parse_origin,
     parse_runtime, parse_seen, reconcile_seen, save_seen, session_badge, SeenMap, SessionBadge,
     SessionOrigin, SessionRuntime, SEEN_CAP, SEEN_KEY, WATCHED_GRACE_SECS,
 };
