@@ -310,7 +310,7 @@ describe('provisional delegation (rulings B-T2-1, B-T2-2)', () => {
   });
 });
 
-describe('askIsDelegated (ruling B-T2-2)', () => {
+describe('askIsDelegated (rulings B-T2-2, B-T2-3)', () => {
   it("the daemon's delegated stamp is 1 800 000 ms (contract R32)", () => {
     expect(DELEGATED_ASK_TIMEOUT_MS).toBe(1800000);
   });
@@ -321,18 +321,28 @@ describe('askIsDelegated (ruling B-T2-2)', () => {
     expect(askIsDelegated(live, null, 's1', undefined, 0)).toBe(true);
   });
 
-  it('a provisional session with the stamp: held', () => {
+  it("a session with a live task: a permission ask (86 400 000) is the task's, held", () => {
+    expect(askIsDelegated(new Set(['s1']), new Map(), 's1', 86400000, 0)).toBe(true);
+  });
+
+  it('a provisional session with exactly the stamp: held', () => {
     const pending = new Map();
     recordSessionOrigin(new Map(), origin('s1'), pending, 0);
     expect(askIsDelegated(new Set(), pending, 's1', 1800000, 0)).toBe(true);
-    expect(askIsDelegated(new Set(), pending, 's1', 86400000, 0)).toBe(true);
-    expect(askIsDelegated(new Set(), pending, 's1', '1800000', 0)).toBe(true);
+  });
+
+  it("a provisional session's permission ask (86 400 000) may be the person's own: shown", () => {
+    // Local permission asks carry 86 400 000 too; one arriving in the 30 s
+    // after a turn-end session_origin must not be hidden for 24 h.
+    const pending = new Map();
+    recordSessionOrigin(new Map(), origin('s1'), pending, 0);
+    expect(askIsDelegated(new Set(), pending, 's1', 86400000, 0)).toBe(false);
   });
 
   it('a provisional session without the stamp: shown', () => {
     const pending = new Map();
     recordSessionOrigin(new Map(), origin('s1'), pending, 0);
-    for (const t of [60000, 1799999, undefined, null, 'x']) {
+    for (const t of [60000, 1799999, 1800001, '1800000', undefined, null, 'x']) {
       expect(askIsDelegated(new Set(), pending, 's1', t, 0)).toBe(false);
     }
   });

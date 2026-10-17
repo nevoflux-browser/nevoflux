@@ -39,9 +39,9 @@ export const DELEGATED_SESSION_CAP = 200;
 export const DELEGATED_ASK_HOLD_MS = 31 * 60 * 1000;
 
 /**
- * The `params.timeout_ms` the daemon stamps on every AskUser of a delegated
- * session (contract R32: the model's own question gets exactly this,
- * permission-style asks 86 400 000). A local chat's question carries 60 000.
+ * The `params.timeout_ms` the daemon stamps on a delegated task's own
+ * question (contract R32: exactly this value). A local chat's question
+ * carries 60 000; permission-style asks carry 86 400 000 whoever's they are.
  */
 export const DELEGATED_ASK_TIMEOUT_MS = 1_800_000;
 
@@ -164,17 +164,19 @@ export function isDelegated(live, sessionId, pending = null, now = Date.now()) {
 
 /**
  * Whether an AskUser in `sessionId` is a delegated task's question, to be
- * held and not shown (contract R21; ruling B-T2-2): the session has a live
- * task, or it is provisionally delegated AND the question carries the
- * daemon's delegated stamp (`timeout_ms >= DELEGATED_ASK_TIMEOUT_MS`, R32).
- * The stamp keeps a person's own question visible while a provisional entry
- * is still open; the decision is taken once, so it must not guess.
+ * held and not shown (contract R21; rulings B-T2-2, B-T2-3): the session has
+ * a live task (then permission asks are the task's too), or it is
+ * provisionally delegated AND `timeout_ms` is exactly the daemon's delegated
+ * stamp DELEGATED_ASK_TIMEOUT_MS (R32). Exact, not "at least": a person's
+ * own permission ask carries 86 400 000, and one arriving in the provisional
+ * window (say after a turn-end session_origin) must be shown, not hidden for
+ * 24 h. The decision is taken once, so it must not guess.
  */
 export function askIsDelegated(live, pending, sessionId, timeoutMs, now = Date.now()) {
   if (hasLiveTask(live, sessionId)) {
     return true;
   }
-  return Number(timeoutMs) >= DELEGATED_ASK_TIMEOUT_MS && isProvisional(pending, sessionId, now);
+  return timeoutMs === DELEGATED_ASK_TIMEOUT_MS && isProvisional(pending, sessionId, now);
 }
 
 /**
