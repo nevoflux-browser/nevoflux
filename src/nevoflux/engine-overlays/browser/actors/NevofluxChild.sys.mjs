@@ -239,6 +239,16 @@ export class NevofluxChild extends JSWindowActorChild {
       return undefined;
     }
 
+    // ---------- Canvas preview frame (task result screenshot, M3 §5) ----------
+    // The parent draws a Canvas page's out-of-process preview iframe; this
+    // names the one the page shows (the #viewport iframe canvas.js renders
+    // into and captures from) so the parent need not guess among frames.
+    if (name === 'canvas:previewFrame' && this._isNevofluxPage()) {
+      const doc = this.document;
+      const iframe = doc?.getElementById('viewport')?.querySelector('iframe') || null;
+      return { browsingContextId: iframe?.browsingContext?.id ?? null };
+    }
+
     return null;
   }
 

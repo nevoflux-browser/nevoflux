@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """Malicious-canvas smoke test for the canvas bridge gates (stdlib only).
 
-Usage: python canvas_bridge_smoke.py --exe <nevoflux.exe> [--port 2841]
+Usage: python canvas_bridge_smoke.py --exe <smoke copy>/nevoflux.exe [--port 2841]
+  e.g. --exe C:/Users/Docker/nevoflux/m3-smoke-browser/nevoflux.exe
 
-Launches an isolated browser on a temporary profile, drives it over Marionette
+--exe names the Task 14 hot-patched COPY of the installed build, never the
+installed C:/Program Files/... build itself.
+
+Launches an isolated browser on a temporary profile, with the built-in agent's
+NEVOFLUX_CONFIG / NEVOFLUX_DATA_DIR pointed into that profile so it never
+touches the person's own daemon, config or data, drives it over Marionette
 (raw TCP, `<len>:<json>` frames), loads fixtures/canvas-bridge-attack.html as
 canvas "smoke", waits, then prints each result next to its expected outcome.
 Nothing is asserted; a human compares the columns.
@@ -122,6 +128,18 @@ const done = arguments[arguments.length - 1];
 """
 
 
+def isolated_agent_env(profile):
+    """Environment for the launched browser that keeps the built-in agent off
+    the person's own daemon, %APPDATA% config and data: NEVOFLUX_CONFIG and
+    NEVOFLUX_DATA_DIR point into <profile>/agent, removed with the profile."""
+    agent = os.path.join(profile, "agent")
+    data = os.path.join(agent, "data")
+    os.makedirs(data, exist_ok=True)
+    return dict(os.environ,
+                NEVOFLUX_CONFIG=os.path.join(agent, "config.toml"),
+                NEVOFLUX_DATA_DIR=data)
+
+
 def kill_profile_tree(profile):
     """Kill only processes whose command line contains our temp profile path."""
     if os.name == "nt":
@@ -138,7 +156,7 @@ def kill_profile_tree(profile):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--exe", required=True, help="path to nevoflux.exe")
+    ap.add_argument("--exe", required=True, help="nevoflux.exe of the Task 14 smoke copy (never the installed build)")
     ap.add_argument("--port", type=int, default=2841, help="marionette port")
     args = ap.parse_args()
 
@@ -154,6 +172,7 @@ def main():
         proc = subprocess.Popen(
             [args.exe, "-no-remote", "-profile", profile, "-marionette",
              "--remote-allow-system-access"],
+            env=isolated_agent_env(profile),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         m = Marionette(args.port, 90)
         m.call("WebDriver:NewSession", {"capabilities": {}})

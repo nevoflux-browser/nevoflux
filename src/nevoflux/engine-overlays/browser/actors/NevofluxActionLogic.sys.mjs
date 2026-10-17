@@ -635,3 +635,21 @@ export function a11yBoundsToViewport(bounds, { innerScreenX, innerScreenY, devic
     height: bounds.height / dpr,
   };
 }
+
+/**
+ * Output size for a task result screenshot (M3 contract §7): scale a
+ * w x h source down (never up) to at most maxW wide, then keep only the top
+ * rows so the output is at most maxH tall. Returns the output width/height
+ * and srcHeight, the source rows that fill it, or null for a zero or invalid
+ * size.
+ */
+export function fitTop(w, h, maxW, maxH) {
+  if (![w, h, maxW, maxH].every((n) => Number.isFinite(n) && n > 0)) {
+    return null;
+  }
+  const scale = Math.min(1, maxW / w);
+  const width = Math.max(1, Math.min(Math.floor(maxW), Math.round(w * scale)));
+  const height = Math.max(1, Math.min(Math.floor(maxH), Math.round(h * scale)));
+  const srcHeight = Math.max(1, Math.min(h, Math.round(height / scale)));
+  return { width, height, srcHeight };
+}

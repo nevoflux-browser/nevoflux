@@ -4,6 +4,7 @@
 
 import { readFileSync } from 'node:fs';
 import { describe, it, expect } from './test-runner.mjs';
+import * as ActionLogic from '../../engine-overlays/browser/actors/NevofluxActionLogic.sys.mjs';
 import {
   SYSTEM_ORIGIN,
   TASK_SCREENSHOT_LIMITS,
@@ -197,7 +198,20 @@ const CHILD = '../../engine-overlays/browser/actors/NevofluxChild.sys.mjs';
 
 // The real method out of ext-nevoflux.js, run against fakes. The file is a
 // privileged parent script Node cannot load whole; this method only touches
-// `extension`, `self` and (on the Canvas path, not exercised here) ChromeUtils.
+// `extension`, `self` and, on the Canvas path, two modules through
+// ChromeUtils: Timer (made instant here) and the real NevofluxActionLogic.
+const FAKE_CHROME_UTILS = {
+  importESModule(url) {
+    if (url === 'resource://gre/modules/Timer.sys.mjs') {
+      return { setTimeout: (fn) => setTimeout(fn, 0) };
+    }
+    if (url === 'resource:///actors/NevofluxActionLogic.sys.mjs') {
+      return ActionLogic;
+    }
+    throw new Error(`unexpected module ${url}`);
+  },
+};
+
 function loadCaptureTaskScreenshot(extension, self) {
   const src = read(PARENT);
   const start = src.indexOf('        async captureTaskScreenshot(tabId, options) {');
@@ -210,7 +224,7 @@ function loadCaptureTaskScreenshot(extension, self) {
   return new Function('extension', 'self', 'ChromeUtils', `return ({\n${method}\n}).captureTaskScreenshot;`)(
     extension,
     self,
-    {}
+    FAKE_CHROME_UTILS
   );
 }
 
@@ -321,5 +335,224 @@ describe('captureTaskScreenshot experiment API', () => {
       child.includes("async screenshot({ fullPage = false, type = 'jpeg', quality = 60, maxWidth = 1280, maxHeight = 0 }) {")
     ).toBe(true);
     expect(child.includes('if (maxHeight > 0 && outputHeight > maxHeight) {')).toBe(true);
+  });
+});
+
+describe('fitTop (task screenshot size math)', () => {
+  const { fitTop } = ActionLogic;
+
+  it('never upscales a frame that already fits', () => {
+    expect(fitTop(800, 600, 1280, 2400)).toEqual({ width: 800, height: 600, srcHeight: 600 });
+  });
+
+  it('scales a wide frame down to maxWidth, keeping the aspect ratio', () => {
+    expect(fitTop(2560, 1440, 1280, 2400)).toEqual({ width: 1280, height: 720, srcHeight: 1440 });
+  });
+
+  it('keeps the top segment of a tall frame', () => {
+    expect(fitTop(1000, 5000, 1280, 2400)).toEqual({ width: 1000, height: 2400, srcHeight: 2400 });
+    expect(fitTop(2560, 6000, 1280, 2400)).toEqual({ width: 1280, height: 2400, srcHeight: 4800 });
+  });
+
+  it('stays within maxWidth x maxHeight and inside the source', () => {
+    const sizes = [
+      [1, 1],
+      [1279, 2401],
+      [1281, 2399],
+      [3840, 2160],
+      [1366, 30000],
+      [7, 9999],
+      [4096, 4096],
+    ];
+    for (const [w, h] of sizes) {
+      const r = fitTop(w, h, 1280, 2400);
+      expect(r.width <= 1280 && r.height <= 2400).toBe(true);
+      expect(r.width >= 1 && r.height >= 1).toBe(true);
+      expect(r.srcHeight >= 1 && r.srcHeight <= h).toBe(true);
+      expect(r.width <= w).toBe(true);
+      // Same scale on both axes (within rounding).
+      expect(Math.abs(r.width / w - r.height / r.srcHeight) < 0.01).toBe(true);
+    }
+  });
+
+  it('handles tiny limits and rejects zero or invalid input', () => {
+    expect(fitTop(1, 1, 1280, 2400)).toEqual({ width: 1, height: 1, srcHeight: 1 });
+    expect(fitTop(3, 10000, 1, 1)).toEqual({ width: 1, height: 1, srcHeight: 3 });
+    expect(fitTop(0, 600, 1280, 2400)).toBeNull();
+    expect(fitTop(800, 0, 1280, 2400)).toBeNull();
+    expect(fitTop(800, 600, 0, 2400)).toBeNull();
+    expect(fitTop(800, 600, 1280, -1)).toBeNull();
+    expect(fitTop(Number.NaN, 600, 1280, 2400)).toBeNull();
+    expect(fitTop(undefined, undefined, 1280, 2400)).toBeNull();
+  });
+});
+
+function fakeBitmap(width, height) {
+  return {
+    width,
+    height,
+    closed: false,
+    close() {
+      this.closed = true;
+    },
+  };
+}
+
+function fakeFrame(id, bitmap, log, { wgpAfter = 0 } = {}) {
+  let reads = 0;
+  return {
+    id,
+    children: [],
+    get currentWindowGlobal() {
+      reads++;
+      if (reads <= wgpAfter) {
+        return null;
+      }
+      return {
+        async drawSnapshot(rect, scale, background) {
+          log.snapshots.push({ id, rect, scale, background });
+          return bitmap;
+        },
+      };
+    },
+  };
+}
+
+// A Canvas tab whose top browsing context exposes `frames` as children only
+// after `framesAfter` reads (a still-loading page), and whose page actor
+// reports `reportedId` (or throws when `reportedId` is an Error).
+function canvasWorld({ frames, reportedId, framesAfter = 0 }) {
+  const log = { queries: [], snapshots: [], drawImage: [], toDataURL: [] };
+  let childReads = 0;
+  const topBc = {
+    get children() {
+      childReads++;
+      return childReads <= framesAfter ? [] : frames;
+    },
+    currentWindowGlobal: {
+      getActor(name) {
+        return {
+          async sendQuery(msg) {
+            log.queries.push({ name, msg });
+            if (reportedId instanceof Error) {
+              throw reportedId;
+            }
+            return { browsingContextId: reportedId };
+          },
+        };
+      },
+    },
+  };
+  const doc = {
+    createElementNS(ns, tag) {
+      log.created = { ns, tag };
+      const canvas = {
+        width: 0,
+        height: 0,
+        getContext: () => ({ drawImage: (...args) => log.drawImage.push(args) }),
+        toDataURL: (type, q) => {
+          log.toDataURL.push({ type, q, width: canvas.width, height: canvas.height });
+          return 'data:image/jpeg;base64,QkFTRTY0';
+        },
+      };
+      return canvas;
+    },
+  };
+  const tab = {
+    closing: false,
+    isConnected: true,
+    ownerGlobal: { document: doc },
+    linkedBrowser: { currentURI: { spec: 'nevoflux://canvas/a1' }, browsingContext: topBc },
+  };
+  const world = fakeWorld(new Map([[7, tab]]), { success: false });
+  return { ...world, log };
+}
+
+describe('captureTaskScreenshot Canvas path', () => {
+  it('draws the frame the page reports, scaled and top-cropped to the limits', async () => {
+    const bitmap = fakeBitmap(2560, 6000);
+    const log0 = { snapshots: [] };
+    const decoy = fakeFrame(11, fakeBitmap(10, 10), log0);
+    const preview = fakeFrame(12, bitmap, log0);
+    const { capture, calls, log } = canvasWorld({ frames: [decoy, preview], reportedId: 12 });
+    const res = await capture(7, { quality: 40, maxWidth: 1280, maxHeight: 2400 });
+    expect(res).toEqual({ success: true, data: 'QkFTRTY0', width: 1280, height: 2400, tabKind: 'canvas' });
+    expect(log.queries[0]).toEqual({ name: 'Nevoflux', msg: 'canvas:previewFrame' });
+    expect(log0.snapshots).toEqual([{ id: 12, rect: null, scale: 1, background: 'rgb(255,255,255)' }]);
+    expect(log.drawImage).toEqual([[bitmap, 0, 0, 2560, 4800, 0, 0, 1280, 2400]]);
+    expect(log.toDataURL).toEqual([{ type: 'image/jpeg', q: 0.4, width: 1280, height: 2400 }]);
+    expect(bitmap.closed).toBe(true);
+    expect(calls.execute.length).toBe(0);
+  });
+
+  it('finds a reported frame nested below the top level', async () => {
+    const log0 = { snapshots: [] };
+    const inner = fakeFrame(21, fakeBitmap(800, 600), log0);
+    const outer = fakeFrame(20, fakeBitmap(10, 10), log0);
+    outer.children = [inner];
+    const { capture } = canvasWorld({ frames: [outer], reportedId: 21 });
+    const res = await capture(7, {});
+    expect(res.success).toBe(true);
+    expect(res.width).toBe(800);
+    expect(log0.snapshots.map((s) => s.id)).toEqual([21]);
+  });
+
+  it('waits for a reported frame that is not attached yet instead of drawing another', async () => {
+    const log0 = { snapshots: [] };
+    const decoy = fakeFrame(61, fakeBitmap(10, 10), log0);
+    const preview = fakeFrame(62, fakeBitmap(800, 600), log0);
+    const frames = [decoy];
+    const { capture } = canvasWorld({ frames, reportedId: 62 });
+    setTimeout(() => frames.push(preview), 0);
+    const res = await capture(7, {});
+    expect(res.width).toBe(800);
+    expect(log0.snapshots.map((s) => s.id)).toEqual([62]);
+  });
+
+  it('falls back to the first child frame when the page reports nothing usable', async () => {
+    for (const reportedId of [new Error('no actor'), null, 99]) {
+      const log0 = { snapshots: [] };
+      const first = fakeFrame(31, fakeBitmap(800, 600), log0);
+      const second = fakeFrame(32, fakeBitmap(800, 600), log0);
+      const { capture } = canvasWorld({ frames: [first, second], reportedId });
+      const res = await capture(7, {});
+      expect(res.success).toBe(true);
+      expect(log0.snapshots.map((s) => s.id)).toEqual([31]);
+    }
+  });
+
+  it('waits for a still-loading page to grow its preview frame', async () => {
+    const log0 = { snapshots: [] };
+    const preview = fakeFrame(41, fakeBitmap(800, 600), log0, { wgpAfter: 3 });
+    const { capture } = canvasWorld({ frames: [preview], reportedId: 41, framesAfter: 5 });
+    const res = await capture(7, {});
+    expect(res).toEqual({ success: true, data: 'QkFTRTY0', width: 800, height: 600, tabKind: 'canvas' });
+  });
+
+  it('gives up with capture_failed when no frame ever appears', async () => {
+    const { capture, log } = canvasWorld({ frames: [], reportedId: null });
+    expect(await capture(7, {})).toEqual({
+      success: false,
+      error: { code: -1, message: 'capture_failed', recoverable: false },
+    });
+    expect(log.drawImage.length).toBe(0);
+  });
+
+  it('a frame that never gets a window global, or an empty snapshot, is capture_failed', async () => {
+    const log0 = { snapshots: [] };
+    const stuck = fakeFrame(51, fakeBitmap(800, 600), log0, { wgpAfter: 1e9 });
+    const a = canvasWorld({ frames: [stuck], reportedId: 51 });
+    expect((await a.capture(7, {})).error.message).toBe('capture_failed');
+    const empty = fakeFrame(52, fakeBitmap(0, 0), log0);
+    const b = canvasWorld({ frames: [empty], reportedId: 52 });
+    expect((await b.capture(7, {})).error.message).toBe('capture_failed');
+  });
+});
+
+describe('NevofluxChild reports the Canvas preview frame', () => {
+  it('answers canvas:previewFrame on nevoflux:// pages with the #viewport iframe', () => {
+    const child = read(CHILD);
+    expect(child.includes("if (name === 'canvas:previewFrame' && this._isNevofluxPage()) {")).toBe(true);
+    expect(child.includes("doc?.getElementById('viewport')?.querySelector('iframe')")).toBe(true);
   });
 });

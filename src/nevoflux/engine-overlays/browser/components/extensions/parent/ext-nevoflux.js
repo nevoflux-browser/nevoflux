@@ -1081,16 +1081,52 @@ this.nevoflux = class extends ExtensionAPI {
             const { setTimeout: later } = ChromeUtils.importESModule(
               'resource://gre/modules/Timer.sys.mjs'
             );
-            const frame = (nativeTab.linkedBrowser.browsingContext?.children || [])[0];
-            if (!frame) {
-              return fail('capture_failed');
-            }
-            // The preview frame's window global appears once it has loaded
-            // (usually well under a second); allow up to 3 s.
-            let wgp = frame.currentWindowGlobal;
-            for (let i = 0; i < 60 && !wgp; i++) {
-              await new Promise((resolve) => later(resolve, 50));
-              wgp = frame.currentWindowGlobal;
+            const { fitTop } = ChromeUtils.importESModule(
+              'resource:///actors/NevofluxActionLogic.sys.mjs'
+            );
+            const topBc = nativeTab.linkedBrowser.browsingContext;
+            const findBc = (root, id) => {
+              for (const c of root?.children || []) {
+                if (c.id === id) {
+                  return c;
+                }
+                const deep = findBc(c, id);
+                if (deep) {
+                  return deep;
+                }
+              }
+              return null;
+            };
+            // Prefer the preview iframe the page itself reports (several
+            // frames can exist, as in canvas:capturePng); fall back to the
+            // first child frame. A page still loading may not have its frame,
+            // its actor or the frame's window global yet: poll for all of it
+            // within one 3 s budget (usually well under a second).
+            let wgp = null;
+            for (let i = 0; i <= 60; i++) {
+              if (i > 0) {
+                await new Promise((resolve) => later(resolve, 50));
+              }
+              let reportedId = null;
+              try {
+                const reply = await topBc?.currentWindowGlobal
+                  ?.getActor('Nevoflux')
+                  .sendQuery('canvas:previewFrame');
+                reportedId = reply?.browsingContextId ?? null;
+              } catch (e) {
+                reportedId = null;
+              }
+              // A reported frame not attached yet is waited for; the first
+              // child stands in only without a report or at the deadline.
+              const reported = reportedId != null ? findBc(topBc, reportedId) : null;
+              const frame =
+                reported ||
+                (reportedId == null || i === 60 ? (topBc?.children || [])[0] : null) ||
+                null;
+              wgp = frame?.currentWindowGlobal || null;
+              if (wgp) {
+                break;
+              }
             }
             if (!wgp) {
               return fail('capture_failed');
@@ -1098,13 +1134,14 @@ this.nevoflux = class extends ExtensionAPI {
             // A null rect draws the frame's visible viewport, which is what the
             // person would see; a long page is not captured whole (spec §5).
             const bitmap = await wgp.drawSnapshot(null, 1, 'rgb(255,255,255)');
-            if (!bitmap.width || !bitmap.height) {
+            const fit = fitTop(bitmap.width, bitmap.height, maxWidth, maxHeight);
+            if (!fit) {
+              if (typeof bitmap.close === 'function') {
+                bitmap.close();
+              }
               return fail('capture_failed');
             }
-            const scale = Math.min(1, maxWidth / bitmap.width);
-            const width = Math.max(1, Math.round(bitmap.width * scale));
-            const height = Math.max(1, Math.min(maxHeight, Math.round(bitmap.height * scale)));
-            const srcHeight = Math.min(bitmap.height, Math.round(height / scale));
+            const { width, height, srcHeight } = fit;
             const doc = nativeTab.ownerGlobal.document;
             const canvas = doc.createElementNS('http://www.w3.org/1999/xhtml', 'html:canvas');
             canvas.width = width;

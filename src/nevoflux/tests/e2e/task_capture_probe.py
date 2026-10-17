@@ -5,17 +5,23 @@
 """Probe for M3 delegation (stdlib only): does a background Canvas tab open
 without taking focus, and do background Canvas and web tabs capture non-blank?
 
-Usage: python task_capture_probe.py --exe <nevoflux.exe> --out <dir> [--port 2843]
+Usage: python task_capture_probe.py --exe <smoke copy>/nevoflux.exe --out <dir> [--port 2843]
+  e.g. --exe C:/Users/Docker/nevoflux/m3-smoke-browser/nevoflux.exe
+
+--exe names the Task 14 hot-patched COPY of the installed build, never the
+installed C:/Program Files/... build itself.
 
 Runs an isolated browser on a temporary profile (the person's own browser is
-untouched) and drives it over Marionette in chrome context. It opens a Canvas
+untouched), with the built-in agent's NEVOFLUX_CONFIG / NEVOFLUX_DATA_DIR
+pointed into that profile so it never reaches the person's own daemon, config
+or data, and drives it over Marionette in chrome context. It opens a Canvas
 tab and an https tab with addTab(..., {inBackground: true}) -- the call
 browser.nevoflux.openCanvasTab(id, {inBackground: true}) makes -- waits, then
 captures the Canvas preview frame with the parent's drawSnapshot (what
 captureTaskScreenshot does) and the web tab with the child actor's screenshot.
 Nothing is asserted: it prints whether the selected tab changed and writes
 canvas.jpg and web.jpg for a person to look at. The dev flat build cannot open
-nevoflux:// pages, so point --exe at an installed build or the Task 14 copy.
+nevoflux:// pages, hence the hot-patched copy.
 """
 import argparse
 import base64
@@ -29,7 +35,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from canvas_bridge_smoke import Marionette, kill_profile_tree  # noqa: E402
+from canvas_bridge_smoke import Marionette, isolated_agent_env, kill_profile_tree  # noqa: E402
 
 PROBE_HTML = (
     "<!doctype html><html><body style='margin:0;background:#1e6fd9'>"
@@ -80,7 +86,7 @@ const done = arguments[arguments.length - 1];
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--exe", required=True, help="path to nevoflux.exe (installed build or smoke copy)")
+    ap.add_argument("--exe", required=True, help="nevoflux.exe of the Task 14 smoke copy (never the installed build)")
     ap.add_argument("--out", required=True, help="directory for canvas.jpg and web.jpg")
     ap.add_argument("--port", type=int, default=2843, help="marionette port")
     args = ap.parse_args()
@@ -95,6 +101,7 @@ def main():
         proc = subprocess.Popen(
             [args.exe, "-no-remote", "-profile", profile, "-marionette",
              "--remote-allow-system-access"],
+            env=isolated_agent_env(profile),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         m = Marionette(args.port, 90)
         m.call("WebDriver:NewSession", {"capabilities": {}})
