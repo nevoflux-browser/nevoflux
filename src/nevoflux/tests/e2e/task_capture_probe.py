@@ -96,6 +96,9 @@ def main():
     with open(os.path.join(profile, "user.js"), "w", encoding="utf-8") as f:
         f.write('user_pref("marionette.port", %d);\n' % args.port)
         f.write('user_pref("browser.shell.checkDefaultBrowser", false);\n')
+        # A fresh profile otherwise shows Zen's first-run welcome screen, which
+        # leaves the tab panels 0x0: background tabs never load or draw.
+        f.write('user_pref("zen.welcome-screen.seen", true);\n')
     proc = None
     try:
         proc = subprocess.Popen(
