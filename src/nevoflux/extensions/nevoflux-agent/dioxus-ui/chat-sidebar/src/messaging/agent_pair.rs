@@ -35,9 +35,15 @@ pub fn compose_agent_pairing_message(block: &str) -> String {
 \"install the NevoFlux client and pair with this\"):";
     let approve = "Approving at **nevoflux.app/device** signs the agent in to your NevoFlux \
 account.";
-    let limit = "Whoever runs the agent gets the same reach it does: once browser tools are \
-enabled for agents (in a later update), it will act in this browser within the current \
-execution tier and answer its own approval prompts. Pair only an agent you trust.";
+    let limit = "Whoever runs the agent gets the same reach it does: it can act in this browser and \
+hand NevoFlux whole tasks to run, including skills and Canvas, always within this pairing's \
+execution tier, and it answers its own approval prompts. At full-auto that means full access, \
+including reading and writing files on this computer. Pair only an agent you trust. Sensitive \
+actions (scheduling, packs, model switching, screen sharing, prompt changes) always need approval; by \
+default only you can give it, and you can let Muse approve them in the paired-agent settings. At \
+full-auto these limits are only as strong as full access: a delegated task cannot edit NevoFlux's \
+settings files directly, but it can run commands, so choose full-auto only for an agent you would \
+trust with this computer.";
     let after = "The code is shown once — copy the block now. `/devices` lists this pairing; \
 `/unpair <id>` takes it back.";
     format!("{intro}\n\n{copy}\n\n```\n{block}```\n\n{approve}\n\n{limit} {after}")
@@ -120,6 +126,26 @@ mod tests {
         assert!(lower.contains("whoever runs the agent"), "names the operator");
         assert!(!lower.contains("see it later"), "the code cannot be seen later");
         assert!(lower.contains("copy the block now"), "tells them to copy now");
+    }
+
+    #[test]
+    fn the_explainer_says_whole_tasks_can_be_delegated_within_the_tier() {
+        let text = compose_agent_pairing_message(BLOCK);
+        assert!(
+            text.contains(
+                "Whoever runs the agent gets the same reach it does: it can act in this browser and \
+hand NevoFlux whole tasks to run, including skills and Canvas, always within this pairing's \
+execution tier, and it answers its own approval prompts. At full-auto that means full access, \
+including reading and writing files on this computer. Pair only an agent you trust. Sensitive \
+actions (scheduling, packs, model switching, screen sharing, prompt changes) always need approval; by \
+default only you can give it, and you can let Muse approve them in the paired-agent settings. At \
+full-auto these limits are only as strong as full access: a delegated task cannot edit NevoFlux's \
+settings files directly, but it can run commands, so choose full-auto only for an agent you would \
+trust with this computer."
+            ),
+            "{text}"
+        );
+        assert!(!text.contains("in a later update"), "the stale promise is gone: {text}");
     }
 
     #[test]
