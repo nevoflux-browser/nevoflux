@@ -6,15 +6,20 @@
 //!
 //! One row per agent that is connected or paused: what it is doing, an
 //! approval it waits on with the time left, and Pause / Resume / Unpair.
+//! Under it: the "Let Muse approve sensitive actions" switch (M3 R39) and a
+//! delegated task with Stop task, its approval and View session (M3 §6.3,
+//! §6.4). An offline agent gets a row only for its running task, without
+//! Pause (B-F1).
 //! What a row says comes from `crate::state::paired_agents`; this file only
 //! renders it and sends the commands. The buttons never change a row
 //! themselves: the daemon's next status snapshot does (§3.3).
 
 use dioxus::prelude::*;
 
-use crate::context::use_app_context;
+use crate::context::{use_app_context, AppContext};
 use crate::state::{
-    bar_rows, command_error, unpair_click, unpair_label, AgentRow, ConnectionState, ERROR_LINE_MS,
+    bar_rows, command_error, task_banner, task_for_session, unpair_click, unpair_label, AgentRow,
+    ConnectionState, TaskLine, ERROR_LINE_MS, GUARDED_TOGGLE_HELP, GUARDED_TOGGLE_LABEL,
     UNPAIR_CONFIRM_MS,
 };
 
@@ -152,6 +157,32 @@ fn PairedAgentRow(row: AgentRow) -> Element {
     let unpair_aria = format!("Unpair {label}");
     let is_busy = *busy.read();
     let error_line = error.read().clone();
+    // An offline row is there only for its task (B-F1): no Pause / Resume.
+    let offers_pause = row.offers_pause();
+
+    // Contract v1.2 R39: shows the snapshot only; a click sends the command
+    // and the next snapshot moves the switch (no optimistic update).
+    let guarded = row.muse_may_approve_guarded;
+    let mut set_guarded = {
+        let channel = row.channel_id.clone();
+        move || {
+            if *busy.peek() {
+                return;
+            }
+            busy.set(true);
+            let channel = channel.clone();
+            spawn(async move {
+                let result =
+                    crate::messaging::remote_agent_set_guarded_approval(&channel, !guarded).await;
+                let mut busy = busy;
+                busy.set(false);
+                if let Err(e) = result {
+                    flash_error(error, command_error("change the setting", &e));
+                }
+            });
+        }
+    };
+    let guarded_id = format!("guarded-help-{}", row.channel_id);
 
     rsx! {
         div { class: "{row_class}",
@@ -160,12 +191,14 @@ fn PairedAgentRow(row: AgentRow) -> Element {
                 strong { "{label}" }
                 " {detail}"
             }
-            button {
-                class: "paired-agent-btn",
-                disabled: is_busy,
-                aria_label: "{toggle_aria}",
-                onclick: toggle,
-                "{toggle_text}"
+            if offers_pause {
+                button {
+                    class: "paired-agent-btn",
+                    disabled: is_busy,
+                    aria_label: "{toggle_aria}",
+                    onclick: toggle,
+                    "{toggle_text}"
+                }
             }
             button {
                 class: "{unpair_class}",
@@ -175,8 +208,168 @@ fn PairedAgentRow(row: AgentRow) -> Element {
                 "{unpair_text}"
             }
         }
+        div { class: "paired-agent-setting",
+            label { class: "paired-agent-toggle",
+                input {
+                    r#type: "checkbox",
+                    role: "switch",
+                    checked: guarded,
+                    aria_checked: if guarded { "true" } else { "false" },
+                    disabled: is_busy,
+                    aria_describedby: "{guarded_id}",
+                    // The snapshot decides; undo the browser's own flip.
+                    onclick: move |evt: MouseEvent| {
+                        evt.prevent_default();
+                        set_guarded();
+                    },
+                }
+                "{GUARDED_TOGGLE_LABEL}"
+            }
+            div { id: "{guarded_id}", class: "paired-agent-help", "{GUARDED_TOGGLE_HELP}" }
+        }
         {error_line.map(|msg| rsx! {
             div { class: "paired-agent-error", role: "alert", "{msg}" }
         })}
+        {row.task.clone().map(|task| rsx! {
+            PairedAgentTask { task: task }
+        })}
+    }
+}
+
+/// Answer a delegated task's approval (contract R23). The line does not
+/// change on success: the daemon's next status snapshot drops it.
+fn answer_approval(
+    busy: Signal<bool>,
+    error: Signal<Option<String>>,
+    task_id: String,
+    approval_id: String,
+    choice: &'static str,
+) {
+    if *busy.peek() {
+        return;
+    }
+    let mut busy = busy;
+    busy.set(true);
+    spawn(async move {
+        let result = crate::messaging::remote_task_answer(&task_id, &approval_id, choice).await;
+        let mut busy = busy;
+        busy.set(false);
+        if let Err(e) = result {
+            flash_error(error, command_error("answer", &e));
+        }
+    });
+}
+
+/// Show `session_id` in the sidebar, as picking it in the history list does.
+fn open_session(mut ctx: AppContext, session_id: String) {
+    spawn(async move {
+        ctx.session.write().id = session_id.clone();
+        ctx.session.write().title = None;
+        ctx.messages.set(Vec::new());
+        ctx.streaming.set(None);
+        ctx.show_history_panel.set(false);
+        let _ = crate::messaging::send_session_resolve(&session_id).await;
+    });
+}
+
+/// A delegated task under its agent's row (M3 §6.3, §6.4).
+#[component]
+fn PairedAgentTask(task: TaskLine) -> Element {
+    let ctx = use_app_context();
+    let mut busy = use_signal(|| false);
+    let error = use_signal(|| None::<String>);
+
+    let stop = {
+        let task_id = task.task_id.clone();
+        move |_| {
+            if *busy.peek() {
+                return;
+            }
+            busy.set(true);
+            let task_id = task_id.clone();
+            spawn(async move {
+                let result = crate::messaging::remote_task_cancel(&task_id).await;
+                let mut busy = busy;
+                busy.set(false);
+                if let Err(e) = result {
+                    flash_error(error, command_error("stop the task", &e));
+                }
+            });
+        }
+    };
+
+    let is_busy = *busy.read();
+    let error_line = error.read().clone();
+    let text = task.text.clone();
+    let task_id = task.task_id.clone();
+    let session_id = task.session_id.clone();
+    let approval = task.approval.clone();
+    let approval_text = approval.as_ref().map(|a| a.text.clone()).unwrap_or_default();
+
+    rsx! {
+        div { class: "paired-agent-task",
+            span { class: "paired-agent-text", title: "{text}", "{text}" }
+            button {
+                class: "paired-agent-btn",
+                disabled: is_busy,
+                onclick: stop,
+                "Stop task"
+            }
+        }
+        if let Some(approval) = approval {
+            div {
+                class: "paired-agent-task approval",
+                role: "group",
+                aria_label: "Task approval",
+                span { class: "paired-agent-text", title: "{approval_text}", "{approval_text}" }
+                if let Some(hint) = approval.hint {
+                    span { class: "paired-agent-hint", "{hint}" }
+                }
+                for (label, choice) in approval.buttons.clone() {
+                    button {
+                        key: "{choice}",
+                        class: "paired-agent-btn",
+                        disabled: is_busy,
+                        onclick: {
+                            let task_id = task_id.clone();
+                            let approval_id = approval.approval_id.clone();
+                            move |_| answer_approval(busy, error, task_id.clone(), approval_id.clone(), choice)
+                        },
+                        "{label}"
+                    }
+                }
+                button {
+                    class: "paired-agent-btn",
+                    onclick: {
+                        let session_id = session_id.clone();
+                        move |_| open_session(ctx, session_id.clone())
+                    },
+                    "View session"
+                }
+            }
+        }
+        {error_line.map(|msg| rsx! {
+            div { class: "paired-agent-error", role: "alert", "{msg}" }
+        })}
+    }
+}
+
+/// Over a conversation a paired agent is running right now (M3 §6.1).
+#[component]
+pub fn TaskSessionBanner() -> Element {
+    let ctx = use_app_context();
+    let connected = matches!(*ctx.connection.read(), ConnectionState::Connected);
+    let snapshot = ctx.paired_agents.read().clone();
+    let current = ctx.session.read().id.clone();
+    let text = if connected {
+        task_for_session(snapshot.as_ref(), &current).map(|(agent, task)| task_banner(agent, task))
+    } else {
+        None
+    };
+    match text {
+        Some(text) => rsx! {
+            div { class: "task-session-banner", role: "status", "{text}" }
+        },
+        None => rsx! {},
     }
 }

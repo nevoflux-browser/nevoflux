@@ -5118,6 +5118,52 @@ body {
   color: var(--nevo-error);
 }
 
+/* M3 §6.3, §6.4: a delegated task under its agent's row */
+.paired-agent-task {
+  display: flex;
+  align-items: center;
+  gap: var(--nevo-space-xs);
+  padding: 2px var(--nevo-space-sm) 4px calc(var(--nevo-space-sm) + 16px);
+  font-size: 12px;
+  color: var(--nevo-text);
+  background: color-mix(in srgb, var(--nevo-primary) 8%, transparent);
+}
+
+.paired-agent-task.approval {
+  background: color-mix(in srgb, var(--nevo-warning) 16%, transparent);
+}
+
+/* M3 contract v1.2 R39: who may approve sensitive actions, per agent */
+.paired-agent-setting {
+  padding: 0 var(--nevo-space-sm) 4px calc(var(--nevo-space-sm) + 16px);
+  font-size: 12px;
+  color: var(--nevo-text);
+}
+
+.paired-agent-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--nevo-space-xs);
+}
+
+.paired-agent-help,
+.paired-agent-hint {
+  font-size: 11px;
+  color: var(--nevo-text-secondary);
+}
+
+/* M3 §6.1: over a conversation a paired agent is running */
+.task-session-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: var(--nevo-space-xs) var(--nevo-space-sm);
+  font-size: 12px;
+  color: var(--nevo-text);
+  background: color-mix(in srgb, var(--nevo-primary) 10%, var(--nevo-background));
+  border-bottom: 1px solid var(--nevo-border);
+}
+
 /* M3 §6.2: who started a conversation, and how it stands */
 .history-item-origin {
   padding: 0 6px;

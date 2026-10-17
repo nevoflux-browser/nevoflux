@@ -120,6 +120,8 @@ pub fn MessageArea() -> Element {
             // Sticky stack of /loop cards (spec §2.6).
             // Renders nothing when no active loops exist for this session.
             crate::components::loop_ui::StickyLoopCards {}
+            // "Muse is working on this task" over a delegated conversation (M3 §6.1).
+            crate::components::TaskSessionBanner {}
             if is_empty && was_cleared {
                 div { class: "session-cleared-note", "Session cleared" }
             } else if is_empty {

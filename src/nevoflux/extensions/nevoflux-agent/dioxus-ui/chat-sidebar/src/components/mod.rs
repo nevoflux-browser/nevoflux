@@ -47,4 +47,4 @@ pub use onboarding_screen::OnboardingScreen;
 pub use rail::Rail;
 pub use event_bus_listener::EventBusListener;
 pub use connection_status_bar::ConnectionStatusBar;
-pub use paired_agent_bar::PairedAgentBar;
+pub use paired_agent_bar::{PairedAgentBar, TaskSessionBanner};

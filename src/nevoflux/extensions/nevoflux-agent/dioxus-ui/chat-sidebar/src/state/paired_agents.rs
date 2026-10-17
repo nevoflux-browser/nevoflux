@@ -490,6 +490,25 @@ pub fn command_error(action: &str, reason: &str) -> String {
     format!("Could not {action}: {reason}")
 }
 
+/// Why a `remote.task_answer` / `remote.task_cancel` failed, in short words,
+/// from the daemon's error code (contract R23). An approval the agent already
+/// answered, or a task that already ended, leaves the next snapshot anyway.
+pub fn task_command_reason(code: &str, message: &str) -> String {
+    match code {
+        "APPROVAL_NOT_FOUND" => "it was already answered".to_string(),
+        "TASK_NOT_FOUND" => "the task has already ended".to_string(),
+        _ => message.to_string(),
+    }
+}
+
+impl AgentRow {
+    /// Whether the row shows Pause / Resume. An offline row is there only
+    /// for its task (B-F1): there is no connection to pause.
+    pub fn offers_pause(&self) -> bool {
+        !self.offline
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1076,5 +1095,41 @@ mod tests {
             "state": "offline", "muse_may_approve_guarded": false, "since": 200,
             "tool": null, "approval": null, "task": null}]})).unwrap();
         assert!(idle.agents[0].task.is_none());
+    }
+
+    #[test]
+    fn an_offline_row_offers_no_pause_but_keeps_its_task_buttons() {
+        // Task 8 carry: Pause/Resume dial the relay, which an offline agent
+        // is not on; Stop task / Allow / Deny / Unpair still apply.
+        let s = snapshot(json!([
+            {"channel_id": "c1", "state": "offline", "since": 0,
+             "task": {"id": "t1", "session_id": "s1", "summary": "X", "state": "awaiting_approval",
+                      "approval": {"approval_id": "a1", "kind": "tool", "summary": "Click",
+                                   "choices": ["allow", "deny"], "started_at": 0, "expires_at": 9}}},
+            {"channel_id": "c2", "state": "connected", "since": 0},
+            {"channel_id": "c3", "state": "paused", "since": 0}
+        ]));
+        let rows = rows_from_status(&s, 10);
+        assert!(!rows[0].offers_pause());
+        assert!(rows[0].task.as_ref().unwrap().approval.is_some());
+        assert!(rows[1].offers_pause());
+        assert!(rows[2].offers_pause(), "a paused row offers Resume");
+    }
+
+    #[test]
+    fn a_task_command_failure_reads_as_a_short_reason() {
+        assert_eq!(
+            task_command_reason("APPROVAL_NOT_FOUND", "approval ap-123 is not waiting for an answer"),
+            "it was already answered"
+        );
+        assert_eq!(task_command_reason("TASK_NOT_FOUND", "no task t1"), "the task has already ended");
+        assert_eq!(
+            task_command_reason("INVALID_CHOICE", "choice must be allow, allow_always or deny"),
+            "choice must be allow, allow_always or deny"
+        );
+        assert_eq!(
+            command_error("answer", &task_command_reason("APPROVAL_NOT_FOUND", "x")),
+            "Could not answer: it was already answered"
+        );
     }
 }

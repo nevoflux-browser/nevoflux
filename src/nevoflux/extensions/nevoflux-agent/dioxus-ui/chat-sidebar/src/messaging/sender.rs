@@ -1409,24 +1409,40 @@ async fn system_command(
     command: &str,
     params: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    system_command_coded(command, params)
+        .await
+        .map_err(|(_code, message)| message)
+}
+
+/// [`system_command`], but a daemon failure keeps its `error.code` next to
+/// the message: `Err((code, message))`. Transport failures have code "".
+async fn system_command_coded(
+    command: &str,
+    params: serde_json::Value,
+) -> Result<serde_json::Value, (String, String)> {
     let request = serde_json::json!({
         "type": "bg:system_command",
         "command": command,
         "params": params,
     });
 
-    let js_value = to_js_value(&request).map_err(|e| format!("Serialize error: {:?}", e))?;
+    let transport = |message: String| (String::new(), message);
+
+    let js_value = to_js_value(&request)
+        .map_err(|e| transport(format!("Serialize error: {:?}", e)))?;
 
     let response = JsFuture::from(runtime_send_message(js_value))
         .await
-        .map_err(|e| format!("Send failed: {:?}", e))?;
+        .map_err(|e| transport(format!("Send failed: {:?}", e)))?;
 
     if response.is_undefined() || response.is_null() {
-        return Err("bg:system_command returned undefined/null".to_string());
+        return Err(transport(
+            "bg:system_command returned undefined/null".to_string(),
+        ));
     }
 
-    let response_obj: serde_json::Value =
-        from_js_value(response).map_err(|e| format!("Parse {} response error: {}", command, e))?;
+    let response_obj: serde_json::Value = from_js_value(response)
+        .map_err(|e| transport(format!("Parse {} response error: {}", command, e)))?;
 
     if response_obj
         .get("success")
@@ -1438,12 +1454,12 @@ async fn system_command(
             .cloned()
             .unwrap_or(serde_json::Value::Null))
     } else {
-        Err(response_obj
-            .get("error")
-            .and_then(|e| e.get("message"))
-            .and_then(|m| m.as_str())
-            .unwrap_or("unknown error")
-            .to_string())
+        let error = response_obj.get("error");
+        let field = |key: &str| error.and_then(|e| e.get(key)).and_then(|v| v.as_str());
+        Err((
+            field("code").unwrap_or_default().to_string(),
+            field("message").unwrap_or("unknown error").to_string(),
+        ))
     }
 }
 
@@ -1625,6 +1641,50 @@ pub async fn remote_agent_resume(control_channel_id: &str) -> Result<bool, Strin
     .await?;
     crate::state::confirms_paused(&d, false)?;
     Ok(d.get("opened").and_then(|v| v.as_bool()).unwrap_or(false))
+}
+
+/// `remote.task_answer` — answer a delegated task's approval from the desktop
+/// (M3 contract R23). Local only, like pause/resume. Returns the task state
+/// the daemon reports; when the agent answered first the daemon says
+/// APPROVAL_NOT_FOUND, and the next status snapshot drops the line anyway.
+/// A failure reads as a short reason ([`crate::state::task_command_reason`]).
+pub async fn remote_task_answer(
+    task_id: &str,
+    approval_id: &str,
+    choice: &str,
+) -> Result<String, String> {
+    let d = system_command_coded(
+        "remote.task_answer",
+        serde_json::json!({ "task_id": task_id, "approval_id": approval_id, "choice": choice }),
+    )
+    .await
+    .map_err(|(code, message)| crate::state::task_command_reason(&code, &message))?;
+    Ok(d.get("state").and_then(|v| v.as_str()).unwrap_or_default().to_string())
+}
+
+/// `remote.task_cancel` — stop a delegated task (M3 §6.4, "Stop task").
+/// Idempotent; returns the state the task ended in.
+pub async fn remote_task_cancel(task_id: &str) -> Result<String, String> {
+    let d = system_command_coded("remote.task_cancel", serde_json::json!({ "task_id": task_id }))
+        .await
+        .map_err(|(code, message)| crate::state::task_command_reason(&code, &message))?;
+    Ok(d.get("state").and_then(|v| v.as_str()).unwrap_or_default().to_string())
+}
+
+/// `remote.agent_set_guarded_approval` — let one agent answer its tasks'
+/// must-approve approvals, or stop it (M3 contract v1.2 R39). Local only,
+/// like pause. The toggle does not move on success: the daemon's next
+/// status snapshot does.
+pub async fn remote_agent_set_guarded_approval(
+    control_channel_id: &str,
+    enabled: bool,
+) -> Result<(), String> {
+    let d = system_command(
+        "remote.agent_set_guarded_approval",
+        serde_json::json!({ "control_channel_id": control_channel_id, "enabled": enabled }),
+    )
+    .await?;
+    crate::state::confirms_guarded(&d, enabled)
 }
 
 /// `schedule.list` — full authoritative snapshot of all schedules.
