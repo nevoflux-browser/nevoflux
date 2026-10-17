@@ -22,7 +22,7 @@ import { isSystemRequest, systemRequestRefusal, systemOriginRefusal, withoutOrig
 
 // Recent canvas:notify times per artifact id (rolling rate limit).
 const canvasNotifyHistory = new Map();
-import { isAgentRequest, agentTabRefusal, agentRequestIsTabless, agentTabUrlAllowed, agentActivateTabRefusal, newTabActive, agentPrivateTabRefusal, agentWindowId, agentNoWindowRefusal, withoutPrivateWindowTabs, agentTabsToMark } from './agent-route.mjs';
+import { isAgentRequest, agentTabRefusal, agentActivateTabRefusal, newTabActive, agentPrivateTabRefusal, agentWindowId, agentNoWindowRefusal, withoutPrivateWindowTabs, agentTabsToMark, TAB_INDEPENDENT_ACTIONS, tabRulesFor, channelTabRefusal, channelChecksTab, channelTabUrlAllowed } from './agent-route.mjs';
 import {
   NetworkCapture,
   redactUrl,
@@ -4495,37 +4495,23 @@ async function executeBrowserTool(request, caller = 'unknown') {
     return { success: false, error: systemOriginRefusal(action) };
   }
 
-  // A paired agent's call names its tab (the daemon resolves it, M2a §3.2).
-  // Without one, the active-tab fallback below would act on whatever the
-  // person is looking at, so it is refused instead.
-  const agentRefusal = agentTabRefusal(request);
+  // A paired agent's calls, and a delegated task's (ruling BF-1: it runs
+  // while the person uses the browser), follow the agent channel's tab
+  // rules; a local chat's keep the active-tab fallback. A Canvas panel's
+  // bridge call is judged by its own policy below, whatever session it names.
+  const rules = tabRulesFor(request, caller !== 'bridge' && isDelegatedSession(request.session_id));
+
+  // Such a call names its tab (for an agent the daemon resolves it, M2a
+  // §3.2). Without one, the active-tab fallback below would act on whatever
+  // the person is looking at, so it is refused instead.
+  const agentRefusal = channelTabRefusal(request, rules);
   if (agentRefusal) {
     return { success: false, error: agentRefusal };
   }
 
-  // Actions that don't require an active tab
-  const TAB_INDEPENDENT_ACTIONS = new Set([
-    'ask_user',
-    'list_tabs',
-    'query_tabs',
-    'web_fetch',
-    'web_search',
-    'cache_file',
-    'read_artifact',
-    'edit_artifact',
-    'canvas_render',
-    // canvas_eval addresses the target canvas tab by artifact_id itself.
-    'canvas_eval',
-    // Visual-identity extraction handles its own tab lifecycle: URL mode
-    // creates a background tab; tab mode reads target.tab_id from params.
-    // Adding to this set prevents the dispatcher from rejecting URL-mode
-    // calls with "No active web tab found".
-    'extractVisualIdentity',
-  ]);
-
-  // Get target tab (skip for tab-independent actions)
+  // Get target tab (skip for tab-independent actions; see agent-route.mjs)
   let targetTabId = tab_id;
-  if (!targetTabId && !TAB_INDEPENDENT_ACTIONS.has(action) && !isAgentRequest(request)) {
+  if (!targetTabId && !TAB_INDEPENDENT_ACTIONS.has(action) && !rules) {
     targetTabId = await getActiveTabId();
     if (!targetTabId) {
       // For navigate without explicit new_tab, try to find any web tab
@@ -4558,11 +4544,12 @@ async function executeBrowserTool(request, caller = 'unknown') {
   }
 
   // A paired agent may only act on a tab showing a web page or about:blank,
-  // never on an internal, local-file or extension page (M2a C-A2). Listing
+  // never on an internal, local-file or extension page (M2a C-A2); a
+  // delegated task likewise, plus its own session's Canvas tab. Listing
   // tabs and navigating into a new tab touch no existing tab, so they skip
   // this. A failed lookup passes Firefox's message through unchanged so the
   // daemon still reports a closed tab as tab_closed.
-  if (isAgentRequest(request) && !agentRequestIsTabless(request)) {
+  if (channelChecksTab(request, rules)) {
     let agentTab;
     try {
       agentTab = await browser.tabs.get(targetTabId);
@@ -4577,7 +4564,7 @@ async function executeBrowserTool(request, caller = 'unknown') {
     if (privateRefusal) {
       return { success: false, error: privateRefusal };
     }
-    if (!agentTabUrlAllowed(agentTab?.url)) {
+    if (!channelTabUrlAllowed(agentTab, rules, canvasTabs.tabFor(request.session_id))) {
       return {
         success: false,
         error: {
@@ -4622,10 +4609,11 @@ async function executeBrowserTool(request, caller = 'unknown') {
     switch (action) {
       // Navigation
       case 'navigate': {
-        // An agent's new tab opens in a normal, non-private window, never in
-        // whatever window happens to be focused (it may be private).
+        // An agent's (or delegated task's) new tab opens in a normal,
+        // non-private window, never in whatever window happens to be focused
+        // (it may be private).
         let newTabWindowId;
-        if (isAgentRequest(request) && params?.new_tab === true) {
+        if (rules && params?.new_tab === true) {
           const [lastFocused, windows] = await Promise.all([
             browser.windows.getLastFocused().catch(() => null),
             browser.windows.getAll({ windowTypes: ['normal'] }),
@@ -4635,7 +4623,7 @@ async function executeBrowserTool(request, caller = 'unknown') {
             return { success: false, error: agentNoWindowRefusal(action) };
           }
         }
-        const navResult = await executeNavigateViaApi(targetTabId, params, newTabWindowId);
+        const navResult = await executeNavigateViaApi(targetTabId, params, newTabWindowId, rules);
         // A panel may drive what it opened, so record the tab it just created.
         if (caller === 'bridge' && navResult?.success && navResult.result?.new_tab) {
           rememberCanvasTab(request.artifact_id, navResult.result.tab_id);
@@ -4644,7 +4632,7 @@ async function executeBrowserTool(request, caller = 'unknown') {
       }
 
       case 'activateTab':
-        if (isAgentRequest(request)) {
+        if (rules) {
           // Act on the tab the URL check looked at, never on params.tab_id.
           const activateRefusal = agentActivateTabRefusal(request);
           if (activateRefusal) {
@@ -4814,13 +4802,13 @@ async function executeBrowserTool(request, caller = 'unknown') {
 
       // Tab management
       case 'list_tabs':
-        if (isAgentRequest(request)) {
+        if (rules) {
           return await agentListing((windowId) => executeListTabs(params, windowId));
         }
         return await executeListTabs(params);
 
       case 'query_tabs':
-        if (isAgentRequest(request)) {
+        if (rules) {
           return await agentListing(() => executeQueryTabs(params));
         }
         return await executeQueryTabs(params);
@@ -5250,7 +5238,7 @@ function isNevofluxApiAvailable() {
 /**
  * Navigate to a URL via browser.nevoflux.open()
  */
-async function executeNavigateViaApi(tabId, params, windowId) {
+async function executeNavigateViaApi(tabId, params, windowId, rules = null) {
   const { url, new_tab: newTab } = params;
   if (!url) {
     return { success: false, error: { code: -1, message: 'URL required', recoverable: false } };
@@ -5272,8 +5260,9 @@ async function executeNavigateViaApi(tabId, params, windowId) {
       // Open in a new tab instead of navigating the current one. An agent's
       // tab opens in the background (`background: true`) so the person's tab
       // keeps focus. Variant A is the default pending spike S1.
+      // A delegated task's tab always opens in the background (`rules`).
       // `windowId`, when given, is the window an agent's tab must open in.
-      const createProps = { url, active: newTabActive(params) };
+      const createProps = { url, active: newTabActive(params, rules) };
       if (windowId !== undefined && windowId !== null) {
         createProps.windowId = windowId;
       }

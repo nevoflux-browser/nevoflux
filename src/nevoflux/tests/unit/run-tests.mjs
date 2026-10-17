@@ -35,6 +35,7 @@ import './canvas-notify-limit.test.mjs';
 import './nevoflux-bridge-policy.test.mjs';
 import './delegation.test.mjs';
 import './task-screenshot.test.mjs';
+import './delegated-tab-rules.test.mjs';
 
 // Run all tests
 const results = await runner.run();

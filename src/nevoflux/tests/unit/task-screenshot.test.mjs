@@ -643,7 +643,7 @@ describe('background.js system requests', () => {
     expect(guard).toBeGreaterThan(0);
     // First thing after reading the request: before the agent checks and the
     // active-tab fallback.
-    expect(guard < body.indexOf('const agentRefusal = agentTabRefusal(request);')).toBe(true);
+    expect(guard < body.indexOf('const agentRefusal = channelTabRefusal(request, rules);')).toBe(true);
     expect(body.includes('return { success: false, error: systemOriginRefusal(action) };')).toBe(true);
   });
 

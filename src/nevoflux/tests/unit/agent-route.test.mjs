@@ -199,7 +199,8 @@ describe('agentActivateTabRefusal', () => {
   it('activateTab acts on the checked tab for agent requests', () => {
     const start = bg.indexOf("case 'activateTab':");
     const branch = bg.slice(start, bg.indexOf("case 'go_back':", start));
-    expect(branch.includes('isAgentRequest(request)')).toBe(true);
+    // `rules` is set for agent (and delegated) requests.
+    expect(branch.includes('if (rules) {')).toBe(true);
     expect(branch.includes('agentActivateTabRefusal(request)')).toBe(true);
     expect(branch.includes('executeActivateTabViaApi(targetTabId, {})')).toBe(true);
     expect(branch.includes('executeActivateTabViaApi(targetTabId, params)')).toBe(true);
@@ -227,7 +228,7 @@ describe('newTabActive', () => {
   it('executeNavigateViaApi creates new tabs through it', () => {
     const fnStart = bg.indexOf('async function executeNavigateViaApi(');
     const fn = bg.slice(fnStart, bg.indexOf('\n}\n', fnStart));
-    expect(fn.includes('const createProps = { url, active: newTabActive(params) };')).toBe(true);
+    expect(fn.includes('const createProps = { url, active: newTabActive(params, rules) };')).toBe(true);
     expect(fn.includes('browser.tabs.create(createProps)')).toBe(true);
     expect(fn.includes('browser.tabs.create({ url, active: true })')).toBe(false);
   });
@@ -368,7 +369,7 @@ describe('background.js keeps agents out of private windows', () => {
   it('lists only non-private tabs to an agent', () => {
     const fn = executeBrowserToolSource();
     const list = fn.slice(fn.indexOf("case 'list_tabs'"), fn.indexOf('// Alias: get_elements'));
-    expect(list.includes('isAgentRequest(request)')).toBe(true);
+    expect(list.includes('if (rules) {')).toBe(true);
     // Both list_tabs and query_tabs go through agentListing for agents.
     expect((list.match(/agentListing\(/g) || []).length).toBe(2);
     const start = bg.indexOf('async function agentListing(');
@@ -400,19 +401,19 @@ describe('background.js routing of agent requests', () => {
     const fn = executeBrowserToolSource();
     expect(fn.length).toBeGreaterThan(0);
     const head = fn.slice(0, fn.indexOf('switch (action)'));
-    expect(head.includes('agentTabRefusal(request)')).toBe(true);
+    expect(head.includes('channelTabRefusal(request, rules)')).toBe(true);
+    // `rules` is 'agent' for every agent request (tabRulesFor).
+    expect(head.includes('tabRulesFor(request,')).toBe(true);
     expect(
-      head.includes(
-        'if (!targetTabId && !TAB_INDEPENDENT_ACTIONS.has(action) && !isAgentRequest(request)) {'
-      )
+      head.includes('if (!targetTabId && !TAB_INDEPENDENT_ACTIONS.has(action) && !rules) {')
     ).toBe(true);
   });
 
   it("checks the agent's target tab is showing a page it may use", () => {
     const fn = executeBrowserToolSource();
     const head = fn.slice(0, fn.indexOf('switch (action)'));
-    const fallback = head.indexOf('!isAgentRequest(request)) {');
-    const check = head.indexOf('agentTabUrlAllowed(');
+    const fallback = head.indexOf('!TAB_INDEPENDENT_ACTIONS.has(action) && !rules) {');
+    const check = head.indexOf('channelTabUrlAllowed(');
     expect(fallback).toBeGreaterThan(0);
     // After the fallback block, so it sees the tab the action will land on.
     expect(check).toBeGreaterThan(fallback);
@@ -420,7 +421,7 @@ describe('background.js routing of agent requests', () => {
     expect(head.includes('targets a tab showing a page the agent may not use')).toBe(true);
     // An agent stuck on an internal page is told how to get out.
     expect(head.includes('; open a new tab with browser_navigate new_tab:true')).toBe(true);
-    expect(head.includes('isAgentRequest(request) && !agentRequestIsTabless(request)')).toBe(true);
+    expect(head.includes('if (channelChecksTab(request, rules)) {')).toBe(true);
   });
 
   it('every action the agent channel sends has a case in executeBrowserTool', () => {

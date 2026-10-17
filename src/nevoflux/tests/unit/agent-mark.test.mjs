@@ -173,7 +173,7 @@ describe('background.js marks agent tabs', () => {
     expect(resolved).toBeGreaterThan(0);
     expect(mark).toBeGreaterThan(resolved);
     expect(send).toBeGreaterThan(mark);
-    expect(bg.includes('withoutPrivateWindowTabs, agentTabsToMark } from')).toBe(true);
+    expect(bg.includes('withoutPrivateWindowTabs, agentTabsToMark,')).toBe(true);
   });
 
   it('marking cannot throw into the answer', () => {

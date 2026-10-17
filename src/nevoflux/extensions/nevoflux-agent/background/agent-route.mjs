@@ -22,6 +22,120 @@ export function isAgentRequest(request) {
   return request?.origin === AGENT_ORIGIN;
 }
 
+/**
+ * Actions that need no target tab: the active-tab fallback is skipped for
+ * them, and a delegated task may run them without naming a tab.
+ */
+export const TAB_INDEPENDENT_ACTIONS = new Set([
+  'ask_user',
+  'list_tabs',
+  'query_tabs',
+  'web_fetch',
+  'web_search',
+  'cache_file',
+  'read_artifact',
+  'edit_artifact',
+  'canvas_render',
+  // canvas_eval addresses the target canvas tab by artifact_id itself.
+  'canvas_eval',
+  // Visual-identity extraction handles its own tab lifecycle: URL mode
+  // creates a background tab; tab mode reads target.tab_id from params.
+  // Adding to this set prevents the dispatcher from rejecting URL-mode
+  // calls with "No active web tab found".
+  'extractVisualIdentity',
+]);
+
+/** `tabRulesFor` value: the agent channel's tab rules. */
+export const AGENT_RULES = 'agent';
+
+/** `tabRulesFor` value: a delegated task's tab rules (ruling BF-1). */
+export const DELEGATED_RULES = 'delegated';
+
+/**
+ * Which tab rules a browser tool request follows: AGENT_RULES for a paired
+ * agent's request, DELEGATED_RULES for a delegated task's (`delegated` is
+ * true only when the request's session has a delegated task, M3 §6), or
+ * null for a local chat's, which keeps the active-tab fallback.
+ *
+ * A delegated task runs while the person uses the browser, so it follows
+ * the agent channel's rules: it never acts on the active tab, never uses a
+ * private window, and opens its new tabs in the background.
+ */
+export function tabRulesFor(request, delegated) {
+  if (isAgentRequest(request)) {
+    return AGENT_RULES;
+  }
+  return delegated === true ? DELEGATED_RULES : null;
+}
+
+function namesTab(request) {
+  return Number.isInteger(request?.tab_id) && request.tab_id > 0;
+}
+
+function noTabRefusal(action) {
+  return {
+    code: -1,
+    message: `agent request '${action}' has no tab_id; refusing to act on the active tab`,
+    recoverable: false,
+  };
+}
+
+/**
+ * Why a request may not run as sent under `rules`, or null when it may.
+ * Agent requests: agentTabRefusal. Delegated requests: one that names no tab
+ * is refused with the agents' message, unless it is one of the tab-less
+ * actions agents may run (listing tabs, navigating into a new tab) or a
+ * tab-independent action (Canvas, artifacts, questions, fetch). Local
+ * requests are never refused here.
+ */
+export function channelTabRefusal(request, rules) {
+  if (rules === AGENT_RULES) {
+    return agentTabRefusal(request);
+  }
+  if (rules !== DELEGATED_RULES) {
+    return null;
+  }
+  if (namesTab(request) || agentRequestIsTabless(request) || TAB_INDEPENDENT_ACTIONS.has(request?.action)) {
+    return null;
+  }
+  return noTabRefusal(request?.action);
+}
+
+/**
+ * Whether the request's target tab must be looked up and checked (private
+ * window, URL) before it runs. Agent requests: unless tab-less. Delegated
+ * requests: when they name a tab and are not tab-less (a tab-independent
+ * action without a tab has none to check). Local requests: never.
+ */
+export function channelChecksTab(request, rules) {
+  if (rules === AGENT_RULES) {
+    return !agentRequestIsTabless(request);
+  }
+  if (rules === DELEGATED_RULES) {
+    return namesTab(request) && !agentRequestIsTabless(request);
+  }
+  return false;
+}
+
+/**
+ * Whether a request under `rules` may act on `tab` ({id, url}): what
+ * agentTabUrlAllowed allows, and for a delegated task also its own session's
+ * Canvas tab (`ownCanvasTabId`) while that tab still shows a Canvas, so the
+ * task can keep working on what it produced. An agent never gets that.
+ */
+export function channelTabUrlAllowed(tab, rules, ownCanvasTabId) {
+  if (agentTabUrlAllowed(tab?.url)) {
+    return true;
+  }
+  return (
+    rules === DELEGATED_RULES &&
+    Number.isInteger(ownCanvasTabId) &&
+    tab?.id === ownCanvasTabId &&
+    typeof tab.url === 'string' &&
+    tab.url.startsWith('nevoflux://canvas/')
+  );
+}
+
 /** Agent actions that need no target tab. */
 const AGENT_TABLESS_ACTIONS = new Set(['list_tabs', 'query_tabs']);
 
@@ -58,11 +172,7 @@ export function agentTabRefusal(request) {
   if (agentRequestIsTabless(request)) {
     return null;
   }
-  return {
-    code: -1,
-    message: `agent request '${request.action}' has no tab_id; refusing to act on the active tab`,
-    recoverable: false,
-  };
+  return noTabRefusal(request.action);
 }
 
 /**
@@ -109,10 +219,14 @@ export function agentActivateTabRefusal(request) {
 /**
  * Whether navigate's new tab should be the active one. An agent's tab is
  * opened with `background: true` so the person's tab keeps focus (M2a §3.4,
- * Variant A, the default pending spike S1); every other caller keeps the
- * old behaviour.
+ * Variant A, the default pending spike S1). A delegated task's tab always
+ * opens in the background (`rules` 'delegated', ruling BF-1, R20); every
+ * other caller keeps the old behaviour.
  */
-export function newTabActive(params) {
+export function newTabActive(params, rules = null) {
+  if (rules === DELEGATED_RULES) {
+    return false;
+  }
   return params?.background !== true;
 }
 
