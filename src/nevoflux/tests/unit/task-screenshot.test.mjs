@@ -287,13 +287,13 @@ function fakeTab(url, extra = {}) {
   return { closing: false, isConnected: true, linkedBrowser: { currentURI: { spec: url } }, ...extra };
 }
 
-function fakeWorld(tabs, childResult) {
+function fakeWorld(tabs, childResult, { privateIds = [] } = {}) {
   const calls = { execute: [], restored: 0 };
   const extension = {
     tabManager: {
       get(id) {
         if (!tabs.has(id)) throw new Error(`Invalid tab ID: ${id}`);
-        return { nativeTab: tabs.get(id) };
+        return { nativeTab: tabs.get(id), incognito: privateIds.includes(id) };
       },
     },
   };
@@ -382,6 +382,40 @@ describe('captureTaskScreenshot experiment API', () => {
       error: { code: 5003, message: 'Screenshot failed: x' },
     });
     expect((await broken.capture(5, {})).error).toEqual({ code: -1, message: 'capture_failed', recoverable: false });
+  });
+
+  it('a web tab must show http(s) or about:blank, else capture_failed without drawing', async () => {
+    const ok = { success: true, data: 'QUJD', width: 1, height: 1 };
+    for (const url of ['http://a.example/', 'HTTPS://a.example/x', 'about:blank']) {
+      const { capture, calls } = fakeWorld(new Map([[5, fakeTab(url)]]), ok);
+      expect((await capture(5, {})).success).toBe(true);
+      expect(calls.execute.length).toBe(1);
+    }
+    for (const url of ['about:preferences', 'file:///c:/x.html', 'moz-extension://id/p.html', 'nevoflux://settings', 'chrome://browser/content/browser.xhtml', 'view-source:https://a.example/', '']) {
+      const { capture, calls } = fakeWorld(new Map([[5, fakeTab(url)]]), ok);
+      expect(await capture(5, {})).toEqual({
+        success: false,
+        error: { code: -1, message: 'capture_failed', recoverable: false },
+      });
+      expect(calls.execute.length).toBe(0);
+    }
+  });
+
+  it('a web tab in a private window is capture_failed without drawing', async () => {
+    const ok = { success: true, data: 'QUJD', width: 1, height: 1 };
+    const { capture, calls } = fakeWorld(new Map([[5, fakeTab('https://a.example/')]]), ok, {
+      privateIds: [5],
+    });
+    expect(await capture(5, {})).toEqual({
+      success: false,
+      error: { code: -1, message: 'capture_failed', recoverable: false },
+    });
+    expect(calls.execute.length).toBe(0);
+    const pbTab = fakeTab('https://a.example/');
+    pbTab.linkedBrowser.browsingContext = { usePrivateBrowsing: true };
+    const second = fakeWorld(new Map([[6, pbTab]]), ok);
+    expect((await second.capture(6, {})).error.message).toBe('capture_failed');
+    expect(second.calls.execute.length).toBe(0);
   });
 
   it('the child crops to maxHeight, keeping the top', () => {

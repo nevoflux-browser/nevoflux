@@ -289,19 +289,24 @@ export class CanvasTabs {
 }
 
 /**
- * How to open a Canvas tab for `sessionId`, or null when the frame names no
- * session: then no tab is opened and no other session's tab is touched
- * (contract §6). Only the same session's previous tab is replaced. A
- * delegated session's tab opens in the background (R20) with the agent badge.
+ * How to open a Canvas tab for `sessionId`. Only the same session's previous
+ * tab is replaced, and the new tab is recorded as the session's
+ * (`recordSession`). A delegated session's tab opens in the background (R20)
+ * with the agent badge. An open that names no session (the Canvas SDK's
+ * callTool('canvas_render'), a session-less daemon caller) opens in the
+ * foreground as before, replaces nothing and records nothing: guessing the
+ * session is how one conversation used to close another's Canvas, and
+ * delegation is per session, so it is never delegated.
  */
 export function canvasOpenPlan(sessionId, tabs, delegated) {
   if (typeof sessionId !== 'string' || !sessionId) {
-    return null;
+    return { replaceTabId: null, inBackground: false, markAgent: false, recordSession: false };
   }
   return {
     replaceTabId: tabs.tabFor(sessionId),
     inBackground: delegated === true,
     markAgent: delegated === true,
+    recordSession: true,
   };
 }
 

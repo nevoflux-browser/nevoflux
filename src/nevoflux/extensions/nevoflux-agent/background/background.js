@@ -892,8 +892,9 @@ function markDelegatedTab(tabId) {
  * Open the Canvas tab for a chat session (M3 §6.1, §6.5). Only that session's
  * previous Canvas tab is replaced. A delegated session's tab opens in the
  * background with the agent badge and never becomes the tab the sidebar's
- * "open canvas" reuses. A frame with no session id opens nothing (contract
- * §6): guessing the session is how one conversation used to close another's
+ * "open canvas" reuses. An open with no session id opens in the foreground,
+ * replaces no tab and is recorded under no session (canvasOpenPlan):
+ * guessing the session is how one conversation used to close another's
  * Canvas. Never throws.
  */
 function openSessionCanvasTab(artifactId, sessionId) {
@@ -904,10 +905,6 @@ function openSessionCanvasTab(artifactId, sessionId) {
 
 async function openSessionCanvasTabNow(artifactId, sessionId) {
   const plan = canvasOpenPlan(sessionId, canvasTabs, isDelegatedSession(sessionId));
-  if (!plan) {
-    console.warn(`[NevoFlux] Canvas ${artifactId} arrived without a session id; no tab opened`);
-    return null;
-  }
   try {
     if (plan.replaceTabId != null) {
       try {
@@ -926,7 +923,9 @@ async function openSessionCanvasTabNow(artifactId, sessionId) {
       return result;
     }
     if (result.tabId) {
-      canvasTabs.set(sessionId, result.tabId);
+      if (plan.recordSession) {
+        canvasTabs.set(sessionId, result.tabId);
+      }
       if (plan.markAgent) {
         markDelegatedTab(result.tabId);
       } else {

@@ -1042,9 +1042,10 @@ this.nevoflux = class extends ExtensionAPI {
         // (the restore fallback selects it and steals focus). A Canvas tab is
         // drawn from its preview frame here in the parent, because that frame
         // is out of process and the child's drawWindow paints it blank; a web
-        // tab uses the child's drawWindow, viewport only. Errors are
-        // tab_closed, tab_discarded or capture_failed; the caller owns the
-        // byte budget and too_large.
+        // tab uses the child's drawWindow, viewport only, and only while it
+        // shows an http(s) page or about:blank in a non-private window (what
+        // an agent may see). Errors are tab_closed, tab_discarded or
+        // capture_failed; the caller owns the byte budget and too_large.
         async captureTaskScreenshot(tabId, options) {
           const opts = options || {};
           const quality = Math.min(100, Math.max(1, Math.round(Number(opts.quality) || 60)));
@@ -1052,8 +1053,11 @@ this.nevoflux = class extends ExtensionAPI {
           const maxHeight = Math.min(4096, Math.max(1, Math.round(Number(opts.maxHeight) || 2400)));
           const fail = (message) => ({ success: false, error: { code: -1, message, recoverable: false } });
           let nativeTab = null;
+          let incognito = false;
           try {
-            nativeTab = extension.tabManager.get(tabId)?.nativeTab ?? null;
+            const wrapped = extension.tabManager.get(tabId);
+            nativeTab = wrapped?.nativeTab ?? null;
+            incognito = wrapped?.incognito === true;
           } catch (e) {
             nativeTab = null;
           }
@@ -1065,6 +1069,13 @@ this.nevoflux = class extends ExtensionAPI {
           }
           const url = nativeTab.linkedBrowser?.currentURI?.spec || '';
           if (!url.startsWith('nevoflux://canvas/')) {
+            const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(url)?.[1]?.toLowerCase();
+            const webPage = url === 'about:blank' || scheme === 'http' || scheme === 'https';
+            const isPrivate =
+              incognito || nativeTab.linkedBrowser?.browsingContext?.usePrivateBrowsing === true;
+            if (!webPage || isPrivate) {
+              return fail('capture_failed');
+            }
             const shot = await self.executeInTabWithRestore(
               tabId,
               extension,

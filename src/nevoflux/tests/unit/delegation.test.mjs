@@ -162,7 +162,12 @@ describe('Canvas tabs per session', () => {
     const tabs = new CanvasTabs();
     tabs.set('A', 11);
     const plan = canvasOpenPlan('B', tabs, false);
-    expect(plan).toEqual({ replaceTabId: null, inBackground: false, markAgent: false });
+    expect(plan).toEqual({
+      replaceTabId: null,
+      inBackground: false,
+      markAgent: false,
+      recordSession: true,
+    });
     tabs.set('B', 12);
     expect(tabs.tabFor('A')).toBe(11);
   });
@@ -180,14 +185,22 @@ describe('Canvas tabs per session', () => {
       replaceTabId: null,
       inBackground: true,
       markAgent: true,
+      recordSession: true,
     });
   });
 
-  it('a frame with no session opens nothing and touches no tab', () => {
+  it('an open with no session (Canvas SDK canvas_render) opens in the foreground, replaces nothing, records nothing', () => {
     const tabs = new CanvasTabs();
     tabs.set('A', 11);
     for (const missing of [undefined, null, '', 42]) {
-      expect(canvasOpenPlan(missing, tabs, false)).toBeNull();
+      expect(canvasOpenPlan(missing, tabs, false)).toEqual({
+        replaceTabId: null,
+        inBackground: false,
+        markAgent: false,
+        recordSession: false,
+      });
+      // Delegation is per session: a session-less open is never delegated.
+      expect(canvasOpenPlan(missing, tabs, true).inBackground).toBe(false);
     }
     expect(tabs.tabFor('A')).toBe(11);
   });
@@ -464,6 +477,12 @@ const fnBody = (src, signature) => {
 
 describe('background.js delegated sessions', () => {
   const bg = bgSource();
+  it('openSessionCanvasTabNow records the tab only for a plan that says so', () => {
+    const helper = fnBody(bg, 'async function openSessionCanvasTabNow(artifactId, sessionId) {');
+    expect(helper.includes('if (plan.recordSession) {')).toBe(true);
+    expect(helper.includes('arrived without a session id; no tab opened')).toBe(false);
+  });
+
 
   it('imports the delegation rules', () => {
     expect(
