@@ -5,8 +5,18 @@
 //! Plan card component for displaying execution plans
 
 use dioxus::prelude::*;
-use crate::context::use_app_context;
+use crate::context::{use_app_context, AppContext};
 use crate::state::{Message, MessageContent};
+
+/// The session a plan answer goes to: the one that proposed it (M3 §6.1),
+/// or, from an older daemon that did not say, the one on screen.
+fn answer_session(ctx: &AppContext, plan_session: &str) -> String {
+    if plan_session.is_empty() {
+        ctx.session.read().id.clone()
+    } else {
+        plan_session.to_string()
+    }
+}
 
 /// Plan card component displaying a proposed execution plan
 #[component]
@@ -23,10 +33,10 @@ pub fn PlanCard(message: Message) -> Element {
 
     let handle_confirm = {
         let msg_id = msg_id.clone();
+        let plan_session = plan.session_id.clone();
         move |_| {
             let msg_id = msg_id.clone();
-            // Get session_id
-            let session_id = ctx.session.read().id.clone();
+            let session_id = answer_session(&ctx, &plan_session);
 
             // Deactivate this plan
             ctx.messages.with_mut(|messages| {
@@ -40,6 +50,7 @@ pub fn PlanCard(message: Message) -> Element {
             });
 
             ctx.pending_plan.set(false);
+            ctx.routing.write().drop_plan(&session_id);
             ctx.agent_status.write().set_executing();
 
             spawn(async move {
@@ -52,9 +63,10 @@ pub fn PlanCard(message: Message) -> Element {
 
     let handle_cancel = {
         let msg_id = msg_id.clone();
+        let plan_session = plan.session_id.clone();
         move |_| {
             let msg_id = msg_id.clone();
-            let session_id = ctx.session.read().id.clone();
+            let session_id = answer_session(&ctx, &plan_session);
 
             // Deactivate this plan
             ctx.messages.with_mut(|messages| {
@@ -68,6 +80,7 @@ pub fn PlanCard(message: Message) -> Element {
             });
 
             ctx.pending_plan.set(false);
+            ctx.routing.write().drop_plan(&session_id);
             ctx.agent_status.write().hide();
 
             spawn(async move {

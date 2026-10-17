@@ -34,7 +34,7 @@ pub use file_picker::*;
 pub use tools::*;
 pub use render_job::RenderJobEntry;
 pub use schedule::ScheduleJobState;
-pub use session_route::SessionRouting;
+pub use session_route::{SessionRouting, StreamRoute};
 pub use paired_agents::{
     agent_label, bar_rows, command_error, confirms_guarded, confirms_paused, parse_paired_agents,
     presence_word, rows_from_status, task_banner, task_for_session, task_line, tool_word,

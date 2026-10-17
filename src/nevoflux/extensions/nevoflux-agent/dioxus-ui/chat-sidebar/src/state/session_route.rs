@@ -17,6 +17,17 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use shared_protocol::PlanProposalPayload;
 
+/// What one stream frame does in the sidebar (M3 §6.1, §6.2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StreamRoute {
+    /// Render it in the conversation on screen.
+    pub render: bool,
+    /// Ask for the session list again: a session finished off screen, or a
+    /// delegated turn finished on screen (ruling B-M4), so the list shows
+    /// how it ended.
+    pub refresh_list: bool,
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SessionRouting {
     /// Canvas chats (`canvas_chat_inject`): the sidebar has always shown
@@ -56,6 +67,38 @@ impl SessionRouting {
             self.running.insert(session.to_string());
             false
         }
+    }
+
+    /// Route a stream frame of `session` while `current` is on screen.
+    /// `delegated` says a paired agent's task runs in `session`.
+    pub fn route_stream(
+        &mut self,
+        session: &str,
+        current: &str,
+        done: bool,
+        delegated: bool,
+    ) -> StreamRoute {
+        if self.in_view(session, current) {
+            if done {
+                self.note_done(session);
+            }
+            StreamRoute { render: true, refresh_list: done && delegated }
+        } else {
+            StreamRoute { render: false, refresh_list: self.note_elsewhere(session, done) }
+        }
+    }
+
+    /// A plan arrived for `plan.session_id` while `current` is on screen.
+    /// Returns true when its card should be shown now. A delegated
+    /// session's plan is answered on the status bar, so it is neither shown
+    /// nor kept for later (contract R21); any other is kept until answered.
+    pub fn offer_plan(&mut self, plan: PlanProposalPayload, current: &str, delegated: bool) -> bool {
+        if delegated {
+            return false;
+        }
+        let show = self.in_view(&plan.session_id, current);
+        self.park_plan(plan);
+        show
     }
 
     /// The session on screen finished a turn.
@@ -155,6 +198,60 @@ mod tests {
         assert!(r.parked_plan("s-b").is_some());
         r.drop_plan("s-b");
         assert_eq!(r.parked_plan("s-b"), None);
+    }
+
+    #[test]
+    fn a_delegated_sessions_plan_is_neither_shown_nor_kept() {
+        // Contract R21: it is answered on the status bar, never as a card,
+        // not even later when its conversation is opened.
+        let mut r = SessionRouting::default();
+        assert!(!r.offer_plan(plan("muse-task"), "muse-task", true));
+        assert!(!r.offer_plan(plan("muse-task"), "s-a", true));
+        assert_eq!(r.parked_plan("muse-task"), None);
+        assert_eq!(r, SessionRouting::default());
+    }
+
+    #[test]
+    fn a_plan_shows_on_screen_and_waits_off_screen() {
+        let mut r = SessionRouting::default();
+        assert!(r.offer_plan(plan("s-a"), "s-a", false), "on screen: show the card");
+        assert!(r.parked_plan("s-a").is_some(), "kept until answered");
+        assert!(!r.offer_plan(plan("s-b"), "s-a", false), "off screen: no card now");
+        assert_eq!(r.parked_plan("s-b"), Some(plan("s-b")), "shown when s-b is opened");
+        // An older daemon's plan without a session shows where the person is.
+        assert!(r.offer_plan(plan(""), "s-a", false));
+        assert_eq!(r.parked_plan(""), None);
+    }
+
+    #[test]
+    fn a_stream_frame_renders_only_in_its_conversation() {
+        let mut r = SessionRouting::default();
+        let shown = r.route_stream("s-a", "s-a", false, false);
+        assert_eq!(shown, StreamRoute { render: true, refresh_list: false });
+        let elsewhere = r.route_stream("muse-task", "s-a", false, true);
+        assert_eq!(elsewhere, StreamRoute { render: false, refresh_list: false });
+        assert!(r.is_running("muse-task"));
+        let finished = r.route_stream("muse-task", "s-a", true, true);
+        assert_eq!(finished, StreamRoute { render: false, refresh_list: true });
+        assert!(!r.is_running("muse-task"));
+        // A frame without a session and an adopted canvas chat render here.
+        assert!(r.route_stream("", "s-a", false, false).render);
+        r.adopt("cs_1");
+        assert!(r.route_stream("cs_1", "s-a", false, false).render);
+    }
+
+    #[test]
+    fn a_watched_delegated_turn_ending_refreshes_the_list() {
+        // Ruling B-M4: the list learns the task ended while it was on screen,
+        // so it does not later show as finished and unread.
+        let mut r = SessionRouting::default();
+        r.route_stream("muse-task", "s-a", false, true);
+        let done = r.route_stream("muse-task", "muse-task", true, true);
+        assert_eq!(done, StreamRoute { render: true, refresh_list: true });
+        assert!(!r.is_running("muse-task"));
+        // The person's own turn ending on screen does not refresh it.
+        let own = r.route_stream("s-a", "s-a", true, false);
+        assert_eq!(own, StreamRoute { render: true, refresh_list: false });
     }
 
     #[test]

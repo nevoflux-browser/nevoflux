@@ -148,6 +148,9 @@ pub struct PlanStepData {
 /// Plan data for display
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlanData {
+    /// The session that proposed it: the answer goes there (M3 §6.1).
+    /// Empty from an older daemon; the card then answers the session on screen.
+    pub session_id: String,
     pub summary: String,
     pub steps: Vec<PlanStepData>,
     /// Whether this plan is the active (latest) one awaiting user response
@@ -253,11 +256,17 @@ impl Message {
     }
 
     /// Create a plan proposal message
-    pub fn plan(summary: impl Into<String>, steps: Vec<PlanStepData>, is_active: bool) -> Self {
+    pub fn plan(
+        session_id: impl Into<String>,
+        summary: impl Into<String>,
+        steps: Vec<PlanStepData>,
+        is_active: bool,
+    ) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
             role: MessageRole::Assistant,
             content: MessageContent::Plan(PlanData {
+                session_id: session_id.into(),
                 summary: summary.into(),
                 steps,
                 is_active,

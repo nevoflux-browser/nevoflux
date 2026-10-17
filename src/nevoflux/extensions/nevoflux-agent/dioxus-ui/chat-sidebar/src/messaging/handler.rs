@@ -78,23 +78,32 @@ fn handle_incoming(ctx: AppContext, message: IncomingMessage) {
 fn handle_chat_message(ctx: AppContext, message: ChatMessage) {
     match message {
         // ========== Agent -> Sidebar messages ==========
+        // Session-scoped frames render only in their own conversation (M3 §6.1).
         ChatMessage::StreamChunk(payload) => {
-            handle_stream_chunk(ctx, payload);
+            route_stream_chunk(ctx, payload);
         }
         ChatMessage::StreamEnd(payload) => {
-            handle_stream_end(ctx, payload);
+            if in_view(&ctx, &payload.session_id) {
+                handle_stream_end(ctx, payload);
+            }
         }
         ChatMessage::AgentState(payload) => {
-            handle_agent_state(ctx, payload);
+            if in_view(&ctx, &payload.session_id) {
+                handle_agent_state(ctx, payload);
+            }
         }
         ChatMessage::PermissionRequest(payload) => {
             handle_permission_request(ctx, payload);
         }
         ChatMessage::Error(payload) => {
-            handle_error(ctx, payload);
+            if in_view(&ctx, &payload.session_id) {
+                handle_error(ctx, payload);
+            }
         }
         ChatMessage::ContentBlock(payload) => {
-            handle_content_block(ctx, payload);
+            if in_view(&ctx, &payload.session_id) {
+                handle_content_block(ctx, payload);
+            }
         }
         ChatMessage::AccountStatus(_payload) => {
             // P2: Handle account status
@@ -606,6 +615,46 @@ fn usage_from_metadata(
     metadata: Option<&serde_json::Value>,
 ) -> Option<shared_protocol::chat::TurnUsage> {
     serde_json::from_value(metadata?.get("usage")?.clone()).ok()
+}
+
+/// Whether a frame for `session_id` belongs in the conversation on screen.
+/// A frame without a session (an older daemon, a generic error) renders as
+/// it always did.
+fn in_view(ctx: &AppContext, session_id: &str) -> bool {
+    let current = ctx.session.peek().id.clone();
+    ctx.routing.peek().in_view(session_id, &current)
+}
+
+/// Whether a paired agent's delegated task runs in `session_id` (latest
+/// status snapshot).
+fn is_delegated(ctx: &AppContext, session_id: &str) -> bool {
+    let snapshot = ctx.paired_agents.peek();
+    crate::state::task_for_session(snapshot.as_ref(), session_id).is_some()
+}
+
+/// The conversation on screen renders a stream frame; any other session's
+/// frame stays out of the view and only marks that session as running in the
+/// history list, which is refreshed when it finishes (M3 §6.1, §6.2). A
+/// delegated turn finishing on screen refreshes it too (ruling B-M4).
+fn route_stream_chunk(mut ctx: AppContext, payload: StreamChunkPayload) {
+    let current = ctx.session.peek().id.clone();
+    let delegated = payload.done && is_delegated(&ctx, &payload.session_id);
+    let route = ctx
+        .routing
+        .write()
+        .route_stream(&payload.session_id, &current, payload.done, delegated);
+    if route.refresh_list {
+        spawn_local(async move {
+            let _ = crate::messaging::send_session_list(50, 0).await;
+        });
+    }
+    if route.render {
+        handle_stream_chunk(ctx, payload);
+        return;
+    }
+    if let Some(ref title) = payload.session_title {
+        ctx.history.write().update_title(&payload.session_id, title);
+    }
 }
 
 fn handle_stream_chunk(mut ctx: AppContext, payload: StreamChunkPayload) {
@@ -1136,6 +1185,25 @@ fn handle_content_block(mut ctx: AppContext, payload: ContentBlockPayload) {
 // ============================================
 
 fn handle_plan_proposal(mut ctx: AppContext, payload: shared_protocol::PlanProposalPayload) {
+    // A delegated task's plan is answered on the status bar (contract R21):
+    // never a card, and not kept for when its conversation is opened.
+    let delegated = is_delegated(&ctx, &payload.session_id);
+    if delegated {
+        tracing::info!(
+            "Plan for delegated session {} is answered on the status bar",
+            payload.session_id
+        );
+    }
+    let current = ctx.session.peek().id.clone();
+    // Otherwise kept until answered, so opening its conversation later shows it again.
+    let show = ctx.routing.write().offer_plan(payload.clone(), &current, delegated);
+    if show {
+        show_plan(ctx, payload);
+    }
+}
+
+/// Put a plan card in the conversation on screen and wait for its answer.
+fn show_plan(mut ctx: AppContext, payload: shared_protocol::PlanProposalPayload) {
     tracing::info!("Received plan proposal: {} steps", payload.steps.len());
 
     // Deactivate all existing plan messages
@@ -1154,7 +1222,7 @@ fn handle_plan_proposal(mut ctx: AppContext, payload: shared_protocol::PlanPropo
     }).collect();
 
     // Push new plan message as active
-    ctx.messages.write().push(Message::plan(payload.summary, steps, true));
+    ctx.messages.write().push(Message::plan(payload.session_id, payload.summary, steps, true));
 
     // Set pending plan flag
     ctx.pending_plan.set(true);
@@ -1169,6 +1237,11 @@ fn handle_plan_proposal(mut ctx: AppContext, payload: shared_protocol::PlanPropo
 /// the agent's oneshot for this session is already consumed, and a second
 /// answer would only be warned about and dropped.
 fn handle_plan_resolved(mut ctx: AppContext, payload: shared_protocol::PlanResolvedPayload) {
+    // Settled (answered, timed out or stopped): a parked plan goes either way.
+    ctx.routing.write().drop_plan(&payload.session_id);
+    if !in_view(&ctx, &payload.session_id) {
+        return; // its card is not on screen
+    }
     if !*ctx.pending_plan.read() {
         return; // answered here; the local handler already cleared it
     }
@@ -1729,6 +1802,13 @@ fn handle_session_resolve_response(mut ctx: AppContext, data: serde_json::Value)
         ctx.messages.set(Vec::new());
         tracing::info!("Session has no messages, showing welcome screen");
     }
+
+    // A plan proposed while this conversation was off screen, still unanswered.
+    let current = ctx.session.peek().id.clone();
+    let parked = ctx.routing.peek().parked_plan(&current);
+    if let Some(plan) = parked {
+        show_plan(ctx, plan);
+    }
 }
 
 /// Handle session.clone response - load cloned messages into chat
@@ -1942,6 +2022,10 @@ fn handle_ask_user_resolved(
 fn handle_artifact_start(mut ctx: AppContext, payload: crate::messaging::sender::ArtifactStartPayload) {
     use crate::state::{Message, ArtifactState};
 
+    if !in_view(&ctx, &payload.session_id) {
+        tracing::debug!("Artifact {} belongs to session {}; not shown here", payload.id, payload.session_id);
+        return;
+    }
     tracing::info!("Artifact started: {}", payload.id);
 
     let title = payload.title.unwrap_or_else(|| "Untitled".to_string());
@@ -1963,6 +2047,9 @@ fn handle_artifact_delta(_ctx: AppContext, _payload: crate::messaging::sender::A
 fn handle_artifact_complete(mut ctx: AppContext, payload: crate::messaging::sender::ArtifactCompletePayload) {
     use crate::state::{MessageContent, ArtifactState};
 
+    if !in_view(&ctx, &payload.session_id) {
+        return;
+    }
     tracing::info!("Artifact complete: {}", payload.id);
 
     ctx.messages.with_mut(|messages| {
@@ -1995,6 +2082,9 @@ fn handle_artifact_complete(mut ctx: AppContext, payload: crate::messaging::send
 /// back to the canvas iframe.
 fn handle_canvas_chat_inject(mut ctx: AppContext, payload: crate::messaging::sender::CanvasChatInjectPayload) {
     use crate::state::{Message, ImageAttachment};
+
+    // This canvas chat's replies render here, as they always have (M3 §6.1).
+    ctx.routing.write().adopt(&payload.session_id);
 
     tracing::info!("Canvas chat inject (UI only): content='{}', attachments={}, local_files={}",
         payload.content, payload.attachments.len(), payload.local_files.len());
