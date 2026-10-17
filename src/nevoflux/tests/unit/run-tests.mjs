@@ -34,6 +34,7 @@ import './canvas-command-gate.test.mjs';
 import './canvas-notify-limit.test.mjs';
 import './nevoflux-bridge-policy.test.mjs';
 import './delegation.test.mjs';
+import './task-screenshot.test.mjs';
 
 // Run all tests
 const results = await runner.run();
