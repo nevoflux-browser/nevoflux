@@ -90,6 +90,11 @@ fn handle_chat_message(ctx: AppContext, message: ChatMessage) {
         ChatMessage::AgentState(payload) => {
             if in_view(&ctx, &payload.session_id) {
                 handle_agent_state(ctx, payload);
+            } else if matches!(
+                payload.state,
+                shared_protocol::AgentState::Complete | shared_protocol::AgentState::Error
+            ) {
+                note_turn_ended_elsewhere(ctx, &payload.session_id);
             }
         }
         ChatMessage::PermissionRequest(payload) => {
@@ -98,6 +103,8 @@ fn handle_chat_message(ctx: AppContext, message: ChatMessage) {
         ChatMessage::Error(payload) => {
             if in_view(&ctx, &payload.session_id) {
                 handle_error(ctx, payload);
+            } else {
+                note_turn_ended_elsewhere(ctx, &payload.session_id);
             }
         }
         ChatMessage::ContentBlock(payload) => {
@@ -389,6 +396,16 @@ fn handle_event_delivery(mut ctx: AppContext, delivery: shared_protocol::EventBu
         match next {
             Some(snapshot) => {
                 let mut ctx = ctx;
+                // Plans parked for these sessions during the snapshot race
+                // are answered on the status bar (contract R21).
+                let task_sessions: Vec<String> = snapshot
+                    .agents
+                    .iter()
+                    .filter_map(|a| a.task.as_ref().map(|t| t.session_id.clone()))
+                    .collect();
+                ctx.routing
+                    .write()
+                    .drop_plans_of(task_sessions.iter().map(String::as_str));
                 ctx.paired_agents.set(Some(snapshot));
             }
             None => tracing::debug!("[Sidebar] system:agent:status delivery older or malformed; kept current"),
@@ -636,7 +653,7 @@ fn is_delegated(ctx: &AppContext, session_id: &str) -> bool {
 /// frame stays out of the view and only marks that session as running in the
 /// history list, which is refreshed when it finishes (M3 §6.1, §6.2). A
 /// delegated turn finishing on screen refreshes it too (ruling B-M4).
-fn route_stream_chunk(mut ctx: AppContext, payload: StreamChunkPayload) {
+fn route_stream_chunk(mut ctx: AppContext, mut payload: StreamChunkPayload) {
     let current = ctx.session.peek().id.clone();
     let delegated = payload.done && is_delegated(&ctx, &payload.session_id);
     let route = ctx
@@ -649,11 +666,29 @@ fn route_stream_chunk(mut ctx: AppContext, payload: StreamChunkPayload) {
         });
     }
     if route.render {
+        // An adopted canvas chat's title names its own history entry, not
+        // the conversation on screen.
+        if !ctx.routing.peek().titles_screen(&payload.session_id, &current) {
+            if let Some(title) = payload.session_title.take() {
+                ctx.history.write().update_title(&payload.session_id, &title);
+            }
+        }
         handle_stream_chunk(ctx, payload);
         return;
     }
     if let Some(ref title) = payload.session_title {
         ctx.history.write().update_title(&payload.session_id, title);
+    }
+}
+
+/// An off-screen turn ended without a done frame (an error, or a
+/// complete/error agent state): clear its running mark and refresh the list.
+fn note_turn_ended_elsewhere(mut ctx: AppContext, session_id: &str) {
+    let current = ctx.session.peek().id.clone();
+    if ctx.routing.write().note_ended_elsewhere(session_id, &current) {
+        spawn_local(async move {
+            let _ = crate::messaging::send_session_list(50, 0).await;
+        });
     }
 }
 
@@ -1271,6 +1306,12 @@ fn handle_session_cleared(
     mut ctx: AppContext,
     payload: shared_protocol::SessionClearedPayload,
 ) {
+    // Only the conversation on screen is emptied; a clear elsewhere just
+    // drops that session's waiting plan (M3 §6.1).
+    let current = ctx.session.peek().id.clone();
+    if !ctx.routing.write().session_cleared(&payload.session_id, &current) {
+        return;
+    }
     tracing::info!(
         "session cleared: {} message(s), {} artifact(s)",
         payload.messages,
@@ -1803,9 +1844,11 @@ fn handle_session_resolve_response(mut ctx: AppContext, data: serde_json::Value)
         tracing::info!("Session has no messages, showing welcome screen");
     }
 
-    // A plan proposed while this conversation was off screen, still unanswered.
+    // A plan proposed while this conversation was off screen, still unanswered
+    // (unless its session has since become a delegated task's: contract R21).
     let current = ctx.session.peek().id.clone();
-    let parked = ctx.routing.peek().parked_plan(&current);
+    let delegated = is_delegated(&ctx, &current);
+    let parked = ctx.routing.write().reshow_plan(&current, delegated);
     if let Some(plan) = parked {
         show_plan(ctx, plan);
     }

@@ -106,7 +106,12 @@ fn HistoryItem(session: SessionSummary) -> Element {
     let handle_click = move |_| {
         let source_id = session_id.clone();
         tracing::info!("Loading historical session: {}", source_id);
+        // Open it first, as the history panel does: frames are routed by
+        // the session on screen (M3 §6.1).
+        let mut ctx = ctx.clone();
         spawn_local(async move {
+            ctx.session.write().id = source_id.clone();
+            ctx.messages.set(Vec::new());
             if let Err(e) = crate::messaging::send_session_resolve(&source_id).await {
                 tracing::error!("Failed to load session: {}", e);
             }

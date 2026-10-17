@@ -128,6 +128,45 @@ impl SessionRouting {
     pub fn drop_plan(&mut self, session: &str) {
         self.plans.remove(session);
     }
+
+    /// The plan to show when `session` is opened. One whose session has since
+    /// become a delegated task's is answered on the status bar, so it is
+    /// dropped instead (contract R21).
+    pub fn reshow_plan(&mut self, session: &str, delegated: bool) -> Option<PlanProposalPayload> {
+        if delegated {
+            self.drop_plan(session);
+            return None;
+        }
+        self.parked_plan(session)
+    }
+
+    /// A status snapshot names these sessions' delegated tasks: their parked
+    /// plans (kept during the snapshot race) are answered on the status bar.
+    pub fn drop_plans_of<'a>(&mut self, sessions: impl IntoIterator<Item = &'a str>) {
+        for session in sessions {
+            self.drop_plan(session);
+        }
+    }
+
+    /// `session` was cleared (`/clear`). Its plan goes; returns true when it
+    /// is the conversation on screen, whose view is then emptied.
+    pub fn session_cleared(&mut self, session: &str, current: &str) -> bool {
+        self.drop_plan(session);
+        self.in_view(session, current)
+    }
+
+    /// An off-screen turn ended without a done frame (an error frame, or a
+    /// complete/error agent state). Returns true when it was marked running,
+    /// so the list is refreshed to show how it ended.
+    pub fn note_ended_elsewhere(&mut self, session: &str, current: &str) -> bool {
+        !self.in_view(session, current) && self.running.remove(session)
+    }
+
+    /// Whether a frame's `session_title` names the conversation on screen.
+    /// An adopted canvas chat's title belongs to its own history entry.
+    pub fn titles_screen(&self, frame_session: &str, current: &str) -> bool {
+        frame_session.is_empty() || frame_session == current
+    }
 }
 
 #[cfg(test)]
@@ -252,6 +291,62 @@ mod tests {
         // The person's own turn ending on screen does not refresh it.
         let own = r.route_stream("s-a", "s-a", true, false);
         assert_eq!(own, StreamRoute { render: true, refresh_list: false });
+    }
+
+    #[test]
+    fn a_clear_in_another_session_leaves_the_view_alone() {
+        // session_cleared is session-scoped: /clear in s-b must not wipe s-a.
+        let mut r = SessionRouting::default();
+        r.park_plan(plan("s-b"));
+        assert!(!r.session_cleared("s-b", "s-a"), "s-a on screen stays as it is");
+        assert_eq!(r.parked_plan("s-b"), None, "the cleared turn's plan is gone");
+        r.park_plan(plan("s-a"));
+        assert!(r.session_cleared("s-a", "s-a"));
+        assert_eq!(r.parked_plan("s-a"), None);
+        assert!(r.session_cleared("", "s-a"), "an older daemon's clear acts as before");
+    }
+
+    #[test]
+    fn a_parked_plan_of_a_session_since_delegated_is_dropped_not_shown() {
+        // Contract R21 at show time: a plan parked during the snapshot race.
+        let mut r = SessionRouting::default();
+        r.park_plan(plan("muse-task"));
+        assert_eq!(r.reshow_plan("muse-task", true), None);
+        assert_eq!(r.parked_plan("muse-task"), None);
+        r.park_plan(plan("s-b"));
+        assert_eq!(r.reshow_plan("s-b", false), Some(plan("s-b")));
+        assert!(r.parked_plan("s-b").is_some(), "still waits until answered");
+    }
+
+    #[test]
+    fn a_snapshot_naming_a_task_drops_that_sessions_parked_plan() {
+        let mut r = SessionRouting::default();
+        r.park_plan(plan("muse-task"));
+        r.park_plan(plan("s-b"));
+        r.drop_plans_of(["muse-task", ""]);
+        assert_eq!(r.parked_plan("muse-task"), None);
+        assert_eq!(r.parked_plan("s-b"), Some(plan("s-b")));
+    }
+
+    #[test]
+    fn a_turn_ending_off_screen_without_a_done_frame_clears_the_running_mark() {
+        let mut r = SessionRouting::default();
+        r.route_stream("muse-task", "s-a", false, true);
+        assert!(r.note_ended_elsewhere("muse-task", "s-a"), "refresh the list once");
+        assert!(!r.is_running("muse-task"));
+        assert!(!r.note_ended_elsewhere("muse-task", "s-a"), "not running: nothing to refresh");
+        // On screen it is handled by the view itself.
+        r.route_stream("s-b", "s-a", false, false);
+        assert!(!r.note_ended_elsewhere("s-b", "s-b"));
+    }
+
+    #[test]
+    fn an_adopted_canvas_chats_title_is_not_the_screens_title() {
+        let mut r = SessionRouting::default();
+        r.adopt("cs_1");
+        assert!(!r.titles_screen("cs_1", "s-a"), "goes to cs_1's history entry");
+        assert!(r.titles_screen("s-a", "s-a"));
+        assert!(r.titles_screen("", "s-a"));
     }
 
     #[test]
