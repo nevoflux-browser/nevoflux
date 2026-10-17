@@ -765,6 +765,9 @@ pub struct ArtifactStartPayload {
     /// Whether this artifact is already saved to My Canvas
     #[serde(default)]
     pub is_persistent: bool,
+    /// The session that made it (contract §5); the card shows only there.
+    #[serde(default)]
+    pub session_id: String,
 }
 
 /// Artifact delta payload
@@ -786,6 +789,9 @@ pub struct ArtifactCompletePayload {
     /// Whether this artifact is already saved to My Canvas
     #[serde(default)]
     pub is_persistent: bool,
+    /// The session that made it (contract §5).
+    #[serde(default)]
+    pub session_id: String,
 }
 
 /// AskUser request payload from background.js
@@ -2029,4 +2035,58 @@ pub async fn send_soul_unbind(container: &str) -> Result<(), String> {
         params: Some(serde_json::json!({ "container": container })),
     });
     send_to_agent(message).await
+}
+
+#[cfg(test)]
+mod artifact_session_tests {
+    use super::*;
+
+    /// Contract §5: `artifact_start` / `artifact_complete` carry top-level
+    /// `payload.session_id`, so the card shows only in the session that made it.
+    #[test]
+    fn artifact_frames_carry_their_session() {
+        let msg: InternalMessage = serde_json::from_value(serde_json::json!({
+            "type": "artifact_start",
+            "payload": {"session_id": "s-7", "id": "calc-1", "title": "Calc"}
+        }))
+        .expect("artifact_start parses");
+        match msg {
+            InternalMessage::ArtifactStart(p) => {
+                assert_eq!(p.session_id, "s-7");
+                assert_eq!(p.id, "calc-1");
+            }
+            other => panic!("not artifact_start: {other:?}"),
+        }
+        let msg: InternalMessage = serde_json::from_value(serde_json::json!({
+            "type": "artifact_complete",
+            "payload": {"session_id": "s-7", "id": "calc-1", "final_code": "<p/>"}
+        }))
+        .expect("artifact_complete parses");
+        match msg {
+            InternalMessage::ArtifactComplete(p) => assert_eq!(p.session_id, "s-7"),
+            other => panic!("not artifact_complete: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn artifact_frames_without_a_session_still_parse() {
+        let msg: InternalMessage = serde_json::from_value(serde_json::json!({
+            "type": "artifact_start",
+            "payload": {"id": "calc-1"}
+        }))
+        .expect("an older artifact_start parses");
+        match msg {
+            InternalMessage::ArtifactStart(p) => assert_eq!(p.session_id, ""),
+            other => panic!("not artifact_start: {other:?}"),
+        }
+        let msg: InternalMessage = serde_json::from_value(serde_json::json!({
+            "type": "artifact_complete",
+            "payload": {"id": "calc-1"}
+        }))
+        .expect("an older artifact_complete parses");
+        match msg {
+            InternalMessage::ArtifactComplete(p) => assert_eq!(p.session_id, ""),
+            other => panic!("not artifact_complete: {other:?}"),
+        }
+    }
 }

@@ -366,6 +366,11 @@ pub struct StreamChunkPayload {
     /// Token usage for the reply; only present on the final frame.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<TurnUsage>,
+    /// The session this frame belongs to. The daemon has always sent it; the
+    /// sidebar reads it to keep other sessions' output out of the view
+    /// (M3 §6.1). Empty from an older daemon, which renders as before.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub session_id: String,
 }
 
 /// Tool call information from agent
@@ -681,6 +686,11 @@ pub struct PlanStep {
 pub struct PlanProposalPayload {
     pub summary: String,
     pub steps: Vec<PlanStep>,
+    /// The session whose turn proposed it (the daemon adds it at the send
+    /// site). The answer goes to this session, not to whichever is on screen
+    /// (M3 §6.1). Empty from an older daemon.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub session_id: String,
 }
 
 /// User response to a plan proposal.

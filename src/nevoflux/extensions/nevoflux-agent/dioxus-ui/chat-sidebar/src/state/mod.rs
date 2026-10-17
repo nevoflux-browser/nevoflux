@@ -19,6 +19,7 @@ mod tools;
 pub mod render_job;
 mod schedule;
 pub mod paired_agents;
+mod session_route;
 
 pub use session::*;
 pub use message::*;
@@ -33,6 +34,7 @@ pub use file_picker::*;
 pub use tools::*;
 pub use render_job::RenderJobEntry;
 pub use schedule::ScheduleJobState;
+pub use session_route::SessionRouting;
 pub use paired_agents::{
     bar_rows, command_error, confirms_paused, parse_paired_agents, presence_word,
     rows_from_status, tool_word, unpair_click, unpair_label, AgentRow, PairedAgentsSnapshot,
