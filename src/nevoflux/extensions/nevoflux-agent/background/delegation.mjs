@@ -13,7 +13,12 @@
  *    the system:agent:status snapshot (ruling B-F2). A session_origin only
  *    records where a session came from (history badges); it is re-sent at the
  *    end of every delegated turn and a person may keep typing into the session
- *    after the task, so it never decides hiding/holding by itself;
+ *    after the task, so it never decides hiding/holding by itself — except
+ *    provisionally (ruling B-T2-1): the snapshot travels on the event bus and
+ *    session_origin on the chat connection, so a delegated turn's first
+ *    question or Canvas can beat the snapshot that lists its task. A session
+ *    whose session_origin arrived after the latest snapshot counts as
+ *    delegated until the next snapshot, which is authoritative;
  *  - Canvas tabs per session, so one conversation never closes another's;
  *  - which canvas-chat session a daemon frame belongs to;
  *  - how long a delegated question may wait in this script.
@@ -34,9 +39,12 @@ export const DELEGATED_ASK_HOLD_MS = 31 * 60 * 1000;
 /**
  * Remember one `session_origin` payload
  * (`{session_id, origin: {kind: "muse", pairing}}`). Returns whether it was
- * usable. A session seen again (a continued task) becomes the newest.
+ * usable. A session seen again (a continued task) becomes the newest. With
+ * `pending` (a Set), a usable origin also makes the session provisionally
+ * delegated until the next status snapshot (ruling B-T2-1); a turn-end
+ * re-send (contract v1.3 R19) does the same, harmlessly.
  */
-export function recordSessionOrigin(sessions, payload) {
+export function recordSessionOrigin(sessions, payload, pending = null) {
   const sessionId = payload?.session_id;
   const origin = payload?.origin;
   if (typeof sessionId !== 'string' || !sessionId) {
@@ -50,6 +58,7 @@ export function recordSessionOrigin(sessions, payload) {
   while (sessions.size > DELEGATED_SESSION_CAP) {
     sessions.delete(sessions.keys().next().value);
   }
+  pending?.add(sessionId);
   return true;
 }
 
@@ -65,12 +74,15 @@ export function originOf(sessions, sessionId) {
  * Replace `live` (a Set of session ids) with the sessions that have a task in
  * this system:agent:status snapshot (`agents[].task.session_id`, offline
  * entries included). Every snapshot is FULL: replace, never merge. A payload
- * without an `agents` array is ignored. Returns whether the set changed.
+ * without an `agents` array is ignored. Returns whether the live set changed.
+ * With `pending`, every well-formed snapshot also ends all provisional
+ * delegations (ruling B-T2-1): from now on the snapshot decides.
  */
-export function applyStatusSnapshot(live, payload) {
+export function applyStatusSnapshot(live, payload, pending = null) {
   if (!Array.isArray(payload?.agents)) {
     return false;
   }
+  pending?.clear();
   const next = new Set();
   for (const agent of payload.agents) {
     const sid = agent?.task?.session_id;
@@ -100,11 +112,59 @@ export function hasLiveTask(live, sessionId) {
 
 /**
  * Whether `sessionId` is delegated for hiding/holding questions, background
- * Canvas and badges: a task is running in it. Takes the live set, not the
- * origin map.
+ * Canvas and badges: a task is running in it, or (with `pending`) its
+ * session_origin arrived after the latest snapshot (ruling B-T2-1). Takes the
+ * live set, not the origin map.
  */
-export function isDelegated(live, sessionId) {
-  return hasLiveTask(live, sessionId);
+export function isDelegated(live, sessionId, pending = null) {
+  if (hasLiveTask(live, sessionId)) {
+    return true;
+  }
+  return pending !== null && typeof sessionId === 'string' && sessionId.length > 0 && pending.has(sessionId);
+}
+
+/** How many delivered event ids StatusSnapshotGate remembers. */
+const STATUS_EVENT_ID_CAP = 64;
+
+/**
+ * Which system:agent:status deliveries are new snapshots. A reconnect's
+ * sticky replay redelivers snapshots already applied, oldest first; applying
+ * one again would end provisional delegations that started after it, and an
+ * older one would bring back tasks that have ended. So a delivery is admitted
+ * only when it is well formed, its `event_id` is not one already admitted,
+ * and its `timestamp_ms` is not older than the newest admitted (the sidebar's
+ * rule). A delivery without an id or a time is admitted on what it has.
+ */
+export class StatusSnapshotGate {
+  constructor() {
+    this.newestMs = null;
+    this.seen = [];
+  }
+
+  /** Whether `event` (`{event_id, timestamp_ms, payload}`) is a new snapshot. Records it. */
+  admit(event) {
+    if (!Array.isArray(event?.payload?.agents)) {
+      return false;
+    }
+    const id = typeof event.event_id === 'string' && event.event_id ? event.event_id : null;
+    if (id !== null && this.seen.includes(id)) {
+      return false;
+    }
+    const ms = Number.isFinite(event.timestamp_ms) ? event.timestamp_ms : null;
+    if (ms !== null && this.newestMs !== null && ms < this.newestMs) {
+      return false;
+    }
+    if (ms !== null) {
+      this.newestMs = ms;
+    }
+    if (id !== null) {
+      this.seen.push(id);
+      if (this.seen.length > STATUS_EVENT_ID_CAP) {
+        this.seen.shift();
+      }
+    }
+    return true;
+  }
 }
 
 /** How long a question may wait here before this script answers "timed out". */

@@ -17,6 +17,7 @@ import { refRoute, fillValue } from './ref-routing.mjs';
 import { osNotificationContent, mayShowOsNotification } from './notify-gate.mjs';
 import { commandVerdict } from './canvas-command-gate.mjs';
 import { allowCanvasNotify } from './canvas-notify-limit.mjs';
+import { recordSessionOrigin, isDelegated, askHoldMs, CanvasTabs, canvasOpenPlan, canvasChatSessionFor, applyStatusSnapshot, StatusSnapshotGate } from './delegation.mjs';
 
 // Recent canvas:notify times per artifact id (rolling rate limit).
 const canvasNotifyHistory = new Map();
@@ -427,6 +428,33 @@ function ensureBackgroundSoulSubscription() {
     bridgeId: null,
     patterns: ['ui:soul:active'],
   });
+}
+
+/**
+ * Ensure the background-owned `system:agent:status` subscription is tracked
+ * (sticky, replayed on subscribe), so this script knows which sessions run a
+ * paired agent's task (ruling B-F2) before it handles their questions and
+ * Canvas tabs, with the sidebar open or closed. Idempotent; registered
+ * alongside the schedule subscription.
+ */
+function ensureBackgroundAgentStatusSubscription() {
+  if (eventBusSubscriptions.has('bg-agent-status')) return;
+  eventBusSubscriptions.set('bg-agent-status', {
+    source: 'background',
+    tabId: null,
+    bridgeId: null,
+    patterns: ['system:agent:status'],
+  });
+}
+
+/**
+ * Handle a delivered `system:agent:status` snapshot: the sessions with a task
+ * in it are the delegated ones from now on, and every provisional delegation
+ * ends (ruling B-T2-1). Redelivered and older snapshots are skipped.
+ */
+function handleAgentStatusEvent(event) {
+  if (!agentStatusGate.admit(event)) return;
+  applyStatusSnapshot(liveTaskSessions, event.payload, provisionalSessions);
 }
 
 /**
@@ -851,6 +879,60 @@ function markAgentTabs(request, toolResult) {
   }
 }
 
+/** Put the agent badge on a delegated task's Canvas tab (R20). Never throws. */
+function markDelegatedTab(tabId) {
+  if (typeof browser.nevoflux?.setTabAgentMark !== 'function') return;
+  browser.nevoflux.setTabAgentMark(tabId, true).catch((err) => {
+    console.warn(`[NevoFlux] could not mark delegated Canvas tab ${tabId}:`, err?.message || err);
+  });
+}
+
+/**
+ * Open the Canvas tab for a chat session (M3 §6.1, §6.5). Only that session's
+ * previous Canvas tab is replaced. A delegated session's tab opens in the
+ * background with the agent badge and never becomes the tab the sidebar's
+ * "open canvas" reuses. A frame with no session id opens nothing (contract
+ * §6): guessing the session is how one conversation used to close another's
+ * Canvas. Never throws.
+ */
+async function openSessionCanvasTab(artifactId, sessionId) {
+  const plan = canvasOpenPlan(sessionId, canvasTabs, isDelegatedSession(sessionId));
+  if (!plan) {
+    console.warn(`[NevoFlux] Canvas ${artifactId} arrived without a session id; no tab opened`);
+    return null;
+  }
+  try {
+    if (plan.replaceTabId != null) {
+      try {
+        await browser.tabs.remove(plan.replaceTabId);
+      } catch {
+        // Tab already closed — ignore
+      }
+      canvasTabs.forgetTab(plan.replaceTabId);
+      if (_canvasTabId === plan.replaceTabId) _canvasTabId = null;
+    }
+    const result = plan.inBackground
+      ? await browser.nevoflux.openCanvasTab(artifactId, { inBackground: true })
+      : await browser.nevoflux.openCanvasTab(artifactId);
+    if (!result?.success) {
+      console.error('[NevoFlux] openCanvasTab failed:', result?.error);
+      return result;
+    }
+    if (result.tabId) {
+      canvasTabs.set(sessionId, result.tabId);
+      if (plan.markAgent) {
+        markDelegatedTab(result.tabId);
+      } else {
+        _canvasTabId = result.tabId;
+      }
+    }
+    return result;
+  } catch (e) {
+    console.error('[NevoFlux] Failed to open canvas tab:', e);
+    return null;
+  }
+}
+
 /**
  * Whether a Canvas panel may run this action, per the daemon's policy.
  *
@@ -948,8 +1030,38 @@ setInterval(() => {
   }
 }, 10000);
 
-// Canvas tab tracking: reuse the same tab for artifacts within a conversation
+// The Canvas tab the sidebar's "open canvas" reuses: the latest one a local
+// (not delegated) session opened. A delegated Canvas never becomes it.
 let _canvasTabId = null;
+
+// Canvas tabs per chat session (M3 §6.1): a new Canvas replaces only the same
+// session's tab, never another conversation's.
+const canvasTabs = new CanvasTabs();
+
+// Where delegated sessions came from, from `session_origin` (contract R19).
+// A record only: it does not make a session delegated (ruling B-F2).
+const originSessions = new Map();
+
+// Sessions with a paired agent's task running now, from the
+// system:agent:status snapshot (ruling B-F2). Replaced by every snapshot.
+const liveTaskSessions = new Set();
+
+// Sessions whose session_origin arrived after the latest snapshot: delegated
+// until the next snapshot decides (ruling B-T2-1), because the snapshot and
+// the turn travel on different channels and the turn can arrive first.
+const provisionalSessions = new Set();
+
+// Skips redelivered and older system:agent:status snapshots.
+const agentStatusGate = new StatusSnapshotGate();
+
+/**
+ * Whether a session is delegated: its questions are not shown here nor timed
+ * out early, its Canvas opens in the background with the agent badge, and its
+ * browser calls run in this script (M3 §6).
+ */
+function isDelegatedSession(sessionId) {
+  return isDelegated(liveTaskSessions, sessionId, provisionalSessions);
+}
 
 // Artifact delta buffers: accumulate deltas synchronously to avoid read-modify-write races.
 // Each key is an artifact ID, value is the accumulated content string.
@@ -1266,6 +1378,7 @@ class NativeChannel {
         ensureBackgroundScheduleSubscription();
         ensureBackgroundNotifySubscription();
         ensureBackgroundSoulSubscription();
+        ensureBackgroundAgentStatusSubscription();
         this.replaySubscriptions();
       }
 
@@ -1576,6 +1689,16 @@ class ChannelManager {
 
     const msgType = message.type;
 
+    // A paired agent's task runs in this session (contract R19), sent before
+    // the turn and again at its end (v1.3): idempotent. Consumed here, never
+    // broadcast: the sidebar's message enum has no such type.
+    if (msgType === 'session_origin') {
+      if (!recordSessionOrigin(originSessions, message.payload, provisionalSessions)) {
+        console.warn('[NevoFlux] session_origin without a usable session or origin; ignored');
+      }
+      return;
+    }
+
     // Intercept artifact streaming messages (start/delta/complete protocol)
     if (
       msgType === MessageTypes.ARTIFACT_START ||
@@ -1601,7 +1724,7 @@ class ChannelManager {
         for (const tc of toolCalls) {
           if (tc.name === 'create_artifact') {
             console.log(`[NevoFlux] Found create_artifact tool call in stream_chunk: id=${tc.id}`);
-            handleCreateArtifactToolCall(tc).catch((err) => {
+            handleCreateArtifactToolCall(tc, message.payload?.session_id).catch((err) => {
               console.error('[NevoFlux] create_artifact tool call failed:', err);
             });
           }
@@ -1802,6 +1925,8 @@ class ChannelManager {
             handleUserNotification(eventPayload.event);
           } else if (subId === 'bg-soul') {
             handleActiveSoulEvent(eventPayload.event);
+          } else if (subId === 'bg-agent-status') {
+            handleAgentStatusEvent(eventPayload.event);
           } else {
             handleScheduleEvent(eventPayload.event);
           }
@@ -2187,10 +2312,7 @@ class ChannelManager {
     // Try matching by session_id in payload first; fall back to
     // _activeCanvasSessionId for messages that don't carry session_id
     // (e.g. stream_chunk, agent_state).
-    let canvasSessionId = message.payload?.session_id;
-    if (!canvasSessionId || !canvasSessions.has(canvasSessionId)) {
-      canvasSessionId = _activeCanvasSessionId;
-    }
+    const canvasSessionId = canvasChatSessionFor(message.payload, canvasSessions, _activeCanvasSessionId);
     if (canvasSessionId && canvasSessions.has(canvasSessionId)) {
       // Push to canvas via bridgePush
       browser.nevoflux.bridgePush(canvasSessionId, message).catch((err) => {
@@ -2287,7 +2409,10 @@ class ChannelManager {
       // A paired AI agent's calls (origin "agent", M2a §3.4) take the same
       // path: the daemon already decided tier, tab and approval, and they must
       // work with the sidebar closed.
-      if (DIRECT_ACTIONS.has(action) || globalThis.__nf_headless === true || isAgentRequest(payload)) {
+      //
+      // A delegated task's calls (M3) too: the turn runs while the person may
+      // have the sidebar closed, and the sidebar would only call back here.
+      if (DIRECT_ACTIONS.has(action) || globalThis.__nf_headless === true || isAgentRequest(payload) || isDelegatedSession(payload?.session_id)) {
         console.log(`[NevoFlux] Handling ${action} directly (bypassing sidebar)`);
         executeBrowserTool(payload, 'direct')
           .then((toolResult) => {
@@ -3868,25 +3993,9 @@ async function handleArtifactMessage(message) {
       });
 
       // Open canvas tab immediately — page subscribes to ContentStore updates
-      // and will render content as artifact_delta messages arrive
-      try {
-        if (_canvasTabId != null) {
-          try {
-            await browser.tabs.remove(_canvasTabId);
-          } catch {
-            // Tab already closed — ignore
-          }
-          _canvasTabId = null;
-        }
-        const result = await browser.nevoflux.openCanvasTab(id);
-        if (result?.success) {
-          if (result.tabId) _canvasTabId = result.tabId;
-        } else {
-          console.error('[NevoFlux] openCanvasTab failed:', result?.error);
-        }
-      } catch (e) {
-        console.error('[NevoFlux] Failed to open canvas tab:', e);
-      }
+      // and will render content as artifact_delta messages arrive. Only this
+      // session's previous Canvas tab is replaced (M3 §6.1).
+      await openSessionCanvasTab(id, payload.session_id);
       break;
     }
 
@@ -3950,7 +4059,7 @@ async function handleArtifactMessage(message) {
  * AND a create_artifact tool call for the same artifact. If the streaming protocol
  * already handled it, skip to avoid duplicate ArtifactCards and tab opens.
  */
-async function handleCreateArtifactToolCall(toolCall) {
+async function handleCreateArtifactToolCall(toolCall, sessionId = '') {
   let args = toolCall.arguments;
   const argsType = typeof args;
   const rawArgsLen = typeof args === 'string' ? args.length : JSON.stringify(args).length;
@@ -4082,25 +4191,16 @@ async function handleCreateArtifactToolCall(toolCall) {
     }
 
     // Open canvas tab only if streaming protocol hasn't already
-    try {
-      if (_canvasTabId != null) {
-        try {
-          await browser.tabs.remove(_canvasTabId);
-        } catch {}
-        _canvasTabId = null;
-      }
-      const result = await browser.nevoflux.openCanvasTab(id);
-      if (result?.success) {
-        if (result.tabId) _canvasTabId = result.tabId;
-      } else {
-        console.error('[NevoFlux] openCanvasTab failed:', result?.error);
-      }
-    } catch (e) {
-      console.error('[NevoFlux] Failed to open canvas tab:', e);
-    }
+    await openSessionCanvasTab(id, sessionId);
 
-    // Broadcast artifact_start + artifact_complete to sidebar for ArtifactCard
-    const startPayload = { id, content_type: isProject ? 'project' : normalizedType, title };
+    // Broadcast artifact_start + artifact_complete to sidebar for ArtifactCard;
+    // the sidebar shows the card only in its own session (M3 §6.1).
+    const startPayload = {
+      id,
+      content_type: isProject ? 'project' : normalizedType,
+      title,
+      session_id: sessionId || '',
+    };
     if (files) {
       startPayload.files = files;
       startPayload.entry = entry;
@@ -4111,7 +4211,7 @@ async function handleCreateArtifactToolCall(toolCall) {
     });
     broadcastToSidebar({
       type: MessageTypes.ARTIFACT_COMPLETE,
-      payload: { id, title },
+      payload: { id, title, session_id: sessionId || '' },
     });
   });
 }
@@ -4622,7 +4722,7 @@ async function executeBrowserTool(request, caller = 'unknown') {
       case 'ask_user':
         // The daemon's request_id travels with it: it is the only handle the
         // daemon has to tell us this question was answered somewhere else.
-        return await executeAskUser(params, request.request_id);
+        return await executeAskUser(params, request.request_id, request.session_id);
 
       // Cache uploaded file (save to disk, return absolute path)
       case 'cache_file':
@@ -4655,7 +4755,7 @@ async function executeBrowserTool(request, caller = 'unknown') {
 
       // Canvas rendering (from Code Mode via canvas_render tool)
       case 'canvas_render':
-        return await executeCanvasRender(params);
+        return await executeCanvasRender(params, request.session_id);
 
       // Visual identity extraction (Mode 3 entry point — backs the
       // canvas_extract_visual_identity tool; opens a URL or reuses a tab,
@@ -4980,7 +5080,7 @@ async function executeEditArtifact(params) {
  * @param {string} [params.artifact_id] - Artifact ID (auto-generated if omitted)
  * @returns {Promise<{success: boolean, result?: object, error?: object}>}
  */
-async function executeCanvasRender(params) {
+async function executeCanvasRender(params, sessionId = '') {
   const files = params?.files;
   if (!files || typeof files !== 'object' || Array.isArray(files)) {
     return {
@@ -5026,32 +5126,17 @@ async function executeCanvasRender(params) {
     };
   }
 
-  // Open canvas tab
-  try {
-    if (_canvasTabId != null) {
-      try {
-        await browser.tabs.remove(_canvasTabId);
-      } catch {}
-      _canvasTabId = null;
-    }
-    const result = await browser.nevoflux.openCanvasTab(id);
-    if (result?.success) {
-      if (result.tabId) _canvasTabId = result.tabId;
-    } else {
-      console.error('[NevoFlux] canvas_render: openCanvasTab failed:', result?.error);
-    }
-  } catch (e) {
-    console.error('[NevoFlux] canvas_render: Failed to open canvas tab:', e);
-  }
+  // Open canvas tab (only this session's previous Canvas is replaced)
+  await openSessionCanvasTab(id, sessionId);
 
-  // Broadcast to sidebar for ArtifactCard
+  // Broadcast to sidebar for ArtifactCard; shown only in its own session
   broadcastToSidebar({
     type: MessageTypes.ARTIFACT_START,
-    payload: { id, content_type: 'project', title },
+    payload: { id, content_type: 'project', title, session_id: sessionId || '' },
   });
   broadcastToSidebar({
     type: MessageTypes.ARTIFACT_COMPLETE,
-    payload: { id, title },
+    payload: { id, title, session_id: sessionId || '' },
   });
 
   return { success: true, result: { artifact_id: id, url: `nevoflux://canvas/${id}` } };
@@ -6979,8 +7064,12 @@ const pendingAskUserRequests = new Map();
 /**
  * Execute ask user: Show question to user and wait for response
  */
-async function executeAskUser(params, daemonRequestId = null) {
+async function executeAskUser(params, daemonRequestId = null, sessionId = null) {
   const { question, options = [], allow_custom = true, timeout_ms = 60000 } = params;
+  // A delegated task's question is answered on the status bar or by the agent
+  // (contract R21), and the daemon holds it for 30 minutes: this script must
+  // neither show it nor answer "timed out" after a minute.
+  const delegated = isDelegatedSession(sessionId);
 
   // Validate question
   if (!question || typeof question !== 'string' || question.trim().length === 0) {
@@ -7011,7 +7100,7 @@ async function executeAskUser(params, daemonRequestId = null) {
           error: { code: 8001, message: 'User interaction timed out', recoverable: true },
         });
       }
-    }, timeout_ms);
+    }, askHoldMs(delegated, timeout_ms));
 
     // Store pending request. Keep the question payload alongside the resolver so
     // replayPendingAsks() can re-broadcast it verbatim when the sidebar
@@ -7027,7 +7116,14 @@ async function executeAskUser(params, daemonRequestId = null) {
       // `handleBrowserToolResolved` can find it when the answer came from a
       // remote-control portal instead of from here.
       daemonRequestId,
+      // Kept but never shown (R21), so browser_tool_resolved still settles it.
+      delegated,
     });
+
+    if (delegated) {
+      console.log('[NevoFlux] AskUser: delegated task question; answered on the status bar');
+      return;
+    }
 
     // Send request to sidebar
     broadcastToSidebar({
@@ -7127,6 +7223,7 @@ function handleBrowserToolResolved(payload) {
  */
 function replayPendingAsks() {
   for (const [requestId, pending] of pendingAskUserRequests) {
+    if (pending.delegated) continue;
     broadcastToSidebar({
       type: MessageTypes.ASK_USER_REQUEST,
       payload: {
@@ -8695,6 +8792,7 @@ browser.tabs.onRemoved.addListener((tabId) => {
   if (tabId === _canvasTabId) {
     _canvasTabId = null;
   }
+  canvasTabs.forgetTab(tabId);
 
   // Clean up EventBus subscriptions for this tab
   const subIds = tabSubscriptions.get(tabId);

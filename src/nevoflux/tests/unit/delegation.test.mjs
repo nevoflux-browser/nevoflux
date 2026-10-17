@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from './test-runner.mjs';
 import {
   DELEGATED_SESSION_CAP,
@@ -15,6 +16,7 @@ import {
   CanvasTabs,
   canvasOpenPlan,
   canvasChatSessionFor,
+  StatusSnapshotGate,
 } from '../../extensions/nevoflux-agent/background/delegation.mjs';
 
 const origin = (session_id, pairing = 'chan-1') => ({ session_id, origin: { kind: 'muse', pairing } });
@@ -210,5 +212,222 @@ describe('canvasChatSessionFor', () => {
     expect(canvasChatSessionFor(undefined, canvas, 'cs_1')).toBe('cs_1');
     expect(canvasChatSessionFor({}, canvas, 'cs_gone')).toBeNull();
     expect(canvasChatSessionFor({}, canvas, null)).toBeNull();
+  });
+});
+
+describe('provisional delegation (ruling B-T2-1)', () => {
+  // The snapshot (event bus) and session_origin (chat proxy) travel on
+  // different channels: a delegated turn's first question or Canvas can beat
+  // the snapshot that lists its task.
+  it('a session_origin after the latest snapshot makes the session delegated', () => {
+    const origins = new Map();
+    const live = new Set();
+    const pending = new Set();
+    applyStatusSnapshot(live, snap(null), pending);
+    expect(recordSessionOrigin(origins, origin('s1'), pending)).toBe(true);
+    expect(isDelegated(live, 's1', pending)).toBe(true);
+    expect(isDelegated(live, 's2', pending)).toBe(false);
+  });
+
+  it('the next snapshot without that task releases it', () => {
+    const origins = new Map();
+    const live = new Set();
+    const pending = new Set();
+    recordSessionOrigin(origins, origin('s1'), pending);
+    applyStatusSnapshot(live, snap('other'), pending);
+    expect(isDelegated(live, 's1', pending)).toBe(false);
+    expect(isDelegated(live, 'other', pending)).toBe(true);
+  });
+
+  it('the next snapshot with that task keeps it delegated', () => {
+    const origins = new Map();
+    const live = new Set();
+    const pending = new Set();
+    recordSessionOrigin(origins, origin('s1'), pending);
+    applyStatusSnapshot(live, snap('s1'), pending);
+    expect(pending.size).toBe(0);
+    expect(isDelegated(live, 's1', pending)).toBe(true);
+  });
+
+  it('a turn-end re-sent session_origin is delegated only until the next snapshot', () => {
+    const origins = new Map();
+    const live = new Set();
+    const pending = new Set();
+    recordSessionOrigin(origins, origin('s1'), pending);
+    applyStatusSnapshot(live, snap('s1'), pending);
+    recordSessionOrigin(origins, origin('s1'), pending); // turn end (v1.3 R19)
+    expect(isDelegated(live, 's1', pending)).toBe(true);
+    applyStatusSnapshot(live, snap(null), pending); // the task ended
+    expect(isDelegated(live, 's1', pending)).toBe(false);
+  });
+
+  it('a malformed snapshot or origin changes nothing provisional', () => {
+    const origins = new Map();
+    const live = new Set();
+    const pending = new Set();
+    recordSessionOrigin(origins, origin('s1'), pending);
+    applyStatusSnapshot(live, { agents: 'x' }, pending);
+    expect(isDelegated(live, 's1', pending)).toBe(true);
+    expect(recordSessionOrigin(origins, { session_id: 's2', origin: { kind: 'user' } }, pending)).toBe(false);
+    expect(isDelegated(live, 's2', pending)).toBe(false);
+  });
+});
+
+const statusEvent = (event_id, timestamp_ms, payload = snap('s1')) => ({
+  event_id,
+  topic: 'system:agent:status',
+  timestamp_ms,
+  payload,
+});
+
+describe('StatusSnapshotGate', () => {
+  it('admits each new snapshot once', () => {
+    const gate = new StatusSnapshotGate();
+    expect(gate.admit(statusEvent('e1', 100))).toBe(true);
+    // A reconnect's sticky replay redelivers it: not a new snapshot, so it
+    // must not clear sessions provisionally delegated since.
+    expect(gate.admit(statusEvent('e1', 100))).toBe(false);
+    expect(gate.admit(statusEvent('e2', 100))).toBe(true);
+    expect(gate.admit(statusEvent('e3', 200))).toBe(true);
+  });
+
+  it('never admits a snapshot older than the newest admitted', () => {
+    const gate = new StatusSnapshotGate();
+    gate.admit(statusEvent('e2', 200));
+    expect(gate.admit(statusEvent('e1', 100))).toBe(false);
+  });
+
+  it('rejects a malformed delivery without remembering it', () => {
+    const gate = new StatusSnapshotGate();
+    for (const bad of [undefined, null, {}, statusEvent('m', 500, { agents: 'x' }), statusEvent('n', 500, null)]) {
+      expect(gate.admit(bad)).toBe(false);
+    }
+    expect(gate.admit(statusEvent('e1', 100))).toBe(true);
+  });
+
+  it('admits a delivery without id or time', () => {
+    const gate = new StatusSnapshotGate();
+    gate.admit(statusEvent('e1', 100));
+    expect(gate.admit({ payload: snap() })).toBe(true);
+    expect(gate.admit({ payload: snap() })).toBe(true);
+  });
+
+  it('remembers a bounded number of event ids', () => {
+    const gate = new StatusSnapshotGate();
+    for (let i = 0; i < 1000; i++) gate.admit(statusEvent(`e${i}`, i));
+    expect(gate.seen.length <= 64).toBe(true);
+    expect(gate.admit(statusEvent('e999', 999))).toBe(false);
+  });
+});
+
+const bgSource = () =>
+  readFileSync(
+    new URL('../../extensions/nevoflux-agent/background/background.js', import.meta.url),
+    'utf8'
+  ).replace(/\r\n/g, '\n');
+
+const fnBody = (src, signature) => {
+  const start = src.indexOf(signature);
+  expect(start).toBeGreaterThan(0);
+  return src.slice(start, src.indexOf('\n}\n', start));
+};
+
+describe('background.js delegated sessions', () => {
+  const bg = bgSource();
+
+  it('imports the delegation rules', () => {
+    expect(
+      bg.includes(
+        "import { recordSessionOrigin, isDelegated, askHoldMs, CanvasTabs, canvasOpenPlan, canvasChatSessionFor, applyStatusSnapshot, StatusSnapshotGate } from './delegation.mjs';"
+      )
+    ).toBe(true);
+  });
+
+  it('delegated means a running task, or an origin newer than the latest snapshot', () => {
+    const helper = fnBody(bg, 'function isDelegatedSession(sessionId) {');
+    expect(helper.includes('return isDelegated(liveTaskSessions, sessionId, provisionalSessions);')).toBe(true);
+  });
+
+  it('follows system:agent:status from connect, sidebar open or closed', () => {
+    const ensure = fnBody(bg, 'function ensureBackgroundAgentStatusSubscription() {');
+    expect(ensure.includes("eventBusSubscriptions.set('bg-agent-status', {")).toBe(true);
+    expect(ensure.includes("patterns: ['system:agent:status'],")).toBe(true);
+    const connect = bg.indexOf('        ensureBackgroundAgentStatusSubscription();');
+    expect(connect).toBeGreaterThan(0);
+    expect(connect < bg.indexOf('this.replaySubscriptions();', connect)).toBe(true);
+    expect(
+      bg.includes("} else if (subId === 'bg-agent-status') {\n            handleAgentStatusEvent(eventPayload.event);")
+    ).toBe(true);
+    const handler = fnBody(bg, 'function handleAgentStatusEvent(event) {');
+    expect(handler.includes('if (!agentStatusGate.admit(event)) return;')).toBe(true);
+    expect(handler.includes('applyStatusSnapshot(liveTaskSessions, event.payload, provisionalSessions);')).toBe(true);
+  });
+
+  it('consumes session_origin before anything else sees the frame', () => {
+    const start = bg.indexOf('  async handleChatMessage(message) {');
+    expect(start).toBeGreaterThan(0);
+    const body = bg.slice(start, bg.indexOf('\n  handleMcpMessage(message) {', start));
+    const origin = body.indexOf("if (msgType === 'session_origin') {");
+    expect(origin).toBeGreaterThan(0);
+    expect(origin < body.indexOf('msgType === MessageTypes.ARTIFACT_START ||')).toBe(true);
+    const block = body.slice(origin, body.indexOf('\n    }\n', origin));
+    expect(block.includes('recordSessionOrigin(originSessions, message.payload, provisionalSessions)')).toBe(true);
+    expect(block.includes('broadcastToSidebar')).toBe(false);
+    expect(block.includes('return;')).toBe(true);
+  });
+
+  it("delegated requests run in the background script, like an agent's", () => {
+    expect(
+      bg.includes(
+        'if (DIRECT_ACTIONS.has(action) || globalThis.__nf_headless === true || isAgentRequest(payload) || isDelegatedSession(payload?.session_id)) {'
+      )
+    ).toBe(true);
+  });
+
+  it('every Canvas open goes through the per-session helper', () => {
+    expect(bg.includes('browser.tabs.remove(_canvasTabId)')).toBe(false);
+    const helper = fnBody(bg, 'async function openSessionCanvasTab(artifactId, sessionId) {');
+    expect(helper.includes('canvasOpenPlan(sessionId, canvasTabs, isDelegatedSession(sessionId))')).toBe(true);
+    expect(helper.includes('browser.nevoflux.openCanvasTab(artifactId, { inBackground: true })')).toBe(true);
+    expect(helper.includes('markDelegatedTab(result.tabId)')).toBe(true);
+    expect(bg.includes('await openSessionCanvasTab(id, payload.session_id);')).toBe(true);
+    expect(bg.includes('await openSessionCanvasTab(id, sessionId);')).toBe(true);
+    expect(bg.includes('handleCreateArtifactToolCall(tc, message.payload?.session_id)')).toBe(true);
+    expect(bg.includes('return await executeCanvasRender(params, request.session_id);')).toBe(true);
+  });
+
+  it('a closed tab leaves its session', () => {
+    const start = bg.indexOf('browser.tabs.onRemoved.addListener((tabId) => {\n  if (tabId === _canvasTabId) {');
+    expect(start).toBeGreaterThan(0);
+    expect(bg.slice(start, bg.indexOf('\n});\n', start)).includes('canvasTabs.forgetTab(tabId);')).toBe(true);
+  });
+
+  it('a delegated question is neither shown nor timed out locally', () => {
+    const ask = fnBody(bg, 'async function executeAskUser(params, daemonRequestId = null, sessionId = null) {');
+    expect(ask.includes('const delegated = isDelegatedSession(sessionId);')).toBe(true);
+    expect(ask.includes('}, askHoldMs(delegated, timeout_ms));')).toBe(true);
+    const skip = ask.indexOf('if (delegated) {');
+    expect(skip).toBeGreaterThan(0);
+    expect(skip < ask.indexOf('broadcastToSidebar({')).toBe(true);
+    expect(bg.includes('return await executeAskUser(params, request.request_id, request.session_id);')).toBe(true);
+    expect(fnBody(bg, 'function replayPendingAsks() {').includes('if (pending.delegated) continue;')).toBe(true);
+  });
+
+  it('artifact cards sent to the sidebar name their session', () => {
+    const create = fnBody(bg, "async function handleCreateArtifactToolCall(toolCall, sessionId = '') {");
+    expect(create.includes("session_id: sessionId || '',")).toBe(true);
+    expect(create.includes("payload: { id, title, session_id: sessionId || '' },")).toBe(true);
+    const render = fnBody(bg, "async function executeCanvasRender(params, sessionId = '') {");
+    expect(render.includes("payload: { id, content_type: 'project', title, session_id: sessionId || '' },")).toBe(true);
+    expect(render.includes("payload: { id, title, session_id: sessionId || '' },")).toBe(true);
+  });
+
+  it('canvas chats only take frames that name them, or name nobody', () => {
+    expect(
+      bg.includes(
+        'const canvasSessionId = canvasChatSessionFor(message.payload, canvasSessions, _activeCanvasSessionId);'
+      )
+    ).toBe(true);
+    expect(bg.includes('canvasSessionId = _activeCanvasSessionId;')).toBe(false);
   });
 });
