@@ -17,7 +17,7 @@ import { refRoute, fillValue } from './ref-routing.mjs';
 import { osNotificationContent, mayShowOsNotification } from './notify-gate.mjs';
 import { commandVerdict } from './canvas-command-gate.mjs';
 import { allowCanvasNotify } from './canvas-notify-limit.mjs';
-import { recordSessionOrigin, isDelegated, askHoldMs, CanvasTabs, canvasOpenPlan, canvasChatSessionFor, applyStatusSnapshot, StatusSnapshotGate } from './delegation.mjs';
+import { recordSessionOrigin, isDelegated, askIsDelegated, askHoldMs, CanvasTabs, canvasOpenPlan, canvasChatSessionFor, applyStatusSnapshot, StatusSnapshotGate, SessionQueue } from './delegation.mjs';
 
 // Recent canvas:notify times per artifact id (rolling rate limit).
 const canvasNotifyHistory = new Map();
@@ -895,7 +895,13 @@ function markDelegatedTab(tabId) {
  * §6): guessing the session is how one conversation used to close another's
  * Canvas. Never throws.
  */
-async function openSessionCanvasTab(artifactId, sessionId) {
+function openSessionCanvasTab(artifactId, sessionId) {
+  // One session's opens run one after another: two at once would both find
+  // no tab to replace and leave one orphaned.
+  return canvasOpenQueue.run(sessionId, () => openSessionCanvasTabNow(artifactId, sessionId));
+}
+
+async function openSessionCanvasTabNow(artifactId, sessionId) {
   const plan = canvasOpenPlan(sessionId, canvasTabs, isDelegatedSession(sessionId));
   if (!plan) {
     console.warn(`[NevoFlux] Canvas ${artifactId} arrived without a session id; no tab opened`);
@@ -1037,6 +1043,7 @@ let _canvasTabId = null;
 // Canvas tabs per chat session (M3 §6.1): a new Canvas replaces only the same
 // session's tab, never another conversation's.
 const canvasTabs = new CanvasTabs();
+const canvasOpenQueue = new SessionQueue();
 
 // Where delegated sessions came from, from `session_origin` (contract R19).
 // A record only: it does not make a session delegated (ruling B-F2).
@@ -1046,10 +1053,11 @@ const originSessions = new Map();
 // system:agent:status snapshot (ruling B-F2). Replaced by every snapshot.
 const liveTaskSessions = new Set();
 
-// Sessions whose session_origin arrived after the latest snapshot: delegated
-// until the next snapshot decides (ruling B-T2-1), because the snapshot and
-// the turn travel on different channels and the turn can arrive first.
-const provisionalSessions = new Set();
+// Sessions whose session_origin arrived after the latest snapshot (session id
+// -> expiry ms): delegated until the next snapshot decides or 30 s pass
+// (rulings B-T2-1, B-T2-2), because the snapshot and the turn travel on
+// different channels and the turn can arrive first.
+const provisionalSessions = new Map();
 
 // Skips redelivered and older system:agent:status snapshots.
 const agentStatusGate = new StatusSnapshotGate();
@@ -1060,7 +1068,7 @@ const agentStatusGate = new StatusSnapshotGate();
  * browser calls run in this script (M3 §6).
  */
 function isDelegatedSession(sessionId) {
-  return isDelegated(liveTaskSessions, sessionId, provisionalSessions);
+  return isDelegated(liveTaskSessions, sessionId, provisionalSessions, Date.now());
 }
 
 // Artifact delta buffers: accumulate deltas synchronously to avoid read-modify-write races.
@@ -1693,7 +1701,7 @@ class ChannelManager {
     // the turn and again at its end (v1.3): idempotent. Consumed here, never
     // broadcast: the sidebar's message enum has no such type.
     if (msgType === 'session_origin') {
-      if (!recordSessionOrigin(originSessions, message.payload, provisionalSessions)) {
+      if (!recordSessionOrigin(originSessions, message.payload, provisionalSessions, Date.now())) {
         console.warn('[NevoFlux] session_origin without a usable session or origin; ignored');
       }
       return;
@@ -7068,8 +7076,9 @@ async function executeAskUser(params, daemonRequestId = null, sessionId = null) 
   const { question, options = [], allow_custom = true, timeout_ms = 60000 } = params;
   // A delegated task's question is answered on the status bar or by the agent
   // (contract R21), and the daemon holds it for 30 minutes: this script must
-  // neither show it nor answer "timed out" after a minute.
-  const delegated = isDelegatedSession(sessionId);
+  // neither show it nor answer "timed out" after a minute. Decided once, so
+  // only a live task or the daemon's delegated stamp counts (ruling B-T2-2).
+  const delegated = askIsDelegated(liveTaskSessions, provisionalSessions, sessionId, params.timeout_ms, Date.now());
 
   // Validate question
   if (!question || typeof question !== 'string' || question.trim().length === 0) {
@@ -7093,8 +7102,9 @@ async function executeAskUser(params, daemonRequestId = null, sessionId = null) 
         // Notify the avatar machine so it exits needs-you. Without this the
         // open-ask count never decrements and the avatar sticks in needs-you
         // forever (C1). Mirrors handleAskUserResponse, which fires ask_close
-        // when the user actually answers.
-        AvatarController.onEvent('ask_close');
+        // when the user actually answers. A delegated question never opened
+        // it (it was not shown), so it does not close it either.
+        if (!delegated) AvatarController.onEvent('ask_close');
         resolve({
           success: false,
           error: { code: 8001, message: 'User interaction timed out', recoverable: true },
@@ -7200,7 +7210,7 @@ function handleBrowserToolResolved(payload) {
 
     clearTimeout(pending.timeoutId);
     pendingAskUserRequests.delete(requestId);
-    AvatarController.onEvent('ask_close');
+    if (!pending.delegated) AvatarController.onEvent('ask_close');
     broadcastToSidebar({
       type: MessageTypes.ASK_USER_RESOLVED,
       payload: { request_id: requestId },
@@ -8391,6 +8401,10 @@ function handleBackgroundAPI(apiType, message, sendResponse) {
             // Canvas tab already open — just activate it
             try {
               await browser.tabs.update(_canvasTabId, { active: true });
+              // The tab now shows what the sidebar asked for, so it is no
+              // longer its session's Canvas: that session's next Canvas must
+              // not close it.
+              canvasTabs.forgetTab(_canvasTabId);
               // Navigate to the correct artifact if it changed
               await browser.tabs.update(_canvasTabId, {
                 url: `nevoflux://canvas/${artifactId}`,

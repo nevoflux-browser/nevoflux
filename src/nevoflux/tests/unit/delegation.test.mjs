@@ -17,6 +17,10 @@ import {
   canvasOpenPlan,
   canvasChatSessionFor,
   StatusSnapshotGate,
+  PROVISIONAL_DELEGATION_MS,
+  DELEGATED_ASK_TIMEOUT_MS,
+  askIsDelegated,
+  SessionQueue,
 } from '../../extensions/nevoflux-agent/background/delegation.mjs';
 
 const origin = (session_id, pairing = 'chan-1') => ({ session_id, origin: { kind: 'muse', pairing } });
@@ -87,15 +91,20 @@ describe('live task sessions (ruling B-F2)', () => {
     expect(live.size).toBe(0);
   });
 
-  it('a re-sent session_origin after the task ended does not hold the session again', () => {
+  it("a re-sent session_origin after the task ended is only provisional: the person's own question still shows", () => {
     const origins = new Map();
     const live = new Set();
-    recordSessionOrigin(origins, origin('s1'));
-    applyStatusSnapshot(live, snap('s1'));
-    expect(isDelegated(live, 's1')).toBe(true);
-    applyStatusSnapshot(live, snap(null));
-    recordSessionOrigin(origins, origin('s1')); // end-of-turn re-send (R19)
-    expect(isDelegated(live, 's1')).toBe(false);
+    const pending = new Map();
+    recordSessionOrigin(origins, origin('s1'), pending, 0);
+    applyStatusSnapshot(live, snap('s1'), pending);
+    expect(isDelegated(live, 's1', pending, 0)).toBe(true);
+    applyStatusSnapshot(live, snap(null), pending);
+    recordSessionOrigin(origins, origin('s1'), pending, 1000); // end-of-turn re-send (R19)
+    expect(hasLiveTask(live, 's1')).toBe(false);
+    // A question the person asks there carries no delegated stamp: shown.
+    expect(askIsDelegated(live, pending, 's1', 60000, 1000)).toBe(false);
+    applyStatusSnapshot(live, snap(null), pending);
+    expect(isDelegated(live, 's1', pending, 1000)).toBe(false);
   });
 
   it('every snapshot replaces the set, offline agents included, agents without a task skipped', () => {
@@ -215,61 +224,171 @@ describe('canvasChatSessionFor', () => {
   });
 });
 
-describe('provisional delegation (ruling B-T2-1)', () => {
+describe('provisional delegation (rulings B-T2-1, B-T2-2)', () => {
   // The snapshot (event bus) and session_origin (chat proxy) travel on
   // different channels: a delegated turn's first question or Canvas can beat
   // the snapshot that lists its task.
   it('a session_origin after the latest snapshot makes the session delegated', () => {
     const origins = new Map();
     const live = new Set();
-    const pending = new Set();
+    const pending = new Map();
     applyStatusSnapshot(live, snap(null), pending);
-    expect(recordSessionOrigin(origins, origin('s1'), pending)).toBe(true);
-    expect(isDelegated(live, 's1', pending)).toBe(true);
-    expect(isDelegated(live, 's2', pending)).toBe(false);
+    expect(recordSessionOrigin(origins, origin('s1'), pending, 0)).toBe(true);
+    expect(isDelegated(live, 's1', pending, 0)).toBe(true);
+    expect(isDelegated(live, 's2', pending, 0)).toBe(false);
   });
 
   it('the next snapshot without that task releases it', () => {
     const origins = new Map();
     const live = new Set();
-    const pending = new Set();
-    recordSessionOrigin(origins, origin('s1'), pending);
+    const pending = new Map();
+    recordSessionOrigin(origins, origin('s1'), pending, 0);
     applyStatusSnapshot(live, snap('other'), pending);
-    expect(isDelegated(live, 's1', pending)).toBe(false);
-    expect(isDelegated(live, 'other', pending)).toBe(true);
+    expect(isDelegated(live, 's1', pending, 0)).toBe(false);
+    expect(isDelegated(live, 'other', pending, 0)).toBe(true);
   });
 
   it('the next snapshot with that task keeps it delegated', () => {
     const origins = new Map();
     const live = new Set();
-    const pending = new Set();
-    recordSessionOrigin(origins, origin('s1'), pending);
+    const pending = new Map();
+    recordSessionOrigin(origins, origin('s1'), pending, 0);
     applyStatusSnapshot(live, snap('s1'), pending);
     expect(pending.size).toBe(0);
-    expect(isDelegated(live, 's1', pending)).toBe(true);
+    expect(isDelegated(live, 's1', pending, 0)).toBe(true);
   });
 
   it('a turn-end re-sent session_origin is delegated only until the next snapshot', () => {
     const origins = new Map();
     const live = new Set();
-    const pending = new Set();
-    recordSessionOrigin(origins, origin('s1'), pending);
+    const pending = new Map();
+    recordSessionOrigin(origins, origin('s1'), pending, 0);
     applyStatusSnapshot(live, snap('s1'), pending);
-    recordSessionOrigin(origins, origin('s1'), pending); // turn end (v1.3 R19)
-    expect(isDelegated(live, 's1', pending)).toBe(true);
+    recordSessionOrigin(origins, origin('s1'), pending, 0); // turn end (v1.3 R19)
+    expect(isDelegated(live, 's1', pending, 0)).toBe(true);
     applyStatusSnapshot(live, snap(null), pending); // the task ended
-    expect(isDelegated(live, 's1', pending)).toBe(false);
+    expect(isDelegated(live, 's1', pending, 0)).toBe(false);
   });
 
   it('a malformed snapshot or origin changes nothing provisional', () => {
     const origins = new Map();
     const live = new Set();
-    const pending = new Set();
-    recordSessionOrigin(origins, origin('s1'), pending);
+    const pending = new Map();
+    recordSessionOrigin(origins, origin('s1'), pending, 0);
     applyStatusSnapshot(live, { agents: 'x' }, pending);
-    expect(isDelegated(live, 's1', pending)).toBe(true);
-    expect(recordSessionOrigin(origins, { session_id: 's2', origin: { kind: 'user' } }, pending)).toBe(false);
-    expect(isDelegated(live, 's2', pending)).toBe(false);
+    expect(isDelegated(live, 's1', pending, 0)).toBe(true);
+    expect(recordSessionOrigin(origins, { session_id: 's2', origin: { kind: 'user' } }, pending, 0)).toBe(false);
+    expect(isDelegated(live, 's2', pending, 0)).toBe(false);
+  });
+
+  it('a provisional session stops counting 30 s after its origin, snapshot or not', () => {
+    expect(PROVISIONAL_DELEGATION_MS).toBe(30000);
+    const origins = new Map();
+    const live = new Set();
+    const pending = new Map();
+    recordSessionOrigin(origins, origin('s1'), pending, 1000);
+    expect(isDelegated(live, 's1', pending, 1000 + PROVISIONAL_DELEGATION_MS - 1)).toBe(true);
+    expect(isDelegated(live, 's1', pending, 1000 + PROVISIONAL_DELEGATION_MS)).toBe(false);
+    expect(pending.has('s1')).toBe(false); // expired entries are dropped
+  });
+
+  it('a re-sent origin restarts the 30 s', () => {
+    const origins = new Map();
+    const live = new Set();
+    const pending = new Map();
+    recordSessionOrigin(origins, origin('s1'), pending, 0);
+    recordSessionOrigin(origins, origin('s1'), pending, 20000);
+    expect(isDelegated(live, 's1', pending, 40000)).toBe(true);
+    expect(isDelegated(live, 's1', pending, 50000)).toBe(false);
+  });
+
+  it('expired entries do not pile up', () => {
+    const origins = new Map();
+    const pending = new Map();
+    for (let i = 0; i < 500; i++) recordSessionOrigin(origins, origin(`s${i}`), pending, i * PROVISIONAL_DELEGATION_MS);
+    expect(pending.size <= 2).toBe(true);
+  });
+});
+
+describe('askIsDelegated (ruling B-T2-2)', () => {
+  it("the daemon's delegated stamp is 1 800 000 ms (contract R32)", () => {
+    expect(DELEGATED_ASK_TIMEOUT_MS).toBe(1800000);
+  });
+
+  it('a session with a live task: held, stamp or not', () => {
+    const live = new Set(['s1']);
+    expect(askIsDelegated(live, new Map(), 's1', 60000, 0)).toBe(true);
+    expect(askIsDelegated(live, null, 's1', undefined, 0)).toBe(true);
+  });
+
+  it('a provisional session with the stamp: held', () => {
+    const pending = new Map();
+    recordSessionOrigin(new Map(), origin('s1'), pending, 0);
+    expect(askIsDelegated(new Set(), pending, 's1', 1800000, 0)).toBe(true);
+    expect(askIsDelegated(new Set(), pending, 's1', 86400000, 0)).toBe(true);
+    expect(askIsDelegated(new Set(), pending, 's1', '1800000', 0)).toBe(true);
+  });
+
+  it('a provisional session without the stamp: shown', () => {
+    const pending = new Map();
+    recordSessionOrigin(new Map(), origin('s1'), pending, 0);
+    for (const t of [60000, 1799999, undefined, null, 'x']) {
+      expect(askIsDelegated(new Set(), pending, 's1', t, 0)).toBe(false);
+    }
+  });
+
+  it('neither live nor provisional: shown, whatever the stamp', () => {
+    expect(askIsDelegated(new Set(), new Map(), 's1', 1800000, 0)).toBe(false);
+    expect(askIsDelegated(new Set(), new Map(), undefined, 1800000, 0)).toBe(false);
+  });
+
+  it('an expired provisional session with the stamp: shown', () => {
+    const pending = new Map();
+    recordSessionOrigin(new Map(), origin('s1'), pending, 0);
+    expect(askIsDelegated(new Set(), pending, 's1', 1800000, PROVISIONAL_DELEGATION_MS)).toBe(false);
+  });
+});
+
+describe('SessionQueue', () => {
+  it("runs one session's jobs one after another", async () => {
+    const queue = new SessionQueue();
+    const order = [];
+    let release;
+    const first = queue.run('A', () => new Promise((r) => { release = r; }).then(() => order.push('a1')));
+    const second = queue.run('A', async () => order.push('a2'));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(order).toEqual([]);
+    release();
+    await first;
+    await second;
+    expect(order).toEqual(['a1', 'a2']);
+  });
+
+  it('does not make another session wait', async () => {
+    const queue = new SessionQueue();
+    const order = [];
+    let release;
+    const a = queue.run('A', () => new Promise((r) => { release = r; }).then(() => order.push('a')));
+    await queue.run('B', async () => order.push('b'));
+    expect(order).toEqual(['b']);
+    release();
+    await a;
+    expect(order).toEqual(['b', 'a']);
+  });
+
+  it('a failed job neither blocks the next nor is swallowed, and idle sessions are forgotten', async () => {
+    const queue = new SessionQueue();
+    let threw = false;
+    try {
+      await queue.run('A', async () => { throw new Error('boom'); });
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+    expect(await queue.run('A', async () => 7)).toBe(7);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(queue.tails.size).toBe(0);
   });
 });
 
@@ -315,8 +434,9 @@ describe('StatusSnapshotGate', () => {
   it('remembers a bounded number of event ids', () => {
     const gate = new StatusSnapshotGate();
     for (let i = 0; i < 1000; i++) gate.admit(statusEvent(`e${i}`, i));
-    expect(gate.seen.length <= 64).toBe(true);
     expect(gate.admit(statusEvent('e999', 999))).toBe(false);
+    // e0 was forgotten long ago; only its old time keeps it out now.
+    expect(gate.admit(statusEvent('e0', 999))).toBe(true);
   });
 });
 
@@ -338,14 +458,14 @@ describe('background.js delegated sessions', () => {
   it('imports the delegation rules', () => {
     expect(
       bg.includes(
-        "import { recordSessionOrigin, isDelegated, askHoldMs, CanvasTabs, canvasOpenPlan, canvasChatSessionFor, applyStatusSnapshot, StatusSnapshotGate } from './delegation.mjs';"
+        "import { recordSessionOrigin, isDelegated, askIsDelegated, askHoldMs, CanvasTabs, canvasOpenPlan, canvasChatSessionFor, applyStatusSnapshot, StatusSnapshotGate, SessionQueue } from './delegation.mjs';"
       )
     ).toBe(true);
   });
 
   it('delegated means a running task, or an origin newer than the latest snapshot', () => {
     const helper = fnBody(bg, 'function isDelegatedSession(sessionId) {');
-    expect(helper.includes('return isDelegated(liveTaskSessions, sessionId, provisionalSessions);')).toBe(true);
+    expect(helper.includes('return isDelegated(liveTaskSessions, sessionId, provisionalSessions, Date.now());')).toBe(true);
   });
 
   it('follows system:agent:status from connect, sidebar open or closed', () => {
@@ -371,7 +491,7 @@ describe('background.js delegated sessions', () => {
     expect(origin).toBeGreaterThan(0);
     expect(origin < body.indexOf('msgType === MessageTypes.ARTIFACT_START ||')).toBe(true);
     const block = body.slice(origin, body.indexOf('\n    }\n', origin));
-    expect(block.includes('recordSessionOrigin(originSessions, message.payload, provisionalSessions)')).toBe(true);
+    expect(block.includes('recordSessionOrigin(originSessions, message.payload, provisionalSessions, Date.now())')).toBe(true);
     expect(block.includes('broadcastToSidebar')).toBe(false);
     expect(block.includes('return;')).toBe(true);
   });
@@ -386,7 +506,10 @@ describe('background.js delegated sessions', () => {
 
   it('every Canvas open goes through the per-session helper', () => {
     expect(bg.includes('browser.tabs.remove(_canvasTabId)')).toBe(false);
-    const helper = fnBody(bg, 'async function openSessionCanvasTab(artifactId, sessionId) {');
+    // One session's opens run one after another, so two at once cannot orphan a tab.
+    const queued = fnBody(bg, 'function openSessionCanvasTab(artifactId, sessionId) {');
+    expect(queued.includes('canvasOpenQueue.run(sessionId, () => openSessionCanvasTabNow(artifactId, sessionId))')).toBe(true);
+    const helper = fnBody(bg, 'async function openSessionCanvasTabNow(artifactId, sessionId) {');
     expect(helper.includes('canvasOpenPlan(sessionId, canvasTabs, isDelegatedSession(sessionId))')).toBe(true);
     expect(helper.includes('browser.nevoflux.openCanvasTab(artifactId, { inBackground: true })')).toBe(true);
     expect(helper.includes('markDelegatedTab(result.tabId)')).toBe(true);
@@ -394,6 +517,11 @@ describe('background.js delegated sessions', () => {
     expect(bg.includes('await openSessionCanvasTab(id, sessionId);')).toBe(true);
     expect(bg.includes('handleCreateArtifactToolCall(tc, message.payload?.session_id)')).toBe(true);
     expect(bg.includes('return await executeCanvasRender(params, request.session_id);')).toBe(true);
+  });
+
+  it("the sidebar's open canvas retargeting a tab takes it from its session", () => {
+    const at = bg.indexOf('              canvasTabs.forgetTab(_canvasTabId);\n              // Navigate to the correct artifact if it changed');
+    expect(at).toBeGreaterThan(0);
   });
 
   it('a closed tab leaves its session', () => {
@@ -404,7 +532,16 @@ describe('background.js delegated sessions', () => {
 
   it('a delegated question is neither shown nor timed out locally', () => {
     const ask = fnBody(bg, 'async function executeAskUser(params, daemonRequestId = null, sessionId = null) {');
-    expect(ask.includes('const delegated = isDelegatedSession(sessionId);')).toBe(true);
+    expect(
+      ask.includes('const delegated = askIsDelegated(liveTaskSessions, provisionalSessions, sessionId, params.timeout_ms, Date.now());')
+    ).toBe(true);
+    // A delegated question never fired ask_open, so it must not fire ask_close.
+    expect(ask.includes("if (!delegated) AvatarController.onEvent('ask_close');")).toBe(true);
+    expect(
+      fnBody(bg, 'function handleBrowserToolResolved(payload) {').includes(
+        "if (!pending.delegated) AvatarController.onEvent('ask_close');"
+      )
+    ).toBe(true);
     expect(ask.includes('}, askHoldMs(delegated, timeout_ms));')).toBe(true);
     const skip = ask.indexOf('if (delegated) {');
     expect(skip).toBeGreaterThan(0);

@@ -18,7 +18,9 @@
  *    session_origin on the chat connection, so a delegated turn's first
  *    question or Canvas can beat the snapshot that lists its task. A session
  *    whose session_origin arrived after the latest snapshot counts as
- *    delegated until the next snapshot, which is authoritative;
+ *    delegated until the next snapshot, which is authoritative, or for at
+ *    most 30 s (ruling B-T2-2). A question there is held only if it also
+ *    carries the daemon's delegated stamp (contract R32);
  *  - Canvas tabs per session, so one conversation never closes another's;
  *  - which canvas-chat session a daemon frame belongs to;
  *  - how long a delegated question may wait in this script.
@@ -37,14 +39,31 @@ export const DELEGATED_SESSION_CAP = 200;
 export const DELEGATED_ASK_HOLD_MS = 31 * 60 * 1000;
 
 /**
+ * The `params.timeout_ms` the daemon stamps on every AskUser of a delegated
+ * session (contract R32: the model's own question gets exactly this,
+ * permission-style asks 86 400 000). A local chat's question carries 60 000.
+ */
+export const DELEGATED_ASK_TIMEOUT_MS = 1_800_000;
+
+/**
+ * How long a session stays provisionally delegated after the session_origin
+ * that made it so, when no snapshot settles it first (ruling B-T2-2; longer
+ * than the daemon's 5 s turn-end grace). Bounds what a missed or rejected
+ * snapshot can do: background Canvas, the badge, direct tool routing.
+ */
+export const PROVISIONAL_DELEGATION_MS = 30_000;
+
+/**
  * Remember one `session_origin` payload
  * (`{session_id, origin: {kind: "muse", pairing}}`). Returns whether it was
  * usable. A session seen again (a continued task) becomes the newest. With
- * `pending` (a Set), a usable origin also makes the session provisionally
- * delegated until the next status snapshot (ruling B-T2-1); a turn-end
- * re-send (contract v1.3 R19) does the same, harmlessly.
+ * `pending` (a Map of session id -> expiry ms), a usable origin also makes
+ * the session provisionally delegated until the next status snapshot or
+ * `now + PROVISIONAL_DELEGATION_MS`, whichever comes first (rulings B-T2-1,
+ * B-T2-2); a turn-end re-send (contract v1.3 R19) restarts that, harmlessly.
+ * Expired entries are dropped here, so the map stays small.
  */
-export function recordSessionOrigin(sessions, payload, pending = null) {
+export function recordSessionOrigin(sessions, payload, pending = null, now = Date.now()) {
   const sessionId = payload?.session_id;
   const origin = payload?.origin;
   if (typeof sessionId !== 'string' || !sessionId) {
@@ -58,7 +77,14 @@ export function recordSessionOrigin(sessions, payload, pending = null) {
   while (sessions.size > DELEGATED_SESSION_CAP) {
     sessions.delete(sessions.keys().next().value);
   }
-  pending?.add(sessionId);
+  if (pending) {
+    for (const [sid, expiresAt] of pending) {
+      if (expiresAt <= now) {
+        pending.delete(sid);
+      }
+    }
+    pending.set(sessionId, now + PROVISIONAL_DELEGATION_MS);
+  }
   return true;
 }
 
@@ -111,16 +137,73 @@ export function hasLiveTask(live, sessionId) {
 }
 
 /**
- * Whether `sessionId` is delegated for hiding/holding questions, background
- * Canvas and badges: a task is running in it, or (with `pending`) its
- * session_origin arrived after the latest snapshot (ruling B-T2-1). Takes the
- * live set, not the origin map.
+ * Whether `sessionId` is provisionally delegated at `now`: its session_origin
+ * arrived after the latest snapshot less than PROVISIONAL_DELEGATION_MS ago.
+ * An expired entry is dropped.
  */
-export function isDelegated(live, sessionId, pending = null) {
+function isProvisional(pending, sessionId, now) {
+  if (!pending || typeof sessionId !== 'string' || !sessionId || !pending.has(sessionId)) {
+    return false;
+  }
+  if (pending.get(sessionId) > now) {
+    return true;
+  }
+  pending.delete(sessionId);
+  return false;
+}
+
+/**
+ * Whether `sessionId` is delegated for background Canvas, badges and direct
+ * tool routing: a task is running in it, or (with `pending`) it is
+ * provisionally delegated at `now` (rulings B-T2-1, B-T2-2). Takes the live
+ * set, not the origin map. Questions use askIsDelegated instead.
+ */
+export function isDelegated(live, sessionId, pending = null, now = Date.now()) {
+  return hasLiveTask(live, sessionId) || isProvisional(pending, sessionId, now);
+}
+
+/**
+ * Whether an AskUser in `sessionId` is a delegated task's question, to be
+ * held and not shown (contract R21; ruling B-T2-2): the session has a live
+ * task, or it is provisionally delegated AND the question carries the
+ * daemon's delegated stamp (`timeout_ms >= DELEGATED_ASK_TIMEOUT_MS`, R32).
+ * The stamp keeps a person's own question visible while a provisional entry
+ * is still open; the decision is taken once, so it must not guess.
+ */
+export function askIsDelegated(live, pending, sessionId, timeoutMs, now = Date.now()) {
   if (hasLiveTask(live, sessionId)) {
     return true;
   }
-  return pending !== null && typeof sessionId === 'string' && sessionId.length > 0 && pending.has(sessionId);
+  return Number(timeoutMs) >= DELEGATED_ASK_TIMEOUT_MS && isProvisional(pending, sessionId, now);
+}
+
+/**
+ * Runs async jobs one after another per session, in call order; different
+ * sessions do not wait for each other. Two Canvas opens for one session at
+ * once would otherwise both see "no tab yet" and leave one tab orphaned.
+ * A job's result or error is passed through; a failure does not block the
+ * next job. A session with nothing queued is forgotten.
+ */
+export class SessionQueue {
+  constructor() {
+    this.tails = new Map();
+  }
+
+  run(sessionId, job) {
+    const previous = this.tails.get(sessionId) ?? Promise.resolve();
+    const result = previous.then(job);
+    const tail = result.then(
+      () => {},
+      () => {}
+    );
+    this.tails.set(sessionId, tail);
+    tail.then(() => {
+      if (this.tails.get(sessionId) === tail) {
+        this.tails.delete(sessionId);
+      }
+    });
+    return result;
+  }
 }
 
 /** How many delivered event ids StatusSnapshotGate remembers. */
@@ -134,6 +217,9 @@ const STATUS_EVENT_ID_CAP = 64;
  * only when it is well formed, its `event_id` is not one already admitted,
  * and its `timestamp_ms` is not older than the newest admitted (the sidebar's
  * rule). A delivery without an id or a time is admitted on what it has.
+ * `timestamp_ms` is the daemon's wall clock: if it steps back, later
+ * snapshots are dropped until it passes the newest admitted again (the
+ * provisional 30 s bound keeps that from holding sessions meanwhile).
  */
 export class StatusSnapshotGate {
   constructor() {
