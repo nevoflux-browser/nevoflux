@@ -140,6 +140,9 @@ pub struct AppContext {
     /// Which sessions' frames render in the conversation on screen, which
     /// run off screen, and the plans waiting in them (M3 §6.1).
     pub routing: Signal<crate::state::SessionRouting>,
+    /// Per delegated session, the `updated_at` it had when last on screen
+    /// (localStorage). `None` until loaded; drives "Finished" (contract R18).
+    pub muse_seen: Signal<Option<crate::state::SeenMap>>,
     /// Whether mock mode is enabled
     pub mock_enabled: bool,
 }
@@ -192,6 +195,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
     let local_on = use_signal(|| false);
     let paired_agents = use_signal(|| None::<crate::state::PairedAgentsSnapshot>);
     let routing = use_signal(crate::state::SessionRouting::default);
+    let muse_seen = use_signal(crate::state::load_seen);
     let mut first_run = use_signal(|| false);
     let mut has_configured_provider = use_signal(|| false);
     let mut setup_authoritative = use_signal(|| false);
@@ -240,6 +244,7 @@ pub fn ContextProvider(#[props(default = false)] mock_enabled: bool, children: E
         local_on,
         paired_agents,
         routing,
+        muse_seen,
         mock_enabled,
     };
 

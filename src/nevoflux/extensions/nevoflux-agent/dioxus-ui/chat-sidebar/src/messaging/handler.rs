@@ -660,6 +660,17 @@ fn route_stream_chunk(mut ctx: AppContext, mut payload: StreamChunkPayload) {
         .routing
         .write()
         .route_stream(&payload.session_id, &current, payload.done, delegated);
+    if delegated && route.render {
+        // Watched to the end: read, even though the list refreshed now may
+        // still say "running" until the daemon closes the task.
+        let now_secs = (js_sys::Date::now() / 1000.0) as u64;
+        ctx.muse_seen.with_mut(|seen| {
+            if let Some(seen) = seen.as_mut() {
+                crate::state::mark_watched_end(seen, &payload.session_id, now_secs);
+                crate::state::save_seen(seen);
+            }
+        });
+    }
     if route.refresh_list {
         spawn_local(async move {
             let _ = crate::messaging::send_session_list(50, 0).await;
@@ -1888,7 +1899,17 @@ fn handle_session_list_response(mut ctx: AppContext, data: serde_json::Value) {
                 updated_at,
                 message_count,
                 pinned: session_json.get("pinned").and_then(|v| v.as_bool()).unwrap_or(false),
+                origin: crate::state::parse_origin(session_json.get("origin")),
+                runtime: crate::state::parse_runtime(session_json.get("runtime")),
             });
+        }
+
+        // Which delegated conversations moved on since they were last on screen (M3 §6.2).
+        {
+            let current = ctx.session.peek().id.clone();
+            let next = crate::state::reconcile_seen(ctx.muse_seen.peek().clone(), &sessions, &current);
+            crate::state::save_seen(&next);
+            ctx.muse_seen.set(Some(next));
         }
 
         if is_loading_more {

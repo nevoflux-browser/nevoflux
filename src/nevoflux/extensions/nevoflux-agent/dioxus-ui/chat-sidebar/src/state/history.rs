@@ -4,6 +4,8 @@
 
 //! History session state management
 
+use super::session_badges::{SessionOrigin, SessionRuntime};
+
 /// Summary of a historical session
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SessionSummary {
@@ -17,6 +19,10 @@ pub struct SessionSummary {
     pub message_count: u32,
     /// Whether the session is pinned
     pub pinned: bool,
+    /// Who started it, when a paired agent did (M3 §6.2).
+    pub origin: Option<SessionOrigin>,
+    /// A turn running in it now, per the daemon.
+    pub runtime: Option<SessionRuntime>,
 }
 
 impl SessionSummary {

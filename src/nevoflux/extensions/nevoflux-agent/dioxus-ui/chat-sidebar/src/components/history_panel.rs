@@ -252,12 +252,42 @@ fn SessionItem(session: SessionSummary, active_session_id: String) -> Element {
     let session_id = session.id.clone();
     let session_id_for_delete = session.id.clone();
 
+    // Delegated conversations: who started them and how they stand (M3 §6.2).
+    let snapshot = ctx.paired_agents.read().clone();
+    let origin_label = session
+        .origin
+        .as_ref()
+        .map(|o| crate::state::origin_label(o, snapshot.as_ref()));
+    let task_state = crate::state::task_for_session(snapshot.as_ref(), &session.id)
+        .map(|(_, task)| task.state.clone());
+    let unread = ctx
+        .muse_seen
+        .read()
+        .as_ref()
+        .is_some_and(|seen| crate::state::is_unread(&session, seen, &active_session_id));
+    let badge = crate::state::session_badge(
+        session.runtime,
+        ctx.routing.read().is_running(&session.id),
+        task_state.as_deref(),
+        unread,
+    );
+    let badge_class = badge.map(|b| b.class()).unwrap_or_default();
+    let badge_label = badge.map(|b| b.label()).unwrap_or_default();
+    let updated_at = session.updated_at;
+
     // Click to restore session
     let handle_click = {
         let id = session_id.clone();
         move |_| {
             let id = id.clone();
             let mut ctx = ctx.clone();
+            // Opening it is reading it: clear "Finished" until it changes again.
+            ctx.muse_seen.with_mut(|seen| {
+                if let Some(seen) = seen.as_mut() {
+                    crate::state::mark_seen(seen, &id, updated_at);
+                    crate::state::save_seen(seen);
+                }
+            });
             spawn_local(async move {
                 ctx.session.write().id = id.clone();
                 ctx.messages.set(Vec::new());
@@ -319,6 +349,16 @@ fn SessionItem(session: SessionSummary, active_session_id: String) -> Element {
                                 }
                             }
                         }
+                    }
+                    if let Some(label) = origin_label.clone() {
+                        span {
+                            class: "history-item-origin",
+                            title: "Started by {label}",
+                            "{label}"
+                        }
+                    }
+                    if badge.is_some() {
+                        span { class: "{badge_class}", "{badge_label}" }
                     }
                 }
             }

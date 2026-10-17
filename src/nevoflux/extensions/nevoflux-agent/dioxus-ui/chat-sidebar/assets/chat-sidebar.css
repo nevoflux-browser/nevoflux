@@ -5118,6 +5118,37 @@ body {
   color: var(--nevo-error);
 }
 
+/* M3 §6.2: who started a conversation, and how it stands */
+.history-item-origin {
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--nevo-primary) 40%, transparent);
+  border-radius: var(--nevo-radius-sm);
+  font-size: var(--nevo-font-size-xs);
+  color: var(--nevo-primary);
+}
+
+.history-badge {
+  padding: 0 6px;
+  border-radius: var(--nevo-radius-sm);
+  font-size: var(--nevo-font-size-xs);
+}
+
+.history-badge.running {
+  color: var(--nevo-primary);
+  background: color-mix(in srgb, var(--nevo-primary) 12%, transparent);
+}
+
+.history-badge.awaiting {
+  font-weight: 600;
+  color: var(--nevo-warning);
+  background: color-mix(in srgb, var(--nevo-warning) 18%, transparent);
+}
+
+.history-badge.finished {
+  color: var(--nevo-text);
+  background: color-mix(in srgb, var(--nevo-text-muted) 18%, transparent);
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   .tool-chip__spinner {
