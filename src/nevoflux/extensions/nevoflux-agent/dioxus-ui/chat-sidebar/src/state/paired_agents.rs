@@ -219,8 +219,6 @@ pub struct AgentRow {
     pub offline: bool,
     /// The delegated task under the row (M3 §6.4), if one is running.
     pub task: Option<TaskLine>,
-    /// What the "Let Muse approve sensitive actions" toggle shows (R39).
-    pub muse_may_approve_guarded: bool,
 }
 
 /// The status-bar lines for a delegated task (contract §8).
@@ -246,23 +244,9 @@ pub struct TaskApprovalLine {
     pub hint: Option<&'static str>,
 }
 
-/// The toggle in the paired-agent row (contract v1.2 R39, exact copy).
-pub const GUARDED_TOGGLE_LABEL: &str = "Let Muse approve sensitive actions";
-pub const GUARDED_TOGGLE_HELP: &str = "Muse can approve scheduling, packs, model switching, screen sharing and prompt changes for its tasks. Off: only you can, here.";
-/// The hint on a must-approve approval line while the toggle is on.
+/// The hint on a must-approve approval line while the pairing lets Muse
+/// answer it (set on nevoflux://settings/muse).
 pub const MUSE_MAY_ALSO_ANSWER: &str = "Muse may also answer";
-
-/// Whether a `remote.agent_set_guarded_approval` answer confirms the state
-/// that was asked for.
-pub fn confirms_guarded(data: &serde_json::Value, want: bool) -> Result<(), String> {
-    match data.get("enabled").and_then(|v| v.as_bool()) {
-        Some(e) if e == want => Ok(()),
-        _ => Err(format!(
-            "the daemon did not confirm the setting is {}",
-            if want { "on" } else { "off" }
-        )),
-    }
-}
 
 /// The name the bar shows for a pairing: its label, or "Muse".
 pub fn agent_label(agent: &PairedAgentEntry) -> String {
@@ -410,7 +394,6 @@ pub fn rows_from_status(snapshot: &PairedAgentsSnapshot, now: i64) -> Vec<AgentR
                 paused,
                 offline,
                 task: task_line(a),
-                muse_may_approve_guarded: a.muse_may_approve_guarded,
             })
         })
         .collect()
@@ -953,21 +936,13 @@ mod tests {
     }
 
     #[test]
-    fn the_guarded_approval_toggle_reads_the_snapshot_and_defaults_off() {
+    fn the_guarded_approval_flag_reads_the_snapshot_and_defaults_off() {
         let s = snapshot(json!([
             {"channel_id": "c1", "state": "connected", "since": 0, "muse_may_approve_guarded": true},
             {"channel_id": "c2", "state": "paused", "since": 0}
         ]));
         assert!(s.agents[0].muse_may_approve_guarded);
         assert!(!s.agents[1].muse_may_approve_guarded, "no key (an older daemon) reads as off");
-        let rows = rows_from_status(&s, 10);
-        assert!(rows[0].muse_may_approve_guarded);
-        assert!(!rows[1].muse_may_approve_guarded);
-        assert_eq!(GUARDED_TOGGLE_LABEL, "Let Muse approve sensitive actions");
-        assert_eq!(
-            GUARDED_TOGGLE_HELP,
-            "Muse can approve scheduling, packs, model switching, screen sharing and prompt changes for its tasks. Off: only you can, here."
-        );
     }
 
     #[test]
@@ -991,7 +966,7 @@ mod tests {
             line(true, json!(["allow", "allow_always", "deny"])).buttons,
             vec![("Allow", "allow"), ("Deny", "deny")]
         );
-        // An ordinary approval gets no hint, toggle on or not.
+        // An ordinary approval gets no hint, flag on or not.
         let s = snapshot(json!([{"channel_id": "c1", "state": "connected", "since": 0,
             "muse_may_approve_guarded": true,
             "task": {"id": "t1", "session_id": "s1", "summary": "X", "state": "awaiting_approval",
@@ -1000,14 +975,6 @@ mod tests {
         let ordinary = task_line(&s.agents[0]).unwrap().approval.unwrap();
         assert_eq!(ordinary.hint, None);
         assert_eq!(ordinary.buttons.len(), 3);
-    }
-
-    #[test]
-    fn the_toggle_answer_must_confirm_the_state_asked_for() {
-        assert!(confirms_guarded(&json!({"enabled": true}), true).is_ok());
-        assert!(confirms_guarded(&json!({"enabled": false}), false).is_ok());
-        assert!(confirms_guarded(&json!({"enabled": false}), true).is_err());
-        assert!(confirms_guarded(&json!({}), true).is_err());
     }
 
     #[test]
@@ -1147,10 +1114,6 @@ mod tests {
     #[test]
     fn task_controls_name_their_agent_for_screen_readers() {
         assert_eq!(for_agent("Stop task", "Muse at home"), "Stop task (Muse at home)");
-        assert_eq!(
-            for_agent(GUARDED_TOGGLE_LABEL, "Muse"),
-            "Let Muse approve sensitive actions (Muse)"
-        );
         assert_eq!(approval_group_name("Work Muse"), "Work Muse task approval");
     }
 }

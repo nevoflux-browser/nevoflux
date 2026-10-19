@@ -42,12 +42,12 @@ pub use session_badges::{
     SessionOrigin, SessionRuntime, SEEN_CAP, SEEN_KEY, WATCHED_GRACE_SECS,
 };
 pub use paired_agents::{
-    agent_label, approval_group_name, bar_rows, command_error, for_agent, confirms_guarded, confirms_paused, parse_paired_agents,
+    agent_label, approval_group_name, bar_rows, command_error, for_agent, confirms_paused, parse_paired_agents,
     presence_word, rows_from_status, task_banner, task_command_reason, task_for_session, task_line,
     tool_word,
     unpair_click, unpair_label, AgentRow, AgentTask, PairedAgentsSnapshot, TaskApproval,
     TaskApprovalLine, TaskLine, next_paired_agents, AGENT_STATUS_BUFFER, AGENT_STATUS_TOPIC,
-    ERROR_LINE_MS, GUARDED_TOGGLE_HELP, GUARDED_TOGGLE_LABEL, MUSE_MAY_ALSO_ANSWER,
+    ERROR_LINE_MS, MUSE_MAY_ALSO_ANSWER,
     UNPAIR_CONFIRM_MS,
 };
 

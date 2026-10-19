@@ -1671,22 +1671,6 @@ pub async fn remote_task_cancel(task_id: &str) -> Result<String, String> {
     Ok(d.get("state").and_then(|v| v.as_str()).unwrap_or_default().to_string())
 }
 
-/// `remote.agent_set_guarded_approval` — let one agent answer its tasks'
-/// must-approve approvals, or stop it (M3 contract v1.2 R39). Local only,
-/// like pause. The toggle does not move on success: the daemon's next
-/// status snapshot does.
-pub async fn remote_agent_set_guarded_approval(
-    control_channel_id: &str,
-    enabled: bool,
-) -> Result<(), String> {
-    let d = system_command(
-        "remote.agent_set_guarded_approval",
-        serde_json::json!({ "control_channel_id": control_channel_id, "enabled": enabled }),
-    )
-    .await?;
-    crate::state::confirms_guarded(&d, enabled)
-}
-
 /// `schedule.list` — full authoritative snapshot of all schedules.
 /// Returns them deserialized straight into [`ScheduleJobState`].
 pub async fn schedule_list() -> Result<Vec<ScheduleJobState>, String> {

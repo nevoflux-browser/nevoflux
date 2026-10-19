@@ -6,10 +6,10 @@
 //!
 //! One row per agent that is connected or paused: what it is doing, an
 //! approval it waits on with the time left, and Pause / Resume / Unpair.
-//! Under it: the "Let Muse approve sensitive actions" switch (M3 R39) and a
-//! delegated task with Stop task, its approval and View session (M3 §6.3,
-//! §6.4). An offline agent gets a row only for its running task, without
-//! Pause (B-F1).
+//! Under it: a delegated task with Stop task, its approval and View session
+//! (M3 §6.3, §6.4). Whether Muse may approve sensitive actions (M3 R39) is
+//! set on nevoflux://settings/muse, not here. An offline agent gets a row
+//! only for its running task, without Pause (B-F1).
 //! What a row says comes from `crate::state::paired_agents`; this file only
 //! renders it and sends the commands. The buttons never change a row
 //! themselves: the daemon's next status snapshot does (§3.3).
@@ -18,8 +18,8 @@ use dioxus::prelude::*;
 
 use crate::context::{use_app_context, AppContext};
 use crate::state::{
-    approval_group_name, bar_rows, command_error, for_agent, task_banner, task_for_session, unpair_click, unpair_label, AgentRow,
-    ConnectionState, TaskLine, ERROR_LINE_MS, GUARDED_TOGGLE_HELP, GUARDED_TOGGLE_LABEL,
+    approval_group_name, bar_rows, command_error, for_agent, task_banner, task_for_session,
+    unpair_click, unpair_label, AgentRow, ConnectionState, TaskLine, ERROR_LINE_MS,
     UNPAIR_CONFIRM_MS,
 };
 
@@ -160,31 +160,6 @@ fn PairedAgentRow(row: AgentRow) -> Element {
     // An offline row is there only for its task (B-F1): no Pause / Resume.
     let offers_pause = row.offers_pause();
 
-    // Contract v1.2 R39: shows the snapshot only; a click sends the command
-    // and the next snapshot moves the switch (no optimistic update).
-    let guarded = row.muse_may_approve_guarded;
-    let mut set_guarded = {
-        let channel = row.channel_id.clone();
-        move || {
-            if *busy.peek() {
-                return;
-            }
-            busy.set(true);
-            let channel = channel.clone();
-            spawn(async move {
-                let result =
-                    crate::messaging::remote_agent_set_guarded_approval(&channel, !guarded).await;
-                let mut busy = busy;
-                busy.set(false);
-                if let Err(e) = result {
-                    flash_error(error, command_error("change the setting", &e));
-                }
-            });
-        }
-    };
-    let guarded_id = format!("guarded-help-{}", row.channel_id);
-    let guarded_aria = for_agent(GUARDED_TOGGLE_LABEL, &label);
-
     rsx! {
         div { class: "{row_class}",
             span { class: "paired-agent-icon", aria_hidden: "true", "{icon}" }
@@ -208,23 +183,6 @@ fn PairedAgentRow(row: AgentRow) -> Element {
                 onclick: unpair,
                 "{unpair_text}"
             }
-        }
-        div { class: "paired-agent-setting",
-            // A switch button, not a checkbox: nothing flips on click, so what
-            // it shows is always the snapshot's. Enter and Space press it.
-            button {
-                class: "paired-agent-toggle",
-                r#type: "button",
-                role: "switch",
-                aria_checked: "{guarded}",
-                disabled: is_busy,
-                aria_label: "{guarded_aria}",
-                aria_describedby: "{guarded_id}",
-                onclick: move |_| set_guarded(),
-                span { class: "paired-agent-switch", aria_hidden: "true" }
-                span { "{GUARDED_TOGGLE_LABEL}" }
-            }
-            div { id: "{guarded_id}", class: "paired-agent-help", "{GUARDED_TOGGLE_HELP}" }
         }
         {error_line.map(|msg| rsx! {
             div { class: "paired-agent-error", role: "alert", "{msg}" }
@@ -390,41 +348,5 @@ pub fn TaskSessionBanner() -> Element {
             div { class: "task-session-banner", role: "status", "{text}" }
         },
         None => rsx! {},
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    // The component has no render harness here, so its markup is checked in
-    // its source. Needles are split with concat! so this module does not
-    // match itself.
-    const SRC: &str = include_str!("paired_agent_bar.rs");
-
-    /// The "Let Muse approve sensitive actions" control, from its container
-    /// to the help line.
-    fn guarded_setting() -> &'static str {
-        let start = SRC.find(concat!("class: \"paired-agent-", "setting\"")).expect("setting");
-        let end = SRC[start..].find(concat!("id: \"{guarded", "_id}\"")).expect("help") + start;
-        &SRC[start..end]
-    }
-
-    #[test]
-    fn the_guarded_switch_is_an_aria_switch_button_showing_the_snapshot() {
-        let s = guarded_setting();
-        let button = s.find(concat!("button", " {")).expect("a button");
-        let rest = &s[button..];
-        assert!(rest.contains(concat!("role: \"", "switch\"")));
-        assert!(rest.contains(concat!("aria_checked: \"{", "guarded}\"")));
-        assert!(rest.contains(concat!("aria_label: \"{guarded", "_aria}\"")));
-        assert!(rest.contains(concat!("aria_describedby: \"{guarded", "_id}\"")));
-        assert!(rest.contains(concat!("\"{GUARDED_TOGGLE", "_LABEL}\"")));
-    }
-
-    #[test]
-    fn the_guarded_switch_has_no_native_checkbox_to_undo() {
-        let s = guarded_setting();
-        assert!(!s.contains(concat!("\"check", "box\"")));
-        assert!(!s.contains(concat!("checked", ": guarded")));
-        assert!(!SRC.contains(concat!("prevent", "_default")));
     }
 }
