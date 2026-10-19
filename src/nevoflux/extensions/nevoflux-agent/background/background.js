@@ -18,6 +18,7 @@ import { osNotificationContent, mayShowOsNotification, needsSidebarCheck } from 
 import { commandVerdict } from './canvas-command-gate.mjs';
 import { allowCanvasNotify } from './canvas-notify-limit.mjs';
 import { recordSessionOrigin, isDelegated, askIsDelegated, askHoldMs, CanvasTabs, canvasOpenPlan, canvasChatSessionFor, applyStatusSnapshot, StatusSnapshotGate, SessionQueue } from './delegation.mjs';
+import { LatestPersister } from './latest-persist.mjs';
 import { isSystemRequest, systemRequestRefusal, systemOriginRefusal, withoutOrigin, taskScreenshotOptions, captureWithinBudget, taskScreenshotTabId, awaitTaskTab } from './task-screenshot.mjs';
 
 // Recent canvas:notify times per artifact id (rolling rate limit).
@@ -348,10 +349,13 @@ const contentStoreDebounceTimers = new Map(); // key -> timeoutId
 // when the browser closes or the agent restarts within the debounce window.
 const HIGH_PRIORITY_KEY_PREFIXES = ['canvas:'];
 
-// Tracks the most recent in-flight persist promise per high-priority key.
-// Callers (e.g. agent tool handlers) can await the latest write via
+// Write-through persists of high-priority keys, one chain per key that always
+// ends on the latest value (a write during an in-flight one is queued, never
+// dropped). Callers (e.g. agent tool handlers) can await the latest write via
 // awaitArtifactPersist(id) before returning success to the daemon.
-const artifactPersistAcks = new Map(); // key -> Promise<void>
+const artifactPersister = new LatestPersister((operation, key, value) =>
+  persistContentStoreNow(operation, key, value)
+);
 
 // Pending agent:command bridge requests: requestId → bridgeId
 const pendingAgentCommands = new Map();
@@ -2931,25 +2935,17 @@ function isHighPriorityKey(key) {
  * updateArtifact/createArtifact to guarantee the write reached daemon SQLite
  * before returning success to the daemon.
  *
- * Coordinates with the onContentStoreChanged listener via artifactPersistAcks:
- * - If the listener already started a persist for this key, joins that promise
- *   (avoids duplicate writes).
- * - Otherwise reads the current value from ContentStore and triggers its own
- *   persist, registering the promise for the listener to observe and skip.
+ * Shares one chain per key with the onContentStoreChanged listener
+ * (artifactPersister): the value read here is written after any write already
+ * in flight, so the daemon always ends on the current value, and a value equal
+ * to the one being written is not written twice.
  *
  * The listener's event arrives via async IPC from the parent process so it
- * may fire before OR after this helper runs — the shared map makes both
- * orderings safe and deduplicated.
+ * may fire before OR after this helper runs — either order ends on the
+ * latest value.
  */
 async function awaitArtifactPersist(id) {
   const key = `canvas:${id}`;
-
-  // If a persist is already in-flight (from listener or a previous caller),
-  // join it rather than starting a new one.
-  const existing = artifactPersistAcks.get(key);
-  if (existing) {
-    return existing;
-  }
 
   // Read the authoritative value from ContentStore. We can't trust the value
   // parameter of updateArtifact because callers may only pass partial updates.
@@ -2965,24 +2961,10 @@ async function awaitArtifactPersist(id) {
     throw err;
   }
 
-  // Check again — the listener may have fired during the await above.
-  const existingAfterRead = artifactPersistAcks.get(key);
-  if (existingAfterRead) {
-    return existingAfterRead;
-  }
-
-  const promise = persistContentStoreNow('set', key, value).catch((err) => {
+  return artifactPersister.persist(key, 'set', value).catch((err) => {
     console.error(`[NevoFlux] awaitArtifactPersist(${id}) persist failed:`, err.message);
     throw err;
   });
-  artifactPersistAcks.set(key, promise);
-  promise.finally(() => {
-    if (artifactPersistAcks.get(key) === promise) {
-      artifactPersistAcks.delete(key);
-    }
-  });
-
-  return promise;
 }
 
 if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onContentStoreChanged) {
@@ -2999,14 +2981,6 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onContentStoreCh
     // High-priority keys (canvas artifacts): write-through, no debounce.
     // The caller can await the ACK via awaitArtifactPersist(id).
     if (isHighPriorityKey(key)) {
-      // If a caller-initiated persist (from awaitArtifactPersist) is already
-      // in flight, skip — the shared promise is already tracked and will be
-      // awaited by the caller. Prevents duplicate writes.
-      if (artifactPersistAcks.has(key)) {
-        console.log(`[NevoFlux] Skipping listener persist for ${key} (already in flight)`);
-        return;
-      }
-
       if (operation === 'set') {
         const serialized = JSON.stringify(value);
         if (serialized && serialized.length > CONTENT_STORE_MAX_VALUE_SIZE) {
@@ -3017,18 +2991,13 @@ if (typeof browser.nevoflux !== 'undefined' && browser.nevoflux.onContentStoreCh
         }
       }
 
-      console.log(`[NevoFlux] Persisting immediately: content_store.${operation} ${key}`);
-      const promise = persistContentStoreNow(operation, key, value).catch((err) => {
+      // A write already in flight for this key queues this value behind it
+      // (a newer one replaces it): the last value is never dropped.
+      console.log(
+        `[NevoFlux] Persisting ${artifactPersister.busy(key) ? 'after the write in flight' : 'immediately'}: content_store.${operation} ${key}`
+      );
+      artifactPersister.persist(key, operation, value).catch((err) => {
         console.error(`[NevoFlux] content_store.${operation} failed for ${key}:`, err.message);
-        throw err;
-      });
-
-      artifactPersistAcks.set(key, promise);
-      // Clear from tracking once settled, but only if we're still the latest.
-      promise.finally(() => {
-        if (artifactPersistAcks.get(key) === promise) {
-          artifactPersistAcks.delete(key);
-        }
       });
 
       // Also clear any stale debounce timer (defensive — shouldn't exist for
