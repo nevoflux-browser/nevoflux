@@ -1052,7 +1052,7 @@ this.nevoflux = class extends ExtensionAPI {
           const maxWidth = Math.min(4096, Math.max(1, Math.round(Number(opts.maxWidth) || 1280)));
           const maxHeight = Math.min(4096, Math.max(1, Math.round(Number(opts.maxHeight) || 2400)));
           const fail = (message) => ({ success: false, error: { code: -1, message, recoverable: false } });
-          let nativeTab = null;
+          let nativeTab;
           let incognito = false;
           try {
             const wrapped = extension.tabManager.get(tabId);

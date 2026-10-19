@@ -22,7 +22,7 @@ import { isSystemRequest, systemRequestRefusal, systemOriginRefusal, withoutOrig
 
 // Recent canvas:notify times per artifact id (rolling rate limit).
 const canvasNotifyHistory = new Map();
-import { isAgentRequest, agentTabRefusal, agentActivateTabRefusal, newTabActive, agentPrivateTabRefusal, agentWindowId, agentNoWindowRefusal, withoutPrivateWindowTabs, agentTabsToMark, TAB_INDEPENDENT_ACTIONS, tabRulesFor, channelTabRefusal, channelChecksTab, channelTabUrlAllowed } from './agent-route.mjs';
+import { isAgentRequest, agentActivateTabRefusal, newTabActive, agentPrivateTabRefusal, agentWindowId, agentNoWindowRefusal, withoutPrivateWindowTabs, agentTabsToMark, TAB_INDEPENDENT_ACTIONS, tabRulesFor, channelTabRefusal, channelChecksTab, channelTabUrlAllowed } from './agent-route.mjs';
 import {
   NetworkCapture,
   redactUrl,

@@ -394,7 +394,7 @@ describe('background.js routing of agent requests', () => {
     // broadcast, so the sidebar never sees (or re-executes) the request.
     const afterCatch = branch.slice(branch.indexOf('.catch((err) =>'));
     expect(/\n\s*return;\s*\n/.test(afterCatch)).toBe(true);
-    expect(bg.includes('import { isAgentRequest, agentTabRefusal')).toBe(true);
+    expect(/import \{ isAgentRequest,[^}]*\} from '\.\/agent-route\.mjs'/.test(bg)).toBe(true);
   });
 
   it('agent requests skip the active-tab fallback', () => {
