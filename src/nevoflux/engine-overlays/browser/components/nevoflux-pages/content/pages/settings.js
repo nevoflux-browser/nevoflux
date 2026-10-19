@@ -134,6 +134,7 @@ const Settings = {
     container.appendChild(this._renderMyCanvasSection());
     container.appendChild(this._renderKnowledgeBaseSection());
     container.appendChild(this._renderPacksSection());
+    container.appendChild(this._renderMuseSection());
     container.appendChild(this._renderShortcutsSection());
   },
 
@@ -255,6 +256,390 @@ const Settings = {
       );
     }
     return this._localLogic;
+  },
+
+  // ── Muse Section (paired AI agents; M3 contract v1.2 R39) ──
+  //
+  // One card per paired agent: its state, its execution tier and whether
+  // Muse may approve sensitive actions for its tasks. The switch shows ONLY
+  // the latest `system:agent:status` snapshot (ruling BF-2): a click sends
+  // the command and the next snapshot moves it. Tiers are not in the
+  // snapshot, so `remote.pairings` is read again after a tier change and
+  // whenever the snapshot's set of agents changes.
+
+  _museLogic: null,
+  _musePairings: null,
+  _museSnapshot: null,
+  _museSubscribed: false,
+  _museCards: null,
+  _musePending: null,
+  _museFetchSeq: 0,
+  _museCardSeq: 0,
+
+  /** Lazily load the DOM-free Muse logic (see muse-settings-logic.mjs). */
+  async _ensureMuseLogic() {
+    if (!this._museLogic) {
+      this._museLogic = await import(
+        'chrome://nevoflux/content/pages/muse-settings-logic.mjs'
+      );
+    }
+    return this._museLogic;
+  },
+
+  _renderMuseSection() {
+    const section = this._createSection('muse', 'Muse');
+    const group = this._createGroup('Paired agents');
+    const intro = document.createElement('p');
+    intro.className = 'section-desc';
+    intro.id = 'muse-intro';
+    group.appendChild(intro);
+    const body = document.createElement('div');
+    body.id = 'muse-body';
+    body.textContent = 'Loading…';
+    group.appendChild(body);
+    section.appendChild(group);
+    this._museCards = new Map();
+    this._musePending = { tier: new Set(), guarded: new Set() };
+    this._museLoad(body, intro);
+    return section;
+  },
+
+  /** Load the pairings and subscribe to the snapshot; on failure, Retry. */
+  async _museLoad(body, intro) {
+    try {
+      const L = await this._ensureMuseLogic();
+      intro.textContent = L.INTRO_TEXT;
+      await Promise.all([this._museFetchPairings(), this._museEnsureSubscribed()]);
+    } catch (e) {
+      this._museShowError(body, intro, e);
+      return;
+    }
+    this._musePaint(body);
+  },
+
+  _museShowError(body, intro, e) {
+    const msg = e?.message || String(e);
+    for (const card of this._museCards.values()) {
+      clearTimeout(card.errorTimer);
+    }
+    this._museCards.clear();
+    body.textContent = '';
+    const line = document.createElement('div');
+    line.className = 'muse-load-error';
+    const text = document.createElement('span');
+    text.textContent = this._museLogic
+      ? this._museLogic.loadError(msg)
+      : `Could not load paired agents: ${msg}`;
+    line.appendChild(text);
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'llm-retry-button';
+    retry.textContent = 'Retry';
+    retry.addEventListener('click', () => {
+      body.textContent = 'Loading…';
+      this._museLoad(body, intro);
+    });
+    line.appendChild(retry);
+    body.appendChild(line);
+  },
+
+  /** `remote.pairings`; only the latest of overlapping reads is kept. */
+  async _museFetchPairings() {
+    const seq = ++this._museFetchSeq;
+    const data = await this._sendAgentCommand('remote.pairings', {});
+    if (seq === this._museFetchSeq) {
+      this._musePairings = Array.isArray(data?.pairings) ? data.pairings : [];
+    }
+  },
+
+  /** Read the pairings again and repaint, or show the error with Retry. */
+  async _museRefresh() {
+    const body = document.getElementById('muse-body');
+    const intro = document.getElementById('muse-intro');
+    if (!body) return;
+    try {
+      await this._museFetchPairings();
+    } catch (e) {
+      this._museShowError(body, intro, e);
+      return;
+    }
+    this._musePaint(body);
+  },
+
+  /**
+   * Subscribe once per page to the sticky `system:agent:status` topic,
+   * two-step like the on-device section: a persistent EventBus channel,
+   * then events.subscribe with replay so the current snapshot arrives.
+   */
+  async _museEnsureSubscribed() {
+    if (this._museSubscribed) return;
+    const L = await this._ensureMuseLogic();
+
+    const channelId = 'muse_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    // Opened BEFORE the flag is set: if this throws, Retry subscribes again.
+    await NevofluxPage.sendQuery('events:channel_open', { channelId });
+    this._museSubscribed = true;
+
+    const listener = (event) => {
+      const detail = event.detail;
+      if (!detail || detail.type !== 'bridge:push') return;
+      const msg = detail.msg;
+      if (!msg || msg.type !== 'events:delivery') return;
+      const ev = msg.payload?.event;
+      if (!ev || ev.topic !== L.AGENT_STATUS_TOPIC) return;
+      try {
+        this._museOnSnapshot(ev.payload, ev.timestamp_ms);
+      } catch (err) {
+        console.warn('[muse] snapshot handler failed:', err);
+      }
+    };
+    window.addEventListener('NevofluxMessage', listener);
+
+    const res = await NevofluxPage.sendQuery('bridge:request', {
+      type: 'events.subscribe',
+      payload: {
+        patterns: [L.AGENT_STATUS_TOPIC],
+        replay_sticky: true,
+        channel_id: channelId,
+      },
+    });
+    if (!res || res.success === false) {
+      window.removeEventListener('NevofluxMessage', listener);
+      this._museSubscribed = false;
+      try {
+        await NevofluxPage.sendQuery('events:channel_close', { channelId });
+      } catch (_e) {}
+      throw new Error(res?.error?.message || 'events.subscribe failed');
+    }
+  },
+
+  _museOnSnapshot(payload, publishedMs) {
+    const L = this._museLogic;
+    const next = L.nextSnapshot(this._museSnapshot, payload, publishedMs);
+    if (!next) return;
+    const changed = L.channelSetChanged(this._museSnapshot, next);
+    this._museSnapshot = next;
+    // Before the first pairings read lands there is nothing to paint yet;
+    // that read is newer than this snapshot anyway.
+    if (this._musePairings === null) return;
+    if (changed) {
+      this._museRefresh();
+    } else {
+      const body = document.getElementById('muse-body');
+      if (body) this._musePaint(body);
+    }
+  },
+
+  /** Update the cards in place, so focus survives a new snapshot. */
+  _musePaint(body) {
+    const L = this._museLogic;
+    if (!L || this._musePairings === null) return;
+    const rows = L.museRows(this._musePairings, this._museSnapshot);
+
+    if (!rows.length) {
+      for (const card of this._museCards.values()) {
+        clearTimeout(card.errorTimer);
+      }
+      this._museCards.clear();
+      body.textContent = '';
+      const empty = document.createElement('p');
+      empty.className = 'muse-empty';
+      empty.textContent = L.EMPTY_TEXT;
+      body.appendChild(empty);
+      return;
+    }
+    // Drop the loading / empty / error content, keep the existing cards.
+    for (const child of [...body.childNodes]) {
+      if (!(child instanceof Element) || !child.classList.contains('muse-card')) {
+        child.remove();
+      }
+    }
+    const keep = new Set(rows.map((r) => r.channelId));
+    for (const [id, card] of this._museCards) {
+      if (!keep.has(id)) {
+        clearTimeout(card.errorTimer);
+        card.root.remove();
+        this._museCards.delete(id);
+      }
+    }
+    let prev = null;
+    for (const row of rows) {
+      let card = this._museCards.get(row.channelId);
+      if (!card) {
+        card = this._museCreateCard(row.channelId);
+        this._museCards.set(row.channelId, card);
+      }
+      // Move a card only when it is out of order: moving the focused card
+      // would drop keyboard focus.
+      const want = prev ? prev.nextSibling : body.firstChild;
+      if (want !== card.root) {
+        body.insertBefore(card.root, want);
+      }
+      prev = card.root;
+      this._museUpdateCard(card, row);
+    }
+  },
+
+  _museCreateCard(channelId) {
+    const L = this._museLogic;
+    const n = ++this._museCardSeq;
+    const card = { channelId, row: null, errorTimer: null };
+
+    const root = document.createElement('div');
+    root.className = 'muse-card';
+    root.setAttribute('role', 'group');
+    root.setAttribute('aria-labelledby', `muse-heading-${n}`);
+
+    const heading = document.createElement('h3');
+    heading.className = 'muse-card-heading';
+    heading.id = `muse-heading-${n}`;
+    root.appendChild(heading);
+
+    const tierRow = document.createElement('div');
+    tierRow.className = 'form-row';
+    const tierLabel = document.createElement('label');
+    tierLabel.htmlFor = `muse-tier-${n}`;
+    tierLabel.textContent = L.TIER_SELECT_LABEL;
+    tierRow.appendChild(tierLabel);
+    const field = document.createElement('div');
+    field.className = 'field';
+    const select = document.createElement('select');
+    select.id = `muse-tier-${n}`;
+    for (const t of L.TIERS) {
+      const opt = document.createElement('option');
+      opt.value = t;
+      opt.textContent = L.TIER_LABELS[t];
+      select.appendChild(opt);
+    }
+    select.addEventListener('change', () => this._museSetTier(card, select.value));
+    field.appendChild(select);
+    tierRow.appendChild(field);
+    root.appendChild(tierRow);
+
+    const switchRow = document.createElement('div');
+    switchRow.className = 'muse-switch-row';
+    const sw = document.createElement('button');
+    sw.type = 'button';
+    sw.className = 'muse-switch';
+    sw.setAttribute('role', 'switch');
+    sw.setAttribute('aria-checked', 'false');
+    sw.setAttribute('aria-describedby', `muse-help-${n}`);
+    const track = document.createElement('span');
+    track.className = 'muse-switch-track';
+    track.setAttribute('aria-hidden', 'true');
+    sw.appendChild(track);
+    const swText = document.createElement('span');
+    swText.textContent = L.GUARDED_LABEL;
+    sw.appendChild(swText);
+    // A <button> already turns Space and Enter into a click.
+    sw.addEventListener('click', () => this._museSetGuarded(card));
+    switchRow.appendChild(sw);
+    const help = document.createElement('p');
+    help.className = 'muse-help';
+    help.id = `muse-help-${n}`;
+    help.textContent = L.GUARDED_HELP;
+    switchRow.appendChild(help);
+    root.appendChild(switchRow);
+
+    const error = document.createElement('div');
+    error.className = 'muse-error';
+    error.setAttribute('role', 'alert');
+    error.hidden = true;
+    root.appendChild(error);
+
+    Object.assign(card, { root, heading, select, sw, error });
+    return card;
+  },
+
+  _museUpdateCard(card, row) {
+    card.row = row;
+    card.heading.textContent = row.heading;
+
+    const tierPending = this._musePending.tier.has(row.channelId);
+    card.select.disabled = tierPending;
+    if (!tierPending) this._museShowTier(card);
+
+    const guardedPending = this._musePending.guarded.has(row.channelId);
+    card.sw.setAttribute('aria-checked', row.guarded === true ? 'true' : 'false');
+    // Unknown until a snapshot names this agent: nothing to toggle from.
+    card.sw.disabled = guardedPending || row.guarded === null;
+  },
+
+  /** Put the select on the stored tier (a blank entry if it is unknown). */
+  _museShowTier(card) {
+    const tier = card.row?.tier;
+    let blank = card.select.querySelector('option[value=""]');
+    if (tier) {
+      if (blank) blank.remove();
+      card.select.value = tier;
+    } else {
+      if (!blank) {
+        blank = document.createElement('option');
+        blank.value = '';
+        blank.textContent = '—';
+        blank.disabled = true;
+        card.select.prepend(blank);
+      }
+      card.select.value = '';
+    }
+  },
+
+  _museFlashError(card, text) {
+    clearTimeout(card.errorTimer);
+    card.error.textContent = text;
+    card.error.hidden = false;
+    card.errorTimer = setTimeout(() => {
+      card.error.hidden = true;
+      card.error.textContent = '';
+    }, this._museLogic.ERROR_LINE_MS);
+  },
+
+  async _museSetTier(card, tier) {
+    const L = this._museLogic;
+    const id = card.channelId;
+    if (!L.isTier(tier) || this._musePending.tier.has(id) || tier === card.row?.tier) {
+      return;
+    }
+    this._musePending.tier.add(id);
+    card.select.disabled = true;
+    let ok = false;
+    try {
+      await this._sendAgentCommand('remote.agent_set_tier', { control_channel_id: id, tier });
+      ok = true;
+    } catch (e) {
+      this._museFlashError(card, L.tierError(e?.message || String(e)));
+    }
+    this._musePending.tier.delete(id);
+    card.select.disabled = false;
+    if (ok) {
+      await this._museRefresh();
+    } else {
+      this._museShowTier(card);
+    }
+  },
+
+  async _museSetGuarded(card) {
+    const L = this._museLogic;
+    const id = card.channelId;
+    const current = card.row?.guarded;
+    if (typeof current !== 'boolean' || this._musePending.guarded.has(id)) return;
+    const want = !current;
+    this._musePending.guarded.add(id);
+    card.sw.disabled = true;
+    try {
+      const data = await this._sendAgentCommand('remote.agent_set_guarded_approval', {
+        control_channel_id: id,
+        enabled: want,
+      });
+      if (!L.confirmsGuarded(data, want)) {
+        this._museFlashError(card, L.settingError(L.unconfirmedReason(want)));
+      }
+    } catch (e) {
+      this._museFlashError(card, L.settingError(e?.message || String(e)));
+    }
+    this._musePending.guarded.delete(id);
+    // Never flipped here: the next snapshot moves the switch.
+    if (card.row) this._museUpdateCard(card, card.row);
   },
 
   // ── Jev Section (design v1.6 §5.9) ──────────────────────
