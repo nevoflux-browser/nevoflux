@@ -271,6 +271,7 @@ const Settings = {
   _musePairings: null,
   _museSnapshot: null,
   _museSubscribed: false,
+  _museLoadFailed: false,
   _museCards: null,
   _musePending: null,
   _museFetchSeq: 0,
@@ -314,11 +315,15 @@ const Settings = {
       this._museShowError(body, intro, e);
       return;
     }
+    this._museLoadFailed = false;
     this._musePaint(body);
   },
 
   _museShowError(body, intro, e) {
     const msg = e?.message || String(e);
+    // Until a load or refresh succeeds, snapshots are kept but not painted,
+    // so stale cards never replace this line and its Retry.
+    this._museLoadFailed = true;
     for (const card of this._museCards.values()) {
       clearTimeout(card.errorTimer);
     }
@@ -363,6 +368,7 @@ const Settings = {
       this._museShowError(body, intro, e);
       return;
     }
+    this._museLoadFailed = false;
     this._musePaint(body);
   },
 
@@ -420,8 +426,9 @@ const Settings = {
     const changed = L.channelSetChanged(this._museSnapshot, next);
     this._museSnapshot = next;
     // Before the first pairings read lands there is nothing to paint yet;
-    // that read is newer than this snapshot anyway.
-    if (this._musePairings === null) return;
+    // that read is newer than this snapshot anyway. After a failed read the
+    // error line and Retry stay until a read succeeds.
+    if (this._musePairings === null || this._museLoadFailed) return;
     if (changed) {
       this._museRefresh();
     } else {
@@ -561,8 +568,13 @@ const Settings = {
 
     const guardedPending = this._musePending.guarded.has(row.channelId);
     card.sw.setAttribute('aria-checked', row.guarded === true ? 'true' : 'false');
-    // Unknown until a snapshot names this agent: nothing to toggle from.
-    card.sw.disabled = guardedPending || row.guarded === null;
+    // aria-disabled, not `disabled`: Gecko drops the focus of a disabled
+    // button to <body>, and the switch must keep it across a toggle. Clicks
+    // are ignored while pending, or while no snapshot names this agent.
+    card.sw.setAttribute(
+      'aria-disabled',
+      guardedPending || row.guarded === null ? 'true' : 'false'
+    );
   },
 
   /** Put the select on the stored tier (a blank entry if it is unknown). */
@@ -600,6 +612,9 @@ const Settings = {
     if (!L.isTier(tier) || this._musePending.tier.has(id) || tier === card.row?.tier) {
       return;
     }
+    // A select cannot ignore a change, so it is disabled while pending and
+    // given its focus back afterwards (Gecko moves it to <body>).
+    const hadFocus = document.activeElement === card.select;
     this._musePending.tier.add(id);
     card.select.disabled = true;
     let ok = false;
@@ -611,8 +626,16 @@ const Settings = {
     }
     this._musePending.tier.delete(id);
     card.select.disabled = false;
+    const refocus = () => {
+      const active = document.activeElement;
+      if (hadFocus && card.select.isConnected && (!active || active === document.body)) {
+        card.select.focus();
+      }
+    };
+    refocus();
     if (ok) {
       await this._museRefresh();
+      refocus();
     } else {
       this._museShowTier(card);
     }
@@ -625,7 +648,7 @@ const Settings = {
     if (typeof current !== 'boolean' || this._musePending.guarded.has(id)) return;
     const want = !current;
     this._musePending.guarded.add(id);
-    card.sw.disabled = true;
+    card.sw.setAttribute('aria-disabled', 'true');
     try {
       const data = await this._sendAgentCommand('remote.agent_set_guarded_approval', {
         control_channel_id: id,
