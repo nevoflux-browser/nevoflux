@@ -18,7 +18,7 @@ import { osNotificationContent, mayShowOsNotification, needsSidebarCheck } from 
 import { commandVerdict } from './canvas-command-gate.mjs';
 import { allowCanvasNotify } from './canvas-notify-limit.mjs';
 import { recordSessionOrigin, isDelegated, askIsDelegated, askHoldMs, CanvasTabs, canvasOpenPlan, canvasChatSessionFor, applyStatusSnapshot, StatusSnapshotGate, SessionQueue } from './delegation.mjs';
-import { isSystemRequest, systemRequestRefusal, systemOriginRefusal, withoutOrigin, taskScreenshotOptions, captureWithinBudget, taskScreenshotTabId } from './task-screenshot.mjs';
+import { isSystemRequest, systemRequestRefusal, systemOriginRefusal, withoutOrigin, taskScreenshotOptions, captureWithinBudget, taskScreenshotTabId, awaitTaskTab } from './task-screenshot.mjs';
 
 // Recent canvas:notify times per artifact id (rolling rate limit).
 const canvasNotifyHistory = new Map();
@@ -974,13 +974,20 @@ async function answerSystemRequest(request) {
 
 /**
  * The task screenshot: the named web tab, or the tab showing the named
- * artifact (taskScreenshotTabId); JPEG within the contract budget.
+ * artifact (taskScreenshotTabId), waited for while it opens (awaitTaskTab);
+ * JPEG within the contract budget.
  */
 async function captureTaskResult(request) {
   const opts = taskScreenshotOptions(request.params);
   const webTarget = Number.isInteger(request.tab_id) && request.tab_id > 0;
-  const tabs = webTarget ? [] : await browser.tabs.query({});
-  const tabId = taskScreenshotTabId(request, canvasTabs.tabFor(request.session_id), tabs);
+  const tabId = await awaitTaskTab(request, async () => {
+    const tabs = webTarget ? [] : await browser.tabs.query({});
+    const id = taskScreenshotTabId(request, canvasTabs.tabFor(request.session_id), tabs);
+    if (id === null) {
+      return null;
+    }
+    return { tabId: id, loaded: webTarget || tabs.find((t) => t.id === id)?.status === 'complete' };
+  });
   if (tabId === null) {
     return { success: false, error: { code: -1, message: 'tab_closed', recoverable: false } };
   }

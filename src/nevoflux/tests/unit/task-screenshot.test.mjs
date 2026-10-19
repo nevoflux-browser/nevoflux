@@ -18,6 +18,9 @@ import {
   captureWithinBudget,
   canvasTabForArtifact,
   taskScreenshotTabId,
+  awaitTaskTab,
+  CANVAS_TAB_WAIT_MS,
+  CANVAS_SETTLE_MS,
 } from '../../extensions/nevoflux-agent/background/task-screenshot.mjs';
 
 const shotRequest = (over = {}) => ({
@@ -243,6 +246,91 @@ describe('taskScreenshotTabId', () => {
     expect(taskScreenshotTabId(canvasReq(''), 7, tabs)).toBeNull();
     expect(taskScreenshotTabId(canvasReq('A'), null, [])).toBeNull();
     expect(taskScreenshotTabId(canvasReq('A'), null, null)).toBeNull();
+  });
+});
+
+// A clock that only moves when the code under test sleeps.
+function fakeClock() {
+  let t = 0;
+  const slept = [];
+  return {
+    now: () => t,
+    sleep: async (ms) => {
+      slept.push(ms);
+      t += ms;
+    },
+    slept,
+  };
+}
+
+// lookup() answers from a script, one entry per call, the last repeating.
+function scripted(answers) {
+  let i = 0;
+  const lookup = async () => answers[Math.min(i++, answers.length - 1)];
+  lookup.calls = () => i;
+  return lookup;
+}
+
+describe('awaitTaskTab', () => {
+  const canvasReq = (over = {}) => shotRequest(over);
+
+  it('a Canvas tab that is not open yet is waited for, then given time to draw', async () => {
+    // The daemon asks the moment artifact_complete goes out (smoke 2026-10-19):
+    // the tab opens a few polls later.
+    const clock = fakeClock();
+    const lookup = scripted([null, null, { tabId: 9, loaded: false }, { tabId: 9, loaded: true }]);
+    expect(await awaitTaskTab(canvasReq(), lookup, clock)).toBe(9);
+    expect(lookup.calls()).toBe(4);
+    expect(clock.slept[clock.slept.length - 1]).toBe(CANVAS_SETTLE_MS);
+  });
+
+  it('a Canvas tab already loaded is used at once', async () => {
+    const clock = fakeClock();
+    const lookup = scripted([{ tabId: 9, loaded: true }]);
+    expect(await awaitTaskTab(canvasReq(), lookup, clock)).toBe(9);
+    expect(lookup.calls()).toBe(1);
+    expect(clock.slept.length).toBe(0);
+  });
+
+  it('a Canvas tab that never opens is null (tab_closed) once the wait runs out', async () => {
+    const clock = fakeClock();
+    expect(await awaitTaskTab(canvasReq(), scripted([null]), clock)).toBeNull();
+    expect(clock.now() >= CANVAS_TAB_WAIT_MS).toBe(true);
+    expect(clock.now() < CANVAS_TAB_WAIT_MS + 1000).toBe(true);
+  });
+
+  it('a Canvas tab still loading at the deadline is captured as it is', async () => {
+    const clock = fakeClock();
+    expect(await awaitTaskTab(canvasReq(), scripted([{ tabId: 9, loaded: false }]), clock)).toBe(9);
+  });
+
+  it('a web target is looked up once, never waited for', async () => {
+    const clock = fakeClock();
+    const web = scripted([{ tabId: 41, loaded: true }]);
+    expect(await awaitTaskTab(canvasReq({ tab_id: 41 }), web, clock)).toBe(41);
+    const gone = scripted([null]);
+    expect(await awaitTaskTab(canvasReq({ tab_id: 41 }), gone, clock)).toBeNull();
+    expect(gone.calls()).toBe(1);
+    expect(clock.slept.length).toBe(0);
+  });
+
+  it('a request naming no artifact is not waited for', async () => {
+    const clock = fakeClock();
+    const lookup = scripted([null]);
+    const req = canvasReq({ params: { purpose: 'task_result' } });
+    expect(await awaitTaskTab(req, lookup, clock)).toBeNull();
+    expect(lookup.calls()).toBe(1);
+  });
+
+  it('captureTaskResult in background.js looks its tab up through awaitTaskTab', () => {
+    const bg = readFileSync(
+      new URL('../../extensions/nevoflux-agent/background/background.js', import.meta.url),
+      'utf8'
+    ).replace(/\r\n/g, '\n');
+    const start = bg.indexOf('async function captureTaskResult(request) {');
+    const body = bg.slice(start, bg.indexOf('\n}\n', start));
+    expect(/await awaitTaskTab\(request,/.test(body)).toBe(true);
+    expect(/status === 'complete'/.test(body)).toBe(true);
   });
 });
 
@@ -657,7 +745,7 @@ describe('background.js system requests', () => {
   it('imports the system-request rules', () => {
     expect(
       bg.includes(
-        "import { isSystemRequest, systemRequestRefusal, systemOriginRefusal, withoutOrigin, taskScreenshotOptions, captureWithinBudget, taskScreenshotTabId } from './task-screenshot.mjs';"
+        "import { isSystemRequest, systemRequestRefusal, systemOriginRefusal, withoutOrigin, taskScreenshotOptions, captureWithinBudget, taskScreenshotTabId, awaitTaskTab } from './task-screenshot.mjs';"
       )
     ).toBe(true);
   });

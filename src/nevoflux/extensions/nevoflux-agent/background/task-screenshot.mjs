@@ -179,3 +179,46 @@ export function taskScreenshotTabId(request, sessionTabId, tabs) {
   const sessionTab = list.find((t) => t?.id === sessionTabId);
   return sessionTab && Number.isInteger(sessionTabId) && showsArtifact(sessionTab, artifactId) ? sessionTabId : null;
 }
+
+/** How long a Canvas target may take to open and load (the request has 30 s). */
+export const CANVAS_TAB_WAIT_MS = 10000;
+const CANVAS_TAB_POLL_MS = 200;
+/** After waiting for a Canvas tab to load: time for its page to draw the artifact. */
+export const CANVAS_SETTLE_MS = 750;
+
+const sleepMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The tab a task screenshot captures, waiting for a Canvas target to show up.
+ *
+ * The daemon asks the moment the turn ends, while this script may still be
+ * opening the tab for the artifact the task just made: artifact_complete and
+ * the request arrive together, and the tab opens only after the artifact is
+ * stored. `lookup()` resolves to `{ tabId, loaded }` or null. A Canvas target
+ * is polled until its tab exists and has loaded (then given `settleMs` to
+ * draw), or until `waitMs` passes: a tab that exists by then is used as it
+ * is, none is null (tab_closed). A web target is looked up once.
+ */
+export async function awaitTaskTab(
+  request,
+  lookup,
+  { waitMs = CANVAS_TAB_WAIT_MS, pollMs = CANVAS_TAB_POLL_MS, settleMs = CANVAS_SETTLE_MS, sleep = sleepMs, now = Date.now } = {}
+) {
+  let found = await lookup();
+  const artifactId = request?.params?.artifact_id;
+  const canvasTarget =
+    (request?.tab_id === null || request?.tab_id === undefined) && typeof artifactId === 'string' && artifactId !== '';
+  if (!canvasTarget || found?.loaded) {
+    return found ? found.tabId : null;
+  }
+  const deadline = now() + waitMs;
+  while (now() < deadline) {
+    await sleep(pollMs);
+    found = await lookup();
+    if (found?.loaded) {
+      await sleep(settleMs);
+      return found.tabId;
+    }
+  }
+  return found ? found.tabId : null;
+}
