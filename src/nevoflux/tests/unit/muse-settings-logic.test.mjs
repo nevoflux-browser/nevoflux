@@ -22,6 +22,9 @@ import {
   nextSnapshot,
   channelSetChanged,
   museRows,
+  handleOf,
+  pairedWhen,
+  metaLine,
   confirmsGuarded,
   unconfirmedReason,
   tierError,
@@ -88,7 +91,8 @@ describe('muse settings logic', () => {
       snap([
         { channel_id: 'a2', label: null, state: 'paused', muse_may_approve_guarded: false },
         { channel_id: 'a1', label: 'Work Muse', state: 'connected', muse_may_approve_guarded: true },
-      ])
+      ]),
+      1792000000
     );
     expect(rows.length).toBe(2);
     expect(rows[0]).toEqual({
@@ -97,6 +101,7 @@ describe('muse settings logic', () => {
       state: 'connected',
       stateLabel: 'Connected',
       heading: 'Work Muse · Connected',
+      meta: 'ID a1 · paired today',
       tier: 'browser-auto',
       known: true,
       guarded: true,
@@ -190,5 +195,30 @@ describe('muse settings logic', () => {
     expect(confirmsGuarded({}, true)).toBe(false);
     expect(confirmsGuarded(null, false)).toBe(false);
     expect(unconfirmedReason(true)).toBe('the daemon did not confirm the setting is on');
+  });
+});
+
+describe('telling agents apart', () => {
+  it('shows the short id /devices uses and how long ago the pairing was made', () => {
+    expect(handleOf('e161374b-4b5b-456a-9ca3-066f2b99aa3d')).toBe('e161374b');
+    expect(handleOf(null)).toBe('');
+    expect(pairedWhen(1000, 1000 + 3600)).toBe('today');
+    expect(pairedWhen(1000, 1000 + 86400)).toBe('yesterday');
+    expect(pairedWhen(1000, 1000 + 5 * 86400 + 10)).toBe('5 days ago');
+    expect(pairedWhen(2000, 1000)).toBe('today');
+    expect(metaLine('9bfe1ecf-6ad1', 1000, 1000 + 2 * 86400)).toBe('ID 9bfe1ecf · paired 2 days ago');
+    expect(metaLine('9bfe1ecf-6ad1', undefined, 5000)).toBe('ID 9bfe1ecf');
+  });
+
+  it('gives two agents with the same name different meta lines', () => {
+    const now = 1792000000 + 86400;
+    const rows = museRows(
+      [agent('9bfe1ecf-aaaa', { created_at: 1792000000 - 4 * 86400 }), agent('e161374b-bbbb')],
+      snap([{ channel_id: 'e161374b-bbbb', state: 'connected' }]),
+      now
+    );
+    expect(rows[0].name).toBe(rows[1].name);
+    expect(rows[0].meta).toBe('ID 9bfe1ecf · paired 5 days ago');
+    expect(rows[1].meta).toBe('ID e161374b · paired yesterday');
   });
 });

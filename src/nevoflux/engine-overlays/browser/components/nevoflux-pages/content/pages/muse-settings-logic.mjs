@@ -140,7 +140,36 @@ export function channelSetChanged(prev, next) {
  * no snapshot names the pairing, and the switch is then disabled. A pairing
  * the snapshot does not name reads as offline.
  */
-export function museRows(pairings, snapshot) {
+// The short id `/devices` shows and `/agent-tier` / `/unpair` accept: the
+// first eight characters of the channel id (sidebar devices.rs HANDLE_LEN).
+const HANDLE_LEN = 8;
+
+/** The short id of a pairing. */
+export function handleOf(channelId) {
+  return typeof channelId === 'string' ? channelId.slice(0, HANDLE_LEN) : '';
+}
+
+/** How long ago a pairing was made, in the words `/devices` uses. */
+export function pairedWhen(createdAt, nowSecs) {
+  const days = Math.floor(Math.max(0, nowSecs - createdAt) / 86400);
+  if (days === 0) return 'today';
+  if (days === 1) return 'yesterday';
+  return `${days} days ago`;
+}
+
+/**
+ * The line under a card's heading that tells two agents with the same name
+ * apart: `ID <handle> · paired <when>`.
+ */
+export function metaLine(channelId, createdAt, nowSecs) {
+  const parts = [`ID ${handleOf(channelId)}`];
+  if (Number.isFinite(createdAt) && Number.isFinite(nowSecs)) {
+    parts.push(`paired ${pairedWhen(createdAt, nowSecs)}`);
+  }
+  return parts.join(' · ');
+}
+
+export function museRows(pairings, snapshot, nowSecs = Math.floor(Date.now() / 1000)) {
   const byId = new Map(
     (snapshot?.agents || []).filter((a) => a && a.channel_id).map((a) => [a.channel_id, a])
   );
@@ -161,6 +190,7 @@ export function museRows(pairings, snapshot) {
         state,
         stateLabel: label,
         heading: `${name} · ${label}`,
+        meta: metaLine(p.control_channel_id, p.created_at, nowSecs),
         tier: isTier(p.tier) ? p.tier : null,
         known: Boolean(entry),
         guarded: entry ? entry.muse_may_approve_guarded === true : null,

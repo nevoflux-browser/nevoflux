@@ -502,6 +502,14 @@ const Settings = {
     heading.id = `muse-heading-${n}`;
     root.appendChild(heading);
 
+    // Two agents can share a name; the short id (as `/devices` shows it) and
+    // the pairing date tell them apart.
+    const meta = document.createElement('p');
+    meta.className = 'muse-card-meta';
+    meta.id = `muse-meta-${n}`;
+    root.setAttribute('aria-describedby', meta.id);
+    root.appendChild(meta);
+
     const tierRow = document.createElement('div');
     tierRow.className = 'form-row';
     const tierLabel = document.createElement('label');
@@ -554,13 +562,14 @@ const Settings = {
     error.hidden = true;
     root.appendChild(error);
 
-    Object.assign(card, { root, heading, select, sw, error });
+    Object.assign(card, { root, heading, meta, select, sw, error });
     return card;
   },
 
   _museUpdateCard(card, row) {
     card.row = row;
     card.heading.textContent = row.heading;
+    card.meta.textContent = row.meta;
 
     const tierPending = this._musePending.tier.has(row.channelId);
     card.select.disabled = tierPending;
