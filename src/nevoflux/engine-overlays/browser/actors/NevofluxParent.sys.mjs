@@ -631,13 +631,17 @@ export class NevofluxParent extends JSWindowActorParent {
         if (this._eventChannelUnsubs.has(channelId)) {
           return { success: true, already_open: true };
         }
-        const unsub = lazy.NevofluxBridgeRouter.subscribe(channelId, (msg) => {
-          try {
-            this.sendAsyncMessage('bridge:push', { msg });
-          } catch (e) {
-            unsub();
-          }
-        });
+        const unsub = lazy.NevofluxBridgeRouter.subscribe(
+          channelId,
+          (msg) => {
+            try {
+              this.sendAsyncMessage('bridge:push', { msg });
+            } catch (e) {
+              unsub();
+            }
+          },
+          { persistent: true }
+        );
         this._eventChannelUnsubs.set(channelId, unsub);
         return { success: true };
       }

@@ -37,6 +37,7 @@ import './nevoflux-bridge-policy.test.mjs';
 import './delegation.test.mjs';
 import './task-screenshot.test.mjs';
 import './latest-persist.test.mjs';
+import './bridge-router-channels.test.mjs';
 import './delegated-tab-rules.test.mjs';
 
 // Run all tests

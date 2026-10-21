@@ -108,16 +108,25 @@ export const NevofluxBridgeRouter = {
   _subscriptions: new Map(), // sessionId → Set<callback>
   SESSION_TIMEOUT_MS: 300000, // 5 minutes
   _sessionTimers: new Map(),
+  _persistent: new Set(), // sessionIds exempt from the idle timeout
 
   /**
    * Subscribe to push messages for a sessionId.
    * Returns an unsubscribe function.
+   *
+   * A session that hears nothing for SESSION_TIMEOUT_MS is dropped. With
+   * `persistent`, it is not: an EventBus push channel (events:channel_open)
+   * can stay quiet for hours between snapshots, and lives until it is closed
+   * or its actor goes away.
    */
-  subscribe(sessionId, callback) {
+  subscribe(sessionId, callback, { persistent = false } = {}) {
     if (!this._subscriptions.has(sessionId)) {
       this._subscriptions.set(sessionId, new Set());
     }
     this._subscriptions.get(sessionId).add(callback);
+    if (persistent) {
+      this._persistent.add(sessionId);
+    }
     this._touchSession(sessionId);
     return () => {
       const subs = this._subscriptions.get(sessionId);
@@ -158,6 +167,9 @@ export const NevofluxBridgeRouter = {
   },
 
   _touchSession(sessionId) {
+    if (this._persistent.has(sessionId)) {
+      return;
+    }
     const existing = this._sessionTimers.get(sessionId);
     if (existing) clearTimeout(existing);
     const timer = setTimeout(() => {
@@ -168,6 +180,7 @@ export const NevofluxBridgeRouter = {
 
   _cleanupSession(sessionId) {
     this._subscriptions.delete(sessionId);
+    this._persistent.delete(sessionId);
     const timer = this._sessionTimers.get(sessionId);
     if (timer) {
       clearTimeout(timer);
