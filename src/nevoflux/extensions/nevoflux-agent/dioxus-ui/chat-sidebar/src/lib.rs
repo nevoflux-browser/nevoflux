@@ -44,8 +44,13 @@ pub fn main() {
     // Set up panic hook for better error messages in WASM
     console_error_panic_hook::set_once();
 
-    // Initialize tracing for WASM
-    tracing_wasm::set_as_global_default();
+    // Initialize tracing for WASM. INFO, not the default TRACE: Dioxus logs
+    // every diff at TRACE, which floods the console on each re-render.
+    tracing_wasm::set_as_global_default_with_config(
+        tracing_wasm::WASMLayerConfigBuilder::new()
+            .set_max_level(tracing::Level::INFO)
+            .build(),
+    );
     tracing::info!("NevoFlux Chat Sidebar initializing...");
 
     // Launch Dioxus app

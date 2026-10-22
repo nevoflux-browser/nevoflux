@@ -52,9 +52,14 @@ pub fn PairedAgentBar() -> Element {
         }
     });
 
-    let daemon_connected = matches!(*ctx.connection.read(), ConnectionState::Connected);
-    let snapshot = ctx.paired_agents.read().clone();
-    let rows = bar_rows(snapshot.as_ref(), daemon_connected, *now.read() / 1000);
+    // A memo, so the bar re-renders when what it says changes, not on every
+    // tick of the clock.
+    let rows = use_memo(move || {
+        let daemon_connected = matches!(*ctx.connection.read(), ConnectionState::Connected);
+        let snapshot = ctx.paired_agents.read().clone();
+        bar_rows(snapshot.as_ref(), daemon_connected, *now.read() / 1000)
+    });
+    let rows = rows.read().clone();
     if rows.is_empty() {
         return rsx! {};
     }
