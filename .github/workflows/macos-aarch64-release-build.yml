@@ -139,6 +139,12 @@ jobs:
         run: |
           DESIRED_VERSION=$(node -p "require('./surfer.json').version.version")
           echo "Target engine version: $DESIRED_VERSION"
+          # A download cut short mid-extraction leaves milestone.txt behind with
+          # most of the tree missing; don't mistake that for a usable engine.
+          if [ -f engine/config/milestone.txt ] && [ ! -f engine/modules/libpref/init/StaticPrefList.yaml ]; then
+            echo "Engine source is incomplete, removing it."
+            rm -rf engine
+          fi
           if [ -f engine/config/milestone.txt ]; then
             CURRENT_VERSION=$(grep -v '^#' engine/config/milestone.txt | grep -v '^$' | tail -1)
             echo "Current engine version: $CURRENT_VERSION"
@@ -158,6 +164,10 @@ jobs:
         run: |
           for attempt in 1 2 3 4 5; do
             npm run download && break
+            # A failed attempt can leave a truncated tarball in .surfer/engine and
+            # a half-extracted engine/. surfer reuses both, so the next attempt
+            # "succeeds" with an incomplete tree. Start every retry clean.
+            rm -rf engine .surfer/engine
             if [ $attempt -lt 5 ]; then
               echo "::warning::Download attempt $attempt/5 failed. Retrying in $((attempt * 15))s..."
               sleep $((attempt * 15))
