@@ -227,6 +227,11 @@ jobs:
             echo "Agent binary installed: build/AppDir/distribution/bin/nevoflux-agent"
             # Copy models directory if present in release archive
             if [ -d "/tmp/agent/models" ]; then
+              # The agent 0.3.16 archive carries the embedding model twice: the
+              # HF cache's blobs/ store beside the snapshots/ copy the daemon
+              # reads. Drop the store; it alone pushes the macOS update MAR past
+              # libmar's 500 MiB cap.
+              rm -rf /tmp/agent/models/fastembed/blobs
               cp -r /tmp/agent/models build/AppDir/distribution/bin/models
               echo "Models directory installed"
             fi
