@@ -107,7 +107,7 @@ elif [ -s "$MODEL_CACHE/silero-vad.onnx" ] && [ "$CHECK_ONLY" -eq 0 ]; then
   note "silero-vad.onnx" "copied from model cache"
 elif [ "$CHECK_ONLY" -eq 0 ] && command -v curl > /dev/null 2>&1; then
   echo "  fetching silero-vad.onnx …"
-  if curl -fsSL "$SILERO_URL" -o "$SPEECH_DIR/silero-vad.onnx.part"; then
+  if curl -fsSL --connect-timeout 30 --max-time 300 --retry 5 --retry-delay 10 --retry-all-errors "$SILERO_URL" -o "$SPEECH_DIR/silero-vad.onnx.part"; then
     mv "$SPEECH_DIR/silero-vad.onnx.part" "$SPEECH_DIR/silero-vad.onnx"
     note "silero-vad.onnx" "fetched"
   else
