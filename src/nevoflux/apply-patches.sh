@@ -462,7 +462,21 @@ if [ -d "${AGENT_SRC}" ]; then
   DIOXUS_DIST="${AGENT_SRC}/dioxus-ui/dist/chat-sidebar"
   WASM_DIR="${AGENT_DST}/wasm/chat-sidebar"
   FIX_CSP_SCRIPT="${AGENT_SRC}/dioxus-ui/scripts/fix-csp.py"
+  # dioxus-ui/dist is gitignored local build output, so it can sit around for
+  # months. Copying it over the committed wasm/chat-sidebar/ replaces
+  # index.html too, which silently ships the old bundle. Only let it win when
+  # its wasm is newer than the committed one. Compare wasm, not index.html:
+  # fix-csp.py rewrites index.html and would bump its mtime.
   if [ -d "${DIOXUS_DIST}" ]; then
+    DIST_WASM=$(ls -t "${DIOXUS_DIST}"/*_bg.wasm 2> /dev/null | head -n 1)
+    COMMITTED_WASM=$(ls -t "${AGENT_SRC}/wasm/chat-sidebar"/*_bg.wasm 2> /dev/null | head -n 1)
+    if [ -n "${COMMITTED_WASM}" ] && { [ -z "${DIST_WASM}" ] || [ ! "${DIST_WASM}" -nt "${COMMITTED_WASM}" ]; }; then
+      echo "  !! Skipping stale dioxus dist: ${DIST_WASM:-no wasm} is not newer than ${COMMITTED_WASM}" >&2
+      echo "     Rebuild it (scripts/build-dioxus.sh) or delete ${DIOXUS_DIST}" >&2
+      DIOXUS_DIST=""
+    fi
+  fi
+  if [ -n "${DIOXUS_DIST}" ] && [ -d "${DIOXUS_DIST}" ]; then
     if [ -f "${FIX_CSP_SCRIPT}" ] && command -v python3 > /dev/null 2>&1; then
       echo "  Fixing CSP in dioxus dist..."
       python3 "${FIX_CSP_SCRIPT}" "${DIOXUS_DIST}"
