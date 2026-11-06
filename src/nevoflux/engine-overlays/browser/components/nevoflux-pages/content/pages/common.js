@@ -46,6 +46,7 @@ const NevofluxPage = {
           params.set('section', segments[0] || 'general');
           break;
         case 'plan':
+        case 'meeting':
           if (segments[0]) params.set('id', segments[0]);
           break;
       }

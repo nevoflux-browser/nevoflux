@@ -16,6 +16,7 @@ const BUILTIN_ROUTES = {
   plan: 'chrome://nevoflux/content/pages/plan.html',
   render: 'chrome://nevoflux/content/pages/render.html',
   brain: 'chrome://nevoflux/content/pages/brain.html',
+  meeting: 'chrome://nevoflux/content/pages/meeting.html',
   'pack-install': 'chrome://nevoflux/content/pages/pack-install.html',
 };
 
@@ -84,6 +85,7 @@ export class NevofluxProtocolHandler {
         break;
 
       case 'plan':
+      case 'meeting':
         if (pathSegments[0]) {
           params.set('id', pathSegments[0]);
         }

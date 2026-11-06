@@ -135,6 +135,7 @@ const Settings = {
     container.appendChild(this._renderKnowledgeBaseSection());
     container.appendChild(this._renderPacksSection());
     container.appendChild(this._renderMuseSection());
+    container.appendChild(this._renderMeetingSection());
     container.appendChild(this._renderShortcutsSection());
   },
 
@@ -285,6 +286,161 @@ const Settings = {
       );
     }
     return this._museLogic;
+  },
+
+  // ── Meetings ────────────────────────────────────────────
+  //
+  // A pendant's meetings are kept by the daemon (`meeting.*`); these are its
+  // `meetings/settings.json`. The meetings themselves are on nevoflux://meeting.
+
+  _renderMeetingSection() {
+    const section = this._createSection('meeting', 'Meetings');
+    const group = this._createGroup('Meetings');
+    const intro = document.createElement('p');
+    intro.className = 'section-desc';
+    intro.textContent =
+      'Double-click BOOT on the pendant to record a meeting. What is said appears live on the ' +
+      'meeting page, tidied sentence by sentence, and the minutes are written when it ends.';
+    group.appendChild(intro);
+    const body = document.createElement('div');
+    body.id = 'meeting-settings-body';
+    body.textContent = 'Loading…';
+    group.appendChild(body);
+    section.appendChild(group);
+    this._meetingLoad(body);
+    return section;
+  },
+
+  async _meetingLoad(body) {
+    try {
+      if (!this._meetingLogic) {
+        this._meetingLogic = await import('chrome://nevoflux/content/pages/meeting-logic.mjs');
+      }
+      this._meetingData = await this._sendAgentCommand('meeting.settings.get', {});
+    } catch (e) {
+      body.textContent = '';
+      const line = document.createElement('div');
+      line.className = 'muse-load-error';
+      line.appendChild(document.createTextNode(`Could not load meeting settings: ${e?.message || e}`));
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'llm-retry-button';
+      retry.textContent = 'Retry';
+      retry.addEventListener('click', () => {
+        body.textContent = 'Loading…';
+        this._meetingLoad(body);
+      });
+      line.appendChild(retry);
+      body.appendChild(line);
+      return;
+    }
+    this._meetingPaint(body);
+  },
+
+  _meetingPaint(body) {
+    const L = this._meetingLogic;
+    const data = this._meetingData;
+    const s = data.settings;
+    body.textContent = '';
+
+    const toggle = (label, key) => {
+      const row = document.createElement('div');
+      row.className = 'toggle-row';
+      const lbl = document.createElement('label');
+      lbl.textContent = label;
+      row.appendChild(lbl);
+      const t = document.createElement('label');
+      t.className = 'mcp-toggle';
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.checked = !!s[key];
+      input.addEventListener('change', () => this._meetingSave({ [key]: input.checked }));
+      const slider = document.createElement('span');
+      slider.className = 'mcp-toggle-slider';
+      t.appendChild(input);
+      t.appendChild(slider);
+      row.appendChild(t);
+      body.appendChild(row);
+    };
+    const model = (label, prefix, resolved) => {
+      const row = document.createElement('div');
+      row.className = 'form-row';
+      const lbl = document.createElement('label');
+      lbl.textContent = label;
+      row.appendChild(lbl);
+      const field = document.createElement('div');
+      field.className = 'field';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = 'Same as the agent';
+      input.value = L.modelValue(s[`${prefix}_provider`], s[`${prefix}_model`]);
+      input.addEventListener('change', () => {
+        const { provider, model: m } = L.splitModel(input.value);
+        this._meetingSave({ [`${prefix}_provider`]: provider, [`${prefix}_model`]: m });
+      });
+      field.appendChild(input);
+      const hint = document.createElement('div');
+      hint.className = 'field-hint';
+      hint.textContent = resolved?.error
+        ? `No model: ${resolved.error}`
+        : `Using ${resolved?.name || '?'}${resolved?.cloud ? ' — text leaves this computer' : ' — on this computer'}`;
+      field.appendChild(hint);
+      row.appendChild(field);
+      body.appendChild(row);
+    };
+
+    toggle('Open the meeting page when a meeting starts', 'auto_open');
+    toggle('Tidy each sentence (fillers, stutters, grammar)', 'clean');
+    model('Model for tidying', 'clean', data.clean_model);
+    model('Model for the minutes', 'summary', data.summary_model);
+
+    const row = document.createElement('div');
+    row.className = 'form-row';
+    const lbl = document.createElement('label');
+    lbl.textContent = 'Keep the audio for';
+    row.appendChild(lbl);
+    const field = document.createElement('div');
+    field.className = 'field';
+    const select = document.createElement('select');
+    for (const o of L.AUDIO_DAYS_OPTIONS) {
+      const opt = document.createElement('option');
+      opt.value = o.value == null ? '' : String(o.value);
+      opt.textContent = o.label;
+      opt.selected = (s.audio_days ?? null) === o.value;
+      select.appendChild(opt);
+    }
+    select.addEventListener('change', () =>
+      this._meetingSave({ audio_days: select.value === '' ? null : Number(select.value) })
+    );
+    field.appendChild(select);
+    const hint = document.createElement('div');
+    hint.className = 'field-hint';
+    hint.textContent = 'Transcripts and minutes are kept until you delete the meeting.';
+    field.appendChild(hint);
+    row.appendChild(field);
+    body.appendChild(row);
+
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'llm-retry-button';
+    open.textContent = 'Open meetings';
+    open.addEventListener('click', () => {
+      window.location.href = 'nevoflux://meeting';
+    });
+    body.appendChild(open);
+  },
+
+  async _meetingSave(patch) {
+    const settings = { ...this._meetingData.settings, ...patch };
+    try {
+      await this._sendAgentCommand('meeting.settings.set', { settings });
+      this._meetingData = await this._sendAgentCommand('meeting.settings.get', {});
+      this._showSaveIndicator();
+    } catch (e) {
+      console.error('[Settings] meeting settings not saved:', e);
+    }
+    const body = document.getElementById('meeting-settings-body');
+    if (body) this._meetingPaint(body);
   },
 
   _renderMuseSection() {

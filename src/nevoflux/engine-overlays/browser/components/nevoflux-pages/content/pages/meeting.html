@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Meetings · NevoFlux</title>
+  <link rel="stylesheet" href="chrome://nevoflux/content/pages/common.css">
+  <style>
+    body {
+      display: block;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .meeting-page {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr) 320px;
+      height: 100vh;
+      background: var(--nevoflux-bg);
+      color: var(--nevoflux-text);
+    }
+
+    /* ── History ───────────────────────────────────── */
+    .meeting-list {
+      border-right: 1px solid var(--nevoflux-border);
+      background: var(--nevoflux-bg-secondary);
+      overflow-y: auto;
+    }
+    .meeting-list h1 {
+      margin: 0;
+      padding: var(--nevoflux-space-md) var(--nevoflux-space-lg);
+      font-size: var(--nevoflux-font-size-lg);
+      font-weight: 600;
+    }
+    .meeting-list-item {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-lg);
+      border: none;
+      border-left: 3px solid transparent;
+      background: none;
+      color: var(--nevoflux-text);
+      font-family: var(--nevoflux-font-family);
+      font-size: var(--nevoflux-font-size-base);
+      cursor: pointer;
+    }
+    .meeting-list-item:hover { background: var(--nevoflux-bg-tertiary); }
+    .meeting-list-item.selected { border-left-color: var(--nevoflux-accent); background: var(--nevoflux-bg-tertiary); }
+    .meeting-list-item .sub {
+      display: block;
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-sm);
+    }
+    .live-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: 6px;
+      border-radius: 50%;
+      background: #e5484d;
+      animation: meeting-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes meeting-pulse { 50% { opacity: 0.35; } }
+
+    /* ── Transcript ────────────────────────────────── */
+    .meeting-main {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      min-height: 0;
+    }
+    .meeting-header {
+      display: flex;
+      align-items: baseline;
+      gap: var(--nevoflux-space-md);
+      padding: var(--nevoflux-space-md) var(--nevoflux-space-xl);
+      border-bottom: 1px solid var(--nevoflux-border);
+    }
+    .meeting-header h2 { margin: 0; font-size: var(--nevoflux-font-size-lg); flex: 1; }
+    .meeting-header .status { color: var(--nevoflux-text-secondary); }
+    .meeting-cloud {
+      display: none;
+      padding: var(--nevoflux-space-xs) var(--nevoflux-space-xl);
+      background: var(--nevoflux-bg-tertiary);
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-sm);
+    }
+    .meeting-cloud.shown { display: block; }
+    .transcript {
+      overflow-y: auto;
+      padding: var(--nevoflux-space-lg) var(--nevoflux-space-xl);
+      display: flex;
+      flex-direction: column;
+      gap: var(--nevoflux-space-sm);
+    }
+    .row { display: flex; flex-direction: column; max-width: 78%; align-self: flex-start; }
+    .row.me { align-self: flex-end; align-items: flex-end; }
+    .row .meta {
+      display: flex;
+      gap: var(--nevoflux-space-sm);
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-sm);
+    }
+    .row .who {
+      border: none;
+      background: none;
+      padding: 0;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      text-decoration: underline dotted;
+    }
+    .row .play { border: none; background: none; padding: 0; cursor: pointer; color: inherit; font: inherit; }
+    .row .bubble {
+      padding: var(--nevoflux-space-sm) var(--nevoflux-space-md);
+      border-radius: var(--nevoflux-radius-md, 10px);
+      background: var(--nevoflux-bg-secondary);
+      line-height: 1.5;
+      white-space: pre-wrap;
+      transition: opacity 0.25s ease;
+    }
+    .row.me .bubble { background: var(--nevoflux-bg-tertiary); }
+    .row.partial .bubble, .row.cleaning .bubble { color: var(--nevoflux-text-secondary); font-style: italic; }
+    .row.fresh .bubble { animation: meeting-fade 0.4s ease; }
+    @keyframes meeting-fade { from { opacity: 0.3; } }
+    .row.note { align-self: stretch; max-width: none; }
+    .row.note .bubble { border-left: 3px solid var(--nevoflux-accent); background: none; }
+    .row.gap {
+      align-self: stretch;
+      max-width: none;
+      text-align: center;
+      color: var(--nevoflux-text-secondary);
+      font-size: var(--nevoflux-font-size-sm);
+      border-top: 1px dashed var(--nevoflux-border);
+      padding-top: var(--nevoflux-space-xs);
+    }
+    .tag {
+      font-size: var(--nevoflux-font-size-sm);
+      padding: 0 6px;
+      border-radius: 4px;
+      background: var(--nevoflux-bg-tertiary);
+    }
+    .empty {
+      margin: auto;
+      color: var(--nevoflux-text-secondary);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    /* ── Side panel ────────────────────────────────── */
+    .meeting-side {
+      border-left: 1px solid var(--nevoflux-border);
+      overflow-y: auto;
+      padding: var(--nevoflux-space-md) var(--nevoflux-space-lg);
+    }
+    .meeting-side h3 {
+      margin: var(--nevoflux-space-md) 0 var(--nevoflux-space-xs);
+      font-size: var(--nevoflux-font-size-base);
+    }
+    .meeting-side ul { margin: 0; padding-left: 1.2em; }
+    .meeting-side li { margin: 2px 0; line-height: 1.5; }
+    .side-note { color: var(--nevoflux-text-secondary); font-size: var(--nevoflux-font-size-sm); }
+    .side-actions { display: flex; gap: var(--nevoflux-space-sm); margin-top: var(--nevoflux-space-md); }
+    .meeting-btn {
+      padding: var(--nevoflux-space-xs) var(--nevoflux-space-md);
+      border-radius: var(--nevoflux-radius-sm);
+      border: 1px solid var(--nevoflux-border);
+      background: var(--nevoflux-bg);
+      color: var(--nevoflux-text);
+      font-family: var(--nevoflux-font-family);
+      font-size: var(--nevoflux-font-size-sm);
+      cursor: pointer;
+    }
+    .meeting-btn:hover { background: var(--nevoflux-bg-tertiary); }
+    .meeting-btn.danger { color: #e5484d; }
+    .qa { margin: var(--nevoflux-space-sm) 0; }
+    .qa .q { font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="meeting-page">
+    <aside class="meeting-list" id="meeting-list">
+      <h1>Meetings</h1>
+      <div id="meeting-list-items"></div>
+    </aside>
+    <main class="meeting-main">
+      <div class="meeting-header">
+        <h2 id="meeting-title">Meetings</h2>
+        <span class="status" id="meeting-status"></span>
+      </div>
+      <div class="meeting-cloud" id="meeting-cloud"></div>
+      <div class="transcript" id="transcript">
+        <div class="empty">No meeting yet.<br>Double-click BOOT on the pendant to start one.</div>
+      </div>
+    </main>
+    <aside class="meeting-side" id="meeting-side"></aside>
+  </div>
+  <script src="chrome://nevoflux/content/pages/common.js"></script>
+  <script src="chrome://nevoflux/content/pages/meeting.js"></script>
+</body>
+</html>

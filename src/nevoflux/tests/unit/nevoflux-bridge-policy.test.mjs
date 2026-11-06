@@ -38,12 +38,14 @@ describe('checkActorMessage', () => {
       no(checkActorMessage('about:srcdoc', n, req('agent:command', { command: 'daemon.info' })));
     }
   });
-  it('only settings, brain and pack-install send daemon commands, each in its lane', () => {
+  it('only settings, brain, pack-install and meeting send daemon commands, each in its lane', () => {
     ok(checkActorMessage(SETTINGS, 'bridge:request', req('agent:command', { command: 'mcp.add' })));
     ok(checkActorMessage('nevoflux://brain', 'bridge:request', req('agent:command', { command: 'brain.list' })));
     no(checkActorMessage('nevoflux://brain', 'bridge:request', req('agent:command', { command: 'mcp.add' })));
     ok(checkActorMessage('nevoflux://pack-install', 'bridge:request', req('agent:command', { command: 'pack.install' })));
     no(checkActorMessage('nevoflux://pack-install', 'bridge:request', req('agent:command', { command: 'remote.unpair' })));
+    ok(checkActorMessage('nevoflux://meeting/7', 'bridge:request', req('agent:command', { command: 'meeting.get' })));
+    no(checkActorMessage('nevoflux://meeting', 'bridge:request', req('agent:command', { command: 'remote.unpair' })));
     no(checkActorMessage(CANVAS, 'bridge:request', req('agent:command', { command: 'daemon.info' })));
     no(checkActorMessage('nevoflux://home', 'bridge:request', req('agent:command', { command: 'session.list' })));
   });

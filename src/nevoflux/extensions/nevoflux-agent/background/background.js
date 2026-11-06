@@ -453,6 +453,44 @@ function ensureBackgroundAgentStatusSubscription() {
 }
 
 /**
+ * Ensure the background-owned `system:meeting:state` subscription is tracked
+ * (sticky), so a meeting the pendant starts opens nevoflux://meeting even with
+ * the sidebar closed — the wearer is in the meeting, not at the keyboard.
+ */
+function ensureBackgroundMeetingSubscription() {
+  if (eventBusSubscriptions.has('bg-meeting')) return;
+  eventBusSubscriptions.set('bg-meeting', {
+    source: 'background',
+    tabId: null,
+    bridgeId: null,
+    patterns: ['system:meeting:state'],
+  });
+}
+
+/** Meetings this browser already opened a page for (once each, even if it is closed). */
+const meetingPagesOpened = new Set();
+
+/**
+ * Handle a delivered `system:meeting:state`: open the page for a meeting that
+ * just started, unless the setting is off or a meeting page is already open
+ * (it follows the new meeting by itself).
+ */
+async function handleMeetingStateEvent(event) {
+  const p = event?.payload;
+  if (!p || !Array.isArray(p.live)) return;
+  const fresh = p.live.filter((id) => !meetingPagesOpened.has(id));
+  fresh.forEach((id) => meetingPagesOpened.add(id));
+  if (!fresh.length || p.auto_open === false) return;
+  try {
+    const tabs = await browser.tabs.query({});
+    if (tabs.some((t) => t.url?.startsWith('nevoflux://meeting'))) return;
+    await browser.tabs.create({ url: `nevoflux://meeting/${fresh[0]}`, active: true });
+  } catch (err) {
+    console.warn('[NevoFlux] could not open the meeting page:', err);
+  }
+}
+
+/**
  * Handle a delivered `system:agent:status` snapshot: the sessions with a task
  * in it are the delegated ones from now on, and every provisional delegation
  * ends (ruling B-T2-1). Redelivered and older snapshots are skipped.
@@ -1457,6 +1495,7 @@ class NativeChannel {
         ensureBackgroundNotifySubscription();
         ensureBackgroundSoulSubscription();
         ensureBackgroundAgentStatusSubscription();
+        ensureBackgroundMeetingSubscription();
         this.replaySubscriptions();
       }
 
@@ -2005,6 +2044,8 @@ class ChannelManager {
             handleActiveSoulEvent(eventPayload.event);
           } else if (subId === 'bg-agent-status') {
             handleAgentStatusEvent(eventPayload.event);
+          } else if (subId === 'bg-meeting') {
+            handleMeetingStateEvent(eventPayload.event);
           } else {
             handleScheduleEvent(eventPayload.event);
           }

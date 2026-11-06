@@ -27,6 +27,7 @@ const COMMAND_LANES = {
   settings: () => true,
   brain: (c) => c.startsWith('brain.'),
   'pack-install': (c) => c.startsWith('pack.'),
+  meeting: (c) => c.startsWith('meeting.'),
 };
 
 const SETTINGS_ONLY_TYPES = new Set([
