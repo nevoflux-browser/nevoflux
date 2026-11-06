@@ -25,6 +25,7 @@ import './local-inference-logic.test.mjs';
 import './jev-settings-logic.test.mjs';
 import './muse-settings-logic.test.mjs';
 import './meeting-logic.test.mjs';
+import './pendant-logic.test.mjs';
 import './nevoflux-action-logic.test.mjs';
 import './click-policy.test.mjs';
 import './ref-routing.test.mjs';

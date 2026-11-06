@@ -85,6 +85,8 @@ const Settings = {
 
   init() {
     this._currentSection = NevofluxPage.getParam('section', 'general');
+    // Meetings moved into the Pendant section; old links still land there.
+    if (this._currentSection === 'meeting') this._currentSection = 'pendant';
     this._setupNavigation();
     this._renderSections();
     this._activateSection(this._currentSection);
@@ -135,7 +137,7 @@ const Settings = {
     container.appendChild(this._renderKnowledgeBaseSection());
     container.appendChild(this._renderPacksSection());
     container.appendChild(this._renderMuseSection());
-    container.appendChild(this._renderMeetingSection());
+    container.appendChild(this._renderPendantSection());
     container.appendChild(this._renderShortcutsSection());
   },
 
@@ -288,13 +290,338 @@ const Settings = {
     return this._museLogic;
   },
 
-  // ── Meetings ────────────────────────────────────────────
+  // ── Pendant ─────────────────────────────────────────────
   //
-  // A pendant's meetings are kept by the daemon (`meeting.*`); these are its
-  // `meetings/settings.json`. The meetings themselves are on nevoflux://meeting.
+  // A NevoFlux pendant plugged in over USB is paired from here: the daemon
+  // opens the port, mints the pairing and asks nevoflux.app for the pendant's
+  // own token (`pendant.*`, progress on `system:pendant:job`); this page only
+  // asks and shows. Logic in pendant-logic.mjs. Below it, the meeting options
+  // (`meeting.*`, `meetings/settings.json`); meetings are on nevoflux://meeting.
 
-  _renderMeetingSection() {
-    const section = this._createSection('meeting', 'Meetings');
+  _renderPendantSection() {
+    const section = this._createSection('pendant', 'Pendant');
+
+    const paired = this._createGroup('Paired pendants');
+    const list = document.createElement('div');
+    list.id = 'pendant-list';
+    list.textContent = 'Loading…';
+    paired.appendChild(list);
+    section.appendChild(paired);
+
+    const setup = this._createGroup('Pair a pendant');
+    const how = document.createElement('p');
+    how.className = 'section-desc';
+    how.textContent =
+      'Plug the pendant into this computer with a USB cable. Pairing opens a page to approve the ' +
+      'pendant on nevoflux.app, then asks you to press BOOT on the pendant.';
+    setup.appendChild(how);
+    const form = document.createElement('div');
+    form.id = 'pendant-form';
+    setup.appendChild(form);
+    section.appendChild(setup);
+
+    section.appendChild(this._renderMeetingGroup());
+    this._pendantInit(list, form);
+    return section;
+  },
+
+  async _pendantInit(list, form) {
+    try {
+      this._pendantLogic = await import('chrome://nevoflux/content/pages/pendant-logic.mjs');
+    } catch (e) {
+      list.textContent = `Could not load: ${e?.message || e}`;
+      return;
+    }
+    this._pendantPaintForm(form);
+    this._pendantRefreshList();
+    this._pendantRefreshPorts();
+    this._pendantLoadWifi();
+    this._pendantSubscribe().catch((e) => console.warn('[pendant] subscribe failed', e));
+    // Online state changes on its own; this is local and cheap.
+    setInterval(() => this._pendantRefreshList(), 10000);
+  },
+
+  async _pendantRefreshList() {
+    const box = document.getElementById('pendant-list');
+    if (!box) return;
+    let data;
+    try {
+      data = await this._sendAgentCommand('pendant.list', {});
+    } catch (e) {
+      box.textContent = `Could not read the paired pendants: ${e?.message || e}`;
+      return;
+    }
+    const L = this._pendantLogic;
+    box.textContent = '';
+    const rows = (data.pendants || []).map(L.pendantRow);
+    if (!rows.length) {
+      const p = document.createElement('p');
+      p.className = 'section-placeholder';
+      p.textContent = 'No pendant is paired with this computer yet.';
+      box.appendChild(p);
+      return;
+    }
+    for (const r of rows) {
+      const row = document.createElement('div');
+      row.className = 'toggle-row';
+      const lbl = document.createElement('label');
+      lbl.textContent = `${r.name} — ${r.status}${r.since ? ` · paired ${r.since}` : ''}`;
+      row.appendChild(lbl);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'llm-retry-button';
+      btn.textContent = 'Unpair';
+      btn.addEventListener('click', async () => {
+        // eslint-disable-next-line no-alert
+        if (!window.confirm(`Unpair ${r.name}? It stops working until it is paired again.`)) return;
+        try {
+          await this._sendAgentCommand('pendant.unpair', { control_channel_id: r.id });
+        } catch (e) {
+          console.error('[pendant] unpair failed', e);
+        }
+        this._pendantRefreshList();
+      });
+      row.appendChild(btn);
+      box.appendChild(row);
+    }
+  },
+
+  _pendantPaintForm(form) {
+    form.textContent = '';
+    const field = (label, control, hintId) => {
+      const row = document.createElement('div');
+      row.className = 'form-row';
+      const lbl = document.createElement('label');
+      lbl.textContent = label;
+      row.appendChild(lbl);
+      const f = document.createElement('div');
+      f.className = 'field';
+      f.appendChild(control);
+      if (hintId) {
+        const hint = document.createElement('div');
+        hint.className = 'field-hint';
+        hint.id = hintId;
+        f.appendChild(hint);
+      }
+      row.appendChild(f);
+      form.appendChild(row);
+      return f;
+    };
+
+    const port = document.createElement('select');
+    port.id = 'pendant-port';
+    port.addEventListener('change', () => this._pendantShowPortNote());
+    const portField = field('USB port', port, 'pendant-port-note');
+    const refresh = document.createElement('button');
+    refresh.type = 'button';
+    refresh.className = 'llm-retry-button';
+    refresh.textContent = 'Refresh';
+    refresh.addEventListener('click', () => this._pendantRefreshPorts());
+    portField.insertBefore(refresh, portField.lastChild);
+
+    const ssid = document.createElement('input');
+    ssid.type = 'text';
+    ssid.id = 'pendant-ssid';
+    ssid.placeholder = 'A 2.4 GHz network';
+    ssid.setAttribute('list', 'pendant-ssid-choices');
+    const choices = document.createElement('datalist');
+    choices.id = 'pendant-ssid-choices';
+    const ssidField = field('Wi-Fi name', ssid, 'pendant-wifi-note');
+    ssidField.appendChild(choices);
+
+    const pass = document.createElement('input');
+    pass.type = 'password';
+    pass.id = 'pendant-pass';
+    pass.autocomplete = 'off';
+    field('Wi-Fi password', pass);
+
+    const actions = document.createElement('div');
+    actions.className = 'form-row';
+    const pair = document.createElement('button');
+    pair.type = 'button';
+    pair.id = 'pendant-pair';
+    pair.className = 'llm-retry-button';
+    pair.textContent = 'Pair';
+    pair.addEventListener('click', () => this._pendantStart('pendant.pair'));
+    const wifi = document.createElement('button');
+    wifi.type = 'button';
+    wifi.id = 'pendant-set-wifi';
+    wifi.className = 'llm-retry-button';
+    wifi.textContent = 'Only update Wi-Fi';
+    wifi.title = 'For a pendant already paired: change its network, keep its pairing';
+    wifi.addEventListener('click', () => this._pendantStart('pendant.set_wifi'));
+    const cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.id = 'pendant-cancel';
+    cancel.className = 'llm-retry-button';
+    cancel.textContent = 'Cancel';
+    cancel.hidden = true;
+    cancel.addEventListener('click', () => this._sendAgentCommand('pendant.cancel', {}).catch(() => {}));
+    actions.append(pair, wifi, cancel);
+    form.appendChild(actions);
+
+    const status = document.createElement('div');
+    status.id = 'pendant-status';
+    status.className = 'field-hint';
+    status.setAttribute('role', 'status');
+    form.appendChild(status);
+  },
+
+  async _pendantRefreshPorts() {
+    const select = document.getElementById('pendant-port');
+    if (!select) return;
+    const L = this._pendantLogic;
+    select.textContent = '';
+    const wait = document.createElement('option');
+    wait.textContent = 'Looking for the pendant…';
+    select.appendChild(wait);
+    let rows = [];
+    try {
+      rows = (await this._sendAgentCommand('pendant.ports', {}, 30000)).ports || [];
+    } catch (e) {
+      wait.textContent = `Could not list ports: ${e?.message || e}`;
+      return;
+    }
+    this._pendantPorts = rows;
+    select.textContent = '';
+    if (!rows.length) {
+      const none = document.createElement('option');
+      none.value = '';
+      none.textContent = 'No pendant found — plug in its USB cable, then Refresh';
+      select.appendChild(none);
+    }
+    const pick = L.defaultPort(rows);
+    for (const r of rows) {
+      const o = L.portOption(r);
+      const opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.label;
+      opt.disabled = !o.usable;
+      opt.selected = o.value === pick;
+      select.appendChild(opt);
+    }
+    this._pendantShowPortNote();
+  },
+
+  _pendantShowPortNote() {
+    const note = document.getElementById('pendant-port-note');
+    const port = document.getElementById('pendant-port')?.value;
+    if (!note) return;
+    const row = (this._pendantPorts || []).find((r) => r.port === port);
+    note.textContent = this._pendantLogic.replaceNotice(row);
+  },
+
+  async _pendantLoadWifi() {
+    let view;
+    try {
+      view = await this._sendAgentCommand('pendant.wifi', {}, 30000);
+    } catch (_e) {
+      return; // the form just starts empty
+    }
+    const s = this._pendantLogic.wifiStart(view);
+    const ssid = document.getElementById('pendant-ssid');
+    const pass = document.getElementById('pendant-pass');
+    const note = document.getElementById('pendant-wifi-note');
+    const choices = document.getElementById('pendant-ssid-choices');
+    if (ssid && !ssid.value) ssid.value = s.ssid;
+    if (pass && !pass.value) pass.value = s.password;
+    if (note) note.textContent = s.warning || 'The pendant joins 2.4 GHz Wi-Fi only.';
+    if (choices) {
+      choices.textContent = '';
+      for (const c of s.choices) {
+        const o = document.createElement('option');
+        o.value = c;
+        choices.appendChild(o);
+      }
+    }
+  },
+
+  async _pendantStart(command) {
+    const port = document.getElementById('pendant-port')?.value;
+    const ssid = document.getElementById('pendant-ssid')?.value.trim() || '';
+    const password = document.getElementById('pendant-pass')?.value || '';
+    const status = document.getElementById('pendant-status');
+    if (!port) {
+      status.textContent = 'Plug in the pendant and pick its port first.';
+      return;
+    }
+    if (command === 'pendant.set_wifi' && !ssid) {
+      status.textContent = 'Enter the Wi-Fi name first.';
+      return;
+    }
+    try {
+      const r = await this._sendAgentCommand(command, { port, ssid, password });
+      this._pendantJob = r.job;
+      this._pendantBusy(true);
+      status.textContent = 'Starting…';
+    } catch (e) {
+      status.textContent = `Could not start: ${e?.message || e}`;
+    }
+  },
+
+  _pendantBusy(busy) {
+    for (const id of ['pendant-pair', 'pendant-set-wifi']) {
+      const b = document.getElementById(id);
+      if (b) b.disabled = busy;
+    }
+    const c = document.getElementById('pendant-cancel');
+    if (c) c.hidden = !busy;
+  },
+
+  async _pendantSubscribe() {
+    const L = this._pendantLogic;
+    const channelId = 'pendant_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    await NevofluxPage.sendQuery('events:channel_open', { channelId });
+    window.addEventListener('NevofluxMessage', (event) => {
+      const d = event.detail;
+      if (!d || d.type !== 'bridge:push' || d.msg?.type !== 'events:delivery') return;
+      const ev = d.msg.payload?.event;
+      if (ev?.topic === L.JOB_TOPIC) this._pendantOnJob(ev.payload);
+    });
+    const res = await NevofluxPage.sendQuery('bridge:request', {
+      type: 'events.subscribe',
+      payload: { patterns: [L.JOB_TOPIC], replay_sticky: true, channel_id: channelId },
+    });
+    if (!res || res.success === false) throw new Error(res?.error?.message || 'events.subscribe failed');
+  },
+
+  _pendantOnJob(ev) {
+    const L = this._pendantLogic;
+    if (!ev) return;
+    // A replayed job from before this page opened is shown, never acted on.
+    const ours = !!this._pendantJob && ev.job === this._pendantJob;
+    if (this._pendantJob && !ours) return;
+    const status = document.getElementById('pendant-status');
+    if (!status) return;
+    const step = L.progress(ev.kind, ev.phase);
+    status.textContent = L.isTerminal(ev.phase) ? L.phaseText(ev) : `${step.done + 1}/${step.steps} · ${L.phaseText(ev)}`;
+    if (ev.phase === 'authorize' && ev.url) {
+      const link = document.createElement('a');
+      link.href = ev.url;
+      link.target = '_blank';
+      link.textContent = ` Open the approval page (code ${ev.user_code})`;
+      status.appendChild(link);
+      if (ours && this._pendantAuthFor !== ev.job) {
+        this._pendantAuthFor = ev.job;
+        this._pendantAuthWindow = window.open(ev.url, '_blank');
+      }
+    }
+    if (ev.phase === 'pairing' && this._pendantAuthWindow) {
+      // Approved: the page did its job.
+      try {
+        this._pendantAuthWindow.close();
+      } catch (_e) {}
+      this._pendantAuthWindow = null;
+    }
+    this._pendantBusy(!L.isTerminal(ev.phase) && (ours || !this._pendantJob));
+    if (L.isTerminal(ev.phase)) {
+      this._pendantJob = null;
+      this._pendantRefreshList();
+      this._pendantRefreshPorts();
+    }
+  },
+
+  _renderMeetingGroup() {
     const group = this._createGroup('Meetings');
     const intro = document.createElement('p');
     intro.className = 'section-desc';
@@ -306,9 +633,8 @@ const Settings = {
     body.id = 'meeting-settings-body';
     body.textContent = 'Loading…';
     group.appendChild(body);
-    section.appendChild(group);
     this._meetingLoad(body);
-    return section;
+    return group;
   },
 
   async _meetingLoad(body) {

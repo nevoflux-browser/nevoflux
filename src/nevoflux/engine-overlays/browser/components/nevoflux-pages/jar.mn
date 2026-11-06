@@ -22,6 +22,7 @@ nevoflux.jar:
     content/nevoflux/pages/meeting.html              (content/pages/meeting.html)
     content/nevoflux/pages/meeting.js                (content/pages/meeting.js)
     content/nevoflux/pages/meeting-logic.mjs         (content/pages/meeting-logic.mjs)
+    content/nevoflux/pages/pendant-logic.mjs         (content/pages/pendant-logic.mjs)
     content/nevoflux/pages/pack-ui-logic.mjs         (content/pages/pack-ui-logic.mjs)
     content/nevoflux/pages/canvas-bridge-policy.mjs  (content/pages/canvas-bridge-policy.mjs)
     content/nevoflux/pages/custom-provider-logic.mjs (content/pages/custom-provider-logic.mjs)
